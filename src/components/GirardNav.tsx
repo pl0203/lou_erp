@@ -8,6 +8,7 @@ const ROLE_LINKS: Record<string, { to: string; label: string }[]> = {
   ],
   sales_manager: [
     { to: '/girard/schedule',    label: 'Schedule' },
+    { to: '/girard/my-customers', label: 'Customers' },
     { to: '/girard/team',        label: 'My Team' },
     { to: '/girard/performance', label: 'Performance' },
   ],

@@ -2,19 +2,13 @@ import { useState, useRef, useEffect } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
 
-const athelLinks = [
-  { to: '/athel/po',        label: 'Purchase Orders' },
-  { to: '/athel/customers', label: 'Customer List' },
-  { to: '/athel/products',  label: 'Item List' },
+const allAthelLinks = [
+  { to: '/athel/po',           label: 'Purchase Orders', roles: ['po_admin', 'executive'] },
+  { to: '/athel/sales-orders', label: 'Sales Orders',    roles: ['po_admin', 'executive'] },
+  { to: '/athel/customers',    label: 'Customer List',   roles: ['po_admin', 'executive'] },
+  { to: '/athel/products',     label: 'Item List',       roles: ['po_admin', 'executive'] },
+  { to: '/ihr/users',          label: 'Users',           roles: ['executive'] },
 ]
-
-const ROLE_HOME: Record<string, string> = {
-  po_admin:      '/athel/po',
-  sales_person:  '/girard/schedule',
-  sales_manager: '/girard/schedule',
-  sales_head:    '/girard/customers',
-  executive:     '/landing',
-}
 
 const GIRARD_ROLES = ['sales_person', 'sales_manager', 'sales_head', 'executive']
 const ATHEL_ROLES  = ['po_admin', 'executive']
@@ -31,7 +25,9 @@ export default function AthelNav() {
   const canAccessGirard = profile && GIRARD_ROLES.includes(profile.role)
   const showSwitcherBtn = canAccessAthel && canAccessGirard
 
-  // Close dropdowns on outside click
+  // Filter links by role
+  const links = allAthelLinks.filter(l => profile && l.roles.includes(profile.role))
+
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (switcherRef.current && !switcherRef.current.contains(e.target as Node)) {
@@ -103,9 +99,9 @@ export default function AthelNav() {
           )}
         </div>
 
-        {/* Nav links — hidden on mobile, show on md+ */}
+        {/* Nav links — desktop */}
         <div className="hidden md:flex items-center gap-1 flex-1">
-          {athelLinks.map(link => (
+          {links.map(link => (
             <NavLink
               key={link.to}
               to={link.to}
@@ -122,9 +118,9 @@ export default function AthelNav() {
           ))}
         </div>
 
-        {/* Mobile nav links — horizontal scroll */}
+        {/* Nav links — mobile */}
         <div className="flex md:hidden items-center gap-1 flex-1 overflow-x-auto">
-          {athelLinks.map(link => (
+          {links.map(link => (
             <NavLink
               key={link.to}
               to={link.to}
