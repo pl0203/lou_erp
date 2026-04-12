@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
@@ -56,10 +56,49 @@ type GirardOrder = {
   }[]
 }
 
+// Compress and convert image to WebP using canvas
+async function compressImage(blob: Blob): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const url = URL.createObjectURL(blob)
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      const MAX_SIZE = 1280
+      let { width, height } = img
+      if (width > height && width > MAX_SIZE) {
+        height = Math.round((height * MAX_SIZE) / width)
+        width = MAX_SIZE
+      } else if (height > width && height > MAX_SIZE) {
+        width = Math.round((width * MAX_SIZE) / height)
+        height = MAX_SIZE
+      } else if (width > MAX_SIZE) {
+        height = Math.round((height * MAX_SIZE) / width)
+        width = MAX_SIZE
+      }
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return reject(new Error('Canvas not supported'))
+      ctx.drawImage(img, 0, 0, width, height)
+      canvas.toBlob(
+        result => {
+          if (result) resolve(result)
+          else reject(new Error('Compression failed'))
+        },
+        'image/webp',
+        0.8
+      )
+    }
+    img.onerror = reject
+    img.src = url
+  })
+}
+
 async function fetchSchedule(scheduleId: string): Promise<Schedule> {
   const { data, error } = await supabase
     .from('sales_schedules')
-    .select('id, scheduled_date, status, customers(id, name, address, city)')
+    .select('id, scheduled_date, status, customers!sales_schedules_outlet_id_fkey(id, name, address, city)')
     .eq('id', scheduleId)
     .single()
   if (error) throw error
@@ -102,18 +141,16 @@ async function checkIn(payload: {
   sales_person_id: string
   lat: number | null
   lng: number | null
-  photo_file: File
+  photo_blob: Blob
 }): Promise<Visit> {
-  // Upload photo to Supabase Storage
-  const fileName = `${payload.schedule_id}_${Date.now()}.jpg`
+  const fileName = `${payload.schedule_id}_${Date.now()}.webp`
   const storagePath = `visits/${payload.schedule_id}/${fileName}`
 
   const { error: uploadError } = await supabase.storage
     .from('visits')
-    .upload(storagePath, payload.photo_file, { contentType: 'image/jpeg', upsert: false })
+    .upload(storagePath, payload.photo_blob, { contentType: 'image/webp', upsert: false })
   if (uploadError) throw uploadError
 
-  // Create visit record
   const { data: visit, error: visitError } = await supabase
     .from('outlet_visits')
     .insert({
@@ -127,7 +164,6 @@ async function checkIn(payload: {
     .single()
   if (visitError) throw visitError
 
-  // Create photo record
   const { error: photoError } = await supabase
     .from('visit_photos')
     .insert({
@@ -139,13 +175,11 @@ async function checkIn(payload: {
     })
   if (photoError) throw photoError
 
-  // Update schedule status
   await supabase
     .from('sales_schedules')
     .update({ status: 'completed' })
     .eq('id', payload.schedule_id)
 
-  // Update customer last visit date
   await supabase
     .from('customers')
     .update({ last_visit_date: new Date().toISOString().split('T')[0] })
@@ -248,21 +282,111 @@ const ORDER_STATUS_STYLES: Record<string, string> = {
   rejected: 'bg-red-100 text-red-700',
 }
 
+// Camera component using getUserMedia
+function LiveCamera({ onCapture }: { onCapture: (blob: Blob, preview: string) => void }) {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const [stream, setStream] = useState<MediaStream | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [capturing, setCapturing] = useState(false)
+
+  useEffect(() => {
+    startCamera()
+    return () => stopCamera()
+  }, [])
+
+  const startCamera = async () => {
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      })
+      setStream(s)
+      if (videoRef.current) videoRef.current.srcObject = s
+    } catch (err) {
+      setError('Camera access denied. Please allow camera access and try again.')
+    }
+  }
+
+  const stopCamera = () => {
+    stream?.getTracks().forEach(t => t.stop())
+  }
+
+  const capturePhoto = async () => {
+    if (!videoRef.current) return
+    setCapturing(true)
+    try {
+      const canvas = document.createElement('canvas')
+      canvas.width = videoRef.current.videoWidth
+      canvas.height = videoRef.current.videoHeight
+      const ctx = canvas.getContext('2d')
+      if (!ctx) throw new Error('Canvas not supported')
+      ctx.drawImage(videoRef.current, 0, 0)
+
+      canvas.toBlob(async (rawBlob) => {
+        if (!rawBlob) { setCapturing(false); return }
+        const compressed = await compressImage(rawBlob)
+        const preview = URL.createObjectURL(compressed)
+        stopCamera()
+        onCapture(compressed, preview)
+        setCapturing(false)
+      }, 'image/webp', 0.9)
+    } catch {
+      setCapturing(false)
+    }
+  }
+
+  if (error) {
+    return (
+      <div className="w-full h-48 bg-gray-100 rounded-xl flex flex-col items-center justify-center gap-2 p-4">
+        <span className="text-3xl">📷</span>
+        <p className="text-sm text-red-500 text-center">{error}</p>
+        <button
+          onClick={startCamera}
+          className="text-xs text-blue-600 font-medium underline mt-1"
+        >
+          Try again
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="relative w-full rounded-xl overflow-hidden bg-black">
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted
+        className="w-full h-56 object-cover"
+      />
+      <button
+        onClick={capturePhoto}
+        disabled={capturing}
+        className="absolute bottom-4 left-1/2 -translate-x-1/2 w-14 h-14 rounded-full bg-white border-4 border-gray-300 hover:border-green-500 transition-colors disabled:opacity-50 flex items-center justify-center"
+      >
+        <div className="w-10 h-10 rounded-full bg-green-500" />
+      </button>
+      {capturing && (
+        <div className="absolute inset-0 bg-white/50 flex items-center justify-center">
+          <p className="text-sm text-gray-700 font-medium">Capturing...</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function VisitPage() {
   const { scheduleId } = useParams<{ scheduleId: string }>()
   const { profile } = useAuth()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
-  // Check-in state
   const [showCamera, setShowCamera] = useState(false)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
-  const [photoFile, setPhotoFile] = useState<File | null>(null)
+  const [photoBlob, setPhotoBlob] = useState<Blob | null>(null)
   const [gettingLocation, setGettingLocation] = useState(false)
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Order state
   const [showOrderForm, setShowOrderForm] = useState(false)
   const [orderItems, setOrderItems] = useState<OrderItem[]>([
     { product_id: null, product_name: '', sku: '', quantity: 1, unit_price: 0 }
@@ -298,7 +422,7 @@ export default function VisitPage() {
       queryClient.invalidateQueries({ queryKey: ['daily_schedule'] })
       setShowCamera(false)
       setPhotoPreview(null)
-      setPhotoFile(null)
+      setPhotoBlob(null)
     },
   })
 
@@ -311,11 +435,10 @@ export default function VisitPage() {
     },
   })
 
-  const handlePhotoCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setPhotoFile(file)
-    setPhotoPreview(URL.createObjectURL(file))
+  const handleCapture = (blob: Blob, preview: string) => {
+    setPhotoBlob(blob)
+    setPhotoPreview(preview)
+    setShowCamera(false)
   }
 
   const handleGetLocation = () => {
@@ -333,37 +456,28 @@ export default function VisitPage() {
   }
 
   const handleCheckIn = () => {
-    if (!photoFile) return alert('Please take a photo first.')
+    if (!photoBlob) return alert('Please take a photo first.')
     if (!profile || !schedule) return
-
     checkInMutation.mutate({
       schedule_id: scheduleId!,
       outlet_id: schedule.customers.id,
       sales_person_id: profile.id,
       lat: location?.lat ?? null,
       lng: location?.lng ?? null,
-      photo_file: photoFile,
+      photo_blob: photoBlob,
     })
   }
 
-  const updateOrderItem = (
-    index: number,
-    field: keyof OrderItem,
-    value: string | number | null
-  ) => {
-    setOrderItems(prev =>
-      prev.map((item, i) => i === index ? { ...item, [field]: value } : item)
-    )
+  const updateOrderItem = (index: number, field: keyof OrderItem, value: string | number | null) => {
+    setOrderItems(prev => prev.map((item, i) => i === index ? { ...item, [field]: value } : item))
   }
 
   const fillFromProduct = (index: number, product: Product) => {
-    setOrderItems(prev =>
-      prev.map((item, i) =>
-        i === index
-          ? { ...item, product_id: product.id, product_name: product.name, sku: product.sku, unit_price: product.unit_price }
-          : item
-      )
-    )
+    setOrderItems(prev => prev.map((item, i) =>
+      i === index
+        ? { ...item, product_id: product.id, product_name: product.name, sku: product.sku, unit_price: product.unit_price }
+        : item
+    ))
   }
 
   const addOrderItem = () => setOrderItems(prev => [
@@ -378,12 +492,8 @@ export default function VisitPage() {
 
   const handleSubmitOrder = () => {
     if (!visit || !schedule || !profile) return
-    if (orderItems.some(i => !i.product_name.trim())) {
-      return alert('All items need a product name.')
-    }
-    if (orderItems.every(i => i.quantity === 0)) {
-      return alert('At least one item must have a quantity.')
-    }
+    if (orderItems.some(i => !i.product_name.trim())) return alert('All items need a product name.')
+    if (orderItems.every(i => i.quantity === 0)) return alert('At least one item must have a quantity.')
     orderMutation.mutate({
       customer_id: schedule.customers.id,
       visit_id: visit.id,
@@ -421,10 +531,7 @@ export default function VisitPage() {
 
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center gap-4">
-        <button
-          onClick={() => navigate('/girard/schedule')}
-          className="text-gray-400 hover:text-gray-600 text-sm"
-        >
+        <button onClick={() => navigate('/girard/schedule')} className="text-gray-400 hover:text-gray-600 text-sm">
           ← Back
         </button>
         <div>
@@ -445,10 +552,24 @@ export default function VisitPage() {
 
           {!hasVisit ? (
             <div className="px-5 py-5 space-y-4">
-              {/* Photo capture */}
-              <div>
-                <p className="text-sm text-gray-600 mb-2">Take a photo at the outlet</p>
-                {photoPreview ? (
+
+              {/* Camera / photo state */}
+              {showCamera && (
+                <div>
+                  <p className="text-sm text-gray-600 mb-2">Take a live photo</p>
+                  <LiveCamera onCapture={handleCapture} />
+                  <button
+                    onClick={() => setShowCamera(false)}
+                    className="text-xs text-gray-400 mt-2 hover:text-gray-600"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+
+              {!showCamera && photoPreview && (
+                <div>
+                  <p className="text-sm text-gray-600 mb-2">Photo captured</p>
                   <div className="relative">
                     <img
                       src={photoPreview}
@@ -456,68 +577,64 @@ export default function VisitPage() {
                       className="w-full h-48 object-cover rounded-xl"
                     />
                     <button
-                      onClick={() => { setPhotoPreview(null); setPhotoFile(null) }}
+                      onClick={() => { setPhotoPreview(null); setPhotoBlob(null); setShowCamera(true) }}
                       className="absolute top-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded-lg"
                     >
                       Retake
                     </button>
                   </div>
-                ) : (
+                </div>
+              )}
+
+              {!showCamera && !photoPreview && (
+                <div>
+                  <p className="text-sm text-gray-600 mb-2">Take a live photo at the outlet</p>
                   <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="w-full h-36 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center gap-2 hover:border-blue-300 hover:bg-blue-50 transition-colors"
+                    onClick={() => setShowCamera(true)}
+                    className="w-full h-36 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center gap-2 hover:border-green-300 hover:bg-green-50 transition-colors"
                   >
                     <span className="text-3xl">📷</span>
-                    <span className="text-sm text-gray-400">Tap to take photo</span>
-                  </button>
-                )}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  onChange={handlePhotoCapture}
-                  className="hidden"
-                />
-              </div>
-
-              {/* Location */}
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={handleGetLocation}
-                  disabled={gettingLocation || !!location}
-                  className={`text-sm px-4 py-2 rounded-lg border transition-colors ${
-                    location
-                      ? 'border-green-200 bg-green-50 text-green-700'
-                      : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-                  } disabled:opacity-50`}
-                >
-                  {gettingLocation ? 'Getting location...' : location ? '✓ Location captured' : 'Get location'}
-                </button>
-                <span className="text-xs text-gray-400">Optional but recommended</span>
-              </div>
-
-              {/* Check in button */}
-              <button
-                onClick={handleCheckIn}
-                disabled={!photoFile || checkInMutation.isPending}
-                className="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-3 rounded-xl transition-colors disabled:opacity-50 text-sm"
-              >
-                {checkInMutation.isPending ? 'Checking in...' : 'Confirm Check-in'}
-              </button>
-
-              {checkInMutation.isError && (
-                <div className="flex items-center justify-between bg-red-50 border border-red-200 rounded-lg p-3">
-                  <p className="text-red-600 text-xs">
-                    {(checkInMutation.error as Error).message}
-                  </p>
-                  <button
-                    onClick={() => handleCheckIn()}
-                    className="text-xs text-red-600 font-medium underline ml-2"
-                  >
-                    Retry
+                    <span className="text-sm text-gray-400">Tap to open camera</span>
+                    <span className="text-xs text-gray-300">Live photo only</span>
                   </button>
                 </div>
+              )}
+
+              {/* Location */}
+              {!showCamera && (
+                <>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={handleGetLocation}
+                      disabled={gettingLocation || !!location}
+                      className={`text-sm px-4 py-2 rounded-lg border transition-colors ${
+                        location
+                          ? 'border-green-200 bg-green-50 text-green-700'
+                          : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                      } disabled:opacity-50`}
+                    >
+                      {gettingLocation ? 'Getting location...' : location ? '✓ Location captured' : 'Get location'}
+                    </button>
+                    <span className="text-xs text-gray-400">Optional but recommended</span>
+                  </div>
+
+                  <button
+                    onClick={handleCheckIn}
+                    disabled={!photoBlob || checkInMutation.isPending}
+                    className="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-3 rounded-xl transition-colors disabled:opacity-50 text-sm"
+                  >
+                    {checkInMutation.isPending ? 'Checking in...' : 'Confirm Check-in'}
+                  </button>
+
+                  {checkInMutation.isError && (
+                    <div className="flex items-center justify-between bg-red-50 border border-red-200 rounded-lg p-3">
+                      <p className="text-red-600 text-xs">{(checkInMutation.error as Error).message}</p>
+                      <button onClick={handleCheckIn} className="text-xs text-red-600 font-medium underline ml-2">
+                        Retry
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           ) : (
@@ -538,17 +655,14 @@ export default function VisitPage() {
                   📍 {visit.lat.toFixed(5)}, {visit.lng.toFixed(5)}
                 </p>
               )}
-              {/* Show check-in photo */}
               {visit.visit_photos?.[0] && (
-                <div className="mt-2">
-                  <CheckInPhoto storagePath={visit.visit_photos[0].storage_path} />
-                </div>
+                <CheckInPhoto storagePath={visit.visit_photos[0].storage_path} />
               )}
             </div>
           )}
         </div>
 
-        {/* Orders section — only shown after check-in */}
+        {/* Orders section */}
         {hasVisit && (
           <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
@@ -563,11 +677,9 @@ export default function VisitPage() {
               )}
             </div>
 
-            {/* New order form */}
             {showOrderForm && (
               <div className="px-5 py-4 border-b border-gray-100 space-y-4">
                 <p className="text-sm font-medium text-gray-700">New Order</p>
-
                 <div className="space-y-3">
                   {orderItems.map((item, i) => (
                     <div key={i} className="border border-gray-100 rounded-xl p-3 space-y-3">
@@ -577,18 +689,9 @@ export default function VisitPage() {
                           onClick={() => removeOrderItem(i)}
                           disabled={orderItems.length === 1}
                           className="text-gray-300 hover:text-red-400 disabled:opacity-20 text-lg"
-                        >
-                          ×
-                        </button>
+                        >×</button>
                       </div>
-
-                      {products && (
-                        <SKULookup
-                          products={products}
-                          onSelect={p => fillFromProduct(i, p)}
-                        />
-                      )}
-
+                      {products && <SKULookup products={products} onSelect={p => fillFromProduct(i, p)} />}
                       <div className="grid grid-cols-2 gap-2">
                         <div>
                           <label className="block text-xs text-gray-400 mb-1">Item Name</label>
@@ -612,8 +715,7 @@ export default function VisitPage() {
                         <div>
                           <label className="block text-xs text-gray-400 mb-1">Qty</label>
                           <input
-                            type="number"
-                            min={1}
+                            type="number" min={1}
                             value={item.quantity}
                             onChange={e => updateOrderItem(i, 'quantity', parseInt(e.target.value) || 1)}
                             className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -622,15 +724,13 @@ export default function VisitPage() {
                         <div>
                           <label className="block text-xs text-gray-400 mb-1">Unit Price (Rp)</label>
                           <input
-                            type="number"
-                            min={0}
+                            type="number" min={0}
                             value={item.unit_price}
                             onChange={e => updateOrderItem(i, 'unit_price', parseFloat(e.target.value) || 0)}
                             className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                           />
                         </div>
                       </div>
-
                       <p className="text-right text-xs text-gray-400">
                         Subtotal: <span className="text-gray-700 font-medium">
                           Rp {(item.quantity * item.unit_price).toLocaleString('id-ID')}
@@ -639,19 +739,12 @@ export default function VisitPage() {
                     </div>
                   ))}
                 </div>
-
-                <button
-                  onClick={addOrderItem}
-                  className="text-blue-600 text-sm font-medium hover:text-blue-800"
-                >
+                <button onClick={addOrderItem} className="text-blue-600 text-sm font-medium hover:text-blue-800">
                   + Add item
                 </button>
-
                 <div className="flex items-center justify-between pt-2 border-t border-gray-100">
                   <p className="text-sm text-gray-500">
-                    Total: <span className="font-semibold text-gray-900">
-                      Rp {orderTotal.toLocaleString('id-ID')}
-                    </span>
+                    Total: <span className="font-semibold text-gray-900">Rp {orderTotal.toLocaleString('id-ID')}</span>
                   </p>
                   <div className="flex gap-2">
                     <button
@@ -660,9 +753,7 @@ export default function VisitPage() {
                         setOrderItems([{ product_id: null, product_name: '', sku: '', quantity: 1, unit_price: 0 }])
                       }}
                       className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
-                    >
-                      Cancel
-                    </button>
+                    >Cancel</button>
                     <button
                       onClick={handleSubmitOrder}
                       disabled={orderMutation.isPending}
@@ -672,24 +763,15 @@ export default function VisitPage() {
                     </button>
                   </div>
                 </div>
-
                 {orderMutation.isError && (
                   <div className="flex items-center justify-between bg-red-50 border border-red-200 rounded-lg p-3">
-                    <p className="text-red-600 text-xs">
-                      {(orderMutation.error as Error).message}
-                    </p>
-                    <button
-                      onClick={handleSubmitOrder}
-                      className="text-xs text-red-600 font-medium underline ml-2"
-                    >
-                      Retry
-                    </button>
+                    <p className="text-red-600 text-xs">{(orderMutation.error as Error).message}</p>
+                    <button onClick={handleSubmitOrder} className="text-xs text-red-600 font-medium underline ml-2">Retry</button>
                   </div>
                 )}
               </div>
             )}
 
-            {/* Past orders for this visit */}
             {!orders || orders.length === 0 ? (
               <div className="px-5 py-8 text-center">
                 <p className="text-gray-400 text-sm">No orders placed yet during this visit.</p>
@@ -702,9 +784,7 @@ export default function VisitPage() {
                       <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium capitalize ${ORDER_STATUS_STYLES[order.status] ?? 'bg-gray-100 text-gray-600'}`}>
                         {order.status}
                       </span>
-                      <span className="text-xs text-gray-400">
-                        {new Date(order.created_at).toLocaleString('id-ID')}
-                      </span>
+                      <span className="text-xs text-gray-400">{new Date(order.created_at).toLocaleString('id-ID')}</span>
                     </div>
                     <table className="w-full text-xs">
                       <thead>
@@ -720,9 +800,7 @@ export default function VisitPage() {
                           <tr key={item.id}>
                             <td className="py-0.5 text-gray-700">{item.product_name}</td>
                             <td className="py-0.5 text-right text-gray-600">{item.quantity}</td>
-                            <td className="py-0.5 text-right text-gray-600">
-                              Rp {item.unit_price.toLocaleString('id-ID')}
-                            </td>
+                            <td className="py-0.5 text-right text-gray-600">Rp {item.unit_price.toLocaleString('id-ID')}</td>
                             <td className="py-0.5 text-right text-gray-900 font-medium">
                               Rp {(item.quantity * item.unit_price).toLocaleString('id-ID')}
                             </td>
@@ -749,26 +827,16 @@ export default function VisitPage() {
   )
 }
 
-// Separate component to load signed URL for check-in photo
 function CheckInPhoto({ storagePath }: { storagePath: string }) {
   const [url, setUrl] = useState<string | null>(null)
 
-  useState(() => {
+  useEffect(() => {
     supabase.storage
       .from('visits')
       .createSignedUrl(storagePath, 3600)
-      .then(({ data }) => {
-        if (data) setUrl(data.signedUrl)
-      })
-  })
+      .then(({ data }) => { if (data) setUrl(data.signedUrl) })
+  }, [storagePath])
 
   if (!url) return null
-
-  return (
-    <img
-      src={url}
-      alt="Check-in photo"
-      className="w-full h-48 object-cover rounded-xl"
-    />
-  )
+  return <img src={url} alt="Check-in photo" className="w-full h-48 object-cover rounded-xl" />
 }

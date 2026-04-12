@@ -36,7 +36,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .select('id, full_name, email, role, is_active, manager_id')
       .eq('id', userId)
       .single()
-    if (!error && data) setProfile(data)
+    
+    if (error || !data) return
+    
+    if (!data.is_active) {
+      await supabase.auth.signOut()
+      return
+    }
+    
+    setProfile(data)
   }
 
   useEffect(() => {

@@ -44,30 +44,28 @@ const EMPTY_FORM: ScheduleForm = {
 }
 
 function getDateOptions(): { value: string; label: string }[] {
-  const options = []
-  const today = new Date()
-  for (let i = 0; i <= 30; i++) {
-    const d = new Date(today)
-    d.setDate(d.getDate() + i)
-    const value = d.toISOString().split('T')[0]
-    const label = i === 0 ? `Today (${value})`
-      : i === 1 ? `Tomorrow (${value})`
-      : d.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' })
-    options.push({ value, label })
+    const options = []
+    const today = new Date()
+    for (let i = 0; i <= 30; i++) {
+      const d = new Date(today)
+      d.setDate(d.getDate() + i)
+      const value = d.toISOString().split('T')[0]
+      const label = d.toLocaleDateString('id-ID', {
+        weekday: 'long', day: 'numeric', month: 'long'
+      })
+      options.push({ value, label })
+    }
+    return options
   }
-  return options
-}
 
 function isEditable(scheduledDate: string): boolean {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const tomorrow = new Date(today)
-  tomorrow.setDate(tomorrow.getDate() + 1)
-  const schedDate = new Date(scheduledDate)
-  schedDate.setHours(0, 0, 0, 0)
-  // Can only edit schedules that are 2+ days from now
-  return schedDate > tomorrow
-}
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const schedDate = new Date(scheduledDate)
+    schedDate.setHours(0, 0, 0, 0)
+    // Can only edit schedules that are more than 1 day from now (i.e. from day after tomorrow onwards)
+    return schedDate > new Date(today.getTime() + 24 * 60 * 60 * 1000)
+  }
 
 async function fetchMyCustomers(managerId: string): Promise<Customer[]> {
   const { data, error } = await supabase
@@ -236,9 +234,6 @@ export default function ManagerSchedule() {
     if (!form.outlet_id) return alert('Please select a customer.')
     if (!form.sales_person_id) return alert('Please select a sales person.')
     if (!form.scheduled_date) return alert('Please select a date.')
-    if (!isEditable(form.scheduled_date) && !editingId) {
-      return alert('You can only schedule visits 2 or more days ahead.')
-    }
     if (editingId) {
       updateMutation.mutate()
     } else {
@@ -318,17 +313,17 @@ export default function ManagerSchedule() {
 
       <div className="px-4 md:px-8 py-6">
         {isLoading && (
-          <div className="text-center text-gray-400 text-sm py-24">Loading schedule...</div>
+          <div className="text-center text-gray-400 text-sm py-24">Memuat jadwal...</div>
         )}
 
     {!isLoading && schedules.length === 0 && (
     <div className="text-center py-24">
-        <p className="text-gray-400 text-sm">No visits scheduled for this day.</p>
+        <p className="text-gray-400 text-sm">Tidak ada kunjungan yang dijadwalkan untuk hari ini.</p>
         <button
         onClick={openCreate}
         className="mt-3 text-green-600 text-sm font-medium hover:text-green-800"
         >
-        + Assign a visit
+        Tambahkan jadwal kunjungan baru +
         </button>
     </div>
     )}
@@ -338,8 +333,8 @@ export default function ManagerSchedule() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Customer</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500 hidden md:table-cell">Location</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">Toko/Customer</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500 hidden md:table-cell">Lokasi</th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500">Sales Person</th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500 hidden md:table-cell">Status</th>
                   <th className="text-right px-5 py-3 font-medium text-gray-500">Actions</th>
@@ -376,13 +371,13 @@ export default function ManagerSchedule() {
                               onClick={() => openEdit(s)}
                               className="text-blue-600 hover:text-blue-800 text-xs font-medium mr-3"
                             >
-                              Edit
+                              Ubah
                             </button>
                             <button
                               onClick={() => setDeleteId(s.id)}
                               className="text-red-400 hover:text-red-600 text-xs font-medium"
                             >
-                              Delete
+                              Hapus
                             </button>
                           </>
                         ) : (
@@ -426,19 +421,19 @@ export default function ManagerSchedule() {
                         onClick={() => openEdit(s)}
                         className="flex-1 text-center text-blue-600 text-xs font-medium py-2 rounded-lg bg-blue-50"
                       >
-                        Edit
+                        Ubah
                       </button>
                       <button
                         onClick={() => setDeleteId(s.id)}
                         className="flex-1 text-center text-red-500 text-xs font-medium py-2 rounded-lg bg-red-50"
                       >
-                        Delete
+                        Hapus
                       </button>
                     </div>
                   )}
                   {!editable && (
                     <p className="text-xs text-gray-300 mt-2 pt-2 border-t border-gray-100">
-                      Locked — cannot edit today or tomorrow's schedule
+                      Terkunci — tidak bisa diubah karena sudah dekat dengan tanggal kunjungan.
                     </p>
                   )}
                 </div>
@@ -459,21 +454,21 @@ export default function ManagerSchedule() {
             </div>
             <div className="px-6 py-4 space-y-4">
               <div>
-                <label className="block text-sm text-gray-600 mb-1">Customer *</label>
+                <label className="block text-sm text-gray-600 mb-1">Toko/Customer *</label>
                 <select
                   value={form.outlet_id}
                   onChange={e => setForm(p => ({ ...p, outlet_id: e.target.value }))}
                   disabled={!!editingId}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 disabled:bg-gray-50 disabled:text-gray-400"
                 >
-                  <option value="">Select customer...</option>
+                  <option value="">Pilih Toko/Customer...</option>
                   {customers?.map(c => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
                 {!customers?.length && (
                   <p className="text-xs text-orange-500 mt-1">
-                    No customers assigned to you yet. Contact your sales head.
+                    Belum ada toko/customer yang ditugaskan kepada Anda. Hubungi Head of Sales.
                   </p>
                 )}
               </div>
@@ -485,14 +480,14 @@ export default function ManagerSchedule() {
                   onChange={e => setForm(p => ({ ...p, sales_person_id: e.target.value }))}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
                 >
-                  <option value="">Select sales person...</option>
+                  <option value="">Pilih anggota team sales anda...</option>
                   {team?.map(sp => (
                     <option key={sp.id} value={sp.id}>{sp.full_name}</option>
                   ))}
                 </select>
                 {!team?.length && (
                   <p className="text-xs text-orange-500 mt-1">
-                    No team members assigned to you yet. Contact your sales head.
+                    Belum ada anggota tim sales yang ditugaskan kepada Anda. Hubungi Head of Sales.
                   </p>
                 )}
               </div>
@@ -505,12 +500,12 @@ export default function ManagerSchedule() {
                   disabled={!!editingId}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 disabled:bg-gray-50 disabled:text-gray-400"
                 >
-                  {dateOptions.filter(d => isEditable(d.value)).map(d => (
-                    <option key={d.value} value={d.value}>{d.label}</option>
-                  ))}
+                {dateOptions.map(d => (
+                <option key={d.value} value={d.value}>{d.label}</option>
+                ))}
                 </select>
                 <p className="text-xs text-gray-400 mt-1">
-                  Tomorrow and today's schedules cannot be edited.
+                    Penjadwalan untuk hari ini dan besok tidak bisa diubah setelah berhasil dibuat.
                 </p>
               </div>
 
@@ -557,10 +552,10 @@ export default function ManagerSchedule() {
       {deleteId && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-xl">
-            <h3 className="text-base font-semibold text-gray-900 mb-2">Remove schedule?</h3>
+            <h3 className="text-base font-semibold text-gray-900 mb-2">Hapus jadwal kunjungan?</h3>
             <p className="text-sm text-gray-500 mb-5">
-              Remove <strong>{deleteTarget?.customers?.name}</strong> from{' '}
-              <strong>{deleteTarget?.users?.full_name}</strong>'s schedule on{' '}
+              Hapus <strong>{deleteTarget?.customers?.name}</strong> dari{' '} jadwal
+              <strong>{deleteTarget?.users?.full_name}</strong> pada tanggal{' '}
               <strong>{deleteTarget?.scheduled_date}</strong>?
             </p>
             <div className="flex gap-3 justify-end">
@@ -568,7 +563,7 @@ export default function ManagerSchedule() {
                 onClick={() => setDeleteId(null)}
                 className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
               >
-                Cancel
+                Batal
               </button>
               <button
                 onClick={() => deleteMutation.mutate()}

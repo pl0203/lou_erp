@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/AuthContext'
 import GirardNav from '../../components/GirardNav'
+import { fetchCustomerStatsBatch } from '../../lib/customerStats'
 
 type Schedule = {
   id: string
@@ -23,13 +24,6 @@ type Schedule = {
     id: string
     checked_in_at: string
   }[]
-}
-
-type CustomerStats = {
-  customer_id: string
-  order_count: number
-  total_sales: number
-  top_items: string[]
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -62,74 +56,21 @@ async function fetchSchedules(userId: string, dates: string[]): Promise<Schedule
   if (error) throw error
   if (!data || data.length === 0) return []
 
-  // Fetch customer details separately
   const outletIds = [...new Set(data.map((s: any) => s.outlet_id as string))]
-  
   if (outletIds.length === 0) return data as Schedule[]
 
   const { data: customerData, error: customerError } = await supabase
     .from('customers')
     .select('id, name, address, city, last_visit_date, visit_frequency_days')
     .in('id', outletIds)
-
   if (customerError) throw customerError
 
-  const customerMap = Object.fromEntries(
-    (customerData ?? []).map(c => [c.id, c])
-  )
+  const customerMap = Object.fromEntries((customerData ?? []).map(c => [c.id, c]))
 
   return data.map((s: any) => ({
     ...s,
     customers: customerMap[s.outlet_id] ?? null,
   })) as Schedule[]
-}
-
-async function fetchCustomerStats(customerIds: string[]): Promise<CustomerStats[]> {
-  if (customerIds.length === 0) return []
-  const threeMonthsAgo = new Date()
-  threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3)
-  const cutoff = threeMonthsAgo.toISOString()
-
-  const { data, error } = await supabase
-    .from('girard_orders')
-    .select('id, customer_id, total_value, girard_order_items(product_name, quantity)')
-    .in('customer_id', customerIds)
-    .gte('created_at', cutoff)
-    .eq('status', 'approved')
-  if (error) throw error
-
-  const statsMap: Record<string, CustomerStats> = {}
-  for (const order of data ?? []) {
-    if (!statsMap[order.customer_id]) {
-      statsMap[order.customer_id] = {
-        customer_id: order.customer_id,
-        order_count: 0,
-        total_sales: 0,
-        top_items: [],
-      }
-    }
-    statsMap[order.customer_id].order_count++
-    statsMap[order.customer_id].total_sales += order.total_value ?? 0
-  }
-
-  for (const customerId of customerIds) {
-    const orders = (data ?? []).filter(o => o.customer_id === customerId)
-    const itemCounts: Record<string, number> = {}
-    for (const order of orders) {
-      for (const item of order.girard_order_items ?? []) {
-        itemCounts[item.product_name] = (itemCounts[item.product_name] ?? 0) + item.quantity
-      }
-    }
-    const top = Object.entries(itemCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3)
-      .map(([name]) => name)
-    if (statsMap[customerId]) {
-      statsMap[customerId].top_items = top
-    }
-  }
-
-  return Object.values(statsMap)
 }
 
 function isOverdue(lastVisit: string | null, frequencyDays: number): boolean {
@@ -157,11 +98,11 @@ export default function DailySchedule() {
   })
 
   const schedules = allSchedules?.filter(s => s.scheduled_date === selectedDate) ?? []
-  const customerIds = [...new Set(allSchedules?.map(s => s.customers.id) ?? [])]
+  const customerIds = [...new Set(allSchedules?.map(s => s.customers?.id).filter(Boolean) ?? [])]
 
   const { data: statsData } = useQuery({
     queryKey: ['customer_stats', customerIds],
-    queryFn: () => fetchCustomerStats(customerIds),
+    queryFn: () => fetchCustomerStatsBatch(customerIds),
     enabled: customerIds.length > 0,
   })
 
@@ -180,9 +121,7 @@ export default function DailySchedule() {
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5">
         <h1 className="text-xl font-semibold text-gray-900">My Schedule</h1>
-        <p className="text-sm text-gray-500 mt-0.5">
-          {formatDate(selectedDate)}
-        </p>
+        <p className="text-sm text-gray-500 mt-0.5">{formatDate(selectedDate)}</p>
         {selectedDate === dates[0] && total > 0 && (
           <div className="flex items-center gap-2 mt-3">
             <div className="flex-1 bg-gray-100 rounded-full h-1.5">
@@ -233,16 +172,18 @@ export default function DailySchedule() {
 
         {!isLoading && schedules.length === 0 && (
           <div className="text-center py-24">
-            <p className="text-gray-400 text-sm">No visits scheduled for {DAY_LABELS[dates.indexOf(selectedDate)].toLowerCase()}.</p>
+            <p className="text-gray-400 text-sm">
+              No visits scheduled for {DAY_LABELS[dates.indexOf(selectedDate)].toLowerCase()}.
+            </p>
             <p className="text-gray-300 text-xs mt-1">Check back later or contact your manager.</p>
           </div>
         )}
 
         {schedules.map(schedule => {
           const customer = schedule.customers
-          const stats = statsMap[customer.id]
+          const stats = statsMap[customer?.id]
           const checkedIn = schedule.outlet_visits.length > 0
-          const overdue = isOverdue(customer.last_visit_date, customer.visit_frequency_days)
+          const overdue = isOverdue(customer?.last_visit_date, customer?.visit_frequency_days)
           const isToday = selectedDate === dates[0]
 
           return (
@@ -256,7 +197,7 @@ export default function DailySchedule() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h2 className="text-base font-semibold text-gray-900 truncate">
-                        {customer.name}
+                        {customer?.name}
                       </h2>
                       {checkedIn && (
                         <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
@@ -269,9 +210,9 @@ export default function DailySchedule() {
                         </span>
                       )}
                     </div>
-                    {(customer.address || customer.city) && (
+                    {(customer?.address || customer?.city) && (
                       <p className="text-xs text-gray-400 mt-0.5 truncate">
-                        {[customer.address, customer.city].filter(Boolean).join(', ')}
+                        {[customer?.address, customer?.city].filter(Boolean).join(', ')}
                       </p>
                     )}
                   </div>
@@ -286,7 +227,7 @@ export default function DailySchedule() {
                 <div className="px-4 py-3 text-center">
                   <p className="text-xs text-gray-400 mb-0.5">Last visit</p>
                   <p className="text-sm font-medium text-gray-900">
-                    {customer.last_visit_date
+                    {customer?.last_visit_date
                       ? new Date(customer.last_visit_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
                       : 'Never'}
                   </p>
@@ -357,7 +298,7 @@ export default function DailySchedule() {
                   </div>
                 )}
                 <button
-                  onClick={() => navigate(`/girard/customer/${customer.id}`)}
+                  onClick={() => navigate(`/girard/customer/${customer?.id}`)}
                   className="px-4 py-2.5 border border-gray-200 hover:border-gray-300 text-gray-600 text-sm font-medium rounded-xl transition-colors"
                 >
                   Customer Info

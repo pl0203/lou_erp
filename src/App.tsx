@@ -27,6 +27,7 @@ import GirardPerformance from './pages/girard/GirardPerformance'
 import GirardRevenue from './pages/girard/GirardRevenue'
 import GirardTeam from './pages/girard/GirardTeam'
 import ManagerCustomers from './pages/girard/ManagerCustomers'
+import MyOrders from './pages/girard/MyOrders'
 
 
 import UserManagement from './pages/ihr/UserManagement'
@@ -110,8 +111,15 @@ export default function App() {
       <Route path="/girard/dashboard" element={
         <ProtectedRoute allowedRoles={GIRARD_ROLES}><ManagerDashboard /></ProtectedRoute>
       } />
+      
       <Route path="/girard/team" element={
         <ProtectedRoute allowedRoles={MANAGER_UP}><GirardTeam /></ProtectedRoute>
+      } />
+      
+      <Route path="/girard/my-orders" element={
+        <ProtectedRoute allowedRoles={['sales_person', 'sales_manager', 'sales_head', 'executive']}>
+          <MyOrders />
+        </ProtectedRoute>
       } />
 
       {/* Girard — manager and above */}

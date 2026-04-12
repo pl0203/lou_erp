@@ -30,18 +30,31 @@ export default function Login() {
     if (!email || !password) return setError('Please enter your email and password.')
     setSubmitting(true)
     setError('')
-
+  
     const { error: signInError } = await supabase.auth.signInWithPassword({
       email,
       password,
     })
-
+  
     if (signInError) {
       setError('Incorrect email or password. Please try again.')
       setSubmitting(false)
+      return
     }
-    // If success, the auth context updates profile,
-    // which triggers the useEffect above to redirect
+  
+    // Check if user is active
+    const { data: profile } = await supabase
+      .from('users')
+      .select('is_active')
+      .eq('email', email)
+      .single()
+  
+    if (profile && !profile.is_active) {
+      await supabase.auth.signOut()
+      setError('Your account has been deactivated. Please contact your administrator.')
+      setSubmitting(false)
+      return
+    }
   }
 
   if (loading) {

@@ -4,7 +4,8 @@ import { useAuth } from '../lib/AuthContext'
 
 const ROLE_LINKS: Record<string, { to: string; label: string }[]> = {
   sales_person: [
-    { to: '/girard/schedule', label: "Today's Visits" },
+    { to: '/girard/schedule',  label: "Today's Visits" },
+    { to: '/girard/my-orders', label: 'My Orders' },
   ],
   sales_manager: [
     { to: '/girard/schedule',    label: 'Schedule' },
