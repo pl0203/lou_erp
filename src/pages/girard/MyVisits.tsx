@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/AuthContext'
 import GirardNav from '../../components/GirardNav'
-import { fetchCustomerStatsBatch } from '../../lib/customerStats'
+import { fetchCustomerStatsBatch } from '../../lib/CustomerStats'
 
 type Schedule = {
   id: string

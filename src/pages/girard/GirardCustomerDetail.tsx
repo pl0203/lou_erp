@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import GirardNav from '../../components/GirardNav'
-import { fetchCustomerStatsDetail } from '../../lib/customerStats'
+import { fetchCustomerStatsDetail } from '../../lib/CustomerStats'
 
 type Customer = {
   id: string
