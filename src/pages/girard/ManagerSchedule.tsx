@@ -386,7 +386,7 @@ export default function ManagerSchedule() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Toko/Customer</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">Pelanggan</th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500 hidden md:table-cell">Lokasi</th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500">Sales Person</th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500 hidden md:table-cell">Status</th>
@@ -507,14 +507,14 @@ export default function ManagerSchedule() {
             </div>
             <div className="px-6 py-4 space-y-4">
               <div>
-                <label className="block text-sm text-gray-600 mb-1">Toko/Customer *</label>
+                <label className="block text-sm text-gray-600 mb-1">Pelanggan *</label>
                 <select
                   value={form.outlet_id}
                   onChange={e => setForm(p => ({ ...p, outlet_id: e.target.value }))}
                   disabled={!!editingId}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 disabled:bg-gray-50 disabled:text-gray-400"
                 >
-                  <option value="">Pilih Toko/Customer...</option>
+                  <option value="">Pilih Pelanggan...</option>
                   {customers?.map(c => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}

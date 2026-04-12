@@ -304,7 +304,7 @@ export default function PONew() {
                   <div className="col-span-4">
                     <label className="block text-xs text-gray-400 mb-1">
                       Harga Satuan (Rp)
-                      {item.product_id && <span className="text-blue-400 ml-1">— dapat diubah untuk PO ini</span>}
+                      {item.product_id && <span className="text-blue-400 ml-1">— dapat diubah</span>}
                     </label>
                     <input
                       type="number" min={0}
