@@ -4,26 +4,31 @@ import { useAuth } from '../lib/AuthContext'
 
 const ROLE_LINKS: Record<string, { to: string; label: string }[]> = {
   sales_person: [
-    { to: '/girard/schedule',  label: "Today's Visits" },
-    { to: '/girard/my-orders', label: 'My Orders' },
+    { to: '/girard/schedule',     label: "Today's Visits" },
+    { to: '/girard/my-orders',    label: 'My Orders' },
   ],
   sales_manager: [
-    { to: '/girard/schedule',    label: 'Schedule' },
+    { to: '/girard/schedule',     label: 'Schedule' },
+    { to: '/girard/my-visits',    label: 'My Visits' },
     { to: '/girard/my-customers', label: 'Customers' },
-    { to: '/girard/team',        label: 'My Team' },
-    { to: '/girard/performance', label: 'Performance' },
+    { to: '/girard/team',         label: 'My Team' },
+    { to: '/girard/performance',  label: 'Performance' },
   ],
   sales_head: [
-    { to: '/girard/customers',   label: 'Customers' },
-    { to: '/girard/managers',    label: 'Managers' },
-    { to: '/girard/performance', label: 'Performance' },
-    { to: '/girard/revenue',     label: 'Revenue' },
+    { to: '/girard/schedule',     label: 'Schedule' },
+    { to: '/girard/my-visits',    label: 'My Visits' },
+    { to: '/girard/customers',    label: 'Customers' },
+    { to: '/girard/managers',     label: 'Managers' },
+    { to: '/girard/performance',  label: 'Performance' },
+    { to: '/girard/revenue',      label: 'Revenue' },
   ],
   executive: [
-    { to: '/girard/customers',   label: 'Customers' },
-    { to: '/girard/managers',    label: 'Managers' },
-    { to: '/girard/performance', label: 'Performance' },
-    { to: '/girard/revenue',     label: 'Revenue' },
+    { to: '/girard/schedule',     label: 'Schedule' },
+    { to: '/girard/my-visits',    label: 'My Visits' },
+    { to: '/girard/customers',    label: 'Customers' },
+    { to: '/girard/managers',     label: 'Managers' },
+    { to: '/girard/performance',  label: 'Performance' },
+    { to: '/girard/revenue',      label: 'Revenue' },
   ],
 }
 

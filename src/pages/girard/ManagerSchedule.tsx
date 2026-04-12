@@ -67,25 +67,69 @@ function isEditable(scheduledDate: string): boolean {
     return schedDate > new Date(today.getTime() + 24 * 60 * 60 * 1000)
   }
 
-async function fetchMyCustomers(managerId: string): Promise<Customer[]> {
-  const { data, error } = await supabase
-    .from('customer_manager_assignments')
-    .select('customers(id, name, city, address, last_visit_date, visit_frequency_days)')
-    .eq('manager_id', managerId)
-  if (error) throw error
-  return (data ?? []).map((d: any) => d.customers).filter(Boolean)
-}
+  async function fetchMyCustomers(managerId: string, role: string): Promise<Customer[]> {
+    // Sales head and executive can see all customers
+    if (role === 'sales_head' || role === 'executive') {
+      const { data, error } = await supabase
+        .from('customers')
+        .select('id, name, city, address, last_visit_date, visit_frequency_days')
+        .order('name')
+      if (error) throw error
+      return data
+    }
+  
+    // Sales manager only sees their assigned customers
+    const { data, error } = await supabase
+      .from('customer_manager_assignments')
+      .select('customers(id, name, city, address, last_visit_date, visit_frequency_days)')
+      .eq('manager_id', managerId)
+    if (error) throw error
+    return (data ?? []).map((d: any) => d.customers).filter(Boolean)
+  }
 
-async function fetchMyTeam(managerId: string): Promise<SalesPerson[]> {
-  const { data, error } = await supabase
+async function fetchMyTeam(managerId: string, role: string): Promise<SalesPerson[]> {
+  // Executive can assign anyone except other executives
+  if (role === 'executive') {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, full_name')
+      .in('role', ['sales_head', 'sales_manager', 'sales_person', 'executive'])
+      .eq('is_active', true)
+      .order('full_name')
+    if (error) throw error
+    return data
+  }
+
+  // Sales head can assign sales managers and sales persons (not executives)
+  if (role === 'sales_head') {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, full_name')
+      .in('role', ['sales_manager', 'sales_person', 'sales_head'])
+      .eq('is_active', true)
+      .order('full_name')
+    if (error) throw error
+    return data
+  }
+
+  // Sales manager — their own team + themselves
+  const { data: teamMembers, error: teamError } = await supabase
     .from('users')
     .select('id, full_name')
     .eq('manager_id', managerId)
-    .eq('role', 'sales_person')
     .eq('is_active', true)
     .order('full_name')
-  if (error) throw error
-  return data
+  if (teamError) throw teamError
+
+  const { data: self, error: selfError } = await supabase
+    .from('users')
+    .select('id, full_name')
+    .eq('id', managerId)
+    .single()
+  if (selfError) throw selfError
+
+  const others = (teamMembers ?? []).filter(m => m.id !== managerId)
+  return [self, ...others]
 }
 
 async function fetchSchedules(managerId: string, dates: string[]): Promise<Schedule[]> {
@@ -167,14 +211,14 @@ export default function ManagerSchedule() {
   const [deleteId, setDeleteId] = useState<string | null>(null)
 
   const { data: customers } = useQuery({
-    queryKey: ['manager_customers', profile?.id],
-    queryFn: () => fetchMyCustomers(profile!.id),
+    queryKey: ['manager_customers', profile?.id, profile?.role],
+    queryFn: () => fetchMyCustomers(profile!.id, profile!.role),
     enabled: !!profile?.id,
   })
 
   const { data: team } = useQuery({
-    queryKey: ['manager_team', profile?.id],
-    queryFn: () => fetchMyTeam(profile!.id),
+    queryKey: ['manager_team', profile?.id, profile?.role],
+    queryFn: () => fetchMyTeam(profile!.id, profile!.role),
     enabled: !!profile?.id,
   })
 

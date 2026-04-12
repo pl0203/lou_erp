@@ -34,18 +34,25 @@ async function fetchPerformance(
 ): Promise<PerformanceData[]> {
   const { from, to } = getDateRange(period)
 
-  // Get team members
-  let teamQuery = supabase
-    .from('users')
-    .select('id, full_name')
-    .eq('role', 'sales_person')
-    .eq('is_active', true)
-    .order('full_name')
+  // Get team members — include all roles not just sales_person
+let teamQuery = supabase
+  .from('users')
+  .select('id, full_name')
+  .in('role', ['sales_person', 'sales_manager', 'sales_head', 'executive'])
+  .eq('is_active', true)
+  .order('full_name')
 
-  // Managers only see their own team
-  if (role === 'sales_manager') {
-    teamQuery = teamQuery.eq('manager_id', managerId)
-  }
+// Managers only see their own team + themselves
+if (role === 'sales_manager') {
+  const { data: teamIds } = await supabase
+    .from('users')
+    .select('id')
+    .eq('manager_id', managerId)
+    .eq('is_active', true)
+
+  const ids = [...(teamIds ?? []).map(t => t.id), managerId]
+  teamQuery = teamQuery.in('id', ids)
+}
 
   const { data: team, error: teamError } = await teamQuery
   if (teamError) throw teamError

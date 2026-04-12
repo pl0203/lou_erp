@@ -25,7 +25,7 @@ export default function ProtectedRoute({ children, allowedRoles }: Props) {
       po_admin:      '/athel/po',
       sales_person:  '/girard/schedule',
       sales_manager: '/girard/schedule',
-      sales_head:    '/girard/customers',
+      sales_head:    '/girard/schedule',
       executive:     '/landing',
     }
     return <Navigate to={roleHome[profile.role] ?? '/login'} replace />

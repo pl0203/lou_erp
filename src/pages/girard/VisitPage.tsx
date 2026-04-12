@@ -308,7 +308,16 @@ function LiveCamera({ onCapture }: { onCapture: (blob: Blob, preview: string) =>
   }
 
   const stopCamera = () => {
-    stream?.getTracks().forEach(t => t.stop())
+    if (stream) {
+      stream.getTracks().forEach(t => {
+        t.stop()
+        stream.removeTrack(t)
+      })
+      setStream(null)
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null
+    }
   }
 
   const capturePhoto = async () => {
@@ -321,12 +330,13 @@ function LiveCamera({ onCapture }: { onCapture: (blob: Blob, preview: string) =>
       const ctx = canvas.getContext('2d')
       if (!ctx) throw new Error('Canvas not supported')
       ctx.drawImage(videoRef.current, 0, 0)
-
+  
       canvas.toBlob(async (rawBlob) => {
         if (!rawBlob) { setCapturing(false); return }
         const compressed = await compressImage(rawBlob)
         const preview = URL.createObjectURL(compressed)
-        stopCamera()
+        stopCamera() // Stop camera BEFORE calling onCapture
+        if (videoRef.current) videoRef.current.srcObject = null // Clear video element
         onCapture(compressed, preview)
         setCapturing(false)
       }, 'image/webp', 0.9)

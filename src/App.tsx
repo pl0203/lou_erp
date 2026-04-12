@@ -28,7 +28,7 @@ import GirardRevenue from './pages/girard/GirardRevenue'
 import GirardTeam from './pages/girard/GirardTeam'
 import ManagerCustomers from './pages/girard/ManagerCustomers'
 import MyOrders from './pages/girard/MyOrders'
-
+import MyVisits from './pages/girard/MyVisits'
 
 import UserManagement from './pages/ihr/UserManagement'
 import LeaveManagement from './pages/ihr/LeaveManagement'
@@ -93,7 +93,7 @@ export default function App() {
         <ProtectedRoute allowedRoles={ATHEL_ROLES}><SalesOrders /></ProtectedRoute>
       } />
 
-      {/* Girard — all sales roles */}
+      {/* Girard — all roles */}
       <Route path="/girard/schedule" element={
         <ProtectedRoute allowedRoles={GIRARD_ROLES}>
           <RoleBasedSchedule />
@@ -111,20 +111,16 @@ export default function App() {
       <Route path="/girard/dashboard" element={
         <ProtectedRoute allowedRoles={GIRARD_ROLES}><ManagerDashboard /></ProtectedRoute>
       } />
-      
-      <Route path="/girard/team" element={
-        <ProtectedRoute allowedRoles={MANAGER_UP}><GirardTeam /></ProtectedRoute>
-      } />
-      
       <Route path="/girard/my-orders" element={
-        <ProtectedRoute allowedRoles={['sales_person', 'sales_manager', 'sales_head', 'executive']}>
-          <MyOrders />
-        </ProtectedRoute>
+        <ProtectedRoute allowedRoles={GIRARD_ROLES}><MyOrders /></ProtectedRoute>
       } />
 
       {/* Girard — manager and above */}
+      <Route path="/girard/my-visits" element={
+        <ProtectedRoute allowedRoles={MANAGER_UP}><MyVisits /></ProtectedRoute>
+      } />
       <Route path="/girard/team" element={
-        <ProtectedRoute allowedRoles={MANAGER_UP}><GirardManagers /></ProtectedRoute>
+        <ProtectedRoute allowedRoles={MANAGER_UP}><GirardTeam /></ProtectedRoute>
       } />
       <Route path="/girard/performance" element={
         <ProtectedRoute allowedRoles={MANAGER_UP}><GirardPerformance /></ProtectedRoute>
