@@ -419,7 +419,7 @@ export default function PODetail() {
             onClick={() => navigate('/athel/po')}
             className="text-gray-400 hover:text-gray-600 text-sm"
           >
-            ← Back
+            ← Kembali
           </button>
           <div>
             <div className="flex items-center gap-3">
@@ -437,14 +437,14 @@ export default function PODetail() {
               onClick={() => navigate(`/athel/po/${po.id}/edit`)}
               className="text-sm font-medium text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 px-3 py-1.5 rounded-lg transition-colors"
             >
-              Edit PO
+              Ubah PO
             </button>
           )}
           <button
             onClick={() => setShowDeleteConfirm(true)}
             className="text-sm text-red-500 hover:text-red-700 border border-red-200 hover:border-red-400 px-3 py-1.5 rounded-lg transition-colors"
           >
-            Delete PO
+            Hapus PO
           </button>
         </div>
       </div>
@@ -478,13 +478,13 @@ export default function PODetail() {
                 onClick={openNewSJModal}
                 className="ml-auto bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
               >
-                + Add Surat Jalan
+                + Surat Jalan
               </button>
             )}
           </div>
           {isComplete && (
             <p className="text-sm text-green-600 mt-3 font-medium">
-              ✓ All items have been fully delivered.
+              ✓ Semua barang telah terkirim sepenuhnya..
             </p>
           )}
         </div>
@@ -494,26 +494,26 @@ export default function PODetail() {
           <h2 className="text-base font-medium text-gray-900 mb-4">Order Details</h2>
           <div className="grid grid-cols-3 gap-4 text-sm">
             <div>
-              <p className="text-gray-400 mb-1">Customer</p>
+              <p className="text-gray-400 mb-1">Toko/Customer</p>
               <p className="text-gray-900">{po.customers?.name}</p>
             </div>
             <div>
-              <p className="text-gray-400 mb-1">Order date</p>
+              <p className="text-gray-400 mb-1">Tanggal PO</p>
               <p className="text-gray-900">{po.order_date}</p>
             </div>
             <div>
-              <p className="text-gray-400 mb-1">Expected delivery</p>
+              <p className="text-gray-400 mb-1">Tanggal PO Expired</p>
               <p className="text-gray-900">{po.expected_delivery_date ?? '—'}</p>
             </div>
             <div>
-              <p className="text-gray-400 mb-1">Total value</p>
+              <p className="text-gray-400 mb-1">Total</p>
               <p className="text-gray-900 font-semibold">
                 Rp {po.total_value.toLocaleString('id-ID')}
               </p>
             </div>
             {po.notes && (
               <div className="col-span-3">
-                <p className="text-gray-400 mb-1">Notes</p>
+                <p className="text-gray-400 mb-1">Catatan</p>
                 <p className="text-gray-900">{po.notes}</p>
               </div>
             )}
@@ -523,18 +523,18 @@ export default function PODetail() {
         {/* Line Items */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100">
-            <h2 className="text-base font-medium text-gray-900">Line Items</h2>
+            <h2 className="text-base font-medium text-gray-900">Daftar Barang</h2>
           </div>
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100">
-                <th className="text-left px-6 py-3 text-gray-500 font-medium">Product</th>
+                <th className="text-left px-6 py-3 text-gray-500 font-medium">Produk</th>
                 <th className="text-left px-6 py-3 text-gray-500 font-medium">SKU</th>
-                <th className="text-right px-6 py-3 text-gray-500 font-medium">Ordered</th>
+                <th className="text-right px-6 py-3 text-gray-500 font-medium">Dipesan</th>
                 {isInProgress && (
                   <th className="text-right px-6 py-3 text-gray-500 font-medium">Outstanding</th>
                 )}
-                <th className="text-right px-6 py-3 text-gray-500 font-medium">Unit Price</th>
+                <th className="text-right px-6 py-3 text-gray-500 font-medium">Harga Satuan</th>
                 <th className="text-right px-6 py-3 text-gray-500 font-medium">Total</th>
               </tr>
             </thead>
@@ -583,7 +583,7 @@ export default function PODetail() {
         {sjList && sjList.length > 0 && (
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100">
-              <h2 className="text-base font-medium text-gray-900">Deliveries (Surat Jalan)</h2>
+              <h2 className="text-base font-medium text-gray-900">Pengiriman (Daftar Surat Jalan)</h2>
             </div>
             <div className="divide-y divide-gray-100">
               {sjList.map(sj => (
@@ -594,10 +594,10 @@ export default function PODetail() {
                       <div className="flex gap-4 mt-1 flex-wrap">
                         <span className="text-gray-400 text-xs">Created: {sj.sj_date}</span>
                         {sj.sj_date_received && (
-                          <span className="text-gray-400 text-xs">Received: {sj.sj_date_received}</span>
+                          <span className="text-gray-400 text-xs">Diterima Toko: {sj.sj_date_received}</span>
                         )}
                         {sj.sj_date_returned && (
-                          <span className="text-gray-400 text-xs">Returned: {sj.sj_date_returned}</span>
+                          <span className="text-gray-400 text-xs">SJ Kembali: {sj.sj_date_returned}</span>
                         )}
                       </div>
                     </div>
@@ -607,13 +607,13 @@ export default function PODetail() {
                           onClick={() => openEditSJModal(sj)}
                           className="text-blue-600 hover:text-blue-800 text-xs font-medium"
                         >
-                          Edit
+                          Ubah
                         </button>
                         <button
                           onClick={() => setDeletingSJId(sj.id)}
                           className="text-red-400 hover:text-red-600 text-xs font-medium"
                         >
-                          Delete
+                          Hapus
                         </button>
                       </div>
                     )}
@@ -623,7 +623,7 @@ export default function PODetail() {
                       <tr className="text-gray-400">
                         <th className="text-left pb-1 font-medium">Item</th>
                         <th className="text-left pb-1 font-medium">SKU</th>
-                        <th className="text-right pb-1 font-medium">Qty Delivered</th>
+                        <th className="text-right pb-1 font-medium">Qty Terkirim</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -649,9 +649,9 @@ export default function PODetail() {
 
         {/* Audit Log */}
         <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <h2 className="text-base font-medium text-gray-900 mb-4">Change History</h2>
+          <h2 className="text-base font-medium text-gray-900 mb-4">Riwayat Perubahan</h2>
           {!auditLog || auditLog.length === 0 ? (
-            <p className="text-sm text-gray-400">No changes recorded yet.</p>
+            <p className="text-sm text-gray-400">Belum ada perubahan tercatat.</p>
           ) : (
             <div className="space-y-3">
               {auditLog.map(entry => (
@@ -692,13 +692,13 @@ export default function PODetail() {
                 {editingSJ ? 'Edit Surat Jalan' : 'New Surat Jalan'}
               </h3>
               <p className="text-xs text-gray-400 mt-0.5">
-                Enter delivery quantities. Capped at outstanding amount per item.
+                Masukkan jumlah pengiriman. Dibatasi sesuai sisa per barang.
               </p>
             </div>
             <div className="px-6 py-4 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">SJ Number *</label>
+                  <label className="block text-sm text-gray-600 mb-1">Nomor SJ *</label>
                   <input
                     type="text"
                     value={sjNumber}
@@ -708,7 +708,7 @@ export default function PODetail() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">Date Created *</label>
+                  <label className="block text-sm text-gray-600 mb-1">Tanggal SJ *</label>
                   <input
                     type="date"
                     value={sjDate}
@@ -718,7 +718,7 @@ export default function PODetail() {
                 </div>
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">
-                    Date Received <span className="text-gray-400">(optional)</span>
+                    Tanggal SJ Diterima Toko <span className="text-gray-400"></span>
                   </label>
                   <input
                     type="date"
@@ -729,7 +729,7 @@ export default function PODetail() {
                 </div>
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">
-                    Date Returned <span className="text-gray-400">(optional)</span>
+                    Tanggal SJ Balik <span className="text-gray-400"></span>
                   </label>
                   <input
                     type="date"
@@ -743,9 +743,9 @@ export default function PODetail() {
               <div>
                 <div className="grid grid-cols-12 gap-2 text-xs text-gray-400 font-medium px-1 mb-2">
                   <div className="col-span-5">Item</div>
-                  <div className="col-span-2 text-right">Ordered</div>
+                  <div className="col-span-2 text-right">Dipesan</div>
                   <div className="col-span-2 text-right">Outstanding</div>
-                  <div className="col-span-3 text-right">Delivering</div>
+                  <div className="col-span-3 text-right">Dikirim</div>
                 </div>
                 <div className="space-y-2">
                   {sjLines.map((line, i) => (
@@ -786,7 +786,7 @@ export default function PODetail() {
                 onClick={closeSJModal}
                 className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
               >
-                Cancel
+                Batal
               </button>
               <button
                 onClick={handleSaveSJ}
@@ -794,7 +794,7 @@ export default function PODetail() {
                 className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
               >
                 {sjMutation.isPending || updateSJMutation.isPending
-                  ? 'Saving...'
+                  ? 'Menyimpan...'
                   : editingSJ ? 'Update SJ' : 'Create SJ'}
               </button>
             </div>
@@ -813,15 +813,15 @@ export default function PODetail() {
           <div className="bg-white rounded-xl p-6 max-w-sm w-full mx-4 shadow-xl">
             <h3 className="text-base font-semibold text-gray-900 mb-2">Delete Surat Jalan?</h3>
             <p className="text-sm text-gray-500 mb-5">
-              Are you sure you want to delete <strong>{deletingSJ?.sj_number}</strong>?
-              This will reverse its delivery quantities.
+              Apakah Anda yakin ingin menghapus <strong>{deletingSJ?.sj_number}</strong>?
+              Tindakan ini akan membatalkan jumlah pengiriman.
             </p>
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => setDeletingSJId(null)}
                 className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
               >
-                Cancel
+                Batal
               </button>
               <button
                 onClick={() => deleteSJMutation.mutate(deletingSJId)}
@@ -840,25 +840,24 @@ export default function PODetail() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 max-w-sm w-full mx-4 shadow-xl">
             <h3 className="text-base font-semibold text-gray-900 mb-2">
-              Delete {po.po_number}?
+              Hapus {po.po_number}?
             </h3>
             <p className="text-sm text-gray-500 mb-5">
-              This will permanently delete PO <strong>{po.po_number}</strong> and
-              all its line items. This cannot be undone.
+             Tindakan ini akan menghapus permanen PO <strong>{po.po_number}</strong> beserta semua barangnya. Tindakan ini tidak dapat dibatalkan.
             </p>
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => setShowDeleteConfirm(false)}
                 className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
               >
-                Cancel
+                Batal
               </button>
               <button
                 onClick={() => deleteMutation.mutate()}
                 disabled={deleteMutation.isPending}
                 className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
               >
-                {deleteMutation.isPending ? 'Deleting...' : 'Yes, delete'}
+                {deleteMutation.isPending ? 'Menghapus...' : 'Ya, hapus'}
               </button>
             </div>
           </div>

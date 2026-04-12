@@ -27,9 +27,9 @@ const STATUS_STYLES: Record<string, string> = {
 }
 
 const STATUS_LABELS: Record<string, string> = {
-  pending:  'Pending Review',
-  approved: 'Approved',
-  rejected: 'Rejected',
+  pending:  'Menunggu Persetujuan',
+  approved: 'Disetujui',
+  rejected: 'Ditolak',
 }
 
 async function fetchMyOrders(userId: string, status: string): Promise<MyOrder[]> {
@@ -69,22 +69,22 @@ export default function MyOrders() {
       <GirardNav />
 
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5">
-        <h1 className="text-xl font-semibold text-gray-900">My Orders</h1>
+        <h1 className="text-xl font-semibold text-gray-900">Pesanan Saya</h1>
         <p className="text-sm text-gray-500 mt-0.5">
-          Orders you've submitted from the field
+          Pesanan yang Anda ajukan
         </p>
       </div>
 
       {/* Summary pills */}
       <div className="bg-white border-b border-gray-100 px-4 md:px-8 py-3 flex gap-3 flex-wrap">
         <div className="text-xs bg-yellow-100 text-yellow-700 px-3 py-1.5 rounded-full font-medium">
-          {pendingCount} pending
+          {pendingCount} menunggu
         </div>
         <div className="text-xs bg-green-100 text-green-700 px-3 py-1.5 rounded-full font-medium">
-          {approvedCount} approved
+          {approvedCount} disetujui
         </div>
         <div className="text-xs bg-red-100 text-red-600 px-3 py-1.5 rounded-full font-medium">
-          {rejectedCount} rejected
+          {rejectedCount} ditolak
         </div>
       </div>
 
@@ -92,10 +92,10 @@ export default function MyOrders() {
       <div className="bg-white border-b border-gray-100 px-4 md:px-8">
         <div className="flex gap-1">
           {[
-            { value: 'all',      label: 'All' },
-            { value: 'pending',  label: 'Pending' },
-            { value: 'approved', label: 'Approved' },
-            { value: 'rejected', label: 'Rejected' },
+            { value: 'all',      label: 'Semua' },
+            { value: 'pending',  label: 'Menunggu' },
+            { value: 'approved', label: 'Disetujui' },
+            { value: 'rejected', label: 'Ditolak' },
           ].map(tab => (
             <button
               key={tab.value}
@@ -114,14 +114,14 @@ export default function MyOrders() {
 
       <div className="px-4 md:px-8 py-6 max-w-2xl mx-auto space-y-4">
         {isLoading && (
-          <div className="text-center text-gray-400 text-sm py-24">Loading orders...</div>
+          <div className="text-center text-gray-400 text-sm py-24">Memuat pesanan...</div>
         )}
 
         {!isLoading && (!orders || orders.length === 0) && (
           <div className="text-center py-24">
-            <p className="text-gray-400 text-sm">No orders found.</p>
+            <p className="text-gray-400 text-sm">Tidak ada pesanan ditemukan.</p>
             <p className="text-gray-300 text-xs mt-1">
-              Orders you place during customer visits will appear here.
+              Pesanan yang Anda buat saat kunjungan pelanggan akan muncul di sini.
             </p>
           </div>
         )}
@@ -154,7 +154,7 @@ export default function MyOrders() {
               {/* Rejection note */}
               {order.status === 'rejected' && order.rejection_note && (
                 <div className="mt-3 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
-                  <p className="text-xs text-red-600 font-medium mb-0.5">Reason for rejection</p>
+                  <p className="text-xs text-red-600 font-medium mb-0.5">Alasan penolakan</p>
                   <p className="text-xs text-red-500">{order.rejection_note}</p>
                 </div>
               )}
@@ -163,7 +163,7 @@ export default function MyOrders() {
               {order.status === 'pending' && (
                 <div className="mt-3 bg-yellow-50 border border-yellow-100 rounded-lg px-3 py-2">
                   <p className="text-xs text-yellow-700">
-                    This order is awaiting review by the PO admin.
+                    Pesanan ini sedang menunggu persetujuan dari admin PO.
                   </p>
                 </div>
               )}
@@ -172,7 +172,7 @@ export default function MyOrders() {
               {order.status === 'approved' && (
                 <div className="mt-3 bg-green-50 border border-green-100 rounded-lg px-3 py-2">
                   <p className="text-xs text-green-700">
-                    This order has been approved and a PO has been created.
+                    Pesanan ini telah disetujui dan PO telah dibuat.
                   </p>
                 </div>
               )}
@@ -180,7 +180,7 @@ export default function MyOrders() {
 
             {/* Line items */}
             <div className="px-5 py-3">
-              <p className="text-xs text-gray-400 mb-2">Items ordered</p>
+              <p className="text-xs text-gray-400 mb-2">Barang dipesan</p>
               <div className="space-y-1.5">
                 {order.girard_order_items.map(item => (
                   <div key={item.id} className="flex items-center justify-between text-sm">

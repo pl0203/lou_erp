@@ -282,7 +282,6 @@ const ORDER_STATUS_STYLES: Record<string, string> = {
   rejected: 'bg-red-100 text-red-700',
 }
 
-// Camera component using getUserMedia
 function LiveCamera({ onCapture }: { onCapture: (blob: Blob, preview: string) => void }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [stream, setStream] = useState<MediaStream | null>(null)
@@ -302,8 +301,8 @@ function LiveCamera({ onCapture }: { onCapture: (blob: Blob, preview: string) =>
       })
       setStream(s)
       if (videoRef.current) videoRef.current.srcObject = s
-    } catch (err) {
-      setError('Camera access denied. Please allow camera access and try again.')
+    } catch {
+      setError('Akses kamera ditolak. Izinkan akses kamera dan coba lagi.')
     }
   }
 
@@ -330,13 +329,12 @@ function LiveCamera({ onCapture }: { onCapture: (blob: Blob, preview: string) =>
       const ctx = canvas.getContext('2d')
       if (!ctx) throw new Error('Canvas not supported')
       ctx.drawImage(videoRef.current, 0, 0)
-  
       canvas.toBlob(async (rawBlob) => {
         if (!rawBlob) { setCapturing(false); return }
         const compressed = await compressImage(rawBlob)
         const preview = URL.createObjectURL(compressed)
-        stopCamera() // Stop camera BEFORE calling onCapture
-        if (videoRef.current) videoRef.current.srcObject = null // Clear video element
+        stopCamera()
+        if (videoRef.current) videoRef.current.srcObject = null
         onCapture(compressed, preview)
         setCapturing(false)
       }, 'image/webp', 0.9)
@@ -350,10 +348,7 @@ function LiveCamera({ onCapture }: { onCapture: (blob: Blob, preview: string) =>
       <div className="w-full h-48 bg-gray-100 rounded-xl flex flex-col items-center justify-center gap-2 p-4">
         <span className="text-3xl">📷</span>
         <p className="text-sm text-red-500 text-center">{error}</p>
-        <button
-          onClick={startCamera}
-          className="text-xs text-blue-600 font-medium underline mt-1"
-        >
+        <button onClick={startCamera} className="text-xs text-blue-600 font-medium underline mt-1">
           Try again
         </button>
       </div>
@@ -378,7 +373,7 @@ function LiveCamera({ onCapture }: { onCapture: (blob: Blob, preview: string) =>
       </button>
       {capturing && (
         <div className="absolute inset-0 bg-white/50 flex items-center justify-center">
-          <p className="text-sm text-gray-700 font-medium">Capturing...</p>
+          <p className="text-sm text-gray-700 font-medium">Mengambil Foto...</p>
         </div>
       )}
     </div>
@@ -394,7 +389,7 @@ export default function VisitPage() {
   const [showCamera, setShowCamera] = useState(false)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const [photoBlob, setPhotoBlob] = useState<Blob | null>(null)
-  const [gettingLocation, setGettingLocation] = useState(false)
+  const [locationStatus, setLocationStatus] = useState<'idle' | 'loading' | 'granted' | 'denied' | 'unavailable'>('idle')
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null)
 
   const [showOrderForm, setShowOrderForm] = useState(false)
@@ -451,17 +446,34 @@ export default function VisitPage() {
     setShowCamera(false)
   }
 
-  const handleGetLocation = () => {
-    setGettingLocation(true)
+  const handleGetLocation = async () => {
+    setLocationStatus('loading')
+
+    if (navigator.permissions) {
+      try {
+        const result = await navigator.permissions.query({ name: 'geolocation' })
+        if (result.state === 'denied') {
+          setLocationStatus('denied')
+          return
+        }
+      } catch {
+        // permissions API not supported, proceed anyway
+      }
+    }
+
     navigator.geolocation.getCurrentPosition(
       pos => {
         setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude })
-        setGettingLocation(false)
+        setLocationStatus('granted')
       },
-      () => {
-        setGettingLocation(false)
-        alert('Could not get location. You can still check in without it.')
-      }
+      err => {
+        if (err.code === err.PERMISSION_DENIED) {
+          setLocationStatus('denied')
+        } else {
+          setLocationStatus('unavailable')
+        }
+      },
+      { timeout: 10000, enableHighAccuracy: true }
     )
   }
 
@@ -502,8 +514,8 @@ export default function VisitPage() {
 
   const handleSubmitOrder = () => {
     if (!visit || !schedule || !profile) return
-    if (orderItems.some(i => !i.product_name.trim())) return alert('All items need a product name.')
-    if (orderItems.every(i => i.quantity === 0)) return alert('At least one item must have a quantity.')
+    if (orderItems.some(i => !i.product_name.trim())) return alert('Semua barang harus memiliki nama produk.')
+    if (orderItems.every(i => i.quantity === 0)) return alert('Minimal satu barang harus memiliki jumlah.')
     orderMutation.mutate({
       customer_id: schedule.customers.id,
       visit_id: visit.id,
@@ -518,7 +530,7 @@ export default function VisitPage() {
     return (
       <div className="min-h-screen bg-gray-50">
         <GirardNav />
-        <div className="p-8 text-gray-400 text-sm text-center">Loading...</div>
+        <div className="p-8 text-gray-400 text-sm text-center">Memuat...</div>
       </div>
     )
   }
@@ -527,7 +539,7 @@ export default function VisitPage() {
     return (
       <div className="min-h-screen bg-gray-50">
         <GirardNav />
-        <div className="p-8 text-red-500 text-sm">Schedule not found.</div>
+        <div className="p-8 text-red-500 text-sm">Jadwal tidak ditemukan.</div>
       </div>
     )
   }
@@ -541,13 +553,13 @@ export default function VisitPage() {
 
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center gap-4">
-        <button onClick={() => navigate('/girard/schedule')} className="text-gray-400 hover:text-gray-600 text-sm">
-          ← Back
+        <button onClick={() => navigate(-1)} className="text-gray-400 hover:text-gray-600 text-sm">
+          ← Kembali
         </button>
         <div>
           <h1 className="text-xl font-semibold text-gray-900">{customer.name}</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            {[customer.address, customer.city].filter(Boolean).join(', ') || 'No address'}
+            {[customer.address, customer.city].filter(Boolean).join(', ') || 'Tidak ada alamat'}
           </p>
         </div>
       </div>
@@ -563,10 +575,10 @@ export default function VisitPage() {
           {!hasVisit ? (
             <div className="px-5 py-5 space-y-4">
 
-              {/* Camera / photo state */}
+              {/* Camera */}
               {showCamera && (
                 <div>
-                  <p className="text-sm text-gray-600 mb-2">Take a live photo</p>
+                  <p className="text-sm text-gray-600 mb-2">Ambil Foto</p>
                   <LiveCamera onCapture={handleCapture} />
                   <button
                     onClick={() => setShowCamera(false)}
@@ -579,13 +591,9 @@ export default function VisitPage() {
 
               {!showCamera && photoPreview && (
                 <div>
-                  <p className="text-sm text-gray-600 mb-2">Photo captured</p>
+                  <p className="text-sm text-gray-600 mb-2">Foto berhasil diambil</p>
                   <div className="relative">
-                    <img
-                      src={photoPreview}
-                      alt="Check-in photo"
-                      className="w-full h-48 object-cover rounded-xl"
-                    />
+                    <img src={photoPreview} alt="Check-in photo" className="w-full h-48 object-cover rounded-xl" />
                     <button
                       onClick={() => { setPhotoPreview(null); setPhotoBlob(null); setShowCamera(true) }}
                       className="absolute top-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded-lg"
@@ -598,49 +606,127 @@ export default function VisitPage() {
 
               {!showCamera && !photoPreview && (
                 <div>
-                  <p className="text-sm text-gray-600 mb-2">Take a live photo at the outlet</p>
+                  <p className="text-sm text-gray-600 mb-2">Ambil foto langsug di lokasi toko/customer</p>
                   <button
                     onClick={() => setShowCamera(true)}
                     className="w-full h-36 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center gap-2 hover:border-green-300 hover:bg-green-50 transition-colors"
                   >
                     <span className="text-3xl">📷</span>
-                    <span className="text-sm text-gray-400">Tap to open camera</span>
-                    <span className="text-xs text-gray-300">Live photo only</span>
+                    <span className="text-sm text-gray-400">Tekan untuk membuka kamera</span>
+                    <span className="text-xs text-gray-300">Hanya foto langsung</span>
                   </button>
                 </div>
               )}
 
               {/* Location */}
               {!showCamera && (
-                <>
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={handleGetLocation}
-                      disabled={gettingLocation || !!location}
-                      className={`text-sm px-4 py-2 rounded-lg border transition-colors ${
-                        location
-                          ? 'border-green-200 bg-green-50 text-green-700'
-                          : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-                      } disabled:opacity-50`}
-                    >
-                      {gettingLocation ? 'Getting location...' : location ? '✓ Location captured' : 'Get location'}
-                    </button>
-                    <span className="text-xs text-gray-400">Optional but recommended</span>
-                  </div>
+                <div className="space-y-2">
+                  {locationStatus === 'idle' && (
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={handleGetLocation}
+                        className="text-sm px-4 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+                      >
+                        Ambil titik lokasi Anda
+                      </button>
+                      {/* <span className="text-xs text-gray-400">Optional but recommended</span> */}
+                    </div>
+                  )}
 
+                  {locationStatus === 'loading' && (
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm px-4 py-2 rounded-lg border border-gray-200 text-gray-400">
+                        Mengambil titik lokasi...
+                      </span>
+                    </div>
+                  )}
+
+                  {locationStatus === 'granted' && location && (
+                    <span className="inline-flex text-sm px-4 py-2 rounded-lg border border-green-200 bg-green-50 text-green-700">
+                      ✓ Titik lokasi berhasil diperoleh
+                    </span>
+                  )}
+
+                  {locationStatus === 'denied' && (
+                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 space-y-3">
+                      <div>
+                        <p className="text-xs font-medium text-orange-700 mb-1">
+                          Akses lokasi diblokir.
+                        </p>
+                        <p className="text-xs text-orange-600">
+                        Anda perlu mengizinkan akses lokasi di pengaturan browser.
+                        </p>
+                      </div>
+
+                      <div className="bg-white rounded-lg p-3 border border-orange-100">
+                        <p className="text-xs font-medium text-gray-700 mb-2">Android (Chrome):</p>
+                        <ol className="text-xs text-gray-600 space-y-1 list-decimal ml-4">
+                            <li>Tekan <strong>ikon gembok</strong> di bilah alamat</li>
+                            <li>Pilih <strong>Perizinan</strong></li>
+                            <li>Pilih <strong>Lokasi</strong> → Izinkan</li>
+                            <li>Muat ulang halaman dan coba lagi</li>
+                        </ol>
+                      </div>
+
+                      <div className="bg-white rounded-lg p-3 border border-orange-100">
+                        <p className="text-xs font-medium text-gray-700 mb-2">iPhone (Safari):</p>
+                        <ol className="text-xs text-gray-600 space-y-1 list-decimal ml-4">
+                            <li>Buka <strong>Pengaturan</strong> → <strong>Privasi</strong></li>
+                            <li>Tekan <strong>Layanan Lokasi</strong></li>
+                            <li>Cari <strong>Safari</strong> → atur ke <strong>Saat Menggunakan</strong></li>
+                            <li>Kembali dan coba lagi</li>
+                        </ol>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => { setLocationStatus('idle'); handleGetLocation() }}
+                          className="text-xs bg-orange-600 text-white px-3 py-1.5 rounded-lg font-medium hover:bg-orange-700"
+                        >
+                          Coba lagi
+                        </button>
+                        <button
+                          onClick={() => setLocationStatus('idle')}
+                          className="text-xs text-orange-500 hover:text-orange-700"
+                        >
+                          Lewati lokasi
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {locationStatus === 'unavailable' && (
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-gray-400">
+                        Lokasi tidak tersedia — Anda tetap bisa check-in tanpa titik lokasi.
+                      </span>
+                      <button
+                        onClick={() => setLocationStatus('idle')}
+                        className="text-xs text-blue-600 underline"
+                      >
+                        Coba lagi
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Check in button */}
+              {!showCamera && (
+                <>
                   <button
                     onClick={handleCheckIn}
                     disabled={!photoBlob || checkInMutation.isPending}
                     className="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-3 rounded-xl transition-colors disabled:opacity-50 text-sm"
                   >
-                    {checkInMutation.isPending ? 'Checking in...' : 'Confirm Check-in'}
+                    {checkInMutation.isPending ? 'Memproses check-in...' : 'Konfirmasi Check-in'}
                   </button>
 
                   {checkInMutation.isError && (
                     <div className="flex items-center justify-between bg-red-50 border border-red-200 rounded-lg p-3">
                       <p className="text-red-600 text-xs">{(checkInMutation.error as Error).message}</p>
                       <button onClick={handleCheckIn} className="text-xs text-red-600 font-medium underline ml-2">
-                        Retry
+                        Coba lagi
                       </button>
                     </div>
                   )}
@@ -654,7 +740,7 @@ export default function VisitPage() {
                   <span className="text-green-600 text-sm">✓</span>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-900">Checked in</p>
+                  <p className="text-sm font-medium text-gray-900">Berhasil Lapor Masuk</p>
                   <p className="text-xs text-gray-400">
                     {new Date(visit.checked_in_at).toLocaleString('id-ID')}
                   </p>
@@ -682,14 +768,14 @@ export default function VisitPage() {
                   onClick={() => setShowOrderForm(true)}
                   className="text-sm text-blue-600 font-medium hover:text-blue-800"
                 >
-                  + New Order
+                  + Order Baru
                 </button>
               )}
             </div>
 
             {showOrderForm && (
               <div className="px-5 py-4 border-b border-gray-100 space-y-4">
-                <p className="text-sm font-medium text-gray-700">New Order</p>
+                <p className="text-sm font-medium text-gray-700">Order Baru</p>
                 <div className="space-y-3">
                   {orderItems.map((item, i) => (
                     <div key={i} className="border border-gray-100 rounded-xl p-3 space-y-3">
@@ -704,7 +790,7 @@ export default function VisitPage() {
                       {products && <SKULookup products={products} onSelect={p => fillFromProduct(i, p)} />}
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <label className="block text-xs text-gray-400 mb-1">Item Name</label>
+                          <label className="block text-xs text-gray-400 mb-1">Nama Produk</label>
                           <input
                             type="text"
                             value={item.product_name}
@@ -732,7 +818,7 @@ export default function VisitPage() {
                           />
                         </div>
                         <div>
-                          <label className="block text-xs text-gray-400 mb-1">Unit Price (Rp)</label>
+                          <label className="block text-xs text-gray-400 mb-1">Harga Satuan (Rp)</label>
                           <input
                             type="number" min={0}
                             value={item.unit_price}
@@ -750,11 +836,13 @@ export default function VisitPage() {
                   ))}
                 </div>
                 <button onClick={addOrderItem} className="text-blue-600 text-sm font-medium hover:text-blue-800">
-                  + Add item
+                  + Tambah Barang
                 </button>
                 <div className="flex items-center justify-between pt-2 border-t border-gray-100">
                   <p className="text-sm text-gray-500">
-                    Total: <span className="font-semibold text-gray-900">Rp {orderTotal.toLocaleString('id-ID')}</span>
+                    Total: <span className="font-semibold text-gray-900">
+                      Rp {orderTotal.toLocaleString('id-ID')}
+                    </span>
                   </p>
                   <div className="flex gap-2">
                     <button
@@ -763,20 +851,22 @@ export default function VisitPage() {
                         setOrderItems([{ product_id: null, product_name: '', sku: '', quantity: 1, unit_price: 0 }])
                       }}
                       className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
-                    >Cancel</button>
+                    >Batal</button>
                     <button
                       onClick={handleSubmitOrder}
                       disabled={orderMutation.isPending}
                       className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
                     >
-                      {orderMutation.isPending ? 'Submitting...' : 'Submit Order'}
+                      {orderMutation.isPending ? 'Mengirim...' : 'Kirim Pesanan'}
                     </button>
                   </div>
                 </div>
                 {orderMutation.isError && (
                   <div className="flex items-center justify-between bg-red-50 border border-red-200 rounded-lg p-3">
                     <p className="text-red-600 text-xs">{(orderMutation.error as Error).message}</p>
-                    <button onClick={handleSubmitOrder} className="text-xs text-red-600 font-medium underline ml-2">Retry</button>
+                    <button onClick={handleSubmitOrder} className="text-xs text-red-600 font-medium underline ml-2">
+                      Coba lagi
+                    </button>
                   </div>
                 )}
               </div>
@@ -784,7 +874,7 @@ export default function VisitPage() {
 
             {!orders || orders.length === 0 ? (
               <div className="px-5 py-8 text-center">
-                <p className="text-gray-400 text-sm">No orders placed yet during this visit.</p>
+                <p className="text-gray-400 text-sm">Belum ada pesanan yang dibuat selama kunjungan ini.</p>
               </div>
             ) : (
               <div className="divide-y divide-gray-100">
@@ -794,14 +884,16 @@ export default function VisitPage() {
                       <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium capitalize ${ORDER_STATUS_STYLES[order.status] ?? 'bg-gray-100 text-gray-600'}`}>
                         {order.status}
                       </span>
-                      <span className="text-xs text-gray-400">{new Date(order.created_at).toLocaleString('id-ID')}</span>
+                      <span className="text-xs text-gray-400">
+                        {new Date(order.created_at).toLocaleString('id-ID')}
+                      </span>
                     </div>
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="text-gray-400">
-                          <th className="text-left pb-1 font-medium">Item</th>
+                          <th className="text-left pb-1 font-medium">Produke</th>
                           <th className="text-right pb-1 font-medium">Qty</th>
-                          <th className="text-right pb-1 font-medium">Price</th>
+                          <th className="text-right pb-1 font-medium">Harga</th>
                           <th className="text-right pb-1 font-medium">Total</th>
                         </tr>
                       </thead>
@@ -810,7 +902,9 @@ export default function VisitPage() {
                           <tr key={item.id}>
                             <td className="py-0.5 text-gray-700">{item.product_name}</td>
                             <td className="py-0.5 text-right text-gray-600">{item.quantity}</td>
-                            <td className="py-0.5 text-right text-gray-600">Rp {item.unit_price.toLocaleString('id-ID')}</td>
+                            <td className="py-0.5 text-right text-gray-600">
+                              Rp {item.unit_price.toLocaleString('id-ID')}
+                            </td>
                             <td className="py-0.5 text-right text-gray-900 font-medium">
                               Rp {(item.quantity * item.unit_price).toLocaleString('id-ID')}
                             </td>

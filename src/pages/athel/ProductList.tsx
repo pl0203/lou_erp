@@ -112,27 +112,27 @@ export default function ProductList() {
       <div className="px-4 md:px-8 py-6">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-xl font-semibold text-gray-900">Item List</h1>
+            <h1 className="text-xl font-semibold text-gray-900">Daftar Barang</h1>
             <p className="text-sm text-gray-500 mt-0.5">{products?.length ?? 0} items</p>
           </div>
           <button
             onClick={openCreate}
             className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
           >
-            + Add Item
+            + Tambah Barang
           </button>
         </div>
 
         <input
           type="text"
-          placeholder="Search by name or SKU..."
+          placeholder="Cari berdasarkan nama atau SKU..."
           value={search}
           onChange={e => setSearch(e.target.value)}
           className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full sm:w-72 mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
 
         {isLoading && (
-          <div className="text-gray-400 text-sm py-12 text-center">Loading...</div>
+          <div className="text-gray-400 text-sm py-12 text-center">Memuat...</div>
         )}
 
         {/* Desktop table */}
@@ -142,9 +142,9 @@ export default function ProductList() {
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
                   <th className="text-left px-5 py-3 font-medium text-gray-500">SKU</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Item Name</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Size</th>
-                  <th className="text-right px-5 py-3 font-medium text-gray-500">Unit Price</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">Nama Produk</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">Ukuran</th>
+                  <th className="text-right px-5 py-3 font-medium text-gray-500">Harga Satuan</th>
                   <th className="text-right px-5 py-3 font-medium text-gray-500">Actions</th>
                 </tr>
               </thead>
@@ -152,7 +152,7 @@ export default function ProductList() {
                 {filtered?.length === 0 && (
                   <tr>
                     <td colSpan={5} className="text-center text-gray-400 py-12">
-                      No items found.
+                      Tidak ada barang ditemukan.
                     </td>
                   </tr>
                 )}
@@ -169,13 +169,13 @@ export default function ProductList() {
                         onClick={() => openEdit(p)}
                         className="text-blue-600 hover:text-blue-800 text-xs font-medium mr-4"
                       >
-                        Edit
+                        Ubah
                       </button>
                       <button
                         onClick={() => setDeleteId(p.id)}
                         className="text-red-400 hover:text-red-600 text-xs font-medium"
                       >
-                        Delete
+                        Hapus
                       </button>
                     </td>
                   </tr>
@@ -189,7 +189,7 @@ export default function ProductList() {
         {!isLoading && (
           <div className="md:hidden space-y-3">
             {filtered?.length === 0 && (
-              <p className="text-center text-gray-400 py-12 text-sm">No items found.</p>
+              <p className="text-center text-gray-400 py-12 text-sm">Tidak ada barang ditemukan.</p>
             )}
             {filtered?.map(p => (
               <div key={p.id} className="bg-white rounded-xl border border-gray-200 p-4">
@@ -203,23 +203,23 @@ export default function ProductList() {
                       onClick={() => openEdit(p)}
                       className="text-blue-600 text-xs font-medium"
                     >
-                      Edit
+                      Ubah
                     </button>
                     <button
                       onClick={() => setDeleteId(p.id)}
                       className="text-red-400 text-xs font-medium"
                     >
-                      Delete
+                      Hapus
                     </button>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-xs mt-3 pt-3 border-t border-gray-100">
                   <div>
-                    <p className="text-gray-400">Size</p>
+                    <p className="text-gray-400">Ukuran</p>
                     <p className="text-gray-700 mt-0.5">{p.size ?? '—'}</p>
                   </div>
                   <div>
-                    <p className="text-gray-400">Unit Price</p>
+                    <p className="text-gray-400">Harga Satuan</p>
                     <p className="text-gray-900 font-semibold mt-0.5">
                       Rp {p.unit_price.toLocaleString('id-ID')}
                     </p>
@@ -231,12 +231,12 @@ export default function ProductList() {
         )}
       </div>
 
-      {/* Create / Edit modal */}
+      {/* Create / Ubah modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-xl">
             <h3 className="text-base font-semibold text-gray-900 mb-4">
-              {editingId ? 'Edit Item' : 'New Item'}
+              {editingId ? 'Ubah Item' : 'New Item'}
             </h3>
             <div className="space-y-3">
               <div>
@@ -250,7 +250,7 @@ export default function ProductList() {
                 />
               </div>
               <div>
-                <label className="block text-sm text-gray-600 mb-1">Item Name *</label>
+                <label className="block text-sm text-gray-600 mb-1">Nama Produk *</label>
                 <input
                   type="text"
                   placeholder="e.g. Semen Portland"
@@ -260,7 +260,7 @@ export default function ProductList() {
                 />
               </div>
               <div>
-                <label className="block text-sm text-gray-600 mb-1">Size</label>
+                <label className="block text-sm text-gray-600 mb-1">Ukuran</label>
                 <input
                   type="text"
                   placeholder="e.g. 50kg, 1m², 2.4m"
@@ -270,7 +270,7 @@ export default function ProductList() {
                 />
               </div>
               <div>
-                <label className="block text-sm text-gray-600 mb-1">Unit Price (Rp) *</label>
+                <label className="block text-sm text-gray-600 mb-1">Harga Satuan (Rp) *</label>
                 <input
                   type="number"
                   min={0}
@@ -286,25 +286,25 @@ export default function ProductList() {
                 onClick={() => { setShowForm(false); setForm(EMPTY_FORM) }}
                 className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
               >
-                Cancel
+                Batal
               </button>
               <button
                 onClick={() => {
-                  if (!form.sku.trim()) return alert('SKU is required.')
-                  if (!form.name.trim()) return alert('Item name is required.')
-                  if (!form.unit_price) return alert('Unit price is required.')
+                  if (!form.sku.trim()) return alert('SKU wajib diisi.')
+                  if (!form.name.trim()) return alert('Nama barang wajib diisi.')
+                  if (!form.unit_price) return alert('Harga satuan wajib diisi.')
                   upsertMutation.mutate({ ...form, id: editingId ?? undefined })
                 }}
                 disabled={upsertMutation.isPending}
                 className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
               >
-                {upsertMutation.isPending ? 'Saving...' : 'Save'}
+                {upsertMutation.isPending ? 'Saving...' : 'Simpan'}
               </button>
             </div>
             {upsertMutation.isError && (
               <p className="text-red-500 text-xs mt-2 text-right">
                 {(upsertMutation.error as Error).message.includes('unique')
-                  ? 'That SKU already exists.'
+                  ? 'SKU tersebut sudah ada.'
                   : (upsertMutation.error as Error).message}
               </p>
             )}
@@ -312,27 +312,27 @@ export default function ProductList() {
         </div>
       )}
 
-      {/* Delete confirmation */}
+      {/* Hapus confirmation */}
       {deleteId && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-xl">
-            <h3 className="text-base font-semibold text-gray-900 mb-2">Delete item?</h3>
+            <h3 className="text-base font-semibold text-gray-900 mb-2">Hapus barang ini?</h3>
             <p className="text-sm text-gray-500 mb-5">
-              Are you sure you want to delete <strong>{deleteTarget?.name}</strong>? This cannot be undone.
+              Apakah Anda yakin ingin menghapus <strong>{deleteTarget?.name}</strong>? Tindakan ini tidak dapat dibatalkan.
             </p>
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => setDeleteId(null)}
                 className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
               >
-                Cancel
+                Batal
               </button>
               <button
                 onClick={() => deleteMutation.mutate(deleteId)}
                 disabled={deleteMutation.isPending}
                 className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
               >
-                {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+                {deleteMutation.isPending ? 'Menghapus...' : 'Hapus'}
               </button>
             </div>
           </div>

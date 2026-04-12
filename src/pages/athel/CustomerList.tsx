@@ -111,27 +111,27 @@ export default function CustomerList() {
       <div className="px-4 md:px-8 py-6">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-xl font-semibold text-gray-900">Customer List</h1>
-            <p className="text-sm text-gray-500 mt-0.5">{customers?.length ?? 0} customers</p>
+            <h1 className="text-xl font-semibold text-gray-900">Daftar Toko/Customer</h1>
+            <p className="text-sm text-gray-500 mt-0.5">{customers?.length ?? 0} pelanggan</p>
           </div>
           <button
             onClick={openCreate}
             className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
           >
-            + Add Customer
+            + Tambah Toko/Customer
           </button>
         </div>
 
         <input
           type="text"
-          placeholder="Search customers..."
+          placeholder="Cari toko/customer..."
           value={search}
           onChange={e => setSearch(e.target.value)}
           className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full sm:w-72 mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
 
         {isLoading && (
-          <div className="text-gray-400 text-sm py-12 text-center">Loading...</div>
+          <div className="text-gray-400 text-sm py-12 text-center">Memuat...</div>
         )}
 
         {/* Desktop table */}
@@ -140,9 +140,9 @@ export default function CustomerList() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Customer Name</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Address</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Phone</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">Nama Toko/Customer</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">Alamat</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">Nomor Telepon</th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500">Email</th>
                   <th className="text-right px-5 py-3 font-medium text-gray-500">Actions</th>
                 </tr>
@@ -151,7 +151,7 @@ export default function CustomerList() {
                 {filtered?.length === 0 && (
                   <tr>
                     <td colSpan={5} className="text-center text-gray-400 py-12">
-                      No customers found.
+                      Tidak ada pelanggan ditemukan.
                     </td>
                   </tr>
                 )}
@@ -166,13 +166,13 @@ export default function CustomerList() {
                         onClick={() => openEdit(c)}
                         className="text-blue-600 hover:text-blue-800 text-xs font-medium mr-4"
                       >
-                        Edit
+                        Ubah
                       </button>
                       <button
                         onClick={() => setDeleteId(c.id)}
                         className="text-red-400 hover:text-red-600 text-xs font-medium"
                       >
-                        Delete
+                        Hapus
                       </button>
                     </td>
                   </tr>
@@ -186,7 +186,7 @@ export default function CustomerList() {
         {!isLoading && (
           <div className="md:hidden space-y-3">
             {filtered?.length === 0 && (
-              <p className="text-center text-gray-400 py-12 text-sm">No customers found.</p>
+              <p className="text-center text-gray-400 py-12 text-sm">Tidak ada pelanggan ditemukan.</p>
             )}
             {filtered?.map(c => (
               <div key={c.id} className="bg-white rounded-xl border border-gray-200 p-4">
@@ -202,19 +202,19 @@ export default function CustomerList() {
                       onClick={() => openEdit(c)}
                       className="text-blue-600 text-xs font-medium"
                     >
-                      Edit
+                      Ubah
                     </button>
                     <button
                       onClick={() => setDeleteId(c.id)}
                       className="text-red-400 text-xs font-medium"
                     >
-                      Delete
+                      Hapus
                     </button>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-xs mt-3 pt-3 border-t border-gray-100">
                   <div>
-                    <p className="text-gray-400">Phone</p>
+                    <p className="text-gray-400">Nomor Telepon</p>
                     <p className="text-gray-700 mt-0.5">{c.phone ?? '—'}</p>
                   </div>
                   <div>
@@ -237,9 +237,9 @@ export default function CustomerList() {
             </h3>
             <div className="space-y-3">
               {[
-                { label: 'Customer Name *', field: 'name', placeholder: 'e.g. Toko Bangunan Maju' },
-                { label: 'Address', field: 'address', placeholder: 'e.g. Jl. Sudirman No. 12, Jakarta' },
-                { label: 'Phone', field: 'phone', placeholder: 'e.g. 021-5551234' },
+                { label: 'Nama Toko/Customer *', field: 'name', placeholder: 'e.g. Toko Bangunan Maju' },
+                { label: 'Alamat', field: 'address', placeholder: 'e.g. Jl. Sudirman No. 12, Jakarta' },
+                { label: 'Nomor Telepon', field: 'phone', placeholder: 'e.g. 021-5551234' },
                 { label: 'Email', field: 'email', placeholder: 'e.g. toko@majujaya.com' },
               ].map(({ label, field, placeholder }) => (
                 <div key={field}>
@@ -259,11 +259,11 @@ export default function CustomerList() {
                 onClick={() => { setShowForm(false); setForm(EMPTY_FORM) }}
                 className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
               >
-                Cancel
+                Batal
               </button>
               <button
                 onClick={() => {
-                  if (!form.name.trim()) return alert('Customer name is required.')
+                  if (!form.name.trim()) return alert('Nama pelanggan wajib diisi.')
                   upsertMutation.mutate({ ...form, id: editingId ?? undefined })
                 }}
                 disabled={upsertMutation.isPending}
@@ -282,21 +282,21 @@ export default function CustomerList() {
           <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-xl">
             <h3 className="text-base font-semibold text-gray-900 mb-2">Delete customer?</h3>
             <p className="text-sm text-gray-500 mb-5">
-              Are you sure you want to delete <strong>{deleteTarget?.name}</strong>? This cannot be undone.
+              Apakah Anda yakin ingin menghapus <strong>{deleteTarget?.name}</strong>? Tindakan ini tidak dapat dibatalkan.
             </p>
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => setDeleteId(null)}
                 className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
               >
-                Cancel
+                Batal
               </button>
               <button
                 onClick={() => deleteMutation.mutate(deleteId)}
                 disabled={deleteMutation.isPending}
                 className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
               >
-                {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+                {deleteMutation.isPending ? 'Menghapus...' : 'Hapus'}
               </button>
             </div>
           </div>

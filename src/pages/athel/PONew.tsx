@@ -181,9 +181,9 @@ export default function PONew() {
   const total = lineItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0)
 
   const handleSubmit = () => {
-    if (!customerId) return alert('Please select a customer.')
-    if (!poNumber.trim()) return alert('Please enter a PO number.')
-    if (lineItems.some(l => !l.product_name.trim())) return alert('All line items need a product name.')
+    if (!customerId) return alert('Pilih toko/customer terlebih dahulu.')
+    if (!poNumber.trim()) return alert('Masukkan nomor PO terlebih dahulu.')
+    if (lineItems.some(l => !l.product_name.trim())) return alert('Semua barang harus memiliki nama produk..')
     mutation.mutate({ customer_id: customerId, po_number: poNumber, order_date: orderDate, expected_delivery_date: expectedDelivery, notes, lineItems })
   }
 
@@ -191,17 +191,17 @@ export default function PONew() {
     <div className="min-h-screen bg-gray-50">
       <AthelNav />
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center gap-4">
-        <button onClick={() => navigate('/athel/po')} className="text-gray-400 hover:text-gray-600 text-sm">← Back</button>
+        <button onClick={() => navigate('/athel/po')} className="text-gray-400 hover:text-gray-600 text-sm">← Kembali</button>
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">New Purchase Order</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Athel — PO Management</p>
+          <h1 className="text-xl font-semibold text-gray-900">PO Baru</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Athel — Manajemen PO</p>
         </div>
       </div>
 
       <div className="px-4 md:px-8 py-6 max-w-4xl mx-auto space-y-6">
-        {/* Order Details */}
+        {/* Detail Pesanan */}
         <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <h2 className="text-base font-medium text-gray-900 mb-4">Order Details</h2>
+          <h2 className="text-base font-medium text-gray-900 mb-4">Detail Pesanan</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm text-gray-600 mb-1">Customer</label>
@@ -215,7 +215,7 @@ export default function PONew() {
               </select>
             </div>
             <div>
-              <label className="block text-sm text-gray-600 mb-1">PO Number</label>
+              <label className="block text-sm text-gray-600 mb-1">Nomor PO</label>
               <input
                 type="text"
                 value={poNumber}
@@ -225,17 +225,17 @@ export default function PONew() {
               />
             </div>
             <div>
-              <label className="block text-sm text-gray-600 mb-1">Order Date</label>
+              <label className="block text-sm text-gray-600 mb-1">Tanggal PO</label>
               <input type="date" value={orderDate} onChange={e => setOrderDate(e.target.value)}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div>
-              <label className="block text-sm text-gray-600 mb-1">Expected Delivery</label>
+              <label className="block text-sm text-gray-600 mb-1">Tanggal PO Expired</label>
               <input type="date" value={expectedDelivery} onChange={e => setExpectedDelivery(e.target.value)}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div className="col-span-2">
-              <label className="block text-sm text-gray-600 mb-1">Notes</label>
+              <label className="block text-sm text-gray-600 mb-1">Catatan</label>
               <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
                 placeholder="Optional notes..."
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
@@ -245,8 +245,8 @@ export default function PONew() {
 
         {/* Line Items */}
         <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <h2 className="text-base font-medium text-gray-900 mb-1">Line Items</h2>
-          <p className="text-xs text-gray-400 mb-4">Search by SKU or name to auto-fill. You can override the price per order.</p>
+          <h2 className="text-base font-medium text-gray-900 mb-1">Daftar Barang</h2>
+          <p className="text-xs text-gray-400 mb-4">Cari berdasarkan SKU atau nama untuk mengisi otomatis. Harga dapat diubah per pesanan.</p>
 
           <div className="space-y-4">
             {lineItems.map((item, i) => (
@@ -254,7 +254,7 @@ export default function PONew() {
                 {/* SKU Lookup */}
                 <div className="grid grid-cols-12 gap-3 items-end">
                   <div className="col-span-11">
-                    <label className="block text-xs text-gray-400 mb-1">Search item by SKU or name</label>
+                    <label className="block text-xs text-gray-400 mb-1">Cari barang berdasarkan SKU atau nama</label>
                     {products && (
                       <SKULookup
                         products={products}
@@ -283,7 +283,7 @@ export default function PONew() {
                     />
                   </div>
                   <div className="col-span-5">
-                    <label className="block text-xs text-gray-400 mb-1">Item Name</label>
+                    <label className="block text-xs text-gray-400 mb-1">Nama Produk</label>
                     <input
                       type="text"
                       value={item.product_name}
@@ -303,8 +303,8 @@ export default function PONew() {
                   </div>
                   <div className="col-span-4">
                     <label className="block text-xs text-gray-400 mb-1">
-                      Unit Price (Rp)
-                      {item.product_id && <span className="text-blue-400 ml-1">— editable for this order</span>}
+                      Harga Satuan (Rp)
+                      {item.product_id && <span className="text-blue-400 ml-1">— dapat diubah untuk PO ini</span>}
                     </label>
                     <input
                       type="number" min={0}
@@ -327,7 +327,7 @@ export default function PONew() {
 
           <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
             <button onClick={addLine} className="text-blue-600 hover:text-blue-700 text-sm font-medium">
-              + Add line item
+              + Tambah Produk
             </button>
             <div className="text-sm text-gray-500">
               Total: <span className="text-gray-900 font-semibold text-base ml-1">
@@ -341,11 +341,11 @@ export default function PONew() {
         <div className="flex justify-end gap-3 pb-8">
           <button onClick={() => navigate('/athel/po')}
             className="px-5 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-200 rounded-lg">
-            Cancel
+            Batal
           </button>
           <button onClick={handleSubmit} disabled={mutation.isPending}
             className="px-5 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 transition-colors">
-            {mutation.isPending ? 'Saving...' : 'Save PO'}
+            {mutation.isPending ? 'Menyimpan...' : 'Simpan PO'}
           </button>
         </div>
 

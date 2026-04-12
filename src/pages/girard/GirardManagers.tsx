@@ -56,20 +56,20 @@ export default function GirardManagers() {
       <GirardNav />
 
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5">
-        <h1 className="text-xl font-semibold text-gray-900">Managers</h1>
+        <h1 className="text-xl font-semibold text-gray-900">Manajer</h1>
         <p className="text-sm text-gray-500 mt-0.5">
-          {managers?.length ?? 0} sales managers
+          {managers?.length ?? 0} manajer penjualan
         </p>
       </div>
 
       <div className="px-4 md:px-8 py-6">
         {isLoading && (
-          <div className="text-center text-gray-400 text-sm py-24">Loading...</div>
+          <div className="text-center text-gray-400 text-sm py-24">Memuat...</div>
         )}
 
         {!isLoading && (!managers || managers.length === 0) && (
           <div className="text-center py-24">
-            <p className="text-gray-400 text-sm">No sales managers found.</p>
+            <p className="text-gray-400 text-sm">Tidak ada manajer penjualan ditemukan.</p>
           </div>
         )}
 
@@ -91,11 +91,11 @@ export default function GirardManagers() {
                 {/* Stats */}
                 <div className="grid grid-cols-2 gap-3 mb-4">
                   <div className="bg-gray-50 rounded-lg p-3 text-center">
-                    <p className="text-xs text-gray-400 mb-1">Customers</p>
+                    <p className="text-xs text-gray-400 mb-1">Pelanggan</p>
                     <p className="text-xl font-bold text-gray-900">{m.customers.length}</p>
                   </div>
                   <div className="bg-gray-50 rounded-lg p-3 text-center">
-                    <p className="text-xs text-gray-400 mb-1">Sales Persons</p>
+                    <p className="text-xs text-gray-400 mb-1">Sales</p>
                     <p className="text-xl font-bold text-gray-900">{m.team.length}</p>
                   </div>
                 </div>
@@ -103,7 +103,7 @@ export default function GirardManagers() {
                 {/* Team list */}
                 {m.team.length > 0 && (
                   <div className="mb-3">
-                    <p className="text-xs text-gray-400 mb-2">Team</p>
+                    <p className="text-xs text-gray-400 mb-2">Tim</p>
                     <div className="space-y-1">
                       {m.team.map(sp => (
                         <div key={sp.id} className="flex items-center gap-2">
@@ -120,13 +120,13 @@ export default function GirardManagers() {
                 {/* Customer list */}
                 {m.customers.length > 0 && (
                   <div>
-                    <p className="text-xs text-gray-400 mb-2">Assigned Customers</p>
+                    <p className="text-xs text-gray-400 mb-2">Pelanggan Ditugaskan</p>
                     <div className="space-y-1">
                       {m.customers.slice(0, 3).map(c => (
                         <p key={c.id} className="text-xs text-gray-600 truncate">• {c.name}</p>
                       ))}
                       {m.customers.length > 3 && (
-                        <p className="text-xs text-gray-400">+{m.customers.length - 3} more</p>
+                        <p className="text-xs text-gray-400">+{m.customers.length - 3} lainnya</p>
                       )}
                     </div>
                   </div>

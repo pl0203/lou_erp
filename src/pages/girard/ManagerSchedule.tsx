@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../lib/AuthContext'
 import GirardNav from '../../components/GirardNav'
 
@@ -132,14 +133,31 @@ async function fetchMyTeam(managerId: string, role: string): Promise<SalesPerson
   return [self, ...others]
 }
 
-async function fetchSchedules(managerId: string, dates: string[]): Promise<Schedule[]> {
-  // Get customer IDs managed by this manager
+async function fetchSchedules(managerId: string, role: string, dates: string[]): Promise<Schedule[]> {
+  let customerIds: string[] = []
+
+  if (role === 'sales_head' || role === 'executive') {
+    // See all schedules
+    const { data, error } = await supabase
+      .from('sales_schedules')
+      .select(`
+        id, outlet_id, sales_person_id, scheduled_date, status, notes,
+        customers!sales_schedules_outlet_id_fkey(id, name, city),
+        users!sales_schedules_sales_person_id_fkey(id, full_name)
+      `)
+      .in('scheduled_date', dates)
+      .order('scheduled_date')
+      .order('created_at')
+    if (error) throw error
+    return data as Schedule[]
+  }
+
+  // Sales manager — only their assigned customers
   const { data: assignments } = await supabase
     .from('customer_manager_assignments')
     .select('customer_id')
     .eq('manager_id', managerId)
-  
-  const customerIds = (assignments ?? []).map((a: any) => a.customer_id)
+  customerIds = (assignments ?? []).map((a: any) => a.customer_id)
   if (customerIds.length === 0) return []
 
   const { data, error } = await supabase
@@ -155,20 +173,6 @@ async function fetchSchedules(managerId: string, dates: string[]): Promise<Sched
     .order('created_at')
   if (error) throw error
   return data as Schedule[]
-}
-
-async function createSchedule(form: ScheduleForm, assignedBy: string) {
-  const { error } = await supabase
-    .from('sales_schedules')
-    .insert({
-      outlet_id: form.outlet_id,
-      sales_person_id: form.sales_person_id,
-      assigned_by: assignedBy,
-      scheduled_date: form.scheduled_date,
-      notes: form.notes || null,
-      status: 'pending',
-    })
-  if (error) throw error
 }
 
 async function updateSchedule(id: string, form: Partial<ScheduleForm>) {
@@ -223,12 +227,14 @@ export default function ManagerSchedule() {
   })
 
   const { data: allSchedules, isLoading } = useQuery({
-    queryKey: ['manager_schedules', profile?.id, dates],
-    queryFn: () => fetchSchedules(profile!.id, dates),
+    queryKey: ['manager_schedules', profile?.id, profile?.role, dates],
+    queryFn: () => fetchSchedules(profile!.id, profile!.role, dates),
     enabled: !!profile?.id,
   })
 
   const schedules = allSchedules?.filter(s => s.scheduled_date === selectedDate) ?? []
+
+  const navigate = useNavigate()
 
   const createMutation = useMutation({
     mutationFn: () => createSchedule(form, profile!.id),
@@ -236,6 +242,9 @@ export default function ManagerSchedule() {
       queryClient.invalidateQueries({ queryKey: ['manager_schedules'] })
       setShowForm(false)
       setForm(EMPTY_FORM)
+      if (form.sales_person_id === profile?.id) {
+        navigate('/girard/my-visits')
+      }
     },
   })
 
@@ -297,16 +306,16 @@ export default function ManagerSchedule() {
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Schedule</h1>
+          <h1 className="text-xl font-semibold text-gray-900">Jadwal</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Assign visits to your team
+            Tugaskan kunjungan untuk tim anda
           </p>
         </div>
         <button
           onClick={openCreate}
           className="bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
         >
-          + Assign Visit
+          + Kunjungan
         </button>
       </div>
 
@@ -328,7 +337,7 @@ export default function ManagerSchedule() {
                 }`}
               >
                 <span className="text-xs font-medium">
-                  {i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : d.toLocaleDateString('id-ID', { weekday: 'short' })}
+                  {i === 0 ? 'Hari Ini' : i === 1 ? 'Besok' : d.toLocaleDateString('id-ID', { weekday: 'short' })}
                 </span>
                 <span className="text-lg font-semibold mt-0.5">{d.getDate()}</span>
                 <span className={`text-xs mt-0.5 ${isSelected ? 'text-green-500' : 'text-gray-400'}`}>
@@ -344,7 +353,7 @@ export default function ManagerSchedule() {
               onChange={e => e.target.value && setSelectedDate(e.target.value)}
               className="text-xs text-gray-500 border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-green-500"
             >
-              <option value="">More dates...</option>
+              <option value="">Tanggal lainnya...</option>
               {dates.slice(7).map(date => (
                 <option key={date} value={date}>
                   {new Date(date).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' })}
@@ -561,7 +570,7 @@ export default function ManagerSchedule() {
                   value={form.notes}
                   onChange={e => setForm(p => ({ ...p, notes: e.target.value }))}
                   rows={2}
-                  placeholder="e.g. Focus on roofing materials this visit"
+                  placeholder="contoh: Fokus pada pengenalan produk precut untuk visit kali ini guna menaikkan penjualan. Jangan lupa follow up soal PO bulan lalu yang belum keluar2."
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
                 />
               </div>
@@ -614,7 +623,7 @@ export default function ManagerSchedule() {
                 disabled={deleteMutation.isPending}
                 className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
               >
-                {deleteMutation.isPending ? 'Removing...' : 'Remove'}
+                {deleteMutation.isPending ? 'Sedang menghapus...' : 'Telah dihapus'}
               </button>
             </div>
           </div>

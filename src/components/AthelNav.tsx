@@ -3,11 +3,10 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
 
 const allAthelLinks = [
-  { to: '/athel/po',           label: 'Purchase Orders', roles: ['po_admin', 'executive'] },
-  { to: '/athel/sales-orders', label: 'Sales Orders',    roles: ['po_admin', 'executive'] },
-  { to: '/athel/customers',    label: 'Customer List',   roles: ['po_admin', 'executive'] },
-  { to: '/athel/products',     label: 'Item List',       roles: ['po_admin', 'executive'] },
-  { to: '/ihr/users',          label: 'Users',           roles: ['executive'] },
+  { to: '/athel/po',           label: 'Pesanan Pembelian', roles: ['po_admin', 'executive'] },
+  { to: '/athel/sales-orders', label: 'Pesanan Penjualan', roles: ['po_admin', 'executive'] },
+  { to: '/athel/customers',    label: 'Daftar Pelanggan',  roles: ['po_admin', 'executive'] },
+  { to: '/athel/products',     label: 'Daftar Barang',     roles: ['po_admin', 'executive'] }
 ]
 
 const GIRARD_ROLES = ['sales_person', 'sales_manager', 'sales_head', 'executive']
@@ -24,8 +23,6 @@ export default function AthelNav() {
   const canAccessAthel  = profile && ATHEL_ROLES.includes(profile.role)
   const canAccessGirard = profile && GIRARD_ROLES.includes(profile.role)
   const showSwitcherBtn = canAccessAthel && canAccessGirard
-
-  // Filter links by role
   const links = allAthelLinks.filter(l => profile && l.roles.includes(profile.role))
 
   useEffect(() => {
@@ -56,8 +53,6 @@ export default function AthelNav() {
   return (
     <div className="bg-white border-b border-gray-200 px-4 md:px-8">
       <div className="flex items-center gap-1 h-14">
-
-        {/* Logo / Module switcher */}
         <div className="relative mr-4" ref={switcherRef}>
           <button
             onClick={() => showSwitcherBtn && setShowSwitcher(p => !p)}
@@ -79,27 +74,26 @@ export default function AthelNav() {
                 className="w-full text-left px-4 py-3 text-sm hover:bg-gray-50 transition-colors border-b border-gray-100"
               >
                 <span className="font-medium text-blue-600">Athel</span>
-                <p className="text-xs text-gray-400 mt-0.5">Purchase orders</p>
+                <p className="text-xs text-gray-400 mt-0.5">Manajemen pembelian</p>
               </button>
               <button
-                onClick={() => { navigate('/girard/customers'); setShowSwitcher(false) }}
+                onClick={() => { navigate('/girard/schedule'); setShowSwitcher(false) }}
                 className="w-full text-left px-4 py-3 text-sm hover:bg-gray-50 transition-colors border-b border-gray-100"
               >
                 <span className="font-medium text-green-600">Girard</span>
-                <p className="text-xs text-gray-400 mt-0.5">Sales management</p>
+                <p className="text-xs text-gray-400 mt-0.5">Manajemen penjualan</p>
               </button>
               <button
                 onClick={() => { navigate('/ihr/users'); setShowSwitcher(false) }}
                 className="w-full text-left px-4 py-3 text-sm hover:bg-gray-50 transition-colors"
               >
                 <span className="font-medium" style={{ color: '#e56d3a' }}>iHR</span>
-                <p className="text-xs text-gray-400 mt-0.5">People management</p>
+                <p className="text-xs text-gray-400 mt-0.5">Manajemen SDM</p>
               </button>
             </div>
           )}
         </div>
 
-        {/* Nav links — desktop */}
         <div className="hidden md:flex items-center gap-1 flex-1">
           {links.map(link => (
             <NavLink
@@ -107,9 +101,7 @@ export default function AthelNav() {
               to={link.to}
               className={({ isActive }) =>
                 `px-4 py-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                  isActive
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-800'
+                  isActive ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'
                 }`
               }
             >
@@ -118,7 +110,6 @@ export default function AthelNav() {
           ))}
         </div>
 
-        {/* Nav links — mobile */}
         <div className="flex md:hidden items-center gap-1 flex-1 overflow-x-auto">
           {links.map(link => (
             <NavLink
@@ -126,9 +117,7 @@ export default function AthelNav() {
               to={link.to}
               className={({ isActive }) =>
                 `px-3 py-4 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
-                  isActive
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-800'
+                  isActive ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'
                 }`
               }
             >
@@ -137,7 +126,6 @@ export default function AthelNav() {
           ))}
         </div>
 
-        {/* User menu */}
         <div className="relative ml-auto" ref={userRef}>
           <button
             onClick={() => setShowUser(p => !p)}
@@ -150,26 +138,25 @@ export default function AthelNav() {
             <div className="absolute top-full right-0 mt-2 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden z-50 w-52">
               <div className="px-4 py-3 border-b border-gray-100">
                 <p className="text-sm font-medium text-gray-900 truncate">{profile?.full_name}</p>
-                <p className="text-xs text-gray-400 mt-0.5 capitalize">{profile?.role.replace('_', ' ')}</p>
+                <p className="text-xs text-gray-400 mt-0.5 capitalize">{profile?.role.replace(/_/g, ' ')}</p>
               </div>
               {profile?.role === 'executive' && (
                 <button
                   onClick={() => { navigate('/landing'); setShowUser(false) }}
                   className="w-full text-left px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50 transition-colors border-b border-gray-100"
                 >
-                  Switch module
+                  Ganti modul
                 </button>
               )}
               <button
                 onClick={handleSignOut}
                 className="w-full text-left px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 transition-colors"
               >
-                Sign out
+                Keluar
               </button>
             </div>
           )}
         </div>
-
       </div>
     </div>
   )

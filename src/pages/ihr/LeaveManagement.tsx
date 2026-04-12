@@ -9,9 +9,9 @@ export default function LeaveManagement() {
           style={{ backgroundColor: '#fdf0eb' }}>
           <span className="text-2xl">📅</span>
         </div>
-        <h2 className="text-lg font-semibold text-gray-900 mb-2">Leave Management</h2>
+        <h2 className="text-lg font-semibold text-gray-900 mb-2">Manajemen Cuti</h2>
         <p className="text-sm text-gray-400 text-center max-w-xs">
-          Leave management is coming soon. You'll be able to manage employee leave requests and balances here.
+          Fitur manajemen cuti akan segera hadir. Anda akan dapat mengelola permohonan dan saldo cuti karyawan di sini.
         </p>
       </div>
     </div>

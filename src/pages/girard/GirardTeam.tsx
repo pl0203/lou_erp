@@ -119,19 +119,19 @@ export default function GirardTeam() {
       <GirardNav />
 
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5">
-        <h1 className="text-xl font-semibold text-gray-900">My Team</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Today — {today}</p>
+        <h1 className="text-xl font-semibold text-gray-900">Tim Saya</h1>
+        <p className="text-sm text-gray-500 mt-0.5">Hari ini — {today}</p>
       </div>
 
       <div className="px-4 md:px-8 py-6">
         {isLoading && (
-          <div className="text-center text-gray-400 text-sm py-24">Loading team...</div>
+          <div className="text-center text-gray-400 text-sm py-24">Memuat data tim...</div>
         )}
 
         {!isLoading && (!team || team.length === 0) && (
           <div className="text-center py-24">
-            <p className="text-gray-400 text-sm">No team members assigned to you yet.</p>
-            <p className="text-gray-300 text-xs mt-1">Contact your sales head to assign sales persons to your team.</p>
+            <p className="text-gray-400 text-sm">Belum ada anggota tim yang ditugaskan.</p>
+            <p className="text-gray-300 text-xs mt-1">Hubungi manajer anda untuk menugaskan sales ke tim Anda.</p>
           </div>
         )}
 
@@ -142,12 +142,12 @@ export default function GirardTeam() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-100">
-                    <th className="text-left px-5 py-3 font-medium text-gray-500">Name</th>
-                    <th className="text-left px-5 py-3 font-medium text-gray-500">Contact</th>
-                    <th className="text-center px-5 py-3 font-medium text-gray-500">Scheduled Today</th>
-                    <th className="text-center px-5 py-3 font-medium text-gray-500">Visited Today</th>
-                    <th className="text-center px-5 py-3 font-medium text-gray-500">Orders Today</th>
-                    <th className="text-center px-5 py-3 font-medium text-gray-500">Visits This Week</th>
+                    <th className="text-left px-5 py-3 font-medium text-gray-500">Nama</th>
+                    <th className="text-left px-5 py-3 font-medium text-gray-500">Kontak</th>
+                    <th className="text-center px-5 py-3 font-medium text-gray-500">Dijadwalkan Hari Ini</th>
+                    <th className="text-center px-5 py-3 font-medium text-gray-500">Dikunjungi Hari Ini</th>
+                    <th className="text-center px-5 py-3 font-medium text-gray-500">Pesanan Hari Ini</th>
+                    <th className="text-center px-5 py-3 font-medium text-gray-500">Kunjungan Minggu Ini</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -220,11 +220,11 @@ export default function GirardTeam() {
                     </div>
                     <div className="grid grid-cols-2 gap-3 text-sm">
                       <div className="bg-gray-50 rounded-lg p-3 text-center">
-                        <p className="text-xs text-gray-400 mb-1">Scheduled</p>
+                        <p className="text-xs text-gray-400 mb-1">Dijadwalkan</p>
                         <p className="font-semibold text-gray-900">{activity?.total_scheduled ?? 0}</p>
                       </div>
                       <div className="bg-gray-50 rounded-lg p-3 text-center">
-                        <p className="text-xs text-gray-400 mb-1">Visited</p>
+                        <p className="text-xs text-gray-400 mb-1">Dikunjungi</p>
                         <p className={`font-semibold ${
                           activity?.total_visited === activity?.total_scheduled && activity?.total_scheduled > 0
                             ? 'text-green-600' : 'text-gray-900'
@@ -233,11 +233,11 @@ export default function GirardTeam() {
                         </p>
                       </div>
                       <div className="bg-gray-50 rounded-lg p-3 text-center">
-                        <p className="text-xs text-gray-400 mb-1">Orders Today</p>
+                        <p className="text-xs text-gray-400 mb-1">Pesanan Hari Ini</p>
                         <p className="font-semibold text-gray-900">{activity?.total_orders ?? 0}</p>
                       </div>
                       <div className="bg-gray-50 rounded-lg p-3 text-center">
-                        <p className="text-xs text-gray-400 mb-1">Visits This Week</p>
+                        <p className="text-xs text-gray-400 mb-1">Kunjungan Minggu Ini</p>
                         <p className="font-semibold text-gray-900">{weekVisits}</p>
                       </div>
                     </div>

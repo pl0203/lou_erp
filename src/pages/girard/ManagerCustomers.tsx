@@ -101,8 +101,8 @@ export default function ManagerCustomers() {
       <GirardNav />
 
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5">
-        <h1 className="text-xl font-semibold text-gray-900">My Customers</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Visit target compliance — last 30 days</p>
+        <h1 className="text-xl font-semibold text-gray-900">Pelanggan Saya</h1>
+        <p className="text-sm text-gray-500 mt-0.5">Kepatuhan target kunjungan — 30 hari terakhir</p>
       </div>
 
       <div className="px-4 md:px-8 py-6 space-y-6">
@@ -111,28 +111,28 @@ export default function ManagerCustomers() {
         {!isLoading && total > 0 && (
           <div className="grid grid-cols-3 gap-4">
             <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-              <p className="text-xs text-gray-400 mb-1">Total Customers</p>
+              <p className="text-xs text-gray-400 mb-1">Total Pelanggan</p>
               <p className="text-2xl font-bold text-gray-900">{total}</p>
             </div>
             <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-              <p className="text-xs text-gray-400 mb-1">On Track</p>
+              <p className="text-xs text-gray-400 mb-1">Sesuai Target</p>
               <p className="text-2xl font-bold text-green-600">{onTrack}</p>
             </div>
             <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-              <p className="text-xs text-gray-400 mb-1">Overdue Visit</p>
+              <p className="text-xs text-gray-400 mb-1">Kunjungan Terlambat</p>
               <p className="text-2xl font-bold text-red-500">{overdue}</p>
             </div>
           </div>
         )}
 
         {isLoading && (
-          <div className="text-center text-gray-400 text-sm py-24">Loading customers...</div>
+          <div className="text-center text-gray-400 text-sm py-24">Memuat data pelanggan...</div>
         )}
 
         {!isLoading && total === 0 && (
           <div className="text-center py-24">
-            <p className="text-gray-400 text-sm">No customers assigned to you yet.</p>
-            <p className="text-gray-300 text-xs mt-1">Contact your sales head to assign customers.</p>
+            <p className="text-gray-400 text-sm">Belum ada pelanggan yang ditugaskan.</p>
+            <p className="text-gray-300 text-xs mt-1">Hubungi manajer anda untuk menugaskan pelanggan.</p>
           </div>
         )}
 
@@ -142,12 +142,12 @@ export default function ManagerCustomers() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Customer</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Location</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Visit Frequency</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">Pelanggan</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">Alamat</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">Frekuensi Kunjungan</th>
                   <th className="text-center px-5 py-3 font-medium text-gray-500">Target (30d)</th>
-                  <th className="text-center px-5 py-3 font-medium text-gray-500">Actual (30d)</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Last Visit</th>
+                  <th className="text-center px-5 py-3 font-medium text-gray-500">Aktual (30d)</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">Kunjungan Terakhir</th>
                   <th className="text-center px-5 py-3 font-medium text-gray-500">Status</th>
                 </tr>
               </thead>
@@ -173,7 +173,7 @@ export default function ManagerCustomers() {
                         <span className={`text-xs ${overdue ? 'text-red-500 font-medium' : 'text-gray-600'}`}>
                           {c.last_visit_date
                             ? new Date(c.last_visit_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
-                            : 'Never'}
+                            : 'Belum pernah'}
                           {overdue && ' ⚠'}
                         </span>
                       </td>
@@ -181,7 +181,7 @@ export default function ManagerCustomers() {
                         <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${
                           c.on_track ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'
                         }`}>
-                          {c.on_track ? 'On track' : 'Behind'}
+                          {c.on_track ? 'Sesuai target' : 'Tertinggal'}
                         </span>
                       </td>
                     </tr>
@@ -207,12 +207,12 @@ export default function ManagerCustomers() {
                     <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium ml-3 shrink-0 ${
                       c.on_track ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'
                     }`}>
-                      {c.on_track ? 'On track' : 'Behind'}
+                      {c.on_track ? 'Sesuai target' : 'Tertinggal'}
                     </span>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div>
-                      <p className="text-gray-400">Frequency</p>
+                      <p className="text-gray-400">Frekuensi</p>
                       <p className="text-gray-700 mt-0.5">{frequencyLabel(c.visit_frequency_days)}</p>
                     </div>
                     <div>
@@ -220,13 +220,13 @@ export default function ManagerCustomers() {
                       <p className={`mt-0.5 ${overdue ? 'text-red-500 font-medium' : 'text-gray-700'}`}>
                         {c.last_visit_date
                           ? new Date(c.last_visit_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
-                          : 'Never'}
+                          : 'Belum pernah'}
                         {overdue && ' ⚠'}
                       </p>
                     </div>
                     <div>
                       <p className="text-gray-400">Target (30d)</p>
-                      <p className="text-gray-700 mt-0.5">{c.target_visits} visits</p>
+                      <p className="text-gray-700 mt-0.5">{c.target_visits} kunjungan</p>
                     </div>
                     <div>
                       <p className="text-gray-400">Actual (30d)</p>

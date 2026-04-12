@@ -140,7 +140,7 @@ export default function GirardCustomerDetail() {
           onClick={() => navigate(-1)}
           className="text-gray-400 hover:text-gray-600 text-sm shrink-0"
         >
-          ← Back
+          ← Kembali
         </button>
         <div className="flex-1 min-w-0">
           <h1 className="text-xl font-semibold text-gray-900 truncate">{customer.name}</h1>
@@ -150,7 +150,7 @@ export default function GirardCustomerDetail() {
         </div>
         {overdue && (
           <span className="text-xs bg-red-100 text-red-600 px-2.5 py-1 rounded-full font-medium shrink-0">
-            Visit overdue
+            Kunjungan Terlambat
           </span>
         )}
       </div>
@@ -160,8 +160,8 @@ export default function GirardCustomerDetail() {
         <div className="flex gap-1">
           {[
             { key: 'overview', label: 'Overview' },
-            { key: 'visits',   label: 'Visit History' },
-            { key: 'orders',   label: 'Orders' },
+            { key: 'visits',   label: 'Riwayat Kunjungan' },
+            { key: 'orders',   label: 'Pesanan' },
           ].map(tab => (
             <button
               key={tab.key}
@@ -187,7 +187,7 @@ export default function GirardCustomerDetail() {
               <h2 className="text-base font-medium text-gray-900 mb-4">Contact</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                 <div>
-                  <p className="text-gray-400 text-xs mb-1">Phone</p>
+                  <p className="text-gray-400 text-xs mb-1">Nomor Telepon</p>
                   <p className="text-gray-900">{customer.phone ?? '—'}</p>
                 </div>
                 <div>
@@ -195,13 +195,13 @@ export default function GirardCustomerDetail() {
                   <p className="text-gray-900">{customer.email ?? '—'}</p>
                 </div>
                 <div>
-                  <p className="text-gray-400 text-xs mb-1">Address</p>
+                  <p className="text-gray-400 text-xs mb-1">Alamat</p>
                   <p className="text-gray-900">
                     {[customer.address, customer.city].filter(Boolean).join(', ') || '—'}
                   </p>
                 </div>
                 <div>
-                  <p className="text-gray-400 text-xs mb-1">Visit Frequency</p>
+                  <p className="text-gray-400 text-xs mb-1">Frekuensi Kunjungan</p>
                   <p className="text-gray-900">{frequencyLabel(customer.visit_frequency_days)}</p>
                 </div>
               </div>
@@ -217,7 +217,7 @@ export default function GirardCustomerDetail() {
                 </p>
               </div>
               <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-                <p className="text-xs text-gray-400 mb-1">Customer Since</p>
+                <p className="text-xs text-gray-400 mb-1">Pelanggan Sejak</p>
                 <p className="text-sm font-semibold text-gray-900">
                   {stats?.first_order_date
                     ? new Date(stats.first_order_date).toLocaleDateString('id-ID', { month: 'short', year: 'numeric' })
@@ -225,11 +225,11 @@ export default function GirardCustomerDetail() {
                 </p>
               </div>
               <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-                <p className="text-xs text-gray-400 mb-1">Orders (3mo)</p>
+                <p className="text-xs text-gray-400 mb-1">Pesanan (3bl)</p>
                 <p className="text-sm font-semibold text-gray-900">{stats?.order_count_3mo ?? 0}</p>
               </div>
               <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-                <p className="text-xs text-gray-400 mb-1">Sales (3mo)</p>
+                <p className="text-xs text-gray-400 mb-1">Penjualan (3bl)</p>
                 <p className="text-sm font-semibold text-gray-900">
                   {stats?.total_sales_3mo
                     ? `Rp ${(stats.total_sales_3mo / 1_000_000).toFixed(1)}M`
@@ -240,7 +240,7 @@ export default function GirardCustomerDetail() {
 
             {stats?.top_items && stats.top_items.length > 0 && (
               <div className="bg-white rounded-xl border border-gray-200 p-5">
-                <h2 className="text-base font-medium text-gray-900 mb-3">Top Ordered Items</h2>
+                <h2 className="text-base font-medium text-gray-900 mb-3">Barang Terlaris</h2>
                 <div className="space-y-2">
                   {stats.top_items.map((item, i) => (
                     <div key={item.name} className="flex items-center gap-3">
@@ -275,12 +275,12 @@ export default function GirardCustomerDetail() {
         {activeTab === 'visits' && (
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-100">
-              <h2 className="text-base font-medium text-gray-900">Visit History</h2>
-              <p className="text-xs text-gray-400 mt-0.5">Last 10 visits</p>
+              <h2 className="text-base font-medium text-gray-900">Riwayat Kunjungan</h2>
+              <p className="text-xs text-gray-400 mt-0.5">10 kunjungan terakhir</p>
             </div>
             {!visitHistory || visitHistory.length === 0 ? (
               <div className="px-5 py-12 text-center text-gray-400 text-sm">
-                No visits recorded yet.
+                Belum ada kunjungan tercatat.
               </div>
             ) : (
               <div className="divide-y divide-gray-100">
@@ -300,7 +300,7 @@ export default function GirardCustomerDetail() {
                         </p>
                       </div>
                       <span className="text-xs bg-green-100 text-green-700 px-2.5 py-0.5 rounded-full font-medium">
-                        Visited
+                        Dikunjungi
                       </span>
                     </div>
                   </div>
@@ -315,14 +315,14 @@ export default function GirardCustomerDetail() {
           <div className="space-y-3">
             {!orderHistory || orderHistory.length === 0 ? (
               <div className="bg-white rounded-xl border border-gray-200 px-5 py-12 text-center text-gray-400 text-sm">
-                No purchase orders recorded yet.
+                Belum ada PO tercatat.
               </div>
             ) : (
               <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-100">
-                      <th className="text-left px-5 py-3 font-medium text-gray-500">PO Number</th>
+                      <th className="text-left px-5 py-3 font-medium text-gray-500">Nomor PO</th>
                       <th className="text-left px-5 py-3 font-medium text-gray-500 hidden sm:table-cell">Order Date</th>
                       <th className="text-left px-5 py-3 font-medium text-gray-500">Status</th>
                       <th className="text-right px-5 py-3 font-medium text-gray-500">Total</th>

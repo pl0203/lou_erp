@@ -4,31 +4,31 @@ import { useAuth } from '../lib/AuthContext'
 
 const ROLE_LINKS: Record<string, { to: string; label: string }[]> = {
   sales_person: [
-    { to: '/girard/schedule',     label: "Today's Visits" },
-    { to: '/girard/my-orders',    label: 'My Orders' },
+    { to: '/girard/schedule',  label: 'Kunjungan Hari Ini' },
+    { to: '/girard/my-orders', label: 'Pesanan Saya' },
   ],
   sales_manager: [
-    { to: '/girard/schedule',     label: 'Schedule' },
-    { to: '/girard/my-visits',    label: 'My Visits' },
-    { to: '/girard/my-customers', label: 'Customers' },
-    { to: '/girard/team',         label: 'My Team' },
-    { to: '/girard/performance',  label: 'Performance' },
+    { to: '/girard/schedule',     label: 'Jadwal' },
+    { to: '/girard/my-visits',    label: 'Kunjungan Saya' },
+    { to: '/girard/my-customers', label: 'Pelanggan Saya' },
+    { to: '/girard/team',         label: 'Tim Saya' },
+    { to: '/girard/performance',  label: 'Performa' },
   ],
   sales_head: [
-    { to: '/girard/schedule',     label: 'Schedule' },
-    { to: '/girard/my-visits',    label: 'My Visits' },
-    { to: '/girard/customers',    label: 'Customers' },
-    { to: '/girard/managers',     label: 'Managers' },
-    { to: '/girard/performance',  label: 'Performance' },
-    { to: '/girard/revenue',      label: 'Revenue' },
+    { to: '/girard/schedule',    label: 'Jadwal' },
+    { to: '/girard/my-visits',   label: 'Kunjungan Saya' },
+    { to: '/girard/customers',   label: 'Pelanggan' },
+    { to: '/girard/managers',    label: 'Manajer' },
+    { to: '/girard/performance', label: 'Performa' },
+    { to: '/girard/revenue',     label: 'Pendapatan' },
   ],
   executive: [
-    { to: '/girard/schedule',     label: 'Schedule' },
-    { to: '/girard/my-visits',    label: 'My Visits' },
-    { to: '/girard/customers',    label: 'Customers' },
-    { to: '/girard/managers',     label: 'Managers' },
-    { to: '/girard/performance',  label: 'Performance' },
-    { to: '/girard/revenue',      label: 'Revenue' },
+    { to: '/girard/schedule',    label: 'Jadwal' },
+    { to: '/girard/my-visits',   label: 'Kunjungan Saya' },
+    { to: '/girard/customers',   label: 'Pelanggan' },
+    { to: '/girard/managers',    label: 'Manajer' },
+    { to: '/girard/performance', label: 'Performa' },
+    { to: '/girard/revenue',     label: 'Pendapatan' },
   ],
 }
 
@@ -76,8 +76,6 @@ export default function GirardNav() {
   return (
     <div className="bg-white border-b border-gray-200 px-4 md:px-8">
       <div className="flex items-center gap-1 h-14">
-
-        {/* Logo / Module switcher */}
         <div className="relative mr-4" ref={switcherRef}>
           <button
             onClick={() => showSwitcherBtn && setShowSwitcher(p => !p)}
@@ -94,32 +92,31 @@ export default function GirardNav() {
 
           {showSwitcher && (
             <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden z-50 w-44">
-                <button
+              <button
                 onClick={() => { navigate('/athel/po'); setShowSwitcher(false) }}
                 className="w-full text-left px-4 py-3 text-sm hover:bg-gray-50 transition-colors border-b border-gray-100"
-                >
+              >
                 <span className="font-medium text-blue-600">Athel</span>
-                <p className="text-xs text-gray-400 mt-0.5">Purchase orders</p>
-                </button>
-                <button
-                onClick={() => { navigate('/girard/customers'); setShowSwitcher(false) }}
+                <p className="text-xs text-gray-400 mt-0.5">Manajemen pembelian</p>
+              </button>
+              <button
+                onClick={() => { navigate('/girard/schedule'); setShowSwitcher(false) }}
                 className="w-full text-left px-4 py-3 text-sm hover:bg-gray-50 transition-colors border-b border-gray-100"
-                >
+              >
                 <span className="font-medium text-green-600">Girard</span>
-                <p className="text-xs text-gray-400 mt-0.5">Sales management</p>
-                </button>
-                <button
+                <p className="text-xs text-gray-400 mt-0.5">Manajemen penjualan</p>
+              </button>
+              <button
                 onClick={() => { navigate('/ihr/users'); setShowSwitcher(false) }}
                 className="w-full text-left px-4 py-3 text-sm hover:bg-gray-50 transition-colors"
-                >
+              >
                 <span className="font-medium" style={{ color: '#e56d3a' }}>iHR</span>
-                <p className="text-xs text-gray-400 mt-0.5">People management</p>
-                </button>
+                <p className="text-xs text-gray-400 mt-0.5">Manajemen SDM</p>
+              </button>
             </div>
-            )}
+          )}
         </div>
 
-        {/* Nav links — desktop */}
         <div className="hidden md:flex items-center gap-1 flex-1">
           {links.map(link => (
             <NavLink
@@ -127,9 +124,7 @@ export default function GirardNav() {
               to={link.to}
               className={({ isActive }) =>
                 `px-4 py-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                  isActive
-                    ? 'border-green-600 text-green-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-800'
+                  isActive ? 'border-green-600 text-green-600' : 'border-transparent text-gray-500 hover:text-gray-800'
                 }`
               }
             >
@@ -138,7 +133,6 @@ export default function GirardNav() {
           ))}
         </div>
 
-        {/* Nav links — mobile horizontal scroll */}
         <div className="flex md:hidden items-center gap-1 flex-1 overflow-x-auto">
           {links.map(link => (
             <NavLink
@@ -146,9 +140,7 @@ export default function GirardNav() {
               to={link.to}
               className={({ isActive }) =>
                 `px-3 py-4 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
-                  isActive
-                    ? 'border-green-600 text-green-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-800'
+                  isActive ? 'border-green-600 text-green-600' : 'border-transparent text-gray-500 hover:text-gray-800'
                 }`
               }
             >
@@ -157,7 +149,6 @@ export default function GirardNav() {
           ))}
         </div>
 
-        {/* User menu */}
         <div className="relative ml-auto" ref={userRef}>
           <button
             onClick={() => setShowUser(p => !p)}
@@ -170,28 +161,25 @@ export default function GirardNav() {
             <div className="absolute top-full right-0 mt-2 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden z-50 w-52">
               <div className="px-4 py-3 border-b border-gray-100">
                 <p className="text-sm font-medium text-gray-900 truncate">{profile?.full_name}</p>
-                <p className="text-xs text-gray-400 mt-0.5 capitalize">
-                  {profile?.role.replace(/_/g, ' ')}
-                </p>
+                <p className="text-xs text-gray-400 mt-0.5 capitalize">{profile?.role.replace(/_/g, ' ')}</p>
               </div>
-              {profile?.role === 'executive' && (
+              {(profile?.role === 'executive') && (
                 <button
                   onClick={() => { navigate('/landing'); setShowUser(false) }}
                   className="w-full text-left px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50 transition-colors border-b border-gray-100"
                 >
-                  Switch module
+                  Ganti modul
                 </button>
               )}
               <button
                 onClick={handleSignOut}
                 className="w-full text-left px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 transition-colors"
               >
-                Sign out
+                Keluar
               </button>
             </div>
           )}
         </div>
-
       </div>
     </div>
   )

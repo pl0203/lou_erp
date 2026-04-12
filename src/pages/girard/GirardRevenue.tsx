@@ -72,9 +72,9 @@ async function fetchRevenue(period: string): Promise<CustomerRevenue[]> {
 }
 
 const PERIODS = [
-  { value: '30d', label: 'Last 30 days' },
-  { value: '90d', label: 'Last 90 days' },
-  { value: '1y', label: 'Last year' },
+  { value: '30d', label: '30 hari terakhir' },
+  { value: '90d', label: '90 hari terakhir' },
+  { value: '1y', label: 'Setahun terakhir' },
 ]
 
 export default function GirardRevenue() {
@@ -95,8 +95,8 @@ export default function GirardRevenue() {
 
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Revenue</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Sales from field orders</p>
+          <h1 className="text-xl font-semibold text-gray-900">Penjualan</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Penjualan dari pesanan sales lapangan</p>
         </div>
         <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
           {PERIODS.map(p => (
@@ -119,19 +119,19 @@ export default function GirardRevenue() {
         {/* Summary cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <p className="text-xs text-gray-400 mb-1">Total Revenue</p>
+            <p className="text-xs text-gray-400 mb-1">Total Penjualan</p>
             <p className="text-2xl font-bold text-gray-900">
               Rp {(totalSales / 1_000_000).toFixed(1)}M
             </p>
-            <p className="text-xs text-gray-400 mt-1">from {totalOrders} orders</p>
+            <p className="text-xs text-gray-400 mt-1">dari {totalOrders} pesanan</p>
           </div>
           <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <p className="text-xs text-gray-400 mb-1">Active Customers</p>
+            <p className="text-xs text-gray-400 mb-1">Pelanggan Aktif</p>
             <p className="text-2xl font-bold text-gray-900">{revenue?.length ?? 0}</p>
-            <p className="text-xs text-gray-400 mt-1">with orders in period</p>
+            <p className="text-xs text-gray-400 mt-1">dengan pesanan dalam periode</p>
           </div>
           <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <p className="text-xs text-gray-400 mb-1">Top Customer</p>
+            <p className="text-xs text-gray-400 mb-1">Pelanggan Teratas</p>
             <p className="text-base font-bold text-gray-900 truncate">
               {topCustomer?.customer_name ?? '—'}
             </p>
@@ -143,15 +143,15 @@ export default function GirardRevenue() {
           </div>
         </div>
 
-        {/* Revenue by customer */}
+        {/* Penjualan by customer */}
         {isLoading && (
-          <div className="text-center text-gray-400 text-sm py-12">Loading revenue data...</div>
+          <div className="text-center text-gray-400 text-sm py-12">Memuat data penjualan...</div>
         )}
 
         {!isLoading && (!revenue || revenue.length === 0) && (
           <div className="text-center py-12">
-            <p className="text-gray-400 text-sm">No revenue data for this period.</p>
-            <p className="text-gray-300 text-xs mt-1">Orders need to be approved to appear here.</p>
+            <p className="text-gray-400 text-sm">Tidak ada data penjualan untuk periode ini.</p>
+            <p className="text-gray-300 text-xs mt-1">Pesanan perlu disetujui untuk muncul di sini.</p>
           </div>
         )}
 
@@ -160,18 +160,18 @@ export default function GirardRevenue() {
             {/* Desktop table */}
             <div className="hidden md:block bg-white rounded-xl border border-gray-200 overflow-hidden">
               <div className="px-5 py-4 border-b border-gray-100">
-                <h2 className="text-base font-medium text-gray-900">Revenue by Customer</h2>
+                <h2 className="text-base font-medium text-gray-900">Penjualan per Pelanggan</h2>
               </div>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-100">
-                    <th className="text-left px-5 py-3 font-medium text-gray-500">Rank</th>
-                    <th className="text-left px-5 py-3 font-medium text-gray-500">Customer</th>
-                    <th className="text-left px-5 py-3 font-medium text-gray-500">Manager</th>
-                    <th className="text-center px-5 py-3 font-medium text-gray-500">Orders</th>
-                    <th className="text-left px-5 py-3 font-medium text-gray-500">Last Order</th>
-                    <th className="text-right px-5 py-3 font-medium text-gray-500">Total Sales</th>
-                    <th className="text-right px-5 py-3 font-medium text-gray-500">Share</th>
+                    <th className="text-left px-5 py-3 font-medium text-gray-500">Peringkat</th>
+                    <th className="text-left px-5 py-3 font-medium text-gray-500">Pelanggan</th>
+                    <th className="text-left px-5 py-3 font-medium text-gray-500">Manajer</th>
+                    <th className="text-center px-5 py-3 font-medium text-gray-500">Pesanan</th>
+                    <th className="text-left px-5 py-3 font-medium text-gray-500">Pesanan Terakhir</th>
+                    <th className="text-right px-5 py-3 font-medium text-gray-500">Total Penjualan</th>
+                    <th className="text-right px-5 py-3 font-medium text-gray-500">Porsi</th>
                   </tr>
                 </thead>
                 <tbody>

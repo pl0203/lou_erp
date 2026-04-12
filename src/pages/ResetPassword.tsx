@@ -10,9 +10,9 @@ export default function ResetPassword() {
   const [error, setError] = useState('')
 
   const handleReset = async () => {
-    if (!password) return setError('Please enter a new password.')
-    if (password.length < 8) return setError('Password must be at least 8 characters.')
-    if (password !== confirm) return setError('Passwords do not match.')
+    if (!password) return setError('Masukkan kata sandi baru.')
+    if (password.length < 8) return setError('Kata sandi minimal 8 karakter.')
+    if (password !== confirm) return setError('Kata sandi tidak cocok.')
 
     setLoading(true)
     setError('')
@@ -32,31 +32,29 @@ export default function ResetPassword() {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="bg-white rounded-2xl border border-gray-200 p-8 w-full max-w-sm shadow-sm">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">Set your password</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Choose a strong password for your account.
-          </p>
+          <h1 className="text-2xl font-bold text-gray-900">Buat kata sandi baru</h1>
+          <p className="text-sm text-gray-500 mt-1">Pilih kata sandi yang kuat untuk akun Anda.</p>
         </div>
 
         <div className="space-y-4">
           <div>
-            <label className="block text-sm text-gray-600 mb-1">New password</label>
+            <label className="block text-sm text-gray-600 mb-1">Kata sandi baru</label>
             <input
               type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
-              placeholder="At least 8 characters"
+              placeholder="Minimal 8 karakter"
               className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <div>
-            <label className="block text-sm text-gray-600 mb-1">Confirm password</label>
+            <label className="block text-sm text-gray-600 mb-1">Konfirmasi kata sandi</label>
             <input
               type="password"
               value={confirm}
               onChange={e => setConfirm(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleReset()}
-              placeholder="Repeat your password"
+              placeholder="Ulangi kata sandi Anda"
               className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -68,7 +66,7 @@ export default function ResetPassword() {
             disabled={loading}
             className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2.5 rounded-lg transition-colors disabled:opacity-50"
           >
-            {loading ? 'Saving...' : 'Set password'}
+            {loading ? 'Menyimpan...' : 'Simpan kata sandi'}
           </button>
         </div>
       </div>

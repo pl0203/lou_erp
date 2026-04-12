@@ -32,7 +32,7 @@ const STATUS_STYLES: Record<string, string> = {
   missed:    'bg-red-100 text-red-700',
 }
 
-const DAY_LABELS = ['Today', 'Tomorrow', 'In 2 days', 'In 3 days']
+const DAY_LABELS = ['Hari Ini', 'Besok', 'Dalam 2 Hari', 'Dalam 3 Hari']
 
 function getDateRange(): string[] {
   return Array.from({ length: 4 }, (_, i) => {
@@ -120,7 +120,7 @@ export default function DailySchedule() {
 
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5">
-        <h1 className="text-xl font-semibold text-gray-900">My Schedule</h1>
+        <h1 className="text-xl font-semibold text-gray-900">Jadwal Saya</h1>
         <p className="text-sm text-gray-500 mt-0.5">{formatDate(selectedDate)}</p>
         {selectedDate === dates[0] && total > 0 && (
           <div className="flex items-center gap-2 mt-3">
@@ -131,7 +131,7 @@ export default function DailySchedule() {
               />
             </div>
             <span className="text-xs text-gray-500 whitespace-nowrap">
-              {completed}/{total} visited
+              {completed}/{total} dikunjungi
             </span>
           </div>
         )}
@@ -166,16 +166,16 @@ export default function DailySchedule() {
       <div className="px-4 md:px-8 py-6 max-w-2xl mx-auto space-y-4">
         {isLoading && (
           <div className="text-center text-gray-400 text-sm py-24">
-            Loading your schedule...
+            Memuat jadwal Anda...
           </div>
         )}
 
         {!isLoading && schedules.length === 0 && (
           <div className="text-center py-24">
             <p className="text-gray-400 text-sm">
-              No visits scheduled for {DAY_LABELS[dates.indexOf(selectedDate)].toLowerCase()}.
+              Tidak ada kunjungan dijadwalkan untuk {DAY_LABELS[dates.indexOf(selectedDate)].toLowerCase()}.
             </p>
-            <p className="text-gray-300 text-xs mt-1">Check back later or contact your manager.</p>
+            <p className="text-gray-300 text-xs mt-1">Periksa kembali nanti atau hubungi manajer Anda.</p>
           </div>
         )}
 
@@ -201,12 +201,12 @@ export default function DailySchedule() {
                       </h2>
                       {checkedIn && (
                         <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
-                          ✓ Checked in
+                          ✓ Sudah Check-in
                         </span>
                       )}
                       {overdue && !checkedIn && isToday && (
                         <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">
-                          Overdue
+                          Terlambat
                         </span>
                       )}
                     </div>
@@ -225,7 +225,7 @@ export default function DailySchedule() {
               {/* Stats row */}
               <div className="grid grid-cols-3 divide-x divide-gray-100 border-b border-gray-100">
                 <div className="px-4 py-3 text-center">
-                  <p className="text-xs text-gray-400 mb-0.5">Last visit</p>
+                  <p className="text-xs text-gray-400 mb-0.5">Kunjungan Terakhir</p>
                   <p className="text-sm font-medium text-gray-900">
                     {customer?.last_visit_date
                       ? new Date(customer.last_visit_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
@@ -233,13 +233,13 @@ export default function DailySchedule() {
                   </p>
                 </div>
                 <div className="px-4 py-3 text-center">
-                  <p className="text-xs text-gray-400 mb-0.5">Orders (3mo)</p>
+                  <p className="text-xs text-gray-400 mb-0.5">Pesanan (3bl)</p>
                   <p className="text-sm font-medium text-gray-900">
                     {stats?.order_count ?? 0}
                   </p>
                 </div>
                 <div className="px-4 py-3 text-center">
-                  <p className="text-xs text-gray-400 mb-0.5">Sales (3mo)</p>
+                  <p className="text-xs text-gray-400 mb-0.5">Penjualan (3bl)</p>
                   <p className="text-sm font-medium text-gray-900">
                     {stats?.total_sales
                       ? `Rp ${(stats.total_sales / 1_000_000).toFixed(1)}M`
@@ -251,7 +251,7 @@ export default function DailySchedule() {
               {/* Top items */}
               {stats?.top_items && stats.top_items.length > 0 && (
                 <div className="px-5 py-3 border-b border-gray-100">
-                  <p className="text-xs text-gray-400 mb-2">Top ordered items</p>
+                  <p className="text-xs text-gray-400 mb-2">Barang terlaris</p>
                   <div className="flex flex-wrap gap-1.5">
                     {stats.top_items.map(item => (
                       <span
@@ -267,7 +267,7 @@ export default function DailySchedule() {
 
               {schedule.notes && (
                 <div className="px-5 py-3 border-b border-gray-100">
-                  <p className="text-xs text-gray-400 mb-1">Note from manager</p>
+                  <p className="text-xs text-gray-400 mb-1">Catatan dari manajer</p>
                   <p className="text-sm text-gray-600">{schedule.notes}</p>
                 </div>
               )}
@@ -288,20 +288,20 @@ export default function DailySchedule() {
                         onClick={() => navigate(`/girard/visit/${schedule.id}`)}
                         className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium py-2.5 rounded-xl transition-colors"
                       >
-                        View Visit
+                        Lihat Kunjungan
                       </button>
                     )}
                   </>
                 ) : (
                   <div className="flex-1 text-center text-xs text-gray-400 py-2">
-                    Scheduled for {formatDate(schedule.scheduled_date)}
+                    Dijadwalkan untuk {formatDate(schedule.scheduled_date)}
                   </div>
                 )}
                 <button
                   onClick={() => navigate(`/girard/customer/${customer?.id}`)}
                   className="px-4 py-2.5 border border-gray-200 hover:border-gray-300 text-gray-600 text-sm font-medium rounded-xl transition-colors"
                 >
-                  Customer Info
+                  Info Pelanggan
                 </button>
               </div>
             </div>

@@ -5,7 +5,7 @@ const modules = [
   {
     key: 'athel',
     label: 'Athel',
-    description: 'Purchase order management, customers, and fulfilment tracking.',
+    description: 'Manajemen purchase order, pelanggan, dan pelacakan pemenuhan.',
     color: '#2563eb',
     bg: '#eff6ff',
     letter: 'A',
@@ -14,16 +14,16 @@ const modules = [
   {
     key: 'girard',
     label: 'Girard',
-    description: 'Sales team management, customer visits, and order capture.',
+    description: 'Manajemen tim penjualan, kunjungan pelanggan, dan pencatatan pesanan.',
     color: '#16a34a',
     bg: '#f0fdf4',
     letter: 'G',
-    path: '/girard/customers',
+    path: '/girard/schedule',
   },
   {
     key: 'ihr',
     label: 'iHR',
-    description: 'User management and people operations.',
+    description: 'Manajemen pengguna dan operasional SDM.',
     color: '#e56d3a',
     bg: '#fdf0eb',
     letter: 'i',
@@ -44,9 +44,9 @@ export default function Landing() {
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4">
       <div className="mb-10 text-center">
         <h1 className="text-3xl font-bold text-gray-900">
-          Good day, {profile?.full_name?.split(' ')[0]}
+          Selamat datang, {profile?.full_name?.split(' ')[0]}
         </h1>
-        <p className="text-gray-500 text-sm mt-2">Which system would you like to open?</p>
+        <p className="text-gray-500 text-sm mt-2">Pilih sistem yang ingin Anda buka</p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full max-w-2xl">
@@ -55,20 +55,14 @@ export default function Landing() {
             key={mod.key}
             onClick={() => navigate(mod.path)}
             className="bg-white border border-gray-200 hover:shadow-md rounded-2xl p-8 text-left transition-all group"
-            style={{ ['--hover-color' as string]: mod.color }}
           >
             <div
               className="w-10 h-10 rounded-xl flex items-center justify-center mb-4"
               style={{ backgroundColor: mod.bg }}
             >
-              <span className="font-bold text-sm" style={{ color: mod.color }}>
-                {mod.letter}
-              </span>
+              <span className="font-bold text-sm" style={{ color: mod.color }}>{mod.letter}</span>
             </div>
-            <h2
-              className="text-lg font-semibold text-gray-900 mb-1 transition-colors group-hover:opacity-80"
-              style={{ color: mod.color }}
-            >
+            <h2 className="text-lg font-semibold mb-1 transition-colors" style={{ color: mod.color }}>
               {mod.label}
             </h2>
             <p className="text-sm text-gray-500">{mod.description}</p>
@@ -80,7 +74,7 @@ export default function Landing() {
         onClick={handleSignOut}
         className="mt-12 text-xs text-gray-400 hover:text-gray-600"
       >
-        Sign out
+        Keluar
       </button>
     </div>
   )

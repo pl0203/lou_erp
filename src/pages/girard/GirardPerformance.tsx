@@ -104,9 +104,9 @@ if (role === 'sales_manager') {
 }
 
 const PERIODS = [
-  { value: '7d', label: 'Last 7 days' },
-  { value: '30d', label: 'Last 30 days' },
-  { value: '90d', label: 'Last 90 days' },
+  { value: '7d', label: '7 hari terakhir' },
+  { value: '30d', label: '30 hari terakhir' },
+  { value: '90d', label: '90 hari terakhir' },
 ]
 
 export default function GirardPerformance() {
@@ -133,8 +133,8 @@ export default function GirardPerformance() {
 
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Performance</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Sales team activity and results</p>
+          <h1 className="text-xl font-semibold text-gray-900">Performa</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Aktivitas dan hasil tim sales</p>
         </div>
         <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
           {PERIODS.map(p => (
@@ -157,37 +157,37 @@ export default function GirardPerformance() {
         {/* Summary cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <p className="text-xs text-gray-400 mb-1">Visit rate</p>
+            <p className="text-xs text-gray-400 mb-1">Tingkat Kunjungan</p>
             <p className="text-2xl font-bold text-gray-900">{avgVisitRate}%</p>
-            <p className="text-xs text-gray-400 mt-1">{totalVisited}/{totalScheduled} visits</p>
+            <p className="text-xs text-gray-400 mt-1">{totalVisited}/{totalScheduled} kunjungan</p>
           </div>
           <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <p className="text-xs text-gray-400 mb-1">Total visits</p>
+            <p className="text-xs text-gray-400 mb-1">Total kunjungan</p>
             <p className="text-2xl font-bold text-gray-900">{totalVisited}</p>
-            <p className="text-xs text-gray-400 mt-1">of {totalScheduled} scheduled</p>
+            <p className="text-xs text-gray-400 mt-1">dari {totalScheduled} dijadwalkan</p>
           </div>
           <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <p className="text-xs text-gray-400 mb-1">Orders placed</p>
+            <p className="text-xs text-gray-400 mb-1">Pesanan dibuat</p>
             <p className="text-2xl font-bold text-gray-900">{totalOrders}</p>
-            <p className="text-xs text-gray-400 mt-1">from field visits</p>
+            <p className="text-xs text-gray-400 mt-1">dari tim sales lapangan</p>
           </div>
           <div className="bg-white rounded-xl border border-gray-200 p-4">
-            <p className="text-xs text-gray-400 mb-1">Total sales</p>
+            <p className="text-xs text-gray-400 mb-1">Total penjualan</p>
             <p className="text-2xl font-bold text-gray-900">
               Rp {(totalSales / 1_000_000).toFixed(1)}M
             </p>
-            <p className="text-xs text-gray-400 mt-1">from field orders</p>
+            <p className="text-xs text-gray-400 mt-1">dari tim sales lapangan</p>
           </div>
         </div>
 
         {/* Per-person breakdown */}
         {isLoading && (
-          <div className="text-center text-gray-400 text-sm py-12">Loading performance data...</div>
+          <div className="text-center text-gray-400 text-sm py-12">Memuat data performance...</div>
         )}
 
         {!isLoading && (!performance || performance.length === 0) && (
           <div className="text-center py-12">
-            <p className="text-gray-400 text-sm">No performance data available.</p>
+            <p className="text-gray-400 text-sm">Tidak ada data performance tersedia.</p>
           </div>
         )}
 
@@ -196,17 +196,17 @@ export default function GirardPerformance() {
             {/* Desktop table */}
             <div className="hidden md:block bg-white rounded-xl border border-gray-200 overflow-hidden">
               <div className="px-5 py-4 border-b border-gray-100">
-                <h2 className="text-base font-medium text-gray-900">By Sales Person</h2>
+                <h2 className="text-base font-medium text-gray-900">Per Sales</h2>
               </div>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-100">
-                    <th className="text-left px-5 py-3 font-medium text-gray-500">Name</th>
-                    <th className="text-center px-5 py-3 font-medium text-gray-500">Scheduled</th>
-                    <th className="text-center px-5 py-3 font-medium text-gray-500">Visited</th>
-                    <th className="text-center px-5 py-3 font-medium text-gray-500">Visit Rate</th>
-                    <th className="text-center px-5 py-3 font-medium text-gray-500">Orders</th>
-                    <th className="text-right px-5 py-3 font-medium text-gray-500">Sales</th>
+                    <th className="text-left px-5 py-3 font-medium text-gray-500">Nama</th>
+                    <th className="text-center px-5 py-3 font-medium text-gray-500">Dijadwalkan</th>
+                    <th className="text-center px-5 py-3 font-medium text-gray-500">Dikunjungi</th>
+                    <th className="text-center px-5 py-3 font-medium text-gray-500">Tingkat Kunjungan</th>
+                    <th className="text-center px-5 py-3 font-medium text-gray-500">Pesanan</th>
+                    <th className="text-right px-5 py-3 font-medium text-gray-500">Penjualan</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -286,15 +286,15 @@ export default function GirardPerformance() {
                   </div>
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div className="bg-gray-50 rounded-lg p-3 text-center">
-                      <p className="text-xs text-gray-400 mb-1">Visits</p>
+                      <p className="text-xs text-gray-400 mb-1">Kunjungan</p>
                       <p className="font-semibold text-gray-900">{p.visited}/{p.scheduled}</p>
                     </div>
                     <div className="bg-gray-50 rounded-lg p-3 text-center">
-                      <p className="text-xs text-gray-400 mb-1">Orders</p>
+                      <p className="text-xs text-gray-400 mb-1">Pesanan</p>
                       <p className="font-semibold text-gray-900">{p.orders}</p>
                     </div>
                     <div className="bg-gray-50 rounded-lg p-3 text-center col-span-2">
-                      <p className="text-xs text-gray-400 mb-1">Total Sales</p>
+                      <p className="text-xs text-gray-400 mb-1">Total Penjualan</p>
                       <p className="font-semibold text-gray-900">
                         Rp {(p.total_sales / 1_000_000).toFixed(1)}M
                       </p>

@@ -47,11 +47,12 @@ const EMPTY_FORM: CustomerForm = {
 }
 
 const FREQUENCY_OPTIONS = [
-  { label: '2x per week', days: 3 },
-  { label: '1x per week', days: 7 },
-  { label: '1x per 2 weeks', days: 14 },
-  { label: '2x per month', days: 15 },
-  { label: '1x per month', days: 30 },
+  { label: '2x per minggu', days: 3 },
+  { label: '1x per minggu', days: 7 },
+  { label: '1x per 2 minggu', days: 14 },
+  { label: '1x per bulan', days: 30 },
+  { label: '1x per 2 bulan', days: 60 },
+  { label: '1x per 3 bulan', days: 90 },
 ]
 
 async function fetchAllCustomers(): Promise<Customer[]> {
@@ -282,8 +283,8 @@ export default function GirardCustomers() {
 
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Customers</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{customers?.length ?? 0} total customers</p>
+          <h1 className="text-xl font-semibold text-gray-900">Pelanggan</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{customers?.length ?? 0} total pelanggan</p>
         </div>
         <div className="flex gap-2">
           {unassignedCustomers.length > 0 && (
@@ -298,7 +299,7 @@ export default function GirardCustomers() {
             onClick={() => { setModalMode('create'); setShowModal(true) }}
             className="bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
           >
-            + New Customer
+            + Pelanggan Baru
           </button>
         </div>
       </div>
@@ -306,14 +307,14 @@ export default function GirardCustomers() {
       <div className="px-4 md:px-8 py-6">
         <input
           type="text"
-          placeholder="Search by name or city..."
+          placeholder="Cari berdasarkan nama atau kota..."
           value={search}
           onChange={e => setSearch(e.target.value)}
           className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full sm:w-80 mb-4 focus:outline-none focus:ring-2 focus:ring-green-500"
         />
 
         {isLoading && (
-          <div className="text-center text-gray-400 text-sm py-24">Loading customers...</div>
+          <div className="text-center text-gray-400 text-sm py-24">Memuat pelanggan...</div>
         )}
 
         {/* Desktop table */}
@@ -322,18 +323,18 @@ export default function GirardCustomers() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Customer</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Location</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Assigned Manager</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Visit Frequency</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Last Visit</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">Pelanggan</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">Alamat</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">Manajer</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">Frekuensi Kunjungan</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">Kunjungan Terakhir</th>
                   <th className="text-right px-5 py-3 font-medium text-gray-500">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered?.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="text-center text-gray-400 py-12">No customers found.</td>
+                    <td colSpan={6} className="text-center text-gray-400 py-12">Tidak ada pelanggan ditemukan.</td>
                   </tr>
                 )}
                 {filtered?.map(c => {
@@ -351,7 +352,7 @@ export default function GirardCustomers() {
                       <td className="px-5 py-4">
                         {assignment
                           ? <span className="text-gray-900">{assignment.managers?.full_name}</span>
-                          : <span className="text-xs text-gray-300">Unassigned</span>
+                          : <span className="text-xs text-gray-300">Belum ditugaskan</span>
                         }
                       </td>
                       <td className="px-5 py-4 text-gray-600 text-xs">
@@ -361,7 +362,7 @@ export default function GirardCustomers() {
                         <span className={`text-xs ${overdue ? 'text-red-500 font-medium' : 'text-gray-600'}`}>
                           {c.last_visit_date
                             ? new Date(c.last_visit_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
-                            : 'Never'}
+                            : 'Belum pernah'}
                           {overdue && ' ⚠'}
                         </span>
                       </td>
@@ -415,7 +416,7 @@ export default function GirardCustomers() {
                       <p className={`mt-0.5 ${overdue ? 'text-red-500 font-medium' : 'text-gray-700'}`}>
                         {c.last_visit_date
                           ? new Date(c.last_visit_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
-                          : 'Never'}
+                          : 'Belum pernah'}
                         {overdue && ' ⚠'}
                       </p>
                     </div>
@@ -433,9 +434,9 @@ export default function GirardCustomers() {
           <div className="bg-white rounded-xl w-full max-w-md shadow-xl max-h-[90vh] overflow-y-auto">
             <div className="px-6 py-5 border-b border-gray-100">
               <h3 className="text-base font-semibold text-gray-900">
-                {modalMode === 'create' ? 'New Customer'
+                {modalMode === 'create' ? 'Pelanggan Baru'
                   : modalMode === 'assign-existing' ? 'Assign Existing Customer'
-                  : 'Edit Customer Assignment'}
+                  : 'Ubah Penugasan Pelanggan'}
               </h3>
             </div>
 
@@ -445,10 +446,10 @@ export default function GirardCustomers() {
               {modalMode === 'create' && (
                 <>
                   {[
-                    { label: 'Customer Name *', field: 'name', placeholder: 'e.g. Toko Bangunan Maju' },
-                    { label: 'Address', field: 'address', placeholder: 'e.g. Jl. Sudirman No. 12' },
-                    { label: 'City', field: 'city', placeholder: 'e.g. Jakarta' },
-                    { label: 'Phone', field: 'phone', placeholder: 'e.g. 021-5551234' },
+                    { label: 'Nama Pelanggan *', field: 'name', placeholder: 'e.g. Toko Bangunan Maju' },
+                    { label: 'Alamat', field: 'address', placeholder: 'e.g. Jl. Sudirman No. 12' },
+                    { label: 'Kota', field: 'city', placeholder: 'e.g. Jakarta' },
+                    { label: 'Nomor Telepon', field: 'phone', placeholder: 'e.g. 021-5551234' },
                     { label: 'Email', field: 'email', placeholder: 'e.g. toko@example.com' },
                   ].map(({ label, field, placeholder }) => (
                     <div key={field}>
@@ -463,7 +464,7 @@ export default function GirardCustomers() {
                     </div>
                   ))}
                   <div>
-                    <label className="block text-sm text-gray-600 mb-1">Visit Frequency *</label>
+                    <label className="block text-sm text-gray-600 mb-1">Frekuensi Kunjungan *</label>
                     <select
                       value={form.visit_frequency_days}
                       onChange={e => setForm(p => ({ ...p, visit_frequency_days: parseInt(e.target.value) }))}
@@ -476,14 +477,14 @@ export default function GirardCustomers() {
                   </div>
                   <div>
                     <label className="block text-sm text-gray-600 mb-1">
-                      Assign to Manager <span className="text-gray-400">(optional)</span>
+                      Tugaskan ke Manajer <span className="text-gray-400">(opsional)</span>
                     </label>
                     <select
                       value={form.manager_id}
                       onChange={e => setForm(p => ({ ...p, manager_id: e.target.value }))}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
                     >
-                      <option value="">No manager yet</option>
+                      <option value="">Belum ada manajer</option>
                       {managers?.map(m => (
                         <option key={m.id} value={m.id}>{m.full_name}</option>
                       ))}
@@ -496,23 +497,23 @@ export default function GirardCustomers() {
               {modalMode === 'assign-existing' && (
                 <>
                   <div>
-                    <label className="block text-sm text-gray-600 mb-1">Select Customer *</label>
+                    <label className="block text-sm text-gray-600 mb-1">Pilih Pelanggan *</label>
                     <select
                       value={selectedExistingId}
                       onChange={e => setSelectedExistingId(e.target.value)}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
                     >
-                      <option value="">Select customer...</option>
+                      <option value="">Pilih pelanggan...</option>
                       {unassignedCustomers.map(c => (
                         <option key={c.id} value={c.id}>{c.name}</option>
                       ))}
                     </select>
                     <p className="text-xs text-gray-400 mt-1">
-                      Only showing customers not yet assigned to a manager.
+                      Hanya menampilkan pelanggan yang belum ditugaskan ke manajer.
                     </p>
                   </div>
                   <div>
-                    <label className="block text-sm text-gray-600 mb-1">Visit Frequency *</label>
+                    <label className="block text-sm text-gray-600 mb-1">Frekuensi Kunjungan *</label>
                     <select
                       value={existingFrequency}
                       onChange={e => setExistingFrequency(parseInt(e.target.value))}
@@ -524,13 +525,13 @@ export default function GirardCustomers() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm text-gray-600 mb-1">Assign to Manager *</label>
+                    <label className="block text-sm text-gray-600 mb-1">Tugaskan ke Manajer *</label>
                     <select
                       value={existingManagerId}
                       onChange={e => setExistingManagerId(e.target.value)}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
                     >
-                      <option value="">Select manager...</option>
+                      <option value="">Pilih manajer...</option>
                       {managers?.map(m => (
                         <option key={m.id} value={m.id}>{m.full_name}</option>
                       ))}
@@ -543,7 +544,7 @@ export default function GirardCustomers() {
               {modalMode === 'edit' && (
                 <>
                   <div>
-                    <label className="block text-sm text-gray-600 mb-1">Visit Frequency</label>
+                    <label className="block text-sm text-gray-600 mb-1">Frekuensi Kunjungan</label>
                     <select
                       value={form.visit_frequency_days}
                       onChange={e => setForm(p => ({ ...p, visit_frequency_days: parseInt(e.target.value) }))}
@@ -555,13 +556,13 @@ export default function GirardCustomers() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm text-gray-600 mb-1">Assigned Manager</label>
+                    <label className="block text-sm text-gray-600 mb-1">Manajer</label>
                     <select
                       value={form.manager_id}
                       onChange={e => setForm(p => ({ ...p, manager_id: e.target.value }))}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
                     >
-                      <option value="">Unassigned</option>
+                      <option value="">Belum ditugaskan</option>
                       {managers?.map(m => (
                         <option key={m.id} value={m.id}>{m.full_name}</option>
                       ))}
@@ -576,16 +577,16 @@ export default function GirardCustomers() {
                 onClick={closeModal}
                 className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
               >
-                Cancel
+                Batal
               </button>
               <button
                 onClick={() => {
                   if (modalMode === 'create') {
-                    if (!form.name.trim()) return alert('Customer name is required.')
+                    if (!form.name.trim()) return alert('Nama pelanggan wajib diisi.')
                     createMutation.mutate()
                   } else if (modalMode === 'assign-existing') {
-                    if (!selectedExistingId) return alert('Please select a customer.')
-                    if (!existingManagerId) return alert('Please select a manager.')
+                    if (!selectedExistingId) return alert('Pilih pelanggan terlebih dahulu.')
+                    if (!existingManagerId) return alert('Pilih manajer terlebih dahulu.')
                     assignExistingMutation.mutate()
                   } else {
                     updateMutation.mutate()
@@ -594,7 +595,7 @@ export default function GirardCustomers() {
                 disabled={isPending}
                 className="px-4 py-2 text-sm font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
               >
-                {isPending ? 'Saving...' : modalMode === 'create' ? 'Create' : modalMode === 'assign-existing' ? 'Assign' : 'Save'}
+                {isPending ? 'Menyimpan...' : modalMode === 'create' ? 'Buat' : modalMode === 'assign-existing' ? 'Tugaskan' : 'Simpan'}
               </button>
             </div>
 

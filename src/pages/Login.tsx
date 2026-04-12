@@ -7,7 +7,7 @@ const ROLE_HOME: Record<string, string> = {
   po_admin:      '/athel/po',
   sales_person:  '/girard/schedule',
   sales_manager: '/girard/schedule',
-  sales_head:    '/girard/customers',
+  sales_head:    '/girard/schedule',
   executive:     '/landing',
 }
 
@@ -19,7 +19,6 @@ export default function Login() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
-  // Only redirect if we have a confirmed profile — not on every render
   useEffect(() => {
     if (!loading && profile) {
       navigate(ROLE_HOME[profile.role] ?? '/login', { replace: true })
@@ -27,40 +26,35 @@ export default function Login() {
   }, [profile, loading])
 
   const handleLogin = async () => {
-    if (!email || !password) return setError('Please enter your email and password.')
+    if (!email || !password) return setError('Masukkan email dan kata sandi Anda.')
     setSubmitting(true)
     setError('')
-  
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-  
+
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+
     if (signInError) {
-      setError('Incorrect email or password. Please try again.')
+      setError('Email atau kata sandi salah. Silakan coba lagi.')
       setSubmitting(false)
       return
     }
-  
-    // Check if user is active
-    const { data: profile } = await supabase
+
+    const { data: profileData } = await supabase
       .from('users')
       .select('is_active')
       .eq('email', email)
       .single()
-  
-    if (profile && !profile.is_active) {
+
+    if (profileData && !profileData.is_active) {
       await supabase.auth.signOut()
-      setError('Your account has been deactivated. Please contact your administrator.')
+      setError('Akun Anda telah dinonaktifkan. Hubungi administrator Anda.')
       setSubmitting(false)
-      return
     }
   }
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-400 text-sm">Loading...</p>
+        <p className="text-gray-400 text-sm">Memuat...</p>
       </div>
     )
   }
@@ -69,8 +63,8 @@ export default function Login() {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="bg-white rounded-2xl border border-gray-200 p-8 w-full max-w-sm shadow-sm">
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">Welcome back</h1>
-          <p className="text-sm text-gray-500 mt-1">Sign in to your account</p>
+          <h1 className="text-2xl font-bold text-gray-900">Selamat datang</h1>
+          <p className="text-sm text-gray-500 mt-1">Masuk ke akun Anda</p>
         </div>
 
         <div className="space-y-4">
@@ -81,19 +75,19 @@ export default function Login() {
               value={email}
               onChange={e => setEmail(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleLogin()}
-              placeholder="you@company.com"
+              placeholder="anda@perusahaan.com"
               autoComplete="email"
               className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="block text-sm text-gray-600">Password</label>
+              <label className="block text-sm text-gray-600">Kata Sandi</label>
               <button
                 onClick={() => navigate('/forgot-password')}
                 className="text-xs text-blue-600 hover:text-blue-800"
               >
-                Forgot password?
+                Lupa kata sandi?
               </button>
             </div>
             <input
@@ -114,7 +108,7 @@ export default function Login() {
             disabled={submitting}
             className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2.5 rounded-lg transition-colors disabled:opacity-50"
           >
-            {submitting ? 'Signing in...' : 'Sign in'}
+            {submitting ? 'Masuk...' : 'Masuk'}
           </button>
         </div>
       </div>

@@ -165,14 +165,14 @@ export default function SalesOrders() {
 
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Sales Orders</h1>
+          <h1 className="text-xl font-semibold text-gray-900">Pesanan dari Sales</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Orders submitted by the sales team from the field
+            Pesanan yang diajukan tim Sales dari lapangan
           </p>
         </div>
         {pendingCount > 0 && statusFilter !== 'pending' && (
           <span className="bg-yellow-100 text-yellow-700 text-xs font-medium px-3 py-1.5 rounded-full">
-            {pendingCount} pending review
+            {pendingCount} menunggu persetujuan
           </span>
         )}
       </div>
@@ -182,9 +182,9 @@ export default function SalesOrders() {
         <div className="flex gap-1">
           {[
             { value: 'pending',  label: 'Pending' },
-            { value: 'approved', label: 'Approved' },
-            { value: 'rejected', label: 'Rejected' },
-            { value: 'all',      label: 'All' },
+            { value: 'approved', label: 'Disetujui' },
+            { value: 'rejected', label: 'Ditolak' },
+            { value: 'all',      label: 'Semua' },
           ].map(tab => (
             <button
               key={tab.value}
@@ -203,12 +203,12 @@ export default function SalesOrders() {
 
       <div className="px-4 md:px-8 py-6 space-y-4">
         {isLoading && (
-          <div className="text-center text-gray-400 text-sm py-24">Loading orders...</div>
+          <div className="text-center text-gray-400 text-sm py-24">Memuat PO...</div>
         )}
 
         {!isLoading && orders?.length === 0 && (
           <div className="text-center py-24">
-            <p className="text-gray-400 text-sm">No {statusFilter !== 'all' ? statusFilter : ''} orders found.</p>
+            <p className="text-gray-400 text-sm">Tidak {statusFilter !== 'all' ? statusFilter : ''} ada PO ditemukan.</p>
           </div>
         )}
 
@@ -224,10 +224,10 @@ export default function SalesOrders() {
                   </span>
                 </div>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  Submitted by {order.users?.full_name} · {new Date(order.created_at).toLocaleString('id-ID')}
+                  Diajukan oleh {order.users?.full_name} · {new Date(order.created_at).toLocaleString('id-ID')}
                 </p>
                 {order.rejection_note && (
-                  <p className="text-xs text-red-500 mt-1">Rejection note: {order.rejection_note}</p>
+                  <p className="text-xs text-red-500 mt-1">Alasan penolakan: {order.rejection_note}</p>
                 )}
               </div>
               <p className="font-semibold text-gray-900 shrink-0">
@@ -240,10 +240,10 @@ export default function SalesOrders() {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="text-gray-400">
-                    <th className="text-left pb-2 font-medium">Item</th>
+                    <th className="text-left pb-2 font-medium">Produk</th>
                     <th className="text-left pb-2 font-medium hidden sm:table-cell">SKU</th>
                     <th className="text-right pb-2 font-medium">Qty</th>
-                    <th className="text-right pb-2 font-medium">Price</th>
+                    <th className="text-right pb-2 font-medium">Harga Satuan</th>
                     <th className="text-right pb-2 font-medium">Total</th>
                   </tr>
                 </thead>
@@ -274,7 +274,7 @@ export default function SalesOrders() {
                   onClick={() => setRejectingOrder(order)}
                   className="px-4 py-2 text-sm text-red-500 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
                 >
-                  Reject
+                  Tolak
                 </button>
                 <button
                   onClick={() => {
@@ -284,7 +284,7 @@ export default function SalesOrders() {
                   }}
                   className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                 >
-                  Approve & Create PO
+                  Setuju & Buat menjadi PO
                 </button>
               </div>
             )}
@@ -297,14 +297,14 @@ export default function SalesOrders() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl w-full max-w-md shadow-xl">
             <div className="px-6 py-5 border-b border-gray-100">
-              <h3 className="text-base font-semibold text-gray-900">Approve & Create PO</h3>
+              <h3 className="text-base font-semibold text-gray-900">Setuju & Buat menjadi PO</h3>
               <p className="text-xs text-gray-400 mt-0.5">
-                This will create a new PO in Athel for {approvingOrder.customers?.name}
+                Tindakan ini akan membuat PO baru di Athel untuk {approvingOrder.customers?.name}
               </p>
             </div>
             <div className="px-6 py-4 space-y-4">
               <div>
-                <label className="block text-sm text-gray-600 mb-1">PO Number *</label>
+                <label className="block text-sm text-gray-600 mb-1">Nomor PO *</label>
                 <input
                   type="text"
                   value={poNumber}
@@ -315,7 +315,7 @@ export default function SalesOrders() {
               </div>
               <div>
                 <label className="block text-sm text-gray-600 mb-1">
-                  Expected Delivery <span className="text-gray-400">(optional)</span>
+                  Tanggal PO Expired <span className="text-gray-400">(optional)</span>
                 </label>
                 <input
                   type="date"
@@ -327,7 +327,7 @@ export default function SalesOrders() {
 
               {/* Order summary */}
               <div className="bg-gray-50 rounded-lg p-3 space-y-1">
-                <p className="text-xs text-gray-500 font-medium mb-2">Order Summary</p>
+                <p className="text-xs text-gray-500 font-medium mb-2">Ringkasan PO</p>
                 {approvingOrder.girard_order_items.map(item => (
                   <div key={item.id} className="flex justify-between text-xs text-gray-600">
                     <span>{item.product_name} x{item.quantity}</span>
@@ -345,7 +345,7 @@ export default function SalesOrders() {
                 onClick={() => { setApprovingOrder(null); setPoNumber('') }}
                 className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
               >
-                Cancel
+                Batal
               </button>
               <button
                 onClick={() => {
@@ -372,14 +372,14 @@ export default function SalesOrders() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl w-full max-w-sm shadow-xl">
             <div className="px-6 py-5 border-b border-gray-100">
-              <h3 className="text-base font-semibold text-gray-900">Reject Order</h3>
+              <h3 className="text-base font-semibold text-gray-900">Tolak Pesanan</h3>
               <p className="text-xs text-gray-400 mt-0.5">
-                {rejectingOrder.customers?.name} — submitted by {rejectingOrder.users?.full_name}
+                {rejectingOrder.customers?.name} — diajukan oleh {rejectingOrder.users?.full_name}
               </p>
             </div>
             <div className="px-6 py-4">
               <label className="block text-sm text-gray-600 mb-1">
-                Reason for rejection <span className="text-gray-400">(optional)</span>
+                Alasan penolakan <span className="text-gray-400">(opsional)</span>
               </label>
               <textarea
                 value={rejectionNote}
@@ -394,14 +394,14 @@ export default function SalesOrders() {
                 onClick={() => { setRejectingOrder(null); setRejectionNote('') }}
                 className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
               >
-                Cancel
+                Batal
               </button>
               <button
                 onClick={() => rejectMutation.mutate()}
                 disabled={rejectMutation.isPending}
                 className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
               >
-                {rejectMutation.isPending ? 'Rejecting...' : 'Reject Order'}
+                {rejectMutation.isPending ? 'Menolak...' : 'Tolak Pesanan'}
               </button>
             </div>
           </div>

@@ -23,10 +23,10 @@ const STATUS_STYLES: Record<string, string> = {
 }
 
 const STATUS_LABELS: Record<string, string> = {
-  confirm:     'Confirm',
-  in_progress: 'In Progress',
-  complete:    'Complete',
-  cancelled:   'Cancelled',
+  confirm:     'Dikonfirmasi',
+  in_progress: 'Dalam Proses',
+  complete:    'Selesai',
+  cancelled:   'Dibatalkan',
 }
 
 async function fetchPOs(status: string, search: string): Promise<PO[]> {
@@ -71,25 +71,23 @@ export default function POList() {
     <div className="min-h-screen bg-gray-50">
       <AthelNav />
 
-      {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Purchase Orders</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{pos?.length ?? 0} orders</p>
+          <h1 className="text-xl font-semibold text-gray-900">Pesanan Pembelian</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{pos?.length ?? 0} pesanan</p>
         </div>
         <button
           onClick={() => navigate('/athel/po/new')}
           className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
         >
-          + New PO
+          + PO Baru
         </button>
       </div>
 
-      {/* Filters */}
       <div className="px-4 md:px-8 py-3 flex flex-col sm:flex-row gap-2 bg-white border-b border-gray-100">
         <input
           type="text"
-          placeholder="Search by PO number, customer, or SJ..."
+          placeholder="Cari nomor PO, pelanggan, atau SJ..."
           value={search}
           onChange={e => handleSearch(e.target.value)}
           className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full sm:w-80 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -99,22 +97,22 @@ export default function POList() {
           onChange={e => setStatus(e.target.value)}
           className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
-          <option value="all">All statuses</option>
-          <option value="confirm">Confirm</option>
-          <option value="in_progress">In Progress</option>
-          <option value="complete">Complete</option>
+          <option value="all">Semua status</option>
+          <option value="confirm">Dikonfirmasi</option>
+          <option value="in_progress">Dalam Proses</option>
+          <option value="complete">Selesai</option>
         </select>
       </div>
 
       <div className="px-4 md:px-8 py-6">
         {isLoading && (
-          <div className="text-center text-gray-400 py-24 text-sm">Loading purchase orders...</div>
+          <div className="text-center text-gray-400 py-24 text-sm">Memuat pesanan pembelian...</div>
         )}
         {isError && (
-          <div className="text-center text-red-500 py-24 text-sm">Failed to load POs.</div>
+          <div className="text-center text-red-500 py-24 text-sm">Gagal memuat data. Periksa koneksi Anda.</div>
         )}
         {!isLoading && !isError && pos?.length === 0 && (
-          <div className="text-center text-gray-400 py-24 text-sm">No purchase orders found.</div>
+          <div className="text-center text-gray-400 py-24 text-sm">Tidak ada pesanan pembelian ditemukan.</div>
         )}
 
         {!isLoading && !isError && pos && pos.length > 0 && (
@@ -124,13 +122,13 @@ export default function POList() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50">
-                    <th className="text-left px-5 py-3 font-medium text-gray-500">PO Number</th>
-                    <th className="text-left px-5 py-3 font-medium text-gray-500">Customer</th>
+                    <th className="text-left px-5 py-3 font-medium text-gray-500">Nomor PO</th>
+                    <th className="text-left px-5 py-3 font-medium text-gray-500">Pelanggan</th>
                     <th className="text-left px-5 py-3 font-medium text-gray-500">Status</th>
-                    <th className="text-left px-5 py-3 font-medium text-gray-500">Order Date</th>
-                    <th className="text-left px-5 py-3 font-medium text-gray-500">Expected Delivery</th>
-                    <th className="text-right px-5 py-3 font-medium text-gray-500">Total Value</th>
-                    <th className="text-right px-5 py-3 font-medium text-gray-500">Actions</th>
+                    <th className="text-left px-5 py-3 font-medium text-gray-500">Tanggal Pesanan</th>
+                    <th className="text-left px-5 py-3 font-medium text-gray-500">Estimasi Pengiriman</th>
+                    <th className="text-right px-5 py-3 font-medium text-gray-500">Total Nilai</th>
+                    <th className="text-right px-5 py-3 font-medium text-gray-500">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -153,14 +151,14 @@ export default function POList() {
                           onClick={() => navigate(`/athel/po/${po.id}`)}
                           className="text-blue-600 hover:text-blue-800 text-xs font-medium mr-3"
                         >
-                          View
+                          Lihat
                         </button>
                         {po.status !== 'complete' && (
                           <button
                             onClick={() => navigate(`/athel/po/${po.id}/edit`)}
                             className="text-gray-500 hover:text-gray-800 text-xs font-medium"
                           >
-                            Edit
+                            Ubah
                           </button>
                         )}
                       </td>
@@ -173,10 +171,7 @@ export default function POList() {
             {/* Mobile cards */}
             <div className="md:hidden space-y-3">
               {pos.map(po => (
-                <div
-                  key={po.id}
-                  className="bg-white rounded-xl border border-gray-200 p-4"
-                >
+                <div key={po.id} className="bg-white rounded-xl border border-gray-200 p-4">
                   <div className="flex items-start justify-between gap-2 mb-3">
                     <div>
                       <p className="font-semibold text-gray-900 text-sm">{po.po_number}</p>
@@ -188,15 +183,15 @@ export default function POList() {
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-xs mb-3">
                     <div>
-                      <p className="text-gray-400">Order Date</p>
+                      <p className="text-gray-400">Tanggal Pesanan</p>
                       <p className="text-gray-700 font-medium">{po.order_date}</p>
                     </div>
                     <div>
-                      <p className="text-gray-400">Expected Delivery</p>
+                      <p className="text-gray-400">Estimasi Pengiriman</p>
                       <p className="text-gray-700 font-medium">{po.expected_delivery_date ?? '—'}</p>
                     </div>
                     <div className="col-span-2">
-                      <p className="text-gray-400">Total Value</p>
+                      <p className="text-gray-400">Total Nilai</p>
                       <p className="text-gray-900 font-semibold">Rp {po.total_value.toLocaleString('id-ID')}</p>
                     </div>
                   </div>
@@ -205,14 +200,14 @@ export default function POList() {
                       onClick={() => navigate(`/athel/po/${po.id}`)}
                       className="flex-1 text-center text-blue-600 text-xs font-medium py-2 rounded-lg bg-blue-50 hover:bg-blue-100 transition-colors"
                     >
-                      View
+                      Lihat
                     </button>
                     {po.status !== 'complete' && (
                       <button
                         onClick={() => navigate(`/athel/po/${po.id}/edit`)}
                         className="flex-1 text-center text-gray-600 text-xs font-medium py-2 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors"
                       >
-                        Edit
+                        Ubah
                       </button>
                     )}
                   </div>
