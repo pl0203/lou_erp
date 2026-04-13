@@ -8,27 +8,24 @@ const ROLE_LINKS: Record<string, { to: string; label: string }[]> = {
     { to: '/girard/my-orders', label: 'Pesanan Saya' },
   ],
   sales_manager: [
-    { to: '/girard/schedule',     label: 'Jadwal' },
-    { to: '/girard/my-visits',    label: 'Kunjungan Saya' },
-    { to: '/girard/my-customers', label: 'Pelanggan Saya' },
-    { to: '/girard/team',         label: 'Tim Saya' },
-    { to: '/girard/performance',  label: 'Performa' },
+    { to: '/girard/schedule',    label: 'Jadwal' },
+    { to: '/girard/my-visits',   label: 'Kunjungan Saya' },
+    { to: '/girard/team',        label: 'Tim Saya' },
+    { to: '/girard/dashboard',   label: 'Dashboard' },
   ],
   sales_head: [
     { to: '/girard/schedule',    label: 'Jadwal' },
     { to: '/girard/my-visits',   label: 'Kunjungan Saya' },
     { to: '/girard/customers',   label: 'Pelanggan' },
     { to: '/girard/managers',    label: 'Manajer' },
-    { to: '/girard/performance', label: 'Performa' },
-    { to: '/girard/revenue',     label: 'Pendapatan' },
+    { to: '/girard/dashboard',   label: 'Dashboard' },
   ],
   executive: [
     { to: '/girard/schedule',    label: 'Jadwal' },
     { to: '/girard/my-visits',   label: 'Kunjungan Saya' },
     { to: '/girard/customers',   label: 'Pelanggan' },
     { to: '/girard/managers',    label: 'Manajer' },
-    { to: '/girard/performance', label: 'Performa' },
-    { to: '/girard/revenue',     label: 'Pendapatan' },
+    { to: '/girard/dashboard',   label: 'Dashboard' },
   ],
 }
 

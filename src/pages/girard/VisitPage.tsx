@@ -14,6 +14,7 @@ type Schedule = {
     name: string
     address: string | null
     city: string | null
+    pricing_tier: string
   }
 }
 
@@ -40,6 +41,10 @@ type Product = {
   sku: string
   size: string | null
   unit_price: number
+  harga_pokok: number
+  luar_kota: number
+  dalam_kota: number
+  depo_bangunan: number
 }
 
 type GirardOrder = {
@@ -56,7 +61,19 @@ type GirardOrder = {
   }[]
 }
 
-// Compress and convert image to WebP using canvas
+const TIER_LABELS: Record<string, string> = {
+  harga_pokok:   'Harga Pokok',
+  luar_kota:     'Luar Kota',
+  dalam_kota:    'Dalam Kota',
+  depo_bangunan: 'Depo Bangunan',
+}
+
+const ORDER_STATUS_STYLES: Record<string, string> = {
+  pending:  'bg-yellow-100 text-yellow-700',
+  approved: 'bg-green-100 text-green-700',
+  rejected: 'bg-red-100 text-red-700',
+}
+
 async function compressImage(blob: Blob): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const img = new Image()
@@ -79,12 +96,12 @@ async function compressImage(blob: Blob): Promise<Blob> {
       canvas.width = width
       canvas.height = height
       const ctx = canvas.getContext('2d')
-      if (!ctx) return reject(new Error('Canvas not supported'))
+      if (!ctx) return reject(new Error('Canvas tidak didukung'))
       ctx.drawImage(img, 0, 0, width, height)
       canvas.toBlob(
         result => {
           if (result) resolve(result)
-          else reject(new Error('Compression failed'))
+          else reject(new Error('Kompresi gagal'))
         },
         'image/webp',
         0.8
@@ -98,7 +115,7 @@ async function compressImage(blob: Blob): Promise<Blob> {
 async function fetchSchedule(scheduleId: string): Promise<Schedule> {
   const { data, error } = await supabase
     .from('sales_schedules')
-    .select('id, scheduled_date, status, customers!sales_schedules_outlet_id_fkey(id, name, address, city)')
+    .select('id, scheduled_date, status, customers!sales_schedules_outlet_id_fkey(id, name, address, city, pricing_tier)')
     .eq('id', scheduleId)
     .single()
   if (error) throw error
@@ -129,7 +146,7 @@ async function fetchOrders(customerId: string, visitId: string): Promise<GirardO
 async function fetchProducts(): Promise<Product[]> {
   const { data, error } = await supabase
     .from('products')
-    .select('id, name, sku, size, unit_price')
+    .select('id, name, sku, size, unit_price, harga_pokok, luar_kota, dalam_kota, depo_bangunan')
     .order('name')
   if (error) throw error
   return data
@@ -243,7 +260,7 @@ function SKULookup({ products, onSelect }: {
     <div className="relative">
       <input
         type="text"
-        placeholder="Search SKU or item name..."
+        placeholder="Cari SKU atau nama barang..."
         value={query}
         onChange={e => { setQuery(e.target.value); setOpen(true) }}
         onFocus={() => setOpen(true)}
@@ -264,9 +281,6 @@ function SKULookup({ products, onSelect }: {
                   <span className="text-sm text-gray-900">{p.name}</span>
                   {p.size && <span className="text-xs text-gray-400 ml-1">({p.size})</span>}
                 </div>
-                <span className="text-sm text-gray-600 font-medium">
-                  Rp {p.unit_price.toLocaleString('id-ID')}
-                </span>
               </div>
             </button>
           ))}
@@ -274,12 +288,6 @@ function SKULookup({ products, onSelect }: {
       )}
     </div>
   )
-}
-
-const ORDER_STATUS_STYLES: Record<string, string> = {
-  pending:  'bg-yellow-100 text-yellow-700',
-  approved: 'bg-green-100 text-green-700',
-  rejected: 'bg-red-100 text-red-700',
 }
 
 function LiveCamera({ onCapture }: { onCapture: (blob: Blob, preview: string) => void }) {
@@ -308,15 +316,10 @@ function LiveCamera({ onCapture }: { onCapture: (blob: Blob, preview: string) =>
 
   const stopCamera = () => {
     if (stream) {
-      stream.getTracks().forEach(t => {
-        t.stop()
-        stream.removeTrack(t)
-      })
+      stream.getTracks().forEach(t => { t.stop(); stream.removeTrack(t) })
       setStream(null)
     }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null
-    }
+    if (videoRef.current) videoRef.current.srcObject = null
   }
 
   const capturePhoto = async () => {
@@ -327,7 +330,7 @@ function LiveCamera({ onCapture }: { onCapture: (blob: Blob, preview: string) =>
       canvas.width = videoRef.current.videoWidth
       canvas.height = videoRef.current.videoHeight
       const ctx = canvas.getContext('2d')
-      if (!ctx) throw new Error('Canvas not supported')
+      if (!ctx) throw new Error('Canvas tidak didukung')
       ctx.drawImage(videoRef.current, 0, 0)
       canvas.toBlob(async (rawBlob) => {
         if (!rawBlob) { setCapturing(false); return }
@@ -349,7 +352,7 @@ function LiveCamera({ onCapture }: { onCapture: (blob: Blob, preview: string) =>
         <span className="text-3xl">📷</span>
         <p className="text-sm text-red-500 text-center">{error}</p>
         <button onClick={startCamera} className="text-xs text-blue-600 font-medium underline mt-1">
-          Try again
+          Coba lagi
         </button>
       </div>
     )
@@ -357,13 +360,7 @@ function LiveCamera({ onCapture }: { onCapture: (blob: Blob, preview: string) =>
 
   return (
     <div className="relative w-full rounded-xl overflow-hidden bg-black">
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        muted
-        className="w-full h-56 object-cover"
-      />
+      <video ref={videoRef} autoPlay playsInline muted className="w-full h-56 object-cover" />
       <button
         onClick={capturePhoto}
         disabled={capturing}
@@ -373,11 +370,23 @@ function LiveCamera({ onCapture }: { onCapture: (blob: Blob, preview: string) =>
       </button>
       {capturing && (
         <div className="absolute inset-0 bg-white/50 flex items-center justify-center">
-          <p className="text-sm text-gray-700 font-medium">Mengambil Foto...</p>
+          <p className="text-sm text-gray-700 font-medium">Mengambil foto...</p>
         </div>
       )}
     </div>
   )
+}
+
+function CheckInPhoto({ storagePath }: { storagePath: string }) {
+  const [url, setUrl] = useState<string | null>(null)
+  useEffect(() => {
+    supabase.storage
+      .from('visits')
+      .createSignedUrl(storagePath, 3600)
+      .then(({ data }) => { if (data) setUrl(data.signedUrl) })
+  }, [storagePath])
+  if (!url) return null
+  return <img src={url} alt="Foto check-in" className="w-full h-48 object-cover rounded-xl" />
 }
 
 export default function VisitPage() {
@@ -391,7 +400,6 @@ export default function VisitPage() {
   const [photoBlob, setPhotoBlob] = useState<Blob | null>(null)
   const [locationStatus, setLocationStatus] = useState<'idle' | 'loading' | 'granted' | 'denied' | 'unavailable'>('idle')
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null)
-
   const [showOrderForm, setShowOrderForm] = useState(false)
   const [orderItems, setOrderItems] = useState<OrderItem[]>([
     { product_id: null, product_name: '', sku: '', quantity: 1, unit_price: 0 }
@@ -424,7 +432,8 @@ export default function VisitPage() {
     mutationFn: checkIn,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['visit', scheduleId] })
-      queryClient.invalidateQueries({ queryKey: ['daily_schedule'] })
+      queryClient.invalidateQueries({ queryKey: ['my_visits'] })
+      queryClient.invalidateQueries({ queryKey: ['schedules'] })
       setShowCamera(false)
       setPhotoPreview(null)
       setPhotoBlob(null)
@@ -448,37 +457,27 @@ export default function VisitPage() {
 
   const handleGetLocation = async () => {
     setLocationStatus('loading')
-
     if (navigator.permissions) {
       try {
         const result = await navigator.permissions.query({ name: 'geolocation' })
-        if (result.state === 'denied') {
-          setLocationStatus('denied')
-          return
-        }
-      } catch {
-        // permissions API not supported, proceed anyway
-      }
+        if (result.state === 'denied') { setLocationStatus('denied'); return }
+      } catch { }
     }
-
     navigator.geolocation.getCurrentPosition(
       pos => {
         setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude })
         setLocationStatus('granted')
       },
       err => {
-        if (err.code === err.PERMISSION_DENIED) {
-          setLocationStatus('denied')
-        } else {
-          setLocationStatus('unavailable')
-        }
+        if (err.code === err.PERMISSION_DENIED) setLocationStatus('denied')
+        else setLocationStatus('unavailable')
       },
       { timeout: 10000, enableHighAccuracy: true }
     )
   }
 
   const handleCheckIn = () => {
-    if (!photoBlob) return alert('Please take a photo first.')
+    if (!photoBlob) return alert('Ambil foto terlebih dahulu.')
     if (!profile || !schedule) return
     checkInMutation.mutate({
       schedule_id: scheduleId!,
@@ -495,9 +494,11 @@ export default function VisitPage() {
   }
 
   const fillFromProduct = (index: number, product: Product) => {
+    const tier = schedule?.customers?.pricing_tier ?? 'luar_kota'
+    const price = (product[tier as keyof Product] as number) || product.unit_price
     setOrderItems(prev => prev.map((item, i) =>
       i === index
-        ? { ...item, product_id: product.id, product_name: product.name, sku: product.sku, unit_price: product.unit_price }
+        ? { ...item, product_id: product.id, product_name: product.name, sku: product.sku, unit_price: price }
         : item
     ))
   }
@@ -551,7 +552,6 @@ export default function VisitPage() {
     <div className="min-h-screen bg-gray-50">
       <GirardNav />
 
-      {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center gap-4">
         <button onClick={() => navigate(-1)} className="text-gray-400 hover:text-gray-600 text-sm">
           ← Kembali
@@ -574,17 +574,12 @@ export default function VisitPage() {
 
           {!hasVisit ? (
             <div className="px-5 py-5 space-y-4">
-
-              {/* Camera */}
               {showCamera && (
                 <div>
-                  <p className="text-sm text-gray-600 mb-2">Ambil Foto</p>
+                  <p className="text-sm text-gray-600 mb-2">Ambil foto langsung</p>
                   <LiveCamera onCapture={handleCapture} />
-                  <button
-                    onClick={() => setShowCamera(false)}
-                    className="text-xs text-gray-400 mt-2 hover:text-gray-600"
-                  >
-                    Cancel
+                  <button onClick={() => setShowCamera(false)} className="text-xs text-gray-400 mt-2 hover:text-gray-600">
+                    Batal
                   </button>
                 </div>
               )}
@@ -593,12 +588,12 @@ export default function VisitPage() {
                 <div>
                   <p className="text-sm text-gray-600 mb-2">Foto berhasil diambil</p>
                   <div className="relative">
-                    <img src={photoPreview} alt="Check-in photo" className="w-full h-48 object-cover rounded-xl" />
+                    <img src={photoPreview} alt="Foto check-in" className="w-full h-48 object-cover rounded-xl" />
                     <button
                       onClick={() => { setPhotoPreview(null); setPhotoBlob(null); setShowCamera(true) }}
                       className="absolute top-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded-lg"
                     >
-                      Retake
+                      Ambil ulang
                     </button>
                   </div>
                 </div>
@@ -606,19 +601,18 @@ export default function VisitPage() {
 
               {!showCamera && !photoPreview && (
                 <div>
-                  <p className="text-sm text-gray-600 mb-2">Ambil foto langsug di lokasi toko/customer</p>
+                  <p className="text-sm text-gray-600 mb-2">Ambil foto langsung di lokasi</p>
                   <button
                     onClick={() => setShowCamera(true)}
                     className="w-full h-36 border-2 border-dashed border-gray-200 rounded-xl flex flex-col items-center justify-center gap-2 hover:border-green-300 hover:bg-green-50 transition-colors"
                   >
                     <span className="text-3xl">📷</span>
-                    <span className="text-sm text-gray-400">Tekan untuk membuka kamera</span>
+                    <span className="text-sm text-gray-400">Ketuk untuk membuka kamera</span>
                     <span className="text-xs text-gray-300">Hanya foto langsung</span>
                   </button>
                 </div>
               )}
 
-              {/* Location */}
               {!showCamera && (
                 <div className="space-y-2">
                   {locationStatus === 'idle' && (
@@ -627,57 +621,45 @@ export default function VisitPage() {
                         onClick={handleGetLocation}
                         className="text-sm px-4 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
                       >
-                        Ambil titik lokasi Anda
+                        Dapatkan lokasi
                       </button>
-                      {/* <span className="text-xs text-gray-400">Optional but recommended</span> */}
+                      <span className="text-xs text-gray-400">Opsional tapi dianjurkan</span>
                     </div>
                   )}
-
                   {locationStatus === 'loading' && (
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm px-4 py-2 rounded-lg border border-gray-200 text-gray-400">
-                        Mengambil titik lokasi...
-                      </span>
-                    </div>
-                  )}
-
-                  {locationStatus === 'granted' && location && (
-                    <span className="inline-flex text-sm px-4 py-2 rounded-lg border border-green-200 bg-green-50 text-green-700">
-                      ✓ Titik lokasi berhasil diperoleh
+                    <span className="text-sm px-4 py-2 rounded-lg border border-gray-200 text-gray-400 inline-block">
+                      Mendapatkan lokasi...
                     </span>
                   )}
-
+                  {locationStatus === 'granted' && (
+                    <span className="inline-flex text-sm px-4 py-2 rounded-lg border border-green-200 bg-green-50 text-green-700">
+                      ✓ Lokasi berhasil didapat
+                    </span>
+                  )}
                   {locationStatus === 'denied' && (
                     <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 space-y-3">
                       <div>
-                        <p className="text-xs font-medium text-orange-700 mb-1">
-                          Akses lokasi diblokir.
-                        </p>
-                        <p className="text-xs text-orange-600">
-                        Anda perlu mengizinkan akses lokasi di pengaturan browser.
-                        </p>
+                        <p className="text-xs font-medium text-orange-700 mb-1">Akses lokasi diblokir</p>
+                        <p className="text-xs text-orange-600">Anda perlu mengizinkan akses lokasi di pengaturan browser.</p>
                       </div>
-
                       <div className="bg-white rounded-lg p-3 border border-orange-100">
                         <p className="text-xs font-medium text-gray-700 mb-2">Android (Chrome):</p>
                         <ol className="text-xs text-gray-600 space-y-1 list-decimal ml-4">
-                            <li>Tekan <strong>ikon gembok</strong> di bilah alamat</li>
-                            <li>Pilih <strong>Perizinan</strong></li>
-                            <li>Pilih <strong>Lokasi</strong> → Izinkan</li>
-                            <li>Muat ulang halaman dan coba lagi</li>
+                          <li>Ketuk <strong>ikon gembok</strong> di bilah alamat</li>
+                          <li>Ketuk <strong>Izin</strong></li>
+                          <li>Ketuk <strong>Lokasi</strong> → Izinkan</li>
+                          <li>Muat ulang halaman dan coba lagi</li>
                         </ol>
                       </div>
-
                       <div className="bg-white rounded-lg p-3 border border-orange-100">
                         <p className="text-xs font-medium text-gray-700 mb-2">iPhone (Safari):</p>
                         <ol className="text-xs text-gray-600 space-y-1 list-decimal ml-4">
-                            <li>Buka <strong>Pengaturan</strong> → <strong>Privasi</strong></li>
-                            <li>Tekan <strong>Layanan Lokasi</strong></li>
-                            <li>Cari <strong>Safari</strong> → atur ke <strong>Saat Menggunakan</strong></li>
-                            <li>Kembali dan coba lagi</li>
+                          <li>Buka <strong>Pengaturan</strong> → <strong>Privasi</strong></li>
+                          <li>Ketuk <strong>Layanan Lokasi</strong></li>
+                          <li>Cari <strong>Safari</strong> → atur ke <strong>Saat Digunakan</strong></li>
+                          <li>Kembali dan coba lagi</li>
                         </ol>
                       </div>
-
                       <div className="flex items-center gap-3">
                         <button
                           onClick={() => { setLocationStatus('idle'); handleGetLocation() }}
@@ -694,16 +676,10 @@ export default function VisitPage() {
                       </div>
                     </div>
                   )}
-
                   {locationStatus === 'unavailable' && (
                     <div className="flex items-center gap-3">
-                      <span className="text-xs text-gray-400">
-                        Lokasi tidak tersedia — Anda tetap bisa check-in tanpa titik lokasi.
-                      </span>
-                      <button
-                        onClick={() => setLocationStatus('idle')}
-                        className="text-xs text-blue-600 underline"
-                      >
+                      <span className="text-xs text-gray-400">Lokasi tidak tersedia — Anda tetap bisa check-in tanpa lokasi.</span>
+                      <button onClick={() => setLocationStatus('idle')} className="text-xs text-blue-600 underline">
                         Coba lagi
                       </button>
                     </div>
@@ -711,7 +687,6 @@ export default function VisitPage() {
                 </div>
               )}
 
-              {/* Check in button */}
               {!showCamera && (
                 <>
                   <button
@@ -721,7 +696,6 @@ export default function VisitPage() {
                   >
                     {checkInMutation.isPending ? 'Memproses check-in...' : 'Konfirmasi Check-in'}
                   </button>
-
                   {checkInMutation.isError && (
                     <div className="flex items-center justify-between bg-red-50 border border-red-200 rounded-lg p-3">
                       <p className="text-red-600 text-xs">{(checkInMutation.error as Error).message}</p>
@@ -740,16 +714,12 @@ export default function VisitPage() {
                   <span className="text-green-600 text-sm">✓</span>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-900">Berhasil Lapor Masuk</p>
-                  <p className="text-xs text-gray-400">
-                    {new Date(visit.checked_in_at).toLocaleString('id-ID')}
-                  </p>
+                  <p className="text-sm font-medium text-gray-900">Sudah check-in</p>
+                  <p className="text-xs text-gray-400">{new Date(visit.checked_in_at).toLocaleString('id-ID')}</p>
                 </div>
               </div>
               {visit.lat && visit.lng && (
-                <p className="text-xs text-gray-400 mb-3">
-                  📍 {visit.lat.toFixed(5)}, {visit.lng.toFixed(5)}
-                </p>
+                <p className="text-xs text-gray-400 mb-3">📍 {visit.lat.toFixed(5)}, {visit.lng.toFixed(5)}</p>
               )}
               {visit.visit_photos?.[0] && (
                 <CheckInPhoto storagePath={visit.visit_photos[0].storage_path} />
@@ -762,25 +732,33 @@ export default function VisitPage() {
         {hasVisit && (
           <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-              <h2 className="text-base font-medium text-gray-900">Orders</h2>
+              <h2 className="text-base font-medium text-gray-900">Pesanan</h2>
               {!showOrderForm && (
                 <button
                   onClick={() => setShowOrderForm(true)}
                   className="text-sm text-blue-600 font-medium hover:text-blue-800"
                 >
-                  + Order Baru
+                  + Pesanan Baru
                 </button>
               )}
             </div>
 
             {showOrderForm && (
               <div className="px-5 py-4 border-b border-gray-100 space-y-4">
-                <p className="text-sm font-medium text-gray-700">Order Baru</p>
+                <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+                  <p className="text-xs text-blue-600">
+                    Harga yang digunakan: <span className="font-semibold">
+                      {TIER_LABELS[schedule?.customers?.pricing_tier ?? 'luar_kota']}
+                    </span>
+                  </p>
+                </div>
+
+                <p className="text-sm font-medium text-gray-700">Pesanan Baru</p>
                 <div className="space-y-3">
                   {orderItems.map((item, i) => (
                     <div key={i} className="border border-gray-100 rounded-xl p-3 space-y-3">
                       <div className="flex items-center justify-between">
-                        <p className="text-xs text-gray-400">Item {i + 1}</p>
+                        <p className="text-xs text-gray-400">Barang {i + 1}</p>
                         <button
                           onClick={() => removeOrderItem(i)}
                           disabled={orderItems.length === 1}
@@ -790,12 +768,12 @@ export default function VisitPage() {
                       {products && <SKULookup products={products} onSelect={p => fillFromProduct(i, p)} />}
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <label className="block text-xs text-gray-400 mb-1">Nama Produk</label>
+                          <label className="block text-xs text-gray-400 mb-1">Nama Barang</label>
                           <input
                             type="text"
                             value={item.product_name}
                             onChange={e => updateOrderItem(i, 'product_name', e.target.value)}
-                            placeholder="Product name"
+                            placeholder="Nama produk"
                             className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                           />
                         </div>
@@ -809,7 +787,7 @@ export default function VisitPage() {
                           />
                         </div>
                         <div>
-                          <label className="block text-xs text-gray-400 mb-1">Qty</label>
+                          <label className="block text-xs text-gray-400 mb-1">Jumlah</label>
                           <input
                             type="number" min={1}
                             value={item.quantity}
@@ -836,13 +814,11 @@ export default function VisitPage() {
                   ))}
                 </div>
                 <button onClick={addOrderItem} className="text-blue-600 text-sm font-medium hover:text-blue-800">
-                  + Tambah Barang
+                  + Tambah barang
                 </button>
                 <div className="flex items-center justify-between pt-2 border-t border-gray-100">
                   <p className="text-sm text-gray-500">
-                    Total: <span className="font-semibold text-gray-900">
-                      Rp {orderTotal.toLocaleString('id-ID')}
-                    </span>
+                    Total: <span className="font-semibold text-gray-900">Rp {orderTotal.toLocaleString('id-ID')}</span>
                   </p>
                   <div className="flex gap-2">
                     <button
@@ -851,7 +827,9 @@ export default function VisitPage() {
                         setOrderItems([{ product_id: null, product_name: '', sku: '', quantity: 1, unit_price: 0 }])
                       }}
                       className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
-                    >Batal</button>
+                    >
+                      Batal
+                    </button>
                     <button
                       onClick={handleSubmitOrder}
                       disabled={orderMutation.isPending}
@@ -874,7 +852,7 @@ export default function VisitPage() {
 
             {!orders || orders.length === 0 ? (
               <div className="px-5 py-8 text-center">
-                <p className="text-gray-400 text-sm">Belum ada pesanan yang dibuat selama kunjungan ini.</p>
+                <p className="text-gray-400 text-sm">Belum ada pesanan dalam kunjungan ini.</p>
               </div>
             ) : (
               <div className="divide-y divide-gray-100">
@@ -882,7 +860,10 @@ export default function VisitPage() {
                   <div key={order.id} className="px-5 py-4">
                     <div className="flex items-center justify-between mb-3">
                       <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium capitalize ${ORDER_STATUS_STYLES[order.status] ?? 'bg-gray-100 text-gray-600'}`}>
-                        {order.status}
+                        {order.status === 'pending' ? 'Menunggu'
+                          : order.status === 'approved' ? 'Disetujui'
+                          : order.status === 'rejected' ? 'Ditolak'
+                          : order.status}
                       </span>
                       <span className="text-xs text-gray-400">
                         {new Date(order.created_at).toLocaleString('id-ID')}
@@ -891,8 +872,8 @@ export default function VisitPage() {
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="text-gray-400">
-                          <th className="text-left pb-1 font-medium">Produke</th>
-                          <th className="text-right pb-1 font-medium">Qty</th>
+                          <th className="text-left pb-1 font-medium">Barang</th>
+                          <th className="text-right pb-1 font-medium">Jml</th>
                           <th className="text-right pb-1 font-medium">Harga</th>
                           <th className="text-right pb-1 font-medium">Total</th>
                         </tr>
@@ -929,18 +910,4 @@ export default function VisitPage() {
       </div>
     </div>
   )
-}
-
-function CheckInPhoto({ storagePath }: { storagePath: string }) {
-  const [url, setUrl] = useState<string | null>(null)
-
-  useEffect(() => {
-    supabase.storage
-      .from('visits')
-      .createSignedUrl(storagePath, 3600)
-      .then(({ data }) => { if (data) setUrl(data.signedUrl) })
-  }, [storagePath])
-
-  if (!url) return null
-  return <img src={url} alt="Check-in photo" className="w-full h-48 object-cover rounded-xl" />
 }

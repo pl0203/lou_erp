@@ -1,14 +1,29 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import AthelNav from '../../components/AthelNav'
 
-type Customer = { id: string; name: string }
-type Product = { id: string; name: string; sku: string; size: string | null; unit_price: number }
+type Customer = {
+  id: string
+  name: string
+  pricing_tier: string
+}
+
+type Product = {
+  id: string
+  name: string
+  sku: string
+  size: string | null
+  unit_price: number
+  harga_pokok: number
+  luar_kota: number
+  dalam_kota: number
+  depo_bangunan: number
+}
 
 type LineItemRow = {
-  id: string | null        // null = new item not yet in DB
+  id: string | null
   product_name: string
   sku: string
   quantity: number
@@ -28,6 +43,13 @@ type POData = {
   customers: { name: string }
 }
 
+const TIER_LABELS: Record<string, string> = {
+  harga_pokok:   'Harga Pokok',
+  luar_kota:     'Luar Kota',
+  dalam_kota:    'Dalam Kota',
+  depo_bangunan: 'Depo Bangunan',
+}
+
 async function fetchPO(id: string): Promise<POData> {
   const { data, error } = await supabase
     .from('purchase_orders')
@@ -41,14 +63,17 @@ async function fetchPO(id: string): Promise<POData> {
 async function fetchLineItems(poId: string) {
   const { data, error } = await supabase
     .from('po_line_items')
-    .select('id, product_name, sku, quantity, unit_price, line_total')
+    .select('id, product_name, sku, quantity, unit_price')
     .eq('purchase_order_id', poId)
   if (error) throw error
   return data
 }
 
 async function fetchCustomers(): Promise<Customer[]> {
-  const { data, error } = await supabase.from('customers').select('id, name').order('name')
+  const { data, error } = await supabase
+    .from('customers')
+    .select('id, name, pricing_tier')
+    .order('name')
   if (error) throw error
   return data
 }
@@ -56,7 +81,7 @@ async function fetchCustomers(): Promise<Customer[]> {
 async function fetchProducts(): Promise<Product[]> {
   const { data, error } = await supabase
     .from('products')
-    .select('id, name, sku, size, unit_price')
+    .select('id, name, sku, size, unit_price, harga_pokok, luar_kota, dalam_kota, depo_bangunan')
     .order('name')
   if (error) throw error
   return data
@@ -68,7 +93,6 @@ async function saveEdits(poId: string, payload: {
   notes: string | null
   lineItems: LineItemRow[]
 }) {
-  // Update PO header fields
   const { error: poError } = await supabase
     .from('purchase_orders')
     .update({
@@ -79,14 +103,12 @@ async function saveEdits(poId: string, payload: {
     .eq('id', poId)
   if (poError) throw poError
 
-  // Delete removed line items
   const toDelete = payload.lineItems.filter(l => l._deleted && l.id)
   for (const item of toDelete) {
     const { error } = await supabase.from('po_line_items').delete().eq('id', item.id!)
     if (error) throw error
   }
 
-  // Update existing line items
   const toUpdate = payload.lineItems.filter(l => !l._deleted && l.id)
   for (const item of toUpdate) {
     const { error } = await supabase
@@ -101,7 +123,6 @@ async function saveEdits(poId: string, payload: {
     if (error) throw error
   }
 
-  // Insert new line items
   const toInsert = payload.lineItems.filter(l => !l._deleted && !l.id)
   if (toInsert.length > 0) {
     const { error } = await supabase.from('po_line_items').insert(
@@ -117,7 +138,10 @@ async function saveEdits(poId: string, payload: {
   }
 }
 
-function SKULookup({ products, onSelect }: { products: Product[]; onSelect: (p: Product) => void }) {
+function SKULookup({ products, onSelect }: {
+  products: Product[]
+  onSelect: (p: Product) => void
+}) {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
 
@@ -153,9 +177,6 @@ function SKULookup({ products, onSelect }: { products: Product[]; onSelect: (p: 
                   <span className="text-sm text-gray-900">{p.name}</span>
                   {p.size && <span className="text-xs text-gray-400 ml-1">({p.size})</span>}
                 </div>
-                <span className="text-sm text-gray-600 font-medium">
-                  Rp {p.unit_price.toLocaleString('id-ID')}
-                </span>
               </div>
             </button>
           ))}
@@ -187,10 +208,16 @@ export default function POEdit() {
     enabled: !!id,
   })
 
-  const { data: customers } = useQuery({ queryKey: ['customers'], queryFn: fetchCustomers })
-  const { data: products } = useQuery({ queryKey: ['products'], queryFn: fetchProducts })
+  const { data: customers } = useQuery({
+    queryKey: ['customers'],
+    queryFn: fetchCustomers,
+  })
 
-  // Initialize form once data loads
+  const { data: products } = useQuery({
+    queryKey: ['products'],
+    queryFn: fetchProducts,
+  })
+
   useEffect(() => {
     if (po && existingLines && !initialized) {
       setCustomerId(po.customer_id)
@@ -223,14 +250,19 @@ export default function POEdit() {
     },
   })
 
+  // Get selected customer's pricing tier
+  const selectedCustomer = customers?.find(c => c.id === customerId)
+  const pricingTier = selectedCustomer?.pricing_tier ?? 'luar_kota'
+
   const updateLine = (index: number, field: keyof LineItemRow, value: string | number) => {
     setLineItems(prev => prev.map((item, i) => i === index ? { ...item, [field]: value } : item))
   }
 
   const fillFromProduct = (index: number, product: Product) => {
+    const price = (product[pricingTier as keyof Product] as number) || product.unit_price
     setLineItems(prev => prev.map((item, i) =>
       i === index
-        ? { ...item, product_name: product.name, sku: product.sku, unit_price: product.unit_price }
+        ? { ...item, product_name: product.name, sku: product.sku, unit_price: price }
         : item
     ))
   }
@@ -243,7 +275,6 @@ export default function POEdit() {
   const removeLine = (index: number) => {
     setLineItems(prev => prev.map((item, i) => {
       if (i !== index) return item
-      // If it's an existing DB row, mark as deleted; if new, remove entirely
       return item.id ? { ...item, _deleted: true } : null
     }).filter(Boolean) as LineItemRow[])
   }
@@ -252,21 +283,25 @@ export default function POEdit() {
   const total = visibleLines.reduce((sum, l) => sum + l.quantity * l.unit_price, 0)
 
   const handleSave = () => {
-    if (!customerId) return alert('Pilih toko/customer terlebih dahulu.')
+    if (!customerId) return alert('Pilih pelanggan terlebih dahulu.')
     if (visibleLines.some(l => !l.product_name.trim())) return alert('Semua barang harus memiliki nama produk.')
     if (visibleLines.length === 0) return alert('PO harus memiliki minimal satu barang.')
     mutation.mutate()
   }
 
   if (poLoading || linesLoading) {
-    return <div className="p-8 text-gray-400 text-sm">Loading...</div>
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <AthelNav />
+        <div className="p-8 text-gray-400 text-sm text-center">Memuat...</div>
+      </div>
+    )
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
       <AthelNav />
 
-      {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center gap-4">
         <button
           onClick={() => navigate(`/athel/po/${id}`)}
@@ -275,31 +310,34 @@ export default function POEdit() {
           ← Kembali
         </button>
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">
-            Ubah {po?.po_number}
-          </h1>
+          <h1 className="text-xl font-semibold text-gray-900">Ubah {po?.po_number}</h1>
           <p className="text-sm text-gray-500 mt-0.5">Perubahan akan tercatat di riwayat audit</p>
         </div>
       </div>
 
       <div className="px-4 md:px-8 py-6 max-w-4xl mx-auto space-y-6">
 
-        {/* Order Details */}
+        {/* Detail PO */}
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h2 className="text-base font-medium text-gray-900 mb-4">Detail PO</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm text-gray-600 mb-1">Toko/Customer</label>
+              <label className="block text-sm text-gray-600 mb-1">Pelanggan</label>
               <select
                 value={customerId}
                 onChange={e => setCustomerId(e.target.value)}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="">Pilih toko/customer...</option>
+                <option value="">Pilih pelanggan...</option>
                 {customers?.map(c => (
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
+              {selectedCustomer && (
+                <p className="text-xs text-blue-600 mt-1">
+                  Tier harga: <span className="font-medium">{TIER_LABELS[pricingTier]}</span>
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-sm text-gray-600 mb-1">Nomor PO</label>
@@ -328,24 +366,24 @@ export default function POEdit() {
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <label className="block text-sm text-gray-600 mb-1">Catatan</label>
               <textarea
                 value={notes}
                 onChange={e => setNotes(e.target.value)}
                 rows={2}
-                placeholder="Optional notes..."
+                placeholder="Catatan (opsional)..."
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
               />
             </div>
           </div>
         </div>
 
-        {/* Line Items */}
+        {/* Daftar Barang */}
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h2 className="text-base font-medium text-gray-900 mb-1">Daftar Barang</h2>
           <p className="text-xs text-gray-400 mb-4">
-            Cari untuk mengganti barang atau ubah langsung. Barang yang dihapus akan dihilangkan saat disimpan.
+            Cari untuk mengganti barang atau ubah langsung. Harga otomatis sesuai tier pelanggan dan dapat diubah. Barang yang dihapus akan dihilangkan saat disimpan.
           </p>
 
           <div className="space-y-4">
@@ -395,18 +433,19 @@ export default function POEdit() {
                     <div className="col-span-2">
                       <label className="block text-xs text-gray-400 mb-1">Qty</label>
                       <input
-                        type="number"
-                        min={1}
+                        type="number" min={1}
                         value={item.quantity}
                         onChange={e => updateLine(realIndex, 'quantity', parseInt(e.target.value) || 1)}
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
                     <div className="col-span-4">
-                      <label className="block text-xs text-gray-400 mb-1">Harga Satuan (Rp)</label>
+                      <label className="block text-xs text-gray-400 mb-1">
+                        Harga Satuan (Rp)
+                        <span className="text-blue-400 ml-1">— dapat diubah</span>
+                      </label>
                       <input
-                        type="number"
-                        min={0}
+                        type="number" min={0}
                         value={item.unit_price}
                         onChange={e => updateLine(realIndex, 'unit_price', parseFloat(e.target.value) || 0)}
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -415,8 +454,7 @@ export default function POEdit() {
                   </div>
 
                   <div className="text-right text-xs text-gray-400">
-                    Subtotal:{' '}
-                    <span className="text-gray-700 font-medium">
+                    Subtotal: <span className="text-gray-700 font-medium">
                       Rp {(item.quantity * item.unit_price).toLocaleString('id-ID')}
                     </span>
                   </div>
@@ -433,8 +471,7 @@ export default function POEdit() {
               + Tambah Barang
             </button>
             <div className="text-sm text-gray-500">
-              Total:{' '}
-              <span className="text-gray-900 font-semibold text-base ml-1">
+              Total: <span className="text-gray-900 font-semibold text-base ml-1">
                 Rp {total.toLocaleString('id-ID')}
               </span>
             </div>
@@ -454,7 +491,7 @@ export default function POEdit() {
             disabled={mutation.isPending}
             className="px-5 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 transition-colors"
           >
-            {mutation.isPending ? 'Saving...' : 'Save Changes'}
+            {mutation.isPending ? 'Menyimpan...' : 'Simpan Perubahan'}
           </button>
         </div>
 

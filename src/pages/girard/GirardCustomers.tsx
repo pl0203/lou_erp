@@ -13,6 +13,7 @@ type Customer = {
   email: string | null
   last_visit_date: string | null
   visit_frequency_days: number
+  pricing_tier: string
 }
 
 type Manager = {
@@ -34,6 +35,7 @@ type CustomerForm = {
   email: string
   visit_frequency_days: number
   manager_id: string
+  pricing_tier: string
 }
 
 const EMPTY_FORM: CustomerForm = {
@@ -44,21 +46,39 @@ const EMPTY_FORM: CustomerForm = {
   email: '',
   visit_frequency_days: 7,
   manager_id: '',
+  pricing_tier: 'luar_kota',
 }
 
 const FREQUENCY_OPTIONS = [
   { label: '2x per minggu', days: 3 },
   { label: '1x per minggu', days: 7 },
   { label: '1x per 2 minggu', days: 14 },
+  { label: '2x per bulan', days: 15 },
   { label: '1x per bulan', days: 30 },
-  { label: '1x per 2 bulan', days: 60 },
-  { label: '1x per 3 bulan', days: 90 },
 ]
+
+const TIER_LABELS: Record<string, string> = {
+  harga_pokok:   'Harga Pokok',
+  luar_kota:     'Luar Kota',
+  dalam_kota:    'Dalam Kota',
+  depo_bangunan: 'Depo Bangunan',
+}
+
+function frequencyLabel(days: number): string {
+  const match = FREQUENCY_OPTIONS.find(f => f.days === days)
+  return match ? match.label : `Setiap ${days} hari`
+}
+
+function isOverdue(lastVisit: string | null, frequencyDays: number): boolean {
+  if (!lastVisit) return true
+  const diff = (Date.now() - new Date(lastVisit).getTime()) / (1000 * 60 * 60 * 24)
+  return diff > frequencyDays
+}
 
 async function fetchAllCustomers(): Promise<Customer[]> {
   const { data, error } = await supabase
     .from('customers')
-    .select('id, name, address, city, phone, email, last_visit_date, visit_frequency_days')
+    .select('id, name, address, city, phone, email, last_visit_date, visit_frequency_days, pricing_tier')
     .order('name')
   if (error) throw error
   return data
@@ -93,6 +113,7 @@ async function createCustomer(form: CustomerForm, assignedBy: string) {
       phone: form.phone || null,
       email: form.email || null,
       visit_frequency_days: form.visit_frequency_days,
+      pricing_tier: form.pricing_tier,
     })
     .select()
     .single()
@@ -114,15 +135,14 @@ async function assignExistingCustomer(
   customerId: string,
   managerId: string,
   frequencyDays: number,
+  pricingTier: string,
   assignedBy: string
 ) {
-  // Update visit frequency
   await supabase
     .from('customers')
-    .update({ visit_frequency_days: frequencyDays })
+    .update({ visit_frequency_days: frequencyDays, pricing_tier: pricingTier })
     .eq('id', customerId)
 
-  // Upsert assignment
   const { error } = await supabase
     .from('customer_manager_assignments')
     .upsert({
@@ -138,11 +158,12 @@ async function updateAssignment(
   customerId: string,
   managerId: string,
   frequencyDays: number,
+  pricingTier: string,
   assignedBy: string
 ) {
   await supabase
     .from('customers')
-    .update({ visit_frequency_days: frequencyDays })
+    .update({ visit_frequency_days: frequencyDays, pricing_tier: pricingTier })
     .eq('id', customerId)
 
   if (managerId) {
@@ -162,17 +183,6 @@ async function updateAssignment(
   }
 }
 
-function isOverdue(lastVisit: string | null, frequencyDays: number): boolean {
-  if (!lastVisit) return true
-  const diff = (Date.now() - new Date(lastVisit).getTime()) / (1000 * 60 * 60 * 24)
-  return diff > frequencyDays
-}
-
-function frequencyLabel(days: number): string {
-  const match = FREQUENCY_OPTIONS.find(f => f.days === days)
-  return match ? match.label : `Every ${days} days`
-}
-
 export default function GirardCustomers() {
   const { profile } = useAuth()
   const queryClient = useQueryClient()
@@ -182,10 +192,10 @@ export default function GirardCustomers() {
   const [form, setForm] = useState<CustomerForm>(EMPTY_FORM)
   const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null)
 
-  // For assign-existing flow
   const [selectedExistingId, setSelectedExistingId] = useState('')
   const [existingFrequency, setExistingFrequency] = useState(7)
   const [existingManagerId, setExistingManagerId] = useState('')
+  const [existingPricingTier, setExistingPricingTier] = useState('luar_kota')
 
   const { data: customers, isLoading } = useQuery({
     queryKey: ['all_customers'],
@@ -211,7 +221,7 @@ export default function GirardCustomers() {
   const createMutation = useMutation({
     mutationFn: async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('Not authenticated')
+      if (!user) throw new Error('Tidak terautentikasi')
       await createCustomer(form, user.id)
     },
     onSuccess: () => {
@@ -224,8 +234,11 @@ export default function GirardCustomers() {
   const assignExistingMutation = useMutation({
     mutationFn: async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('Not authenticated')
-      await assignExistingCustomer(selectedExistingId, existingManagerId, existingFrequency, user.id)
+      if (!user) throw new Error('Tidak terautentikasi')
+      await assignExistingCustomer(
+        selectedExistingId, existingManagerId,
+        existingFrequency, existingPricingTier, user.id
+      )
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['all_customers'] })
@@ -237,8 +250,11 @@ export default function GirardCustomers() {
   const updateMutation = useMutation({
     mutationFn: async () => {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('Not authenticated')
-      await updateAssignment(editingCustomerId!, form.manager_id, form.visit_frequency_days, user.id)
+      if (!user) throw new Error('Tidak terautentikasi')
+      await updateAssignment(
+        editingCustomerId!, form.manager_id,
+        form.visit_frequency_days, form.pricing_tier, user.id
+      )
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['all_customers'] })
@@ -254,6 +270,7 @@ export default function GirardCustomers() {
     setSelectedExistingId('')
     setExistingFrequency(7)
     setExistingManagerId('')
+    setExistingPricingTier('luar_kota')
   }
 
   const openEdit = (c: Customer) => {
@@ -263,6 +280,7 @@ export default function GirardCustomers() {
       ...EMPTY_FORM,
       visit_frequency_days: c.visit_frequency_days,
       manager_id: assignment?.manager_id ?? '',
+      pricing_tier: c.pricing_tier ?? 'luar_kota',
     })
     setModalMode('edit')
     setShowModal(true)
@@ -276,6 +294,19 @@ export default function GirardCustomers() {
   const isPending = createMutation.isPending || assignExistingMutation.isPending || updateMutation.isPending
   const isError = createMutation.isError || assignExistingMutation.isError || updateMutation.isError
   const errorMessage = ((createMutation.error || assignExistingMutation.error || updateMutation.error) as Error)?.message
+
+  const tierSelect = (value: string, onChange: (v: string) => void) => (
+    <select
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+    >
+      <option value="harga_pokok">Harga Pokok</option>
+      <option value="luar_kota">Luar Kota</option>
+      <option value="dalam_kota">Dalam Kota</option>
+      <option value="depo_bangunan">Depo Bangunan</option>
+    </select>
+  )
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -292,7 +323,7 @@ export default function GirardCustomers() {
               onClick={() => { setModalMode('assign-existing'); setShowModal(true) }}
               className="border border-green-600 text-green-600 hover:bg-green-50 text-sm font-medium px-4 py-2 rounded-lg transition-colors"
             >
-              Assign Existing
+              Tugaskan yang Ada
             </button>
           )}
           <button
@@ -314,7 +345,7 @@ export default function GirardCustomers() {
         />
 
         {isLoading && (
-          <div className="text-center text-gray-400 text-sm py-24">Memuat pelanggan...</div>
+          <div className="text-center text-gray-400 text-sm py-24">Memuat data pelanggan...</div>
         )}
 
         {/* Desktop table */}
@@ -324,17 +355,20 @@ export default function GirardCustomers() {
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
                   <th className="text-left px-5 py-3 font-medium text-gray-500">Pelanggan</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Alamat</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">Lokasi</th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500">Manajer</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">Tier Harga</th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500">Frekuensi Kunjungan</th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500">Kunjungan Terakhir</th>
-                  <th className="text-right px-5 py-3 font-medium text-gray-500">Actions</th>
+                  <th className="text-right px-5 py-3 font-medium text-gray-500">Aksi</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered?.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="text-center text-gray-400 py-12">Tidak ada pelanggan ditemukan.</td>
+                    <td colSpan={7} className="text-center text-gray-400 py-12">
+                      Tidak ada pelanggan ditemukan.
+                    </td>
                   </tr>
                 )}
                 {filtered?.map(c => {
@@ -355,6 +389,11 @@ export default function GirardCustomers() {
                           : <span className="text-xs text-gray-300">Belum ditugaskan</span>
                         }
                       </td>
+                      <td className="px-5 py-4">
+                        <span className="text-xs bg-blue-50 text-blue-700 px-2.5 py-0.5 rounded-full font-medium">
+                          {TIER_LABELS[c.pricing_tier] ?? c.pricing_tier}
+                        </span>
+                      </td>
                       <td className="px-5 py-4 text-gray-600 text-xs">
                         {frequencyLabel(c.visit_frequency_days)}
                       </td>
@@ -371,7 +410,7 @@ export default function GirardCustomers() {
                           onClick={() => openEdit(c)}
                           className="text-green-600 hover:text-green-800 text-xs font-medium"
                         >
-                          Edit
+                          Ubah
                         </button>
                       </td>
                     </tr>
@@ -399,23 +438,29 @@ export default function GirardCustomers() {
                       onClick={() => openEdit(c)}
                       className="text-green-600 text-xs font-medium ml-3 shrink-0"
                     >
-                      Edit
+                      Ubah
                     </button>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div>
-                      <p className="text-gray-400">Manager</p>
+                      <p className="text-gray-400">Manajer</p>
                       <p className="text-gray-700 mt-0.5">{assignment?.managers?.full_name ?? '—'}</p>
                     </div>
                     <div>
-                      <p className="text-gray-400">Frequency</p>
+                      <p className="text-gray-400">Tier Harga</p>
+                      <p className="text-blue-700 font-medium mt-0.5">
+                        {TIER_LABELS[c.pricing_tier] ?? c.pricing_tier}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-gray-400">Frekuensi</p>
                       <p className="text-gray-700 mt-0.5">{frequencyLabel(c.visit_frequency_days)}</p>
                     </div>
-                    <div className="col-span-2">
-                      <p className="text-gray-400">Last Visit</p>
+                    <div>
+                      <p className="text-gray-400">Kunjungan Terakhir</p>
                       <p className={`mt-0.5 ${overdue ? 'text-red-500 font-medium' : 'text-gray-700'}`}>
                         {c.last_visit_date
-                          ? new Date(c.last_visit_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
+                          ? new Date(c.last_visit_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
                           : 'Belum pernah'}
                         {overdue && ' ⚠'}
                       </p>
@@ -435,22 +480,22 @@ export default function GirardCustomers() {
             <div className="px-6 py-5 border-b border-gray-100">
               <h3 className="text-base font-semibold text-gray-900">
                 {modalMode === 'create' ? 'Pelanggan Baru'
-                  : modalMode === 'assign-existing' ? 'Assign Existing Customer'
+                  : modalMode === 'assign-existing' ? 'Tugaskan Pelanggan yang Ada'
                   : 'Ubah Penugasan Pelanggan'}
               </h3>
             </div>
 
             <div className="px-6 py-4 space-y-4">
 
-              {/* CREATE NEW */}
+              {/* CREATE */}
               {modalMode === 'create' && (
                 <>
                   {[
-                    { label: 'Nama Pelanggan *', field: 'name', placeholder: 'e.g. Toko Bangunan Maju' },
-                    { label: 'Alamat', field: 'address', placeholder: 'e.g. Jl. Sudirman No. 12' },
-                    { label: 'Kota', field: 'city', placeholder: 'e.g. Jakarta' },
-                    { label: 'Nomor Telepon', field: 'phone', placeholder: 'e.g. 021-5551234' },
-                    { label: 'Email', field: 'email', placeholder: 'e.g. toko@example.com' },
+                    { label: 'Nama Pelanggan *', field: 'name', placeholder: 'mis. Toko Bangunan Maju' },
+                    { label: 'Alamat', field: 'address', placeholder: 'mis. Jl. Sudirman No. 12' },
+                    { label: 'Kota', field: 'city', placeholder: 'mis. Jakarta' },
+                    { label: 'Telepon', field: 'phone', placeholder: 'mis. 021-5551234' },
+                    { label: 'Email', field: 'email', placeholder: 'mis. toko@example.com' },
                   ].map(({ label, field, placeholder }) => (
                     <div key={field}>
                       <label className="block text-sm text-gray-600 mb-1">{label}</label>
@@ -474,6 +519,10 @@ export default function GirardCustomers() {
                         <option key={f.days} value={f.days}>{f.label}</option>
                       ))}
                     </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-1">Tier Harga *</label>
+                    {tierSelect(form.pricing_tier, v => setForm(p => ({ ...p, pricing_tier: v })))}
                   </div>
                   <div>
                     <label className="block text-sm text-gray-600 mb-1">
@@ -525,6 +574,10 @@ export default function GirardCustomers() {
                     </select>
                   </div>
                   <div>
+                    <label className="block text-sm text-gray-600 mb-1">Tier Harga *</label>
+                    {tierSelect(existingPricingTier, setExistingPricingTier)}
+                  </div>
+                  <div>
                     <label className="block text-sm text-gray-600 mb-1">Tugaskan ke Manajer *</label>
                     <select
                       value={existingManagerId}
@@ -554,6 +607,10 @@ export default function GirardCustomers() {
                         <option key={f.days} value={f.days}>{f.label}</option>
                       ))}
                     </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-1">Tier Harga</label>
+                    {tierSelect(form.pricing_tier, v => setForm(p => ({ ...p, pricing_tier: v })))}
                   </div>
                   <div>
                     <label className="block text-sm text-gray-600 mb-1">Manajer</label>
@@ -595,7 +652,10 @@ export default function GirardCustomers() {
                 disabled={isPending}
                 className="px-4 py-2 text-sm font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
               >
-                {isPending ? 'Menyimpan...' : modalMode === 'create' ? 'Buat' : modalMode === 'assign-existing' ? 'Tugaskan' : 'Simpan'}
+                {isPending ? 'Menyimpan...'
+                  : modalMode === 'create' ? 'Buat'
+                  : modalMode === 'assign-existing' ? 'Tugaskan'
+                  : 'Simpan'}
               </button>
             </div>
 

@@ -1,16 +1,20 @@
 import { useState, useRef, useEffect } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
-
-const allAthelLinks = [
-  { to: '/athel/po',           label: 'Pesanan Pembelian', roles: ['po_admin', 'executive'] },
-  { to: '/athel/sales-orders', label: 'Pesanan Penjualan', roles: ['po_admin', 'executive'] },
-  { to: '/athel/customers',    label: 'Daftar Pelanggan',  roles: ['po_admin', 'executive'] },
-  { to: '/athel/products',     label: 'Daftar Barang',     roles: ['po_admin', 'executive'] }
-]
+import { supabase } from '../lib/supabase'
+import { useQuery } from '@tanstack/react-query'
 
 const GIRARD_ROLES = ['sales_person', 'sales_manager', 'sales_head', 'executive']
 const ATHEL_ROLES  = ['po_admin', 'executive']
+
+async function fetchPendingSalesOrders(): Promise<number> {
+  const { count, error } = await supabase
+    .from('girard_orders')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'pending')
+  if (error) throw error
+  return count ?? 0
+}
 
 export default function AthelNav() {
   const { profile, signOut } = useAuth()
@@ -23,6 +27,22 @@ export default function AthelNav() {
   const canAccessAthel  = profile && ATHEL_ROLES.includes(profile.role)
   const canAccessGirard = profile && GIRARD_ROLES.includes(profile.role)
   const showSwitcherBtn = canAccessAthel && canAccessGirard
+
+  const { data: pendingCount } = useQuery({
+    queryKey: ['pending_sales_orders'],
+    queryFn: fetchPendingSalesOrders,
+    refetchInterval: 60_000, // refresh every 60 seconds
+    enabled: !!profile && ATHEL_ROLES.includes(profile.role),
+  })
+
+  const allAthelLinks = [
+    { to: '/athel/po',           label: 'Manajemen PO', roles: ['po_admin', 'executive'] },
+    { to: '/athel/sales-orders', label: 'PO dari Sales', roles: ['po_admin', 'executive'], badge: pendingCount },
+    { to: '/athel/customers',    label: 'Daftar Pelanggan',  roles: ['po_admin', 'executive'] },
+    { to: '/athel/products',     label: 'Daftar Barang',     roles: ['po_admin', 'executive'] },
+    { to: '/ihr/users',          label: 'Pengguna',          roles: ['executive'] },
+  ]
+
   const links = allAthelLinks.filter(l => profile && l.roles.includes(profile.role))
 
   useEffect(() => {
@@ -53,6 +73,8 @@ export default function AthelNav() {
   return (
     <div className="bg-white border-b border-gray-200 px-4 md:px-8">
       <div className="flex items-center gap-1 h-14">
+
+        {/* Logo / Module switcher */}
         <div className="relative mr-4" ref={switcherRef}>
           <button
             onClick={() => showSwitcherBtn && setShowSwitcher(p => !p)}
@@ -94,38 +116,55 @@ export default function AthelNav() {
           )}
         </div>
 
+        {/* Nav links — desktop */}
         <div className="hidden md:flex items-center gap-1 flex-1">
           {links.map(link => (
             <NavLink
               key={link.to}
               to={link.to}
               className={({ isActive }) =>
-                `px-4 py-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                  isActive ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'
+                `relative px-4 py-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex items-center gap-1.5 ${
+                  isActive
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-800'
                 }`
               }
             >
               {link.label}
+              {!!link.badge && link.badge > 0 && (
+                <span className="bg-red-500 text-white text-xs font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 leading-none">
+                  {link.badge > 99 ? '99+' : link.badge}
+                </span>
+              )}
             </NavLink>
           ))}
         </div>
 
+        {/* Nav links — mobile */}
         <div className="flex md:hidden items-center gap-1 flex-1 overflow-x-auto">
           {links.map(link => (
             <NavLink
               key={link.to}
               to={link.to}
               className={({ isActive }) =>
-                `px-3 py-4 text-xs font-medium border-b-2 transition-colors whitespace-nowrap ${
-                  isActive ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-800'
+                `relative px-3 py-4 text-xs font-medium border-b-2 transition-colors whitespace-nowrap flex items-center gap-1 ${
+                  isActive
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-800'
                 }`
               }
             >
               {link.label}
+              {!!link.badge && link.badge > 0 && (
+                <span className="bg-red-500 text-white text-xs font-bold rounded-full min-w-[16px] h-[16px] flex items-center justify-center px-0.5 leading-none">
+                  {link.badge > 99 ? '99+' : link.badge}
+                </span>
+              )}
             </NavLink>
           ))}
         </div>
 
+        {/* User menu */}
         <div className="relative ml-auto" ref={userRef}>
           <button
             onClick={() => setShowUser(p => !p)}
@@ -157,6 +196,7 @@ export default function AthelNav() {
             </div>
           )}
         </div>
+
       </div>
     </div>
   )

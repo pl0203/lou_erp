@@ -17,17 +17,18 @@ export async function fetchCustomerStatsBatch(
   from.setMonth(from.getMonth() - periodMonths)
   const cutoff = from.toISOString().split('T')[0]
 
-  // All POs in period any status for order count
+  // All POs any time for sales calculation
   const { data: allPos, error: allError } = await supabase
     .from('purchase_orders')
     .select('id, customer_id, status, order_date')
     .in('customer_id', customerIds)
-    .gte('order_date', cutoff)
   if (allError) throw allError
 
+  // Recent POs for order count
+  const recentPos = (allPos ?? []).filter(po => po.order_date >= cutoff)
   const allPoIds = (allPos ?? []).map(po => po.id)
 
-  // PO line items with price for top items by revenue
+  // PO line items for top items and fallback sales
   let poLineItems: any[] = []
   if (allPoIds.length > 0) {
     const { data: poli } = await supabase
@@ -37,7 +38,7 @@ export async function fetchCustomerStatsBatch(
     poLineItems = poli ?? []
   }
 
-  // SJ delivered quantities for sales calculation
+  // SJ delivered quantities in last 3 months for in_progress/complete POs
   const eligiblePoIds = (allPos ?? [])
     .filter(po => ['in_progress', 'complete'].includes(po.status))
     .map(po => po.id)
@@ -58,12 +59,12 @@ export async function fetchCustomerStatsBatch(
     statsMap[id] = { customer_id: id, order_count: 0, total_sales: 0, top_items: [] }
   }
 
-  // Order count
-  for (const po of allPos ?? []) {
+  // Order count — recent POs only
+  for (const po of recentPos) {
     if (statsMap[po.customer_id]) statsMap[po.customer_id].order_count++
   }
 
-  // Sales from SJ deliveries
+  // Sales from SJ deliveries in last 3 months
   for (const sj of sjData) {
     const po = (allPos ?? []).find(p => p.id === sj.purchase_order_id)
     if (!po) continue
@@ -73,7 +74,24 @@ export async function fetchCustomerStatsBatch(
     }
   }
 
-  // Top items by revenue (quantity × unit_price)
+  // Fallback: if no SJ data, use PO line items total for in_progress/complete POs in period
+  for (const id of customerIds) {
+    if (statsMap[id].total_sales === 0) {
+      const eligibleRecent = (allPos ?? []).filter(
+        po => po.customer_id === id &&
+        ['in_progress', 'complete'].includes(po.status) &&
+        po.order_date >= cutoff
+      )
+      statsMap[id].total_sales = eligibleRecent.reduce((sum, po) => {
+        const lineTotal = poLineItems
+          .filter(li => li.purchase_order_id === po.id)
+          .reduce((s, li) => s + li.quantity * li.unit_price, 0)
+        return sum + lineTotal
+      }, 0)
+    }
+  }
+
+  // Top items by revenue from all PO line items
   const itemRevenueMap: Record<string, Record<string, number>> = {}
   for (const li of poLineItems) {
     const po = (allPos ?? []).find(p => p.id === li.purchase_order_id)
@@ -124,7 +142,7 @@ export async function fetchCustomerStatsDetail(customerId: string): Promise<Cust
   // All PO line items with price for top items by revenue
   const { data: allLineItems } = await supabase
     .from('po_line_items')
-    .select('product_name, quantity, unit_price')
+    .select('product_name, quantity, unit_price, purchase_order_id')
     .in('purchase_order_id', allPoIds)
 
   // Top items by revenue (quantity × unit_price)
@@ -139,7 +157,7 @@ export async function fetchCustomerStatsDetail(customerId: string): Promise<Cust
     .slice(0, 10)
     .map(([name, revenue]) => ({ name, revenue }))
 
-  // Sales from SJ deliveries for in_progress/complete POs in last 3 months
+  // Sales from SJ deliveries for in_progress/complete POs
   const eligiblePoIds = allPOs
     .filter(po => ['in_progress', 'complete'].includes(po.status))
     .map(po => po.id)
@@ -160,10 +178,15 @@ export async function fetchCustomerStatsDetail(customerId: string): Promise<Cust
 
     // Fallback if no SJ data
     if (totalSales === 0) {
-      const recentEligible = allPOs.filter(
+      const eligibleRecent = allPOs.filter(
         po => ['in_progress', 'complete'].includes(po.status) && po.order_date >= cutoff
       )
-      totalSales = recentEligible.reduce((sum, po) => sum + (po.total_value ?? 0), 0)
+      totalSales = eligibleRecent.reduce((sum, po) => {
+        const lineTotal = (allLineItems ?? [])
+          .filter(li => li.purchase_order_id === po.id)
+          .reduce((s, li) => s + li.quantity * li.unit_price, 0)
+        return sum + lineTotal
+      }, 0)
     }
   }
 

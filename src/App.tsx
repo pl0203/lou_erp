@@ -20,15 +20,13 @@ import ManagerSchedule from './pages/girard/ManagerSchedule'
 import VisitPage from './pages/girard/VisitPage'
 import GirardCustomerDetail from './pages/girard/GirardCustomerDetail'
 import OutletDetail from './pages/girard/OutletDetail'
-import ManagerDashboard from './pages/girard/ManagerDashboard'
 import GirardCustomers from './pages/girard/GirardCustomers'
 import GirardManagers from './pages/girard/GirardManagers'
-import GirardPerformance from './pages/girard/GirardPerformance'
-import GirardRevenue from './pages/girard/GirardRevenue'
 import GirardTeam from './pages/girard/GirardTeam'
 import ManagerCustomers from './pages/girard/ManagerCustomers'
 import MyOrders from './pages/girard/MyOrders'
 import MyVisits from './pages/girard/MyVisits'
+import GirardDashboard from './pages/girard/GirardDashboard'
 
 import UserManagement from './pages/ihr/UserManagement'
 import LeaveManagement from './pages/ihr/LeaveManagement'
@@ -108,13 +106,10 @@ export default function App() {
       <Route path="/girard/outlet/:id" element={
         <ProtectedRoute allowedRoles={GIRARD_ROLES}><OutletDetail /></ProtectedRoute>
       } />
-      <Route path="/girard/dashboard" element={
-        <ProtectedRoute allowedRoles={GIRARD_ROLES}><ManagerDashboard /></ProtectedRoute>
-      } />
       <Route path="/girard/my-orders" element={
         <ProtectedRoute allowedRoles={GIRARD_ROLES}><MyOrders /></ProtectedRoute>
       } />
-
+      
       {/* Girard — manager and above */}
       <Route path="/girard/my-visits" element={
         <ProtectedRoute allowedRoles={MANAGER_UP}><MyVisits /></ProtectedRoute>
@@ -122,8 +117,8 @@ export default function App() {
       <Route path="/girard/team" element={
         <ProtectedRoute allowedRoles={MANAGER_UP}><GirardTeam /></ProtectedRoute>
       } />
-      <Route path="/girard/performance" element={
-        <ProtectedRoute allowedRoles={MANAGER_UP}><GirardPerformance /></ProtectedRoute>
+      <Route path="/girard/dashboard" element={
+        <ProtectedRoute allowedRoles={MANAGER_UP}><GirardDashboard /></ProtectedRoute>
       } />
       <Route path="/girard/my-customers" element={
         <ProtectedRoute allowedRoles={MANAGER_UP}><ManagerCustomers /></ProtectedRoute>
@@ -135,9 +130,6 @@ export default function App() {
       } />
       <Route path="/girard/managers" element={
         <ProtectedRoute allowedRoles={HEAD_UP}><GirardManagers /></ProtectedRoute>
-      } />
-      <Route path="/girard/revenue" element={
-        <ProtectedRoute allowedRoles={HEAD_UP}><GirardRevenue /></ProtectedRoute>
       } />
 
       {/* iHR — executive only */}

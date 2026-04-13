@@ -175,6 +175,20 @@ async function fetchSchedules(managerId: string, role: string, dates: string[]):
   return data as Schedule[]
 }
 
+async function createSchedule(form: ScheduleForm, assignedBy: string) {
+  const { error } = await supabase
+    .from('sales_schedules')
+    .insert({
+      outlet_id: form.outlet_id,
+      sales_person_id: form.sales_person_id,
+      assigned_by: assignedBy,
+      scheduled_date: form.scheduled_date,
+      notes: form.notes || null,
+      status: 'pending',
+    })
+  if (error) throw error
+}
+
 async function updateSchedule(id: string, form: Partial<ScheduleForm>) {
   const { error } = await supabase
     .from('sales_schedules')
@@ -434,7 +448,7 @@ export default function ManagerSchedule() {
                             </button>
                           </>
                         ) : (
-                          <span className="text-xs text-gray-300">Locked</span>
+                          <span className="text-xs text-gray-300">Terkunci</span>
                         )}
                       </td>
                     </tr>
@@ -623,7 +637,7 @@ export default function ManagerSchedule() {
                 disabled={deleteMutation.isPending}
                 className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
               >
-                {deleteMutation.isPending ? 'Sedang menghapus...' : 'Telah dihapus'}
+                {deleteMutation.isPending ? 'Menghapus...' : 'Hapus'}
               </button>
             </div>
           </div>

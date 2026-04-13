@@ -12,8 +12,23 @@ type LineItem = {
   unit_price: number
 }
 
-type Customer = { id: string; name: string }
-type Product = { id: string; name: string; sku: string; size: string | null; unit_price: number }
+type Customer = {
+  id: string
+  name: string
+  pricing_tier: string
+}
+
+type Product = {
+  id: string
+  name: string
+  sku: string
+  size: string | null
+  unit_price: number
+  harga_pokok: number
+  luar_kota: number
+  dalam_kota: number
+  depo_bangunan: number
+}
 
 const EMPTY_LINE: LineItem = {
   product_id: null,
@@ -23,8 +38,18 @@ const EMPTY_LINE: LineItem = {
   unit_price: 0,
 }
 
+const TIER_LABELS: Record<string, string> = {
+  harga_pokok:   'Harga Pokok',
+  luar_kota:     'Luar Kota',
+  dalam_kota:    'Dalam Kota',
+  depo_bangunan: 'Depo Bangunan',
+}
+
 async function fetchCustomers(): Promise<Customer[]> {
-  const { data, error } = await supabase.from('customers').select('id, name').order('name')
+  const { data, error } = await supabase
+    .from('customers')
+    .select('id, name, pricing_tier')
+    .order('name')
   if (error) throw error
   return data
 }
@@ -32,7 +57,7 @@ async function fetchCustomers(): Promise<Customer[]> {
 async function fetchProducts(): Promise<Product[]> {
   const { data, error } = await supabase
     .from('products')
-    .select('id, name, sku, size, unit_price')
+    .select('id, name, sku, size, unit_price, harga_pokok, luar_kota, dalam_kota, depo_bangunan')
     .order('name')
   if (error) throw error
   return data
@@ -47,7 +72,7 @@ async function createPO(payload: {
   lineItems: LineItem[]
 }) {
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
+  if (!user) throw new Error('Tidak terautentikasi')
 
   const { data: po, error: poError } = await supabase
     .from('purchase_orders')
@@ -62,7 +87,6 @@ async function createPO(payload: {
     })
     .select()
     .single()
-
   if (poError) throw poError
 
   const { error: lineError } = await supabase
@@ -76,7 +100,6 @@ async function createPO(payload: {
         unit_price: item.unit_price,
       }))
     )
-
   if (lineError) throw lineError
   return po
 }
@@ -93,10 +116,9 @@ function SKULookup({
   const ref = useRef<HTMLDivElement>(null)
 
   const results = query.trim()
-    ? products.filter(
-        p =>
-          p.sku.toLowerCase().includes(query.toLowerCase()) ||
-          p.name.toLowerCase().includes(query.toLowerCase())
+    ? products.filter(p =>
+        p.sku.toLowerCase().includes(query.toLowerCase()) ||
+        p.name.toLowerCase().includes(query.toLowerCase())
       ).slice(0, 6)
     : []
 
@@ -110,7 +132,7 @@ function SKULookup({
     <div className="relative" ref={ref}>
       <input
         type="text"
-        placeholder="Search SKU or name..."
+        placeholder="Cari SKU atau nama barang..."
         value={query}
         onChange={e => { setQuery(e.target.value); setOpen(true) }}
         onFocus={() => setOpen(true)}
@@ -131,9 +153,6 @@ function SKULookup({
                   <span className="text-sm text-gray-900">{p.name}</span>
                   {p.size && <span className="text-xs text-gray-400 ml-1">({p.size})</span>}
                 </div>
-                <span className="text-sm text-gray-600 font-medium">
-                  Rp {p.unit_price.toLocaleString('id-ID')}
-                </span>
               </div>
             </button>
           ))}
@@ -160,14 +179,19 @@ export default function PONew() {
     onSuccess: po => navigate(`/athel/po/${po.id}`),
   })
 
+  // Get selected customer's pricing tier
+  const selectedCustomer = customers?.find(c => c.id === customerId)
+  const pricingTier = selectedCustomer?.pricing_tier ?? 'luar_kota'
+
   const updateLine = (index: number, field: keyof LineItem, value: string | number | null) => {
     setLineItems(prev => prev.map((item, i) => i === index ? { ...item, [field]: value } : item))
   }
 
   const fillFromProduct = (index: number, product: Product) => {
+    const price = (product[pricingTier as keyof Product] as number) || product.unit_price
     setLineItems(prev => prev.map((item, i) =>
       i === index
-        ? { ...item, product_id: product.id, product_name: product.name, sku: product.sku, unit_price: product.unit_price }
+        ? { ...item, product_id: product.id, product_name: product.name, sku: product.sku, unit_price: price }
         : item
     ))
   }
@@ -181,17 +205,26 @@ export default function PONew() {
   const total = lineItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0)
 
   const handleSubmit = () => {
-    if (!customerId) return alert('Pilih toko/customer terlebih dahulu.')
+    if (!customerId) return alert('Pilih pelanggan terlebih dahulu.')
     if (!poNumber.trim()) return alert('Masukkan nomor PO terlebih dahulu.')
-    if (lineItems.some(l => !l.product_name.trim())) return alert('Semua barang harus memiliki nama produk..')
-    mutation.mutate({ customer_id: customerId, po_number: poNumber, order_date: orderDate, expected_delivery_date: expectedDelivery, notes, lineItems })
+    if (lineItems.some(l => !l.product_name.trim())) return alert('Semua barang harus memiliki nama produk.')
+    mutation.mutate({
+      customer_id: customerId,
+      po_number: poNumber,
+      order_date: orderDate,
+      expected_delivery_date: expectedDelivery,
+      notes,
+      lineItems,
+    })
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
       <AthelNav />
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center gap-4">
-        <button onClick={() => navigate('/athel/po')} className="text-gray-400 hover:text-gray-600 text-sm">← Kembali</button>
+        <button onClick={() => navigate('/athel/po')} className="text-gray-400 hover:text-gray-600 text-sm">
+          ← Kembali
+        </button>
         <div>
           <h1 className="text-xl font-semibold text-gray-900">PO Baru</h1>
           <p className="text-sm text-gray-500 mt-0.5">Athel — Manajemen PO</p>
@@ -199,20 +232,30 @@ export default function PONew() {
       </div>
 
       <div className="px-4 md:px-8 py-6 max-w-4xl mx-auto space-y-6">
+
         {/* Detail Pesanan */}
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h2 className="text-base font-medium text-gray-900 mb-4">Detail Pesanan</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm text-gray-600 mb-1">Customer</label>
+              <label className="block text-sm text-gray-600 mb-1">Pelanggan</label>
               <select
                 value={customerId}
-                onChange={e => setCustomerId(e.target.value)}
+                onChange={e => {
+                  setCustomerId(e.target.value)
+                  // Reset line item prices when customer changes
+                  setLineItems([{ ...EMPTY_LINE }])
+                }}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="">Select customer...</option>
+                <option value="">Pilih pelanggan...</option>
                 {customers?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
+              {selectedCustomer && (
+                <p className="text-xs text-blue-600 mt-1">
+                  Tier harga: <span className="font-medium">{TIER_LABELS[pricingTier]}</span>
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-sm text-gray-600 mb-1">Nomor PO</label>
@@ -220,38 +263,57 @@ export default function PONew() {
                 type="text"
                 value={poNumber}
                 onChange={e => setPoNumber(e.target.value)}
-                placeholder="e.g. PO-2024-001"
+                placeholder="mis. PO-2024-001"
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div>
               <label className="block text-sm text-gray-600 mb-1">Tanggal PO</label>
-              <input type="date" value={orderDate} onChange={e => setOrderDate(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input
+                type="date"
+                value={orderDate}
+                onChange={e => setOrderDate(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
             </div>
             <div>
               <label className="block text-sm text-gray-600 mb-1">Tanggal PO Expired</label>
-              <input type="date" value={expectedDelivery} onChange={e => setExpectedDelivery(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input
+                type="date"
+                value={expectedDelivery}
+                onChange={e => setExpectedDelivery(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
             </div>
-            <div className="col-span-2">
+            <div className="sm:col-span-2">
               <label className="block text-sm text-gray-600 mb-1">Catatan</label>
-              <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
-                placeholder="Optional notes..."
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
+              <textarea
+                value={notes}
+                onChange={e => setNotes(e.target.value)}
+                rows={2}
+                placeholder="Catatan (opsional)..."
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              />
             </div>
           </div>
         </div>
 
-        {/* Line Items */}
+        {/* Daftar Barang */}
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h2 className="text-base font-medium text-gray-900 mb-1">Daftar Barang</h2>
-          <p className="text-xs text-gray-400 mb-4">Cari berdasarkan SKU atau nama untuk mengisi otomatis. Harga dapat diubah per pesanan.</p>
+          <p className="text-xs text-gray-400 mb-4">
+            Cari berdasarkan SKU atau nama untuk mengisi otomatis. Harga otomatis sesuai tier pelanggan dan dapat diubah per pesanan.
+          </p>
+
+          {!customerId && (
+            <div className="bg-yellow-50 border border-yellow-100 rounded-lg px-4 py-3 mb-4">
+              <p className="text-xs text-yellow-700">Pilih pelanggan terlebih dahulu agar harga otomatis sesuai tier.</p>
+            </div>
+          )}
 
           <div className="space-y-4">
             {lineItems.map((item, i) => (
               <div key={i} className="border border-gray-100 rounded-lg p-4 space-y-3 relative">
-                {/* SKU Lookup */}
                 <div className="grid grid-cols-12 gap-3 items-end">
                   <div className="col-span-11">
                     <label className="block text-xs text-gray-400 mb-1">Cari barang berdasarkan SKU atau nama</label>
@@ -271,7 +333,6 @@ export default function PONew() {
                   </button>
                 </div>
 
-                {/* Filled fields */}
                 <div className="grid grid-cols-12 gap-3">
                   <div className="col-span-1">
                     <label className="block text-xs text-gray-400 mb-1">SKU</label>
@@ -288,7 +349,7 @@ export default function PONew() {
                       type="text"
                       value={item.product_name}
                       onChange={e => updateLine(i, 'product_name', e.target.value)}
-                      placeholder="Product name"
+                      placeholder="Nama produk"
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
@@ -304,7 +365,9 @@ export default function PONew() {
                   <div className="col-span-4">
                     <label className="block text-xs text-gray-400 mb-1">
                       Harga Satuan (Rp)
-                      {item.product_id && <span className="text-blue-400 ml-1">— dapat diubah</span>}
+                      {item.product_id && (
+                        <span className="text-blue-400 ml-1">— dapat diubah</span>
+                      )}
                     </label>
                     <input
                       type="number" min={0}
@@ -315,7 +378,6 @@ export default function PONew() {
                   </div>
                 </div>
 
-                {/* Line subtotal */}
                 <div className="text-right text-xs text-gray-400">
                   Subtotal: <span className="text-gray-700 font-medium">
                     Rp {(item.quantity * item.unit_price).toLocaleString('id-ID')}
@@ -339,12 +401,17 @@ export default function PONew() {
 
         {/* Actions */}
         <div className="flex justify-end gap-3 pb-8">
-          <button onClick={() => navigate('/athel/po')}
-            className="px-5 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-200 rounded-lg">
+          <button
+            onClick={() => navigate('/athel/po')}
+            className="px-5 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-200 rounded-lg"
+          >
             Batal
           </button>
-          <button onClick={handleSubmit} disabled={mutation.isPending}
-            className="px-5 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 transition-colors">
+          <button
+            onClick={handleSubmit}
+            disabled={mutation.isPending}
+            className="px-5 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 transition-colors"
+          >
             {mutation.isPending ? 'Menyimpan...' : 'Simpan PO'}
           </button>
         </div>
