@@ -23,7 +23,7 @@ const modules = [
   {
     key: 'ihr',
     label: 'iHR',
-    description: 'Manajemen pengguna dan operasional SDM.',
+    description: 'Manajemen pengguna, cuti, pendataan pekerja, dan operasional SDM.',
     color: '#e56d3a',
     bg: '#fdf0eb',
     letter: 'i',
@@ -69,10 +69,10 @@ export default function Landing() {
           </button>
         ))}
       </div>
-
+      
       <button
         onClick={handleSignOut}
-        className="mt-12 text-xs text-gray-400 hover:text-gray-600"
+        className="w-20 h-10 border justify-center rounded-xl flex items-center border-gray-200 mt-12 text-xs text-gray-300 hover:shadow-md text-gray-800"
       >
         Keluar
       </button>

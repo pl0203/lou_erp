@@ -27,6 +27,7 @@ import ManagerCustomers from './pages/girard/ManagerCustomers'
 import MyOrders from './pages/girard/MyOrders'
 import MyVisits from './pages/girard/MyVisits'
 import GirardDashboard from './pages/girard/GirardDashboard'
+import Promotions from './pages/girard/Promotions'
 
 import UserManagement from './pages/ihr/UserManagement'
 import LeaveManagement from './pages/ihr/LeaveManagement'
@@ -130,6 +131,9 @@ export default function App() {
       } />
       <Route path="/girard/managers" element={
         <ProtectedRoute allowedRoles={HEAD_UP}><GirardManagers /></ProtectedRoute>
+      } />
+      <Route path="/girard/promotions" element={
+        <ProtectedRoute allowedRoles={HEAD_UP}><Promotions /></ProtectedRoute>
       } />
 
       {/* iHR — executive only */}

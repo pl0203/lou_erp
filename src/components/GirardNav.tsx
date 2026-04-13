@@ -18,6 +18,7 @@ const ROLE_LINKS: Record<string, { to: string; label: string }[]> = {
     { to: '/girard/my-visits',   label: 'Kunjungan Saya' },
     { to: '/girard/customers',   label: 'Pelanggan' },
     { to: '/girard/managers',    label: 'Manajer' },
+    { to: '/girard/promotions',  label: 'Promosi' },
     { to: '/girard/dashboard',   label: 'Dashboard' },
   ],
   executive: [
@@ -25,6 +26,7 @@ const ROLE_LINKS: Record<string, { to: string; label: string }[]> = {
     { to: '/girard/my-visits',   label: 'Kunjungan Saya' },
     { to: '/girard/customers',   label: 'Pelanggan' },
     { to: '/girard/managers',    label: 'Manajer' },
+    { to: '/girard/promotions',  label: 'Promosi' },
     { to: '/girard/dashboard',   label: 'Dashboard' },
   ],
 }

@@ -18,6 +18,7 @@ type GirardOrder = {
     sku: string | null
     quantity: number
     unit_price: number
+    is_promo: boolean
   }[]
 }
 
@@ -250,7 +251,14 @@ export default function SalesOrders() {
                 <tbody>
                   {order.girard_order_items.map(item => (
                     <tr key={item.id} className="border-t border-gray-50">
-                      <td className="py-1.5 text-gray-700">{item.product_name}</td>
+                      <td className="py-1.5 text-gray-700">
+                        <span>{item.product_name}</span>
+                        {item.is_promo && (
+                          <span className="ml-2 text-xs bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded font-medium">
+                            🔥 Harga Promosi
+                          </span>
+                        )}
+                      </td>
                       <td className="py-1.5 text-gray-400 font-mono uppercase hidden sm:table-cell">
                         {item.sku ?? '—'}
                       </td>

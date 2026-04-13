@@ -33,6 +33,8 @@ type OrderItem = {
   sku: string
   quantity: number
   unit_price: number
+  is_promo?: boolean
+  promotion_id?: string | null
 }
 
 type Product = {
@@ -237,6 +239,8 @@ async function submitOrder(payload: {
         sku: i.sku || null,
         quantity: i.quantity,
         unit_price: i.unit_price,
+        is_promo: i.is_promo ?? false,
+        promotion_id: i.promotion_id ?? null,
       }))
     )
   if (itemError) throw itemError
@@ -389,7 +393,33 @@ function CheckInPhoto({ storagePath }: { storagePath: string }) {
   return <img src={url} alt="Foto check-in" className="w-full h-48 object-cover rounded-xl" />
 }
 
+type ActivePromo = {
+  id: string
+  product_id: string
+  harga_pokok: number
+  luar_kota: number
+  dalam_kota: number
+  depo_bangunan: number
+  products: { name: string; sku: string; size: string | null }
+}
+
+async function fetchActivePromos(): Promise<ActivePromo[]> {
+  const today = new Date().toISOString().split('T')[0]
+  const { data, error } = await supabase
+    .from('promotions')
+    .select('id, product_id, harga_pokok, luar_kota, dalam_kota, depo_bangunan, products(name, sku, size)')
+    .eq('is_active', true)
+    .lte('start_date', today)
+    .gte('end_date', today)
+  if (error) throw error
+  return data as ActivePromo[]
+}
+
 export default function VisitPage() {
+  const { data: activePromos } = useQuery({
+    queryKey: ['active_promos'],
+    queryFn: fetchActivePromos,
+  })
   const { scheduleId } = useParams<{ scheduleId: string }>()
   const { profile } = useAuth()
   const navigate = useNavigate()
@@ -501,6 +531,24 @@ export default function VisitPage() {
         ? { ...item, product_id: product.id, product_name: product.name, sku: product.sku, unit_price: price }
         : item
     ))
+  }
+
+  const addPromoItem = (promo: ActivePromo) => {
+    const tier = schedule?.customers?.pricing_tier ?? 'luar_kota'
+    const price = promo[tier as keyof ActivePromo] as number || promo.luar_kota
+    setOrderItems(prev => {
+      const exists = prev.find(i => i.product_id === promo.product_id && i.is_promo)
+      if (exists) return prev
+      return [...prev, {
+        product_id: promo.product_id,
+        product_name: promo.products.name,
+        sku: promo.products.sku,
+        quantity: 1,
+        unit_price: price,
+        is_promo: true,
+        promotion_id: promo.id,
+      }]
+    })
   }
 
   const addOrderItem = () => setOrderItems(prev => [
@@ -754,6 +802,43 @@ export default function VisitPage() {
                 </div>
 
                 <p className="text-sm font-medium text-gray-700">Pesanan Baru</p>
+                {/* Active promos */}
+                {activePromos && activePromos.length > 0 && (
+                  <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 space-y-2">
+                    <p className="text-xs font-semibold text-orange-700">🔥 Product Highlight — Harga Spesial</p>
+                    <p className="text-xs text-orange-500">
+                      Harga sudah sesuai tier pelanggan ({TIER_LABELS[schedule?.customers?.pricing_tier ?? 'luar_kota']}) dan tidak dapat diubah.
+                    </p>
+                    <div className="space-y-2">
+                      {activePromos.map(promo => {
+                        const tier = schedule?.customers?.pricing_tier ?? 'luar_kota'
+                        const price = (promo[tier as keyof ActivePromo] as number) || promo.luar_kota
+                        const alreadyAdded = orderItems.some(i => i.product_id === promo.product_id && i.is_promo)
+                        return (
+                          <div key={promo.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-orange-100">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold text-gray-900 truncate">{promo.products?.name}</p>
+                              <p className="text-xs text-gray-500">
+                                Rp {price.toLocaleString('id-ID')}
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => addPromoItem(promo)}
+                              disabled={alreadyAdded}
+                              className={`ml-3 text-xs font-medium px-3 py-1.5 rounded-lg shrink-0 transition-colors ${
+                                alreadyAdded
+                                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                  : 'bg-orange-500 text-white hover:bg-orange-600'
+                              }`}
+                            >
+                              {alreadyAdded ? '✓ Ditambah' : '+ Tambah'}
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
                 <div className="space-y-3">
                   {orderItems.map((item, i) => (
                     <div key={i} className="border border-gray-100 rounded-xl p-3 space-y-3">
@@ -795,13 +880,24 @@ export default function VisitPage() {
                             className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                           />
                         </div>
-                        <div>
-                          <label className="block text-xs text-gray-400 mb-1">Harga Satuan (Rp)</label>
+                        <div className="col-span-4">
+                          <label className="block text-xs text-gray-400 mb-1">
+                            Harga Satuan (Rp)
+                            {item.is_promo
+                              ? <span className="ml-1 text-orange-500 font-medium">🔥 Harga Promosi</span>
+                              : item.product_id && <span className="text-blue-400 ml-1">— dapat diubah</span>
+                            }
+                          </label>
                           <input
                             type="number" min={0}
                             value={item.unit_price}
-                            onChange={e => updateOrderItem(i, 'unit_price', parseFloat(e.target.value) || 0)}
-                            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            onChange={e => !item.is_promo && updateOrderItem(i, 'unit_price', parseFloat(e.target.value) || 0)}
+                            readOnly={item.is_promo}
+                            className={`w-full border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 ${
+                              item.is_promo
+                                ? 'border-orange-200 bg-orange-50 text-orange-700 cursor-not-allowed focus:ring-orange-200'
+                                : 'border-gray-200 focus:ring-blue-500'
+                            }`}
                           />
                         </div>
                       </div>
