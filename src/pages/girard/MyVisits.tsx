@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/AuthContext'
 import GirardNav from '../../components/GirardNav'
 import { fetchCustomerStatsBatch } from '../../lib/CustomerStats'
+import ActivePromotionsBanner from '../../components/ActivePromotionsBanner'
 
 type Schedule = {
   id: string
@@ -163,6 +164,8 @@ export default function MyVisits() {
       </div>
 
       <div className="px-4 md:px-8 py-6 max-w-2xl mx-auto space-y-4">
+        <ActivePromotionsBanner />
+
         {isLoading && (
           <div className="text-center text-gray-400 text-sm py-24">Memuat kunjungan Anda...</div>
         )}

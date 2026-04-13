@@ -3,6 +3,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/AuthContext'
 import GirardNav from '../../components/GirardNav'
+import ActivePromotionsBanner from '../../components/ActivePromotionsBanner'
+import { isCurrentlyActive } from '../../lib/promotions'
 
 type Product = {
   id: string
@@ -20,13 +22,21 @@ type Promotion = {
   product_id: string
   start_date: string
   end_date: string
-  harga_pokok: number
-  luar_kota: number
-  dalam_kota: number
-  depo_bangunan: number
+  harga_pokok: number | null
+  luar_kota: number | null
+  dalam_kota: number | null
+  depo_bangunan: number | null
   is_active: boolean
   created_at: string
-  products: { name: string; sku: string; size: string | null }
+  products: {
+    name: string
+    sku: string
+    size: string | null
+    harga_pokok: number | null
+    luar_kota: number | null
+    dalam_kota: number | null
+    depo_bangunan: number | null
+  } | null
 }
 
 type PromoForm = {
@@ -58,9 +68,15 @@ const TIER_LABELS: Record<string, string> = {
   depo_bangunan: 'Depo Bangunan',
 }
 
-function isCurrentlyActive(promo: Promotion): boolean {
-  const today = new Date().toISOString().split('T')[0]
-  return promo.is_active && promo.start_date <= today && promo.end_date >= today
+function formatCurrency(value: number | null | undefined): string {
+  return `Rp ${(value ?? 0).toLocaleString('id-ID')}`
+}
+
+function getPromotionTierPrice(
+  promo: Promotion,
+  tier: 'harga_pokok' | 'luar_kota' | 'dalam_kota' | 'depo_bangunan'
+): number | null {
+  return promo[tier] ?? promo.products?.[tier] ?? null
 }
 
 async function fetchProducts(): Promise<Product[]> {
@@ -75,10 +91,11 @@ async function fetchProducts(): Promise<Product[]> {
 async function fetchPromotions(): Promise<Promotion[]> {
   const { data, error } = await supabase
     .from('promotions')
-    .select('id, product_id, start_date, end_date, harga_pokok, luar_kota, dalam_kota, depo_bangunan, is_active, created_at, products(name, sku, size)')
+    .select('id, product_id, start_date, end_date, harga_pokok, luar_kota, dalam_kota, depo_bangunan, is_active, created_at, products(name, sku, size, harga_pokok, luar_kota, dalam_kota, depo_bangunan)')
     .order('created_at', { ascending: false })
+
   if (error) throw error
-  return data as Promotion[]
+  return (data ?? []) as Promotion[]
 }
 
 async function createPromotion(form: PromoForm, createdBy: string) {
@@ -137,6 +154,7 @@ export default function Promotions() {
     mutationFn: () => createPromotion(form, profile!.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['promotions'] })
+      queryClient.invalidateQueries({ queryKey: ['promotions', 'highlights'] })
       setShowForm(false)
       setForm(EMPTY_FORM)
     },
@@ -145,13 +163,17 @@ export default function Promotions() {
   const toggleMutation = useMutation({
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
       togglePromotion(id, isActive),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['promotions'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['promotions'] })
+      queryClient.invalidateQueries({ queryKey: ['promotions', 'highlights'] })
+    },
   })
 
   const deleteMutation = useMutation({
     mutationFn: () => deletePromotion(deleteId!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['promotions'] })
+      queryClient.invalidateQueries({ queryKey: ['promotions', 'highlights'] })
       setDeleteId(null)
     },
   })
@@ -226,23 +248,7 @@ export default function Promotions() {
       </div>
 
       <div className="px-4 md:px-8 py-6 space-y-4">
-
-        {/* Active highlights banner */}
-        {promotions && promotions.filter(isCurrentlyActive).length > 0 && (
-          <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
-            <p className="text-sm font-medium text-orange-800 mb-3">
-              🔥 Product Highlight Aktif Sekarang
-            </p>
-            <div className="flex flex-wrap gap-3">
-              {promotions.filter(isCurrentlyActive).map(promo => (
-                <div key={promo.id} className="bg-white border border-orange-200 rounded-lg px-3 py-2 text-xs">
-                  <p className="font-semibold text-gray-900">{promo.products?.name}</p>
-                  <p className="text-gray-400 mt-0.5">s/d {new Date(promo.end_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        <ActivePromotionsBanner />
 
         {isLoading && (
           <div className="text-center text-gray-400 text-sm py-24">Memuat data promosi...</div>
@@ -286,16 +292,16 @@ export default function Promotions() {
                           {new Date(promo.end_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
                         </td>
                         <td className="px-5 py-4 text-right text-gray-700 text-xs">
-                          Rp {promo.harga_pokok.toLocaleString('id-ID')}
+                          {formatCurrency(getPromotionTierPrice(promo, 'harga_pokok'))}
                         </td>
                         <td className="px-5 py-4 text-right text-gray-700 text-xs">
-                          Rp {promo.luar_kota.toLocaleString('id-ID')}
+                          {formatCurrency(getPromotionTierPrice(promo, 'luar_kota'))}
                         </td>
                         <td className="px-5 py-4 text-right text-gray-700 text-xs">
-                          Rp {promo.dalam_kota.toLocaleString('id-ID')}
+                          {formatCurrency(getPromotionTierPrice(promo, 'dalam_kota'))}
                         </td>
                         <td className="px-5 py-4 text-right text-gray-700 text-xs">
-                          Rp {promo.depo_bangunan.toLocaleString('id-ID')}
+                          {formatCurrency(getPromotionTierPrice(promo, 'depo_bangunan'))}
                         </td>
                         <td className="px-5 py-4 text-center">
                           <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -356,7 +362,7 @@ export default function Promotions() {
                         <div key={tier} className="bg-gray-50 rounded-lg p-2">
                           <p className="text-gray-400 mb-0.5">{TIER_LABELS[tier]}</p>
                           <p className="font-medium text-gray-900">
-                            Rp {promo[tier].toLocaleString('id-ID')}
+                            {formatCurrency(getPromotionTierPrice(promo, tier))}
                           </p>
                         </div>
                       ))}

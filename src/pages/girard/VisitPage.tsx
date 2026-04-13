@@ -396,23 +396,38 @@ function CheckInPhoto({ storagePath }: { storagePath: string }) {
 type ActivePromo = {
   id: string
   product_id: string
-  harga_pokok: number
-  luar_kota: number
-  dalam_kota: number
-  depo_bangunan: number
-  products: { name: string; sku: string; size: string | null }
+  harga_pokok: number | null
+  luar_kota: number | null
+  dalam_kota: number | null
+  depo_bangunan: number | null
+  products: {
+    name: string
+    sku: string
+    size: string | null
+    harga_pokok: number | null
+    luar_kota: number | null
+    dalam_kota: number | null
+    depo_bangunan: number | null
+  } | null
 }
 
 async function fetchActivePromos(): Promise<ActivePromo[]> {
   const today = new Date().toISOString().split('T')[0]
   const { data, error } = await supabase
     .from('promotions')
-    .select('id, product_id, harga_pokok, luar_kota, dalam_kota, depo_bangunan, products(name, sku, size)')
+    .select('id, product_id, harga_pokok, luar_kota, dalam_kota, depo_bangunan, products(name, sku, size, harga_pokok, luar_kota, dalam_kota, depo_bangunan)')
     .eq('is_active', true)
     .lte('start_date', today)
     .gte('end_date', today)
   if (error) throw error
   return data as ActivePromo[]
+}
+
+function getActivePromoTierPrice(
+  promo: ActivePromo,
+  tier: 'harga_pokok' | 'luar_kota' | 'dalam_kota' | 'depo_bangunan'
+): number {
+  return promo[tier] ?? promo.products?.[tier] ?? promo.luar_kota ?? promo.products?.luar_kota ?? 0
 }
 
 export default function VisitPage() {
@@ -535,7 +550,10 @@ export default function VisitPage() {
 
   const addPromoItem = (promo: ActivePromo) => {
     const tier = schedule?.customers?.pricing_tier ?? 'luar_kota'
-    const price = promo[tier as keyof ActivePromo] as number || promo.luar_kota
+    const price = getActivePromoTierPrice(
+      promo,
+      tier as 'harga_pokok' | 'luar_kota' | 'dalam_kota' | 'depo_bangunan'
+    )
     setOrderItems(prev => {
       const exists = prev.find(i => i.product_id === promo.product_id && i.is_promo)
       if (exists) return prev
@@ -812,7 +830,10 @@ export default function VisitPage() {
                     <div className="space-y-2">
                       {activePromos.map(promo => {
                         const tier = schedule?.customers?.pricing_tier ?? 'luar_kota'
-                        const price = (promo[tier as keyof ActivePromo] as number) || promo.luar_kota
+                        const price = getActivePromoTierPrice(
+                          promo,
+                          tier as 'harga_pokok' | 'luar_kota' | 'dalam_kota' | 'depo_bangunan'
+                        )
                         const alreadyAdded = orderItems.some(i => i.product_id === promo.product_id && i.is_promo)
                         return (
                           <div key={promo.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-orange-100">

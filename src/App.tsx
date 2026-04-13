@@ -11,6 +11,7 @@ import POList from './pages/athel/POList'
 import PODetail from './pages/athel/PODetail'
 import PONew from './pages/athel/PONew'
 import POEdit from './pages/athel/POEdit'
+import AthelDashboard from './pages/athel/Dashboard'
 import CustomerList from './pages/athel/CustomerList'
 import ProductList from './pages/athel/ProductList'
 import SalesOrders from './pages/athel/SalesOrders'
@@ -70,6 +71,9 @@ export default function App() {
       } />
 
       {/* Athel */}
+      <Route path="/athel/dashboard" element={
+        <ProtectedRoute allowedRoles={ATHEL_ROLES}><AthelDashboard /></ProtectedRoute>
+      } />
       <Route path="/athel/po" element={
         <ProtectedRoute allowedRoles={ATHEL_ROLES}><POList /></ProtectedRoute>
       } />

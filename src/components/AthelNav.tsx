@@ -36,6 +36,7 @@ export default function AthelNav() {
   })
 
   const allAthelLinks = [
+    { to: '/athel/dashboard',    label: 'Dashboard', roles: ['po_admin', 'executive'] },
     { to: '/athel/po',           label: 'Manajemen PO', roles: ['po_admin', 'executive'] },
     { to: '/athel/sales-orders', label: 'PO dari Sales', roles: ['po_admin', 'executive'], badge: pendingCount },
     { to: '/athel/customers',    label: 'Daftar Pelanggan',  roles: ['po_admin', 'executive'] },

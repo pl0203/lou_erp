@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import AthelNav from '../../components/AthelNav'
@@ -22,6 +22,11 @@ type CustomerForm = {
   pricing_tier: string
 }
 
+type CustomerListResponse = {
+  items: Customer[]
+  total: number
+}
+
 const EMPTY_FORM: CustomerForm = {
   name: '',
   address: '',
@@ -38,13 +43,30 @@ const TIER_LABELS: Record<string, string> = {
   depo_bangunan: 'Depo Bangunan',
 }
 
-async function fetchCustomers(): Promise<Customer[]> {
-  const { data, error } = await supabase
+const PAGE_SIZE = 10
+
+async function fetchCustomers(search: string, page: number): Promise<CustomerListResponse> {
+  const from = (page - 1) * PAGE_SIZE
+  const to = from + PAGE_SIZE - 1
+  const trimmedSearch = search.trim()
+
+  let query = supabase
     .from('customers')
-    .select('id, name, address, city, phone, email, pricing_tier')
+    .select('id, name, address, city, phone, email, pricing_tier', { count: 'exact' })
     .order('name')
+    .range(from, to)
+
+  if (trimmedSearch) {
+    query = query.or(`name.ilike.%${trimmedSearch}%,city.ilike.%${trimmedSearch}%`)
+  }
+
+  const { data, error, count } = await query
   if (error) throw error
-  return data
+
+  return {
+    items: data ?? [],
+    total: count ?? 0,
+  }
 }
 
 async function saveCustomer(form: CustomerForm, editingId: string | null) {
@@ -73,15 +95,34 @@ async function deleteCustomer(id: string) {
 export default function CustomerList() {
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<CustomerForm>(EMPTY_FORM)
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [page, setPage] = useState(1)
 
-  const { data: customers, isLoading } = useQuery({
-    queryKey: ['athel_customers'],
-    queryFn: fetchCustomers,
+  const handleSearch = (value: string) => {
+    setSearch(value)
+    clearTimeout((window as any)._customerSearchTimer)
+    ;(window as any)._customerSearchTimer = setTimeout(() => setDebouncedSearch(value), 300)
+  }
+
+  useEffect(() => {
+    setPage(1)
+  }, [debouncedSearch])
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['athel_customers', debouncedSearch, page],
+    queryFn: () => fetchCustomers(debouncedSearch, page),
+    placeholderData: previousData => previousData,
   })
+
+  const customers = data?.items ?? []
+  const totalItems = data?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE))
+  const startItem = totalItems === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
+  const endItem = totalItems === 0 ? 0 : Math.min(page * PAGE_SIZE, totalItems)
 
   const saveMutation = useMutation({
     mutationFn: () => saveCustomer(form, editingId),
@@ -119,12 +160,7 @@ export default function CustomerList() {
     saveMutation.mutate()
   }
 
-  const filtered = customers?.filter(c =>
-    c.name.toLowerCase().includes(search.toLowerCase()) ||
-    c.city?.toLowerCase().includes(search.toLowerCase())
-  )
-
-  const deleteTarget = customers?.find(c => c.id === deleteId)
+  const deleteTarget = customers.find(c => c.id === deleteId)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -133,7 +169,7 @@ export default function CustomerList() {
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Daftar Pelanggan</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{customers?.length ?? 0} pelanggan</p>
+          <p className="text-sm text-gray-500 mt-0.5">{totalItems} pelanggan</p>
         </div>
         <button
           onClick={() => { setEditingId(null); setForm(EMPTY_FORM); setShowForm(true) }}
@@ -148,7 +184,7 @@ export default function CustomerList() {
           type="text"
           placeholder="Cari pelanggan..."
           value={search}
-          onChange={e => setSearch(e.target.value)}
+          onChange={e => handleSearch(e.target.value)}
           className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full sm:w-80 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </div>
@@ -174,14 +210,14 @@ export default function CustomerList() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered?.length === 0 && (
+                  {customers.length === 0 && (
                     <tr>
                       <td colSpan={6} className="text-center text-gray-400 py-12">
                         Tidak ada pelanggan ditemukan.
                       </td>
                     </tr>
                   )}
-                  {filtered?.map(c => (
+                  {customers.map(c => (
                     <tr key={c.id} className="border-b border-gray-50 hover:bg-gray-50">
                       <td className="px-5 py-4 font-medium text-gray-900">{c.name}</td>
                       <td className="px-5 py-4 text-gray-600">{c.city ?? '—'}</td>
@@ -214,7 +250,7 @@ export default function CustomerList() {
 
             {/* Mobile cards */}
             <div className="md:hidden space-y-3">
-              {filtered?.map(c => (
+              {customers.map(c => (
                 <div key={c.id} className="bg-white rounded-xl border border-gray-200 p-4">
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1 min-w-0">
@@ -252,6 +288,33 @@ export default function CustomerList() {
                 </div>
               ))}
             </div>
+
+            {totalItems > 0 && (
+              <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-gray-500">
+                  Menampilkan {startItem}-{endItem} dari {totalItems} pelanggan
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setPage(prev => Math.max(1, prev - 1))}
+                    disabled={page === 1}
+                    className="px-3 py-2 text-sm rounded-lg border border-gray-200 bg-white text-gray-700 disabled:text-gray-300 disabled:bg-gray-50 disabled:cursor-not-allowed"
+                  >
+                    Sebelumnya
+                  </button>
+                  <span className="text-sm text-gray-500 min-w-24 text-center">
+                    Halaman {page} / {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setPage(prev => Math.min(totalPages, prev + 1))}
+                    disabled={page === totalPages}
+                    className="px-3 py-2 text-sm rounded-lg border border-gray-200 bg-white text-gray-700 disabled:text-gray-300 disabled:bg-gray-50 disabled:cursor-not-allowed"
+                  >
+                    Berikutnya
+                  </button>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>

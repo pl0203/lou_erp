@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import AthelNav from '../../components/AthelNav'
@@ -25,6 +25,11 @@ type ProductForm = {
   depo_bangunan: string
 }
 
+type ProductListResponse = {
+  items: Product[]
+  total: number
+}
+
 const EMPTY_FORM: ProductForm = {
   name: '',
   sku: '',
@@ -35,13 +40,30 @@ const EMPTY_FORM: ProductForm = {
   depo_bangunan: '',
 }
 
-async function fetchProducts(): Promise<Product[]> {
-  const { data, error } = await supabase
+const PAGE_SIZE = 10
+
+async function fetchProducts(search: string, page: number): Promise<ProductListResponse> {
+  const from = (page - 1) * PAGE_SIZE
+  const to = from + PAGE_SIZE - 1
+  const trimmedSearch = search.trim()
+
+  let query = supabase
     .from('products')
-    .select('id, name, sku, size, unit_price, harga_pokok, luar_kota, dalam_kota, depo_bangunan')
+    .select('id, name, sku, size, unit_price, harga_pokok, luar_kota, dalam_kota, depo_bangunan', { count: 'exact' })
     .order('name')
+    .range(from, to)
+
+  if (trimmedSearch) {
+    query = query.or(`name.ilike.%${trimmedSearch}%,sku.ilike.%${trimmedSearch}%`)
+  }
+
+  const { data, error, count } = await query
   if (error) throw error
-  return data
+
+  return {
+    items: data ?? [],
+    total: count ?? 0,
+  }
 }
 
 async function saveProduct(form: ProductForm, editingId: string | null) {
@@ -80,16 +102,35 @@ const TIER_LABELS: Record<string, string> = {
 export default function ProductList() {
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<ProductForm>(EMPTY_FORM)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [page, setPage] = useState(1)
 
-  const { data: products, isLoading } = useQuery({
-    queryKey: ['products'],
-    queryFn: fetchProducts,
+  const handleSearch = (value: string) => {
+    setSearch(value)
+    clearTimeout((window as any)._productSearchTimer)
+    ;(window as any)._productSearchTimer = setTimeout(() => setDebouncedSearch(value), 300)
+  }
+
+  useEffect(() => {
+    setPage(1)
+  }, [debouncedSearch])
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['products', debouncedSearch, page],
+    queryFn: () => fetchProducts(debouncedSearch, page),
+    placeholderData: previousData => previousData,
   })
+
+  const products = data?.items ?? []
+  const totalItems = data?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE))
+  const startItem = totalItems === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
+  const endItem = totalItems === 0 ? 0 : Math.min(page * PAGE_SIZE, totalItems)
 
   const saveMutation = useMutation({
     mutationFn: () => saveProduct(form, editingId),
@@ -129,12 +170,7 @@ export default function ProductList() {
     saveMutation.mutate()
   }
 
-  const filtered = products?.filter(p =>
-    p.name.toLowerCase().includes(search.toLowerCase()) ||
-    p.sku.toLowerCase().includes(search.toLowerCase())
-  )
-
-  const deleteTarget = products?.find(p => p.id === deleteId)
+  const deleteTarget = products.find(p => p.id === deleteId)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -143,7 +179,7 @@ export default function ProductList() {
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Daftar Barang</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{products?.length ?? 0} barang</p>
+          <p className="text-sm text-gray-500 mt-0.5">{totalItems} barang</p>
         </div>
         <button
           onClick={() => { setEditingId(null); setForm(EMPTY_FORM); setShowForm(true) }}
@@ -158,7 +194,7 @@ export default function ProductList() {
           type="text"
           placeholder="Cari berdasarkan nama atau SKU..."
           value={search}
-          onChange={e => setSearch(e.target.value)}
+          onChange={e => handleSearch(e.target.value)}
           className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full sm:w-80 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </div>
@@ -186,14 +222,14 @@ export default function ProductList() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered?.length === 0 && (
+                  {products.length === 0 && (
                     <tr>
                       <td colSpan={8} className="text-center text-gray-400 py-12">
                         Tidak ada barang ditemukan.
                       </td>
                     </tr>
                   )}
-                  {filtered?.map(p => (
+                  {products.map(p => (
                     <tr key={p.id} className="border-b border-gray-50 hover:bg-gray-50">
                       <td className="px-5 py-4 font-mono text-xs text-gray-500 uppercase">{p.sku}</td>
                       <td className="px-5 py-4 font-medium text-gray-900">{p.name}</td>
@@ -232,7 +268,7 @@ export default function ProductList() {
 
             {/* Mobile cards */}
             <div className="md:hidden space-y-3">
-              {filtered?.map(p => (
+              {products.map(p => (
                 <div key={p.id} className="bg-white rounded-xl border border-gray-200 p-4">
                   <div className="flex items-start justify-between mb-3">
                     <div>
@@ -278,6 +314,33 @@ export default function ProductList() {
                 </div>
               ))}
             </div>
+
+            {totalItems > 0 && (
+              <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-gray-500">
+                  Menampilkan {startItem}-{endItem} dari {totalItems} barang
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setPage(prev => Math.max(1, prev - 1))}
+                    disabled={page === 1}
+                    className="px-3 py-2 text-sm rounded-lg border border-gray-200 bg-white text-gray-700 disabled:text-gray-300 disabled:bg-gray-50 disabled:cursor-not-allowed"
+                  >
+                    Sebelumnya
+                  </button>
+                  <span className="text-sm text-gray-500 min-w-24 text-center">
+                    Halaman {page} / {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setPage(prev => Math.min(totalPages, prev + 1))}
+                    disabled={page === totalPages}
+                    className="px-3 py-2 text-sm rounded-lg border border-gray-200 bg-white text-gray-700 disabled:text-gray-300 disabled:bg-gray-50 disabled:cursor-not-allowed"
+                  >
+                    Berikutnya
+                  </button>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>

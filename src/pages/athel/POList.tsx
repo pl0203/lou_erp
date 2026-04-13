@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
@@ -15,6 +15,11 @@ type PO = {
   surat_jalan: { sj_number: string }[]
 }
 
+type POListResponse = {
+  items: PO[]
+  total: number
+}
+
 const STATUS_STYLES: Record<string, string> = {
   confirm:     'bg-blue-100 text-blue-700',
   in_progress: 'bg-yellow-100 text-yellow-700',
@@ -29,25 +34,84 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled:   'Dibatalkan',
 }
 
-async function fetchPOs(status: string, search: string): Promise<PO[]> {
-  let query = supabase
+const PAGE_SIZE = 10
+
+function applyStatusFilter(query: any, status: string) {
+  if (status === 'all') return query
+  return query.eq('status', status)
+}
+
+async function fetchMatchingCustomerIds(search: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('customers')
+    .select('id')
+    .ilike('name', `%${search}%`)
+    .limit(100)
+
+  if (error) throw error
+  return (data ?? []).map(customer => customer.id)
+}
+
+async function fetchMatchingPOIdsFromSJ(search: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('surat_jalan')
+    .select('purchase_order_id')
+    .ilike('sj_number', `%${search}%`)
+    .limit(100)
+
+  if (error) throw error
+  return [...new Set((data ?? []).map(item => item.purchase_order_id))]
+}
+
+async function fetchPOs(status: string, search: string, page: number): Promise<POListResponse> {
+  const from = (page - 1) * PAGE_SIZE
+  const to = from + PAGE_SIZE - 1
+  const trimmedSearch = search.trim()
+
+  let query = applyStatusFilter(
+    supabase
     .from('purchase_orders')
-    .select('id, po_number, status, order_date, expected_delivery_date, total_value, customers(name), surat_jalan(sj_number)')
+    .select(
+      'id, po_number, status, order_date, expected_delivery_date, total_value, customer_id, customers(name), surat_jalan(sj_number)',
+      { count: 'exact' }
+    )
     .order('created_at', { ascending: false })
+    .range(from, to),
+    status
+  )
 
-  if (status !== 'all') query = query.eq('status', status)
+  if (!trimmedSearch) {
+    const { data, error, count } = await query
+    if (error) throw error
+    return {
+      items: data as PO[],
+      total: count ?? 0,
+    }
+  }
 
-  const { data, error } = await query
+  const [customerIds, poIdsFromSJ] = await Promise.all([
+    fetchMatchingCustomerIds(trimmedSearch),
+    fetchMatchingPOIdsFromSJ(trimmedSearch),
+  ])
+
+  const searchFilters = [`po_number.ilike.%${trimmedSearch}%`]
+
+  if (customerIds.length > 0) {
+    searchFilters.push(`customer_id.in.(${customerIds.join(',')})`)
+  }
+  if (poIdsFromSJ.length > 0) {
+    searchFilters.push(`id.in.(${poIdsFromSJ.join(',')})`)
+  }
+
+  query = query.or(searchFilters.join(','))
+
+  const { data, error, count } = await query
   if (error) throw error
 
-  if (!search.trim()) return data as PO[]
-
-  const q = search.toLowerCase()
-  return (data as PO[]).filter(po =>
-    po.po_number.toLowerCase().includes(q) ||
-    po.customers?.name?.toLowerCase().includes(q) ||
-    po.surat_jalan?.some(sj => sj.sj_number.toLowerCase().includes(q))
-  )
+  return {
+    items: data as PO[],
+    total: count ?? 0,
+  }
 }
 
 export default function POList() {
@@ -55,6 +119,7 @@ export default function POList() {
   const [status, setStatus] = useState('all')
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [page, setPage] = useState(1)
 
   const handleSearch = (val: string) => {
     setSearch(val)
@@ -62,10 +127,21 @@ export default function POList() {
     ;(window as any)._searchTimer = setTimeout(() => setDebouncedSearch(val), 300)
   }
 
-  const { data: pos, isLoading, isError } = useQuery({
-    queryKey: ['purchase_orders', status, debouncedSearch],
-    queryFn: () => fetchPOs(status, debouncedSearch),
+  useEffect(() => {
+    setPage(1)
+  }, [status, debouncedSearch])
+
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['purchase_orders', status, debouncedSearch, page],
+    queryFn: () => fetchPOs(status, debouncedSearch, page),
+    placeholderData: previousData => previousData,
   })
+
+  const pos = data?.items ?? []
+  const totalItems = data?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE))
+  const startItem = totalItems === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
+  const endItem = totalItems === 0 ? 0 : Math.min(page * PAGE_SIZE, totalItems)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -74,7 +150,7 @@ export default function POList() {
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Pesanan Pembelian</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{pos?.length ?? 0} pesanan</p>
+          <p className="text-sm text-gray-500 mt-0.5">{totalItems} pesanan</p>
         </div>
         <button
           onClick={() => navigate('/athel/po/new')}
@@ -111,11 +187,11 @@ export default function POList() {
         {isError && (
           <div className="text-center text-red-500 py-24 text-sm">Gagal memuat data. Periksa koneksi Anda.</div>
         )}
-        {!isLoading && !isError && pos?.length === 0 && (
+        {!isLoading && !isError && pos.length === 0 && (
           <div className="text-center text-gray-400 py-24 text-sm">Tidak ada pesanan pembelian ditemukan.</div>
         )}
 
-        {!isLoading && !isError && pos && pos.length > 0 && (
+        {!isLoading && !isError && pos.length > 0 && (
           <>
             {/* Desktop table */}
             <div className="hidden md:block bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -213,6 +289,31 @@ export default function POList() {
                   </div>
                 </div>
               ))}
+            </div>
+
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-gray-500">
+                Menampilkan {startItem}-{endItem} dari {totalItems} pesanan
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPage(prev => Math.max(1, prev - 1))}
+                  disabled={page === 1}
+                  className="px-3 py-2 text-sm rounded-lg border border-gray-200 bg-white text-gray-700 disabled:text-gray-300 disabled:bg-gray-50 disabled:cursor-not-allowed"
+                >
+                  Sebelumnya
+                </button>
+                <span className="text-sm text-gray-500 min-w-24 text-center">
+                  Halaman {page} / {totalPages}
+                </span>
+                <button
+                  onClick={() => setPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={page === totalPages}
+                  className="px-3 py-2 text-sm rounded-lg border border-gray-200 bg-white text-gray-700 disabled:text-gray-300 disabled:bg-gray-50 disabled:cursor-not-allowed"
+                >
+                  Berikutnya
+                </button>
+              </div>
             </div>
           </>
         )}
