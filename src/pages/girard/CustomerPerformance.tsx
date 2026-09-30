@@ -17,13 +17,17 @@ type CustomerRow = {
   sales_target: number | null
 }
 
-function getMonthRange(yearMonth: string): { from: string; to: string } {
+function getMonthRange(yearMonth: string): { from: string; to: string; visitFrom: string; visitUntil: string } {
   const [year, month] = yearMonth.split('-').map(Number)
   const from = new Date(year, month - 1, 1)
   const to = new Date(year, month, 0)
   return {
-    from: from.toISOString().split('T')[0],
-    to: to.toISOString().split('T')[0],
+    // DATE columns are calendar dates, not local-midnight UTC conversions.
+    from: `${yearMonth}-01`,
+    to: `${yearMonth}-${String(to.getDate()).padStart(2, '0')}`,
+    // Visits retain the browser-local reporting month, including its final fraction of a second.
+    visitFrom: from.toISOString(),
+    visitUntil: new Date(year, month, 1).toISOString(),
   }
 }
 
@@ -111,7 +115,7 @@ export async function fetchCustomerPerformance(
   role: string,
   yearMonth: string
 ): Promise<CustomerRow[]> {
-  const { from, to } = getMonthRange(yearMonth)
+  const { from, to, visitFrom, visitUntil } = getMonthRange(yearMonth)
   const days = getDaysInMonth(yearMonth)
 
   let customerIds: string[] = []
@@ -154,8 +158,8 @@ export async function fetchCustomerPerformance(
     .from('outlet_visits')
     .select('outlet_id')
     .in('outlet_id', customerIds)
-    .gte('checked_in_at', `${from}T00:00:00`)
-    .lte('checked_in_at', `${to}T23:59:59`)
+    .gte('checked_in_at', visitFrom)
+    .lt('checked_in_at', visitUntil)
 
   if (visitError) throw visitError
 
@@ -173,9 +177,14 @@ export async function fetchCustomerPerformance(
 
   if (poError) throw poError
 
-  const poIds = (pos ?? [])
-    .filter(po => ['in_progress', 'complete'].includes(po.status))
-    .map(po => po.id)
+  // Order count uses creation month; delivered sales use shipment month even for older POs.
+  const { data: deliveryPos, error: deliveryPoError } = await supabase
+    .from('purchase_orders')
+    .select('id, customer_id, status')
+    .in('customer_id', customerIds)
+    .in('status', ['in_progress', 'complete'])
+  if (deliveryPoError) throw deliveryPoError
+  const poIds = (deliveryPos ?? []).map(po => po.id)
 
   const sjSalesMap: Record<string, number> = {}
   if (poIds.length > 0) {
@@ -188,7 +197,7 @@ export async function fetchCustomerPerformance(
       .lte('sj_date', to)
     if (deliveryError) throw deliveryError
     for (const sj of sjs ?? []) {
-      const po = (pos ?? []).find(p => p.id === sj.purchase_order_id)
+      const po = (deliveryPos ?? []).find(p => p.id === sj.purchase_order_id)
       if (!po) continue
       for (const sli of (sj.sj_line_items as any[]) ?? []) {
         sjSalesMap[po.customer_id] = (sjSalesMap[po.customer_id] ?? 0) +
