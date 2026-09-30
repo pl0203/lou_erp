@@ -181,7 +181,7 @@ export async function fetchCustomerPerformance(
   if (poIds.length > 0) {
     const { data: sjs, error: deliveryError } = await supabase
       .from('surat_jalan')
-      .select('purchase_order_id, sj_line_items(quantity_delivered, po_line_items(unit_price))')
+      .select('purchase_order_id, sj_line_items(quantity_delivered, po_line_items!sj_line_items_po_line_item_id_fkey(unit_price))')
       .is('voided_at', null)
       .in('purchase_order_id', poIds)
       .gte('sj_date', from)

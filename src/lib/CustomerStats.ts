@@ -48,7 +48,7 @@ export async function fetchCustomerStatsBatch(
   if (eligiblePoIds.length > 0) {
     const { data: sjs, error: sjError } = await supabase
       .from('surat_jalan')
-      .select('purchase_order_id, sj_date, sj_line_items(quantity_delivered, po_line_items(unit_price))')
+      .select('purchase_order_id, sj_date, sj_line_items(quantity_delivered, po_line_items!sj_line_items_po_line_item_id_fkey(unit_price))')
       .is('voided_at', null)
       .in('purchase_order_id', eligiblePoIds)
       .gte('sj_date', cutoff)
@@ -154,7 +154,7 @@ export async function fetchCustomerStatsDetail(customerId: string): Promise<Cust
   if (eligiblePoIds.length > 0) {
     const { data: sjs, error: sjError } = await supabase
       .from('surat_jalan')
-      .select('sj_date, sj_line_items(quantity_delivered, po_line_items(unit_price))')
+      .select('sj_date, sj_line_items(quantity_delivered, po_line_items!sj_line_items_po_line_item_id_fkey(unit_price))')
       .is('voided_at', null)
       .in('purchase_order_id', eligiblePoIds)
       .gte('sj_date', cutoff)
