@@ -36,3 +36,18 @@ A failed migration transaction rolls back. After successful rollout and real wri
 - Sales-head customer creation remains a role/workflow mismatch; no broader customer-write authority was silently granted
 - More-than-API-limit reporting pagination and full data reconciliation remain required
 - Synthetic provider stubs are not production schemas; real hosted integration is still mandatory
+
+## Database-branch preview build guard
+`npm run build` checks the process environment before Vite loads `.env` when
+`VERCEL_ENV=preview` and `VERCEL_GIT_COMMIT_REF=fix/pilot-database`. Configure these
+[documented Vercel system variables](https://vercel.com/docs/environment-variables/system-environment-variables)
+and keep automatic exposure enabled. The targeted build requires an explicit
+HTTPS URL for the approved staging project and a publishable client key or a
+legacy `anon` JWT with the matching project reference. Secret/service-role,
+malformed, missing and mismatched configuration fails without printing keys.
+Publishable-key format checking cannot prove which project issued the key;
+actual staging Auth/API tests must establish that. The legacy JWT is decoded
+for role/reference checking, not cryptographically authenticated by the build.
+Other branches, production and ordinary local/CI builds retain existing behavior.
+The Vercel branch deployment hold remains until staging overrides are verified;
+this guard does not authorize deployment or replace target verification.
