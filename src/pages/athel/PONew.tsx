@@ -1,3 +1,4 @@
+import { validateOrderLines } from '../../lib/orderValidation'
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
@@ -63,7 +64,7 @@ async function fetchProducts(): Promise<Product[]> {
   return data
 }
 
-async function createPO(payload: {
+export async function createPO(payload: {
   customer_id: string
   po_number: string
   order_date: string
@@ -71,6 +72,7 @@ async function createPO(payload: {
   notes: string
   lineItems: LineItem[]
 }) {
+  validateOrderLines(payload.lineItems)
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Tidak terautentikasi')
 
@@ -357,8 +359,8 @@ export default function PONew() {
                     <label className="block text-xs text-gray-400 mb-1">Qty</label>
                     <input
                       type="number" min={1}
-                      value={item.quantity}
-                      onChange={e => updateLine(i, 'quantity', parseInt(e.target.value) || 1)}
+                      value={Number.isNaN(item.quantity) ? '' : item.quantity}
+                      onChange={e => updateLine(i, 'quantity', e.target.valueAsNumber)}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
@@ -371,8 +373,8 @@ export default function PONew() {
                     </label>
                     <input
                       type="number" min={0}
-                      value={item.unit_price}
-                      onChange={e => updateLine(i, 'unit_price', parseFloat(e.target.value) || 0)}
+                      value={Number.isNaN(item.unit_price) ? '' : item.unit_price}
+                      onChange={e => updateLine(i, 'unit_price', e.target.valueAsNumber)}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>

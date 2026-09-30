@@ -1,3 +1,4 @@
+import { singleRelation } from '../../lib/relations'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
@@ -22,12 +23,6 @@ type GirardOrder = {
   }[]
 }
 
-type ConvertForm = {
-  po_number: string
-  customer_id: string
-  expected_delivery_date: string
-}
-
 const STATUS_STYLES: Record<string, string> = {
   pending:  'bg-yellow-100 text-yellow-700',
   approved: 'bg-green-100 text-green-700',
@@ -41,7 +36,7 @@ async function fetchGirardOrders(status: string): Promise<GirardOrder[]> {
       id, status, total_value, created_at, rejection_note,
       customers!girard_orders_customer_id_fkey(name),
       users!girard_orders_submitted_by_fkey(full_name),
-      girard_order_items(id, product_name, sku, quantity, unit_price)
+      girard_order_items(id, product_name, sku, quantity, unit_price, is_promo)
     `)
     .order('created_at', { ascending: false })
 
@@ -49,7 +44,7 @@ async function fetchGirardOrders(status: string): Promise<GirardOrder[]> {
 
   const { data, error } = await query
   if (error) throw error
-  return data as GirardOrder[]
+  return (data ?? []).map(row => ({ ...row, customers: singleRelation(row.customers), users: singleRelation(row.users) }))
 }
 
 async function approveOrder(orderId: string, poNumber: string, expectedDelivery: string) {

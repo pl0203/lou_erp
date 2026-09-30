@@ -1,3 +1,5 @@
+import { singleRelation } from '../../lib/relations'
+import { validateOrderLines } from '../../lib/orderValidation'
 import { useState, useRef, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -114,14 +116,16 @@ async function compressImage(blob: Blob): Promise<Blob> {
   })
 }
 
-async function fetchSchedule(scheduleId: string): Promise<Schedule> {
+export async function fetchSchedule(scheduleId: string): Promise<Schedule> {
   const { data, error } = await supabase
     .from('sales_schedules')
     .select('id, scheduled_date, status, customers!sales_schedules_outlet_id_fkey(id, name, address, city, pricing_tier)')
     .eq('id', scheduleId)
     .single()
   if (error) throw error
-  return data as Schedule
+  const customer = singleRelation(data.customers)
+  if (!customer) throw new Error('Pelanggan untuk jadwal ini tidak tersedia. Hubungi administrator.')
+  return { ...data, customers: customer }
 }
 
 async function fetchVisit(scheduleId: string): Promise<Visit | null> {
@@ -207,12 +211,13 @@ async function checkIn(payload: {
   return visit
 }
 
-async function submitOrder(payload: {
+export async function submitOrder(payload: {
   customer_id: string
   visit_id: string
   submitted_by: string
   items: OrderItem[]
 }) {
+  validateOrderLines(payload.items)
   const total = payload.items.reduce((sum, i) => sum + i.quantity * i.unit_price, 0)
 
   const { data: order, error: orderError } = await supabase
@@ -420,7 +425,7 @@ async function fetchActivePromos(): Promise<ActivePromo[]> {
     .lte('start_date', today)
     .gte('end_date', today)
   if (error) throw error
-  return data as ActivePromo[]
+  return (data ?? []).map(row => ({ ...row, products: singleRelation(row.products) }))
 }
 
 function getActivePromoTierPrice(
@@ -450,7 +455,7 @@ export default function VisitPage() {
     { product_id: null, product_name: '', sku: '', quantity: 1, unit_price: 0 }
   ])
 
-  const { data: schedule, isLoading: scheduleLoading } = useQuery({
+  const { data: schedule, isLoading: scheduleLoading, error: scheduleError } = useQuery({
     queryKey: ['schedule', scheduleId],
     queryFn: () => fetchSchedule(scheduleId!),
     enabled: !!scheduleId,
@@ -465,7 +470,7 @@ export default function VisitPage() {
   const { data: orders } = useQuery({
     queryKey: ['visit_orders', visit?.id],
     queryFn: () => fetchOrders(schedule!.customers.id, visit!.id),
-    enabled: !!visit && !!schedule,
+    enabled: !!visit && !!schedule?.customers,
   })
 
   const { data: products } = useQuery({
@@ -523,7 +528,7 @@ export default function VisitPage() {
 
   const handleCheckIn = () => {
     if (!photoBlob) return alert('Ambil foto terlebih dahulu.')
-    if (!profile || !schedule) return
+    if (!profile || !schedule?.customers) return
     checkInMutation.mutate({
       schedule_id: scheduleId!,
       outlet_id: schedule.customers.id,
@@ -549,6 +554,7 @@ export default function VisitPage() {
   }
 
   const addPromoItem = (promo: ActivePromo) => {
+    if (!promo.products) return
     const tier = schedule?.customers?.pricing_tier ?? 'luar_kota'
     const price = getActivePromoTierPrice(
       promo,
@@ -580,7 +586,7 @@ export default function VisitPage() {
   }
 
   const handleSubmitOrder = () => {
-    if (!visit || !schedule || !profile) return
+    if (!visit || !schedule?.customers || !profile) return
     if (orderItems.some(i => !i.product_name.trim())) return alert('Semua barang harus memiliki nama produk.')
     if (orderItems.every(i => i.quantity === 0)) return alert('Minimal satu barang harus memiliki jumlah.')
     orderMutation.mutate({
@@ -602,11 +608,11 @@ export default function VisitPage() {
     )
   }
 
-  if (!schedule) {
+  if (!schedule || !schedule.customers) {
     return (
       <div className="min-h-screen bg-gray-50">
         <GirardNav />
-        <div className="p-8 text-red-500 text-sm">Jadwal tidak ditemukan.</div>
+        <div className="p-8 text-red-500 text-sm">{scheduleError ? scheduleError.message : !schedule ? 'Jadwal tidak ditemukan.' : 'Pelanggan untuk jadwal ini tidak tersedia. Hubungi administrator.'}</div>
       </div>
     )
   }
@@ -838,16 +844,16 @@ export default function VisitPage() {
                         return (
                           <div key={promo.id} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-orange-100">
                             <div className="flex-1 min-w-0">
-                              <p className="text-xs font-semibold text-gray-900 truncate">{promo.products?.name}</p>
+                              <p className="text-xs font-semibold text-gray-900 truncate">{promo.products?.name ?? 'Produk tidak tersedia'}</p>
                               <p className="text-xs text-gray-500">
                                 Rp {price.toLocaleString('id-ID')}
                               </p>
                             </div>
                             <button
                               onClick={() => addPromoItem(promo)}
-                              disabled={alreadyAdded}
+                              disabled={alreadyAdded || !promo.products}
                               className={`ml-3 text-xs font-medium px-3 py-1.5 rounded-lg shrink-0 transition-colors ${
-                                alreadyAdded
+                                alreadyAdded || !promo.products
                                   ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                                   : 'bg-orange-500 text-white hover:bg-orange-600'
                               }`}
@@ -896,8 +902,8 @@ export default function VisitPage() {
                           <label className="block text-xs text-gray-400 mb-1">Jumlah</label>
                           <input
                             type="number" min={1}
-                            value={item.quantity}
-                            onChange={e => updateOrderItem(i, 'quantity', parseInt(e.target.value) || 1)}
+                            value={Number.isNaN(item.quantity) ? '' : item.quantity}
+                            onChange={e => updateOrderItem(i, 'quantity', e.target.valueAsNumber)}
                             className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                           />
                         </div>
@@ -911,8 +917,8 @@ export default function VisitPage() {
                           </label>
                           <input
                             type="number" min={0}
-                            value={item.unit_price}
-                            onChange={e => !item.is_promo && updateOrderItem(i, 'unit_price', parseFloat(e.target.value) || 0)}
+                            value={Number.isNaN(item.unit_price) ? '' : item.unit_price}
+                            onChange={e => !item.is_promo && updateOrderItem(i, 'unit_price', e.target.valueAsNumber)}
                             readOnly={item.is_promo}
                             className={`w-full border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 ${
                               item.is_promo

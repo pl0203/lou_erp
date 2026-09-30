@@ -1,3 +1,4 @@
+import { singleRelation } from '../../lib/relations'
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -78,7 +79,7 @@ async function fetchPO(id: string): Promise<PO> {
     .eq('id', id)
     .single()
   if (error) throw error
-  return data as PO
+  return { ...data, customers: singleRelation(data.customers) }
 }
 
 async function fetchLineItems(poId: string): Promise<LineItem[]> {
@@ -97,7 +98,7 @@ async function fetchAuditLog(poId: string): Promise<AuditEntry[]> {
     .eq('purchase_order_id', poId)
     .order('changed_at', { ascending: false })
   if (error) throw error
-  return data as AuditEntry[]
+  return (data ?? []).map(row => ({ ...row, users: singleRelation(row.users) }))
 }
 
 async function fetchSuratJalan(poId: string): Promise<SuratJalan[]> {

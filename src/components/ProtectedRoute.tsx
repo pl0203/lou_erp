@@ -17,9 +17,9 @@ export default function ProtectedRoute({ children, allowedRoles }: Props) {
     )
   }
 
-  if (!user) return <Navigate to="/login" replace />
+  if (!user || !profile || profile.id !== user.id || !profile.is_active) return <Navigate to="/login" replace />
 
-  if (allowedRoles && profile && !allowedRoles.includes(profile.role)) {
+  if (allowedRoles && !allowedRoles.includes(profile.role)) {
     // Redirect to their home based on role
     const roleHome: Record<string, string> = {
       po_admin:      '/athel/po',

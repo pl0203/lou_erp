@@ -1,3 +1,4 @@
+import { singleRelation } from './relations'
 import { supabase } from './supabase'
 
 export type ActivePromotion = {
@@ -20,5 +21,5 @@ export async function fetchPromotions(): Promise<ActivePromotion[]> {
     .order('created_at', { ascending: false })
 
   if (error) throw error
-  return (data ?? []) as ActivePromotion[]
+  return (data ?? []).map(row => ({ ...row, products: singleRelation(row.products) }))
 }

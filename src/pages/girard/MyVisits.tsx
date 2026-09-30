@@ -101,7 +101,7 @@ export default function MyVisits() {
   const schedules = allSchedules?.filter(s => s.scheduled_date === selectedDate) ?? []
   const customerIds = [...new Set(allSchedules?.map(s => s.customers?.id).filter(Boolean) ?? [])]
 
-  const { data: statsData } = useQuery({
+  const { data: statsData, isError: statsError, isLoading: statsLoading } = useQuery({
     queryKey: ['customer_stats', customerIds],
     queryFn: () => fetchCustomerStatsBatch(customerIds),
     enabled: customerIds.length > 0,
@@ -235,19 +235,19 @@ export default function MyVisits() {
                 </div>
                 <div className="px-4 py-3 text-center">
                   <p className="text-xs text-gray-400 mb-0.5">Pesanan (3bl)</p>
-                  <p className="text-sm font-medium text-gray-900">{stats?.order_count ?? 0}</p>
+                  <p className="text-sm font-medium text-gray-900">{statsError ? 'Tidak tersedia' : statsLoading || !stats ? 'Memuat...' : stats.order_count}</p>
                 </div>
                 <div className="px-4 py-3 text-center">
                   <p className="text-xs text-gray-400 mb-0.5">Penjualan (3bl)</p>
                   <p className="text-sm font-medium text-gray-900">
-                    {stats?.total_sales
+                    {statsError ? 'Tidak tersedia' : statsLoading || !stats ? 'Memuat...' : stats.total_sales
                       ? `Rp ${(stats.total_sales / 1_000_000).toFixed(1)}M`
                       : 'Rp 0'}
                   </p>
                 </div>
               </div>
 
-              {stats?.top_items && stats.top_items.length > 0 && (
+              {!statsError && stats?.top_items && stats.top_items.length > 0 && (
                 <div className="px-5 py-3 border-b border-gray-100">
                   <p className="text-xs text-gray-400 mb-2">Barang Terlaris</p>
                   <div className="flex flex-wrap gap-1.5">
