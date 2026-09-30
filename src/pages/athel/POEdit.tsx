@@ -163,12 +163,12 @@ export default function POEdit() {
   const [initialized, setInitialized] = useState(false)
 
   const { data: po, isLoading: poLoading } = useQuery({
-    queryKey: ['po', id],
+    queryKey: ['po', id, 'edit'],
     queryFn: () => fetchPO(id!),
   })
 
   const { data: existingLines, isLoading: linesLoading } = useQuery({
-    queryKey: ['po_line_items', id],
+    queryKey: ['po_line_items', id, 'edit'],
     queryFn: () => fetchLineItems(id!),
     enabled: !!id,
   })
