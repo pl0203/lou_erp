@@ -25,7 +25,10 @@ describe('database preview backend build guard', () => {
     expect(run({ ...target, VITE_SUPABASE_URL: candidate, VITE_SUPABASE_ANON_KEY: 'sb_publishable_synthetic' }).status).not.toBe(0)
   })
   it.each(['sb_publishable_synthetic', jwt('anon')])('accepts explicit staging client-key format', key => {
-    expect(run({ ...target, VITE_SUPABASE_URL: url, VITE_SUPABASE_ANON_KEY: key }).status).toBe(0)
+    const result = run({ ...target, VITE_SUPABASE_URL: url, VITE_SUPABASE_ANON_KEY: key })
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain('Database preview backend guard passed.')
+    expect(result.stdout).not.toContain(key)
   })
   it.each(['sb_secret_DO_NOT_LOG', jwt('service_role'), jwt('authenticated'), jwt('anon', 'other-project'), 'malformed', 'sb_publishable_'])('rejects non-client or malformed keys without logging them', key => {
     const result = run({ ...target, VITE_SUPABASE_URL: url, VITE_SUPABASE_ANON_KEY: key })

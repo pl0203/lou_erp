@@ -19,11 +19,15 @@ const quote = value => `'${String(value).replaceAll("'", "''")}'`
 const json = value => `${quote(JSON.stringify(value))}::jsonb`
 let serial = 0
 const name = () => `pilot-race-${process.pid}-${++serial}`
-const actor = `SET LOCAL ROLE authenticated; SELECT set_config('request.jwt.claim.sub',${quote(admin)},true);`
-const transaction = body => `BEGIN; ${actor} ${body}; COMMIT;`
+const actorFor = id => `SET LOCAL ROLE authenticated; SELECT set_config('request.jwt.claim.sub',${quote(id)},true);`
+const actor = actorFor(admin)
+const transaction = (body, actorId = admin) => `BEGIN; ${actorFor(actorId)} ${body}; COMMIT;`
 const rpc = (operation, payload, request = randomUUID()) =>
   `SELECT public.pilot_order_transaction(${quote(request)}::uuid,${quote(operation)},${json(payload)})`
 const reconcile = request => `SELECT public.pilot_reconcile_request(${quote(request)}::uuid,true)`
+const finalizeVisit = (payload, request = randomUUID()) =>
+  `SELECT public.pilot_finalize_visit(${quote(request)}::uuid,'finalize_visit',${json(payload)})`
+const reconcileVisit = request => `SELECT public.pilot_reconcile_visit(${quote(request)}::uuid,true)`
 
 function start(sql, applicationName = name(), interactive = false) {
   sessionNames.add(applicationName)
@@ -86,9 +90,9 @@ async function release(controller) {
   controller.child.stdin.end('COMMIT;\n')
   successful(await controller.result)
 }
-async function race(lock, commands) {
+async function race(lock, commands, actorId = admin) {
   const controller = await gate(lock)
-  const contenders = commands.map(command => start(transaction(command)))
+  const contenders = commands.map(command => start(transaction(command, actorId)))
   try { await waitBlocked(contenders.map(c => c.applicationName)) }
   finally { await release(controller) }
   return Promise.all(contenders.map(c => c.result))
@@ -100,7 +104,7 @@ function oneWinner(results, expectedSqlstate) {
   return resultJson(results.find(r => r.code === 0))
 }
 const rowLock = (table, id) => `SELECT id FROM public.${table} WHERE id=${quote(id)}::uuid FOR UPDATE`
-const requestLock = request => `SELECT pg_advisory_xact_lock(hashtextextended(${quote(`${admin}:${request}`)},0))`
+const requestLock = (request, actorId = admin) => `SELECT pg_advisory_xact_lock(hashtextextended(${quote(`${actorId}:${request}`)},0))`
 const orderPayload = suffix => ({ customer_id: customer, po_number: `${prefix}-${suffix}`, items: [{ product_name: 'Synthetic race item', quantity: 1, unit_price: 10 }] })
 async function pendingSale() {
   const id = randomUUID()
@@ -109,6 +113,23 @@ async function pendingSale() {
 }
 async function countOrders(suffix) {
   return Number(await sql(`SELECT count(*) FROM public.purchase_orders WHERE po_number LIKE ${quote(`${prefix}-${suffix}%`)};`))
+}
+let visitSequence = 0
+async function visitFixture() {
+  const schedule = randomUUID()
+  const paths = [`visits/${schedule}/synthetic-a.webp`, `visits/${schedule}/synthetic-b.webp`]
+  await sql(`INSERT INTO public.sales_schedules(id,outlet_id,sales_person_id,assigned_by,scheduled_date) VALUES (${quote(schedule)},${quote(customer)},${quote(sales)},${quote(admin)},current_date+${++visitSequence});
+    INSERT INTO storage.objects(bucket_id,name,owner_id) VALUES ('visits',${quote(paths[0])},${quote(sales)}),('visits',${quote(paths[1])},${quote(sales)});`)
+  return { schedule, paths, payload: { schedule_id: schedule, storage_path: paths[0], lat: -6.2, lng: 106.8 } }
+}
+async function assertProvenVisit(fixture, result) {
+  assert.equal(await sql(`SELECT status FROM public.sales_schedules WHERE id=${quote(fixture.schedule)};`), 'completed')
+  assert.equal(await sql(`SELECT count(*) FROM public.outlet_visits WHERE schedule_id=${quote(fixture.schedule)};`), '1')
+  assert.equal(await sql(`SELECT id FROM public.outlet_visits WHERE schedule_id=${quote(fixture.schedule)};`), result.id)
+  assert.equal(await sql(`SELECT count(*) FROM public.visit_photos p JOIN public.outlet_visits v ON v.id=p.visit_id WHERE v.schedule_id=${quote(fixture.schedule)};`), '1')
+  assert.equal(await sql(`SELECT count(*) FROM public.visit_photos p JOIN public.outlet_visits v ON v.id=p.visit_id JOIN storage.objects o ON o.bucket_id='visits' AND o.name=p.storage_path
+    WHERE v.schedule_id=${quote(fixture.schedule)} AND v.sales_person_id=${quote(sales)} AND v.outlet_id=${quote(customer)} AND o.owner_id=${quote(sales)}
+    AND split_part(o.name,'/',2)=v.schedule_id::text AND p.taken_at=v.checked_in_at;`), '1', 'Completed visit must have exactly one owned linked photo with matching server timestamp')
 }
 
 let initialized = false
@@ -189,7 +210,66 @@ try {
   assert.equal(await countOrders('committed'), 1)
   assert.equal(await sql(`SELECT id FROM public.purchase_orders WHERE po_number=${quote(`${prefix}-committed`)};`), recovered.result.id)
   console.log('PASS reconciliation waits for committed original instead of abandoning it')
-  console.log('PASS all seven normal-session concurrency scenarios')
+
+  const sameVisit = await visitFixture(), sameVisitRequest = randomUUID()
+  const sameVisitResults = await race(requestLock(sameVisitRequest, sales), [
+    finalizeVisit(sameVisit.payload, sameVisitRequest), finalizeVisit(sameVisit.payload, sameVisitRequest),
+  ], sales)
+  assert.deepEqual(resultJson(sameVisitResults[0]), resultJson(sameVisitResults[1]))
+  await assertProvenVisit(sameVisit, resultJson(sameVisitResults[0]))
+  console.log('PASS simultaneous same-key visit finalize returns identical proof-backed visit')
+
+  const competingVisit = await visitFixture()
+  const visitWinner = oneWinner(await race(rowLock('sales_schedules', competingVisit.schedule), [
+    finalizeVisit(competingVisit.payload),
+    finalizeVisit({ ...competingVisit.payload, storage_path: competingVisit.paths[1] }),
+  ], sales), '55000')
+  await assertProvenVisit(competingVisit, visitWinner)
+  console.log('PASS different request keys cannot finalize the same schedule twice')
+
+  const recoveringVisit = await visitFixture(), visitRequest = randomUUID()
+  const visitController = await gate(`${actorFor(sales)} ${finalizeVisit(recoveringVisit.payload, visitRequest)}`)
+  const wrongRecovery = start(transaction(reconcile(visitRequest), sales))
+  try {
+    await waitBlocked([wrongRecovery.applicationName])
+    // A separate observer must see neither completion nor a partial proof before commit.
+    assert.equal(await sql(`SELECT status FROM public.sales_schedules WHERE id=${quote(recoveringVisit.schedule)};`), 'pending')
+    assert.equal(await sql(`SELECT count(*) FROM public.outlet_visits WHERE schedule_id=${quote(recoveringVisit.schedule)};`), '0')
+  } finally { await release(visitController) }
+  const wrongRecoveryResult = await wrongRecovery.result
+  assert.notEqual(wrongRecoveryResult.code, 0)
+  assert.match(wrongRecoveryResult.stderr, /ERROR:\s+22023:/)
+  const finalizedResult = resultJson(await visitController.result)
+  await assertProvenVisit(recoveringVisit, finalizedResult)
+  assert.equal(await sql(`SELECT operation='finalize_visit' AND NOT abandoned AND result->>'id'=${quote(finalizedResult.id)} FROM private.pilot_order_requests WHERE actor_id=${quote(sales)} AND request_id=${quote(visitRequest)};`), 't')
+  const correctRecovery = resultJson(await start(transaction(reconcileVisit(visitRequest), sales)).result)
+  assert.equal(correctRecovery.state, 'committed')
+  assert.deepEqual(correctRecovery.result, finalizedResult)
+  console.log('PASS wrong recovery endpoint waits then rejects without replacing finalized visit')
+
+  const properRecoveryVisit = await visitFixture(), properRequest = randomUUID()
+  const properController = await gate(`${actorFor(sales)} ${finalizeVisit(properRecoveryVisit.payload, properRequest)}`)
+  const properRecovery = start(transaction(reconcileVisit(properRequest), sales))
+  try { await waitBlocked([properRecovery.applicationName]) } finally { await release(properController) }
+  const properResult = resultJson(await properRecovery.result)
+  assert.equal(properResult.state, 'committed')
+  assert.deepEqual(properResult.result, resultJson(await properController.result))
+  await assertProvenVisit(properRecoveryVisit, properResult.result)
+  console.log('PASS visit recovery waits for inflight finalize and returns committed proof')
+
+  const abandonedVisit = await visitFixture(), abandonedVisitRequest = randomUUID()
+  const visitAbandonController = await gate(`${actorFor(sales)} ${reconcileVisit(abandonedVisitRequest)}`)
+  const delayedFinalize = start(transaction(finalizeVisit(abandonedVisit.payload, abandonedVisitRequest), sales))
+  try { await waitBlocked([delayedFinalize.applicationName]) } finally { await release(visitAbandonController) }
+  const delayedFinalizeResult = await delayedFinalize.result
+  assert.notEqual(delayedFinalizeResult.code, 0)
+  assert.match(delayedFinalizeResult.stderr, /ERROR:\s+55000:/)
+  assert.equal(resultJson(await visitAbandonController.result).state, 'abandoned')
+  assert.equal(await sql(`SELECT status FROM public.sales_schedules WHERE id=${quote(abandonedVisit.schedule)};`), 'pending')
+  assert.equal(await sql(`SELECT count(*) FROM public.outlet_visits WHERE schedule_id=${quote(abandonedVisit.schedule)};`), '0')
+  assert.equal(await sql(`SELECT count(*) FROM public.visit_photos WHERE storage_path IN (${abandonedVisit.paths.map(quote).join(',')});`), '0')
+  console.log('PASS visit recovery tombstone blocks delayed finalize without partial proof')
+  console.log('PASS all twelve normal-session concurrency scenarios')
 } finally {
   // Disposable test database only. Kill unfinished contenders before scoped fixture removal.
   const outstanding = [...sessions.entries()]
@@ -222,6 +302,10 @@ try {
       DELETE FROM public.girard_order_items WHERE order_id IN (SELECT id FROM public.girard_orders WHERE submitted_by=${quote(sales)});
       DELETE FROM public.girard_orders WHERE submitted_by=${quote(sales)};
       DELETE FROM public.purchase_orders WHERE created_by=${quote(admin)};
+      DELETE FROM public.visit_photos WHERE visit_id IN (SELECT id FROM public.outlet_visits WHERE sales_person_id=${quote(sales)});
+      DELETE FROM public.outlet_visits WHERE sales_person_id=${quote(sales)};
+      DELETE FROM storage.objects WHERE bucket_id='visits' AND owner_id=${quote(sales)} AND split_part(name,'/',2) IN (SELECT id::text FROM public.sales_schedules WHERE sales_person_id=${quote(sales)});
+      DELETE FROM public.sales_schedules WHERE sales_person_id=${quote(sales)};
       DELETE FROM public.customers WHERE id=${quote(customer)};
       DELETE FROM public.users WHERE id IN (${quote(admin)},${quote(sales)});
       DELETE FROM auth.users WHERE id IN (${quote(admin)},${quote(sales)});

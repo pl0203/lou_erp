@@ -57,3 +57,12 @@ test('connection and statement-completion-unknown SQL states remain unresolved',
   await expect(send('create_po',{a:2})).rejects.toThrow('belum terkonfirmasi')
  }
 })
+
+test('visit sender uses its finalize and recovery RPCs without order fallback',async()=>{
+ const send=createTransactionSender({rpcName:'pilot_finalize_visit',recoveryRpcName:'pilot_reconcile_visit'})
+ mock.rpc.mockResolvedValueOnce({data:null,error:{message:'response lost'}}).mockResolvedValueOnce({data:{state:'committed',operation:'finalize_visit',result:{id:'visit-saved'}},error:null})
+ await expect(send('finalize_visit',{schedule_id:'dummy'})).rejects.toThrow()
+ expect(mock.rpc).toHaveBeenLastCalledWith('pilot_finalize_visit',expect.objectContaining({p_operation:'finalize_visit'}))
+ await send.reconcile()
+ expect(mock.rpc).toHaveBeenLastCalledWith('pilot_reconcile_visit',expect.any(Object))
+})

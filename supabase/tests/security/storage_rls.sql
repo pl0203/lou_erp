@@ -32,8 +32,7 @@ SELECT pg_temp.assert_true(NOT private.pilot_can_upload_visit_object('visits/not
 SELECT pg_temp.assert_true(NOT private.pilot_can_upload_visit_object('visits/42000000-0000-0000-0000-000000000001/../photo.webp'),'extra path segments denied');
 SELECT pg_temp.assert_true(private.pilot_photo_object_owned('visits/42000000-0000-0000-0000-000000000001/photo.webp'),'owned object can be linked');
 SELECT pg_temp.assert_true(NOT private.pilot_photo_object_owned('visits/42000000-0000-0000-0000-000000000001/missing.webp'),'missing object cannot be linked');
-INSERT INTO public.outlet_visits(id,outlet_id,sales_person_id,schedule_id) VALUES ('62000000-0000-0000-0000-000000000001','22000000-0000-0000-0000-000000000001',auth.uid(),'42000000-0000-0000-0000-000000000001');
-INSERT INTO public.visit_photos(visit_id,storage_path) VALUES ('62000000-0000-0000-0000-000000000001','visits/42000000-0000-0000-0000-000000000001/photo.webp');
+SELECT public.pilot_finalize_visit('92000000-0000-0000-0000-000000000001','finalize_visit','{"schedule_id":"42000000-0000-0000-0000-000000000001","storage_path":"visits/42000000-0000-0000-0000-000000000001/photo.webp"}');
 SELECT pg_temp.assert_true(private.pilot_can_read_visit_object('visits/42000000-0000-0000-0000-000000000001/photo.webp','12000000-0000-0000-0000-000000000001'),'own linked photo readable');
 SELECT pg_temp.assert_true((SELECT count(*)=1 FROM storage.objects WHERE bucket_id='visits'),'own linked object visible through actual RLS');
 SELECT pg_temp.expect_privilege_denied($s$INSERT INTO public.visit_photos(visit_id,storage_path) VALUES ('62000000-0000-0000-0000-000000000001','visits/42000000-0000-0000-0000-000000000001/missing.webp')$s$,'nonexistent object metadata denied');
@@ -57,13 +56,13 @@ SELECT set_config('request.jwt.claim.sub','12000000-0000-0000-0000-000000000006'
 SELECT pg_temp.assert_true(NOT private.pilot_can_read_visit_object('visits/42000000-0000-0000-0000-000000000001/photo.webp','12000000-0000-0000-0000-000000000001'),'PO admin does not gain visit-photo scope');
 RESET ROLE;
 SELECT set_config('request.jwt.claim.sub','12000000-0000-0000-0000-000000000004',true);
-UPDATE public.sales_schedules SET sales_person_id='12000000-0000-0000-0000-000000000003' WHERE id='42000000-0000-0000-0000-000000000001';
+DO $$ BEGIN BEGIN UPDATE public.sales_schedules SET sales_person_id='12000000-0000-0000-0000-000000000003' WHERE id='42000000-0000-0000-0000-000000000001'; RAISE EXCEPTION 'Visited schedule reassignment accepted'; EXCEPTION WHEN object_not_in_prerequisite_state THEN NULL; END; END $$;
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub','12000000-0000-0000-0000-000000000001',true);
-SELECT pg_temp.assert_true(NOT private.pilot_can_upload_visit_object('visits/42000000-0000-0000-0000-000000000001/new.webp'),'reassigned schedule removes former actor upload authority');
-SELECT pg_temp.assert_true(private.pilot_can_read_visit_object('visits/42000000-0000-0000-0000-000000000001/photo.webp','12000000-0000-0000-0000-000000000001'),'historical actor keeps own linked evidence after reassignment');
+SELECT pg_temp.assert_true(NOT private.pilot_can_upload_visit_object('visits/42000000-0000-0000-0000-000000000001/new.webp'),'completed schedule forbids more uploads');
+SELECT pg_temp.assert_true(private.pilot_can_read_visit_object('visits/42000000-0000-0000-0000-000000000001/photo.webp','12000000-0000-0000-0000-000000000001'),'historical actor keeps own linked evidence');
 SELECT set_config('request.jwt.claim.sub','12000000-0000-0000-0000-000000000003',true);
-SELECT pg_temp.assert_true(private.pilot_can_upload_visit_object('visits/42000000-0000-0000-0000-000000000001/new.webp'),'new schedule actor can upload own evidence');
+SELECT pg_temp.assert_true(NOT private.pilot_can_upload_visit_object('visits/42000000-0000-0000-0000-000000000001/new.webp'),'other actor cannot upload to finalized schedule');
 SELECT pg_temp.assert_true(NOT private.pilot_can_read_visit_object('visits/42000000-0000-0000-0000-000000000001/photo.webp','12000000-0000-0000-0000-000000000001'),'new schedule actor cannot read old actor evidence');
 RESET ROLE;
 ROLLBACK;

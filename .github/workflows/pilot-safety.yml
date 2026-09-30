@@ -53,5 +53,6 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f supabase/tests/security/storage_helpers.sql
           psql -X -v ON_ERROR_STOP=1 -f supabase/tests/security/storage_rls.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/order-transactions.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/visit-transactions.sql
       - name: Concurrent business operations
         run: node tests/database/concurrency.mjs

@@ -15,7 +15,7 @@ export default function TransactionRecovery({ send, onCommitted }: { send: Trans
         send.acknowledgeRecovered()
       }
       setMessage(result.state === 'committed'
-        ? `Operasi sebelumnya sudah tersimpan. Periksa daftar pesanan (referensi ${result.result?.id}).`
+        ? `Operasi sebelumnya sudah tersimpan. Periksa hasil tersimpan (referensi ${result.result?.id}).`
         : 'Permintaan lama telah dibatalkan. Anda dapat menyimpan kembali.')
     } catch (error) { setMessage((error as Error).message) }
     finally { setBusy(false) }

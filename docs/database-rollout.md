@@ -32,7 +32,7 @@ This branch is a coordinated database + client change. It is not approved for pr
 A failed migration transaction rolls back. After successful rollout and real writes, do not drop request history, void metadata, or audit records to revert the schema. Stop writes and use a reviewed forward repair or validated restore/reconciliation plan. Do not restore old direct-write grants as an automatic fallback. Retain request/tombstone records while delayed clients could replay them.
 
 ## Remaining explicit gates
-- Check-in/photo upload remains a multi-step storage/database saga; retry can leave an orphan upload or visit without photo metadata, and duplicate visits/timestamp proof need separate hardening
+- Check-in now finalizes visit, photo, completion and customer date atomically with server timestamps; private unreadable orphan uploads remain possible and require a separately reviewed retention/cleanup process. Hosted Storage bytes and signed-URL tests remain required.
 - Sales-head customer creation remains a role/workflow mismatch; no broader customer-write authority was silently granted
 - More-than-API-limit reporting pagination and full data reconciliation remain required
 - Synthetic provider stubs are not production schemas; real hosted integration is still mandatory
@@ -51,3 +51,26 @@ for role/reference checking, not cryptographically authenticated by the build.
 Other branches, production and ordinary local/CI builds retain existing behavior.
 The Vercel branch deployment hold remains until staging overrides are verified;
 this guard does not authorize deployment or replace target verification.
+
+
+## Atomic check-in rollout (migration 4)
+Deploy migration 4 and its RPC-only client together after isolated tests. Preflight
+refuses duplicate schedule visits, multiple photos per visit, reused photo paths,
+and incomplete legacy evidence. Reconcile these manually before production;
+never delete or invent historical proof to make migration succeed.
+
+The finalize RPC locks the schedule, validates the active assigned actor/customer
+and exact owned uploaded object, then saves visit/photo and completion in one
+transaction. Visit/photo timestamps come from the database, rather than the
+browser. Completed schedule identity and date are immutable. Direct visit/photo
+inserts and unproven completed statuses are blocked. Uploads are permitted only
+before completion. Missing or ambiguous upload responses must pass authoritative
+finalization checks before success is reported.
+
+Retries use stable upload UUIDs and photo hashes, plus the shared request ledger
+and terminal recovery tombstones. Client recovery metadata contains no photo
+bytes, coordinates or customer data. A reload can reconcile the prior request
+without restoring the photograph; a cancelled request may leave an unreadable
+orphan object. Proof timestamps mean server receipt, not verified capture time
+or physical presence. Hosted JWT/Storage integration and real device camera/GPS
+acceptance remain required; the SQL tests simulate claims and object metadata.

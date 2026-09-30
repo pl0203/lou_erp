@@ -22,4 +22,5 @@ if (env.VERCEL_ENV === 'preview' && env.VERCEL_GIT_COMMIT_REF === 'fix/pilot-dat
       if (header.alg !== 'HS256' || claims.role !== 'anon' || claims.ref !== expectedRef) fail()
     } catch { fail() }
   }
+  console.info('Database preview backend guard passed.')
 }

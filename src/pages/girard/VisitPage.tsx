@@ -1,9 +1,10 @@
+import { createVisitCheckIn } from '../../lib/visitCheckIn'
 import TransactionRecovery from '../../components/TransactionRecovery'
 import { createTransactionSender, useTransactionSender } from '../../lib/orderTransactions'
 import type { TransactionSender } from '../../lib/orderTransactions'
 import { singleRelation } from '../../lib/relations'
 import { validateOrderLines } from '../../lib/orderValidation'
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
@@ -160,50 +161,6 @@ async function fetchProducts(): Promise<Product[]> {
     .order('name')
   if (error) throw error
   return data
-}
-
-async function checkIn(payload: {
-  schedule_id: string
-  outlet_id: string
-  sales_person_id: string
-  lat: number | null
-  lng: number | null
-  photo_blob: Blob
-}): Promise<Visit> {
-  const fileName = `${payload.schedule_id}_${Date.now()}.webp`
-  const storagePath = `visits/${payload.schedule_id}/${fileName}`
-
-  const { error: uploadError } = await supabase.storage
-    .from('visits')
-    .upload(storagePath, payload.photo_blob, { contentType: 'image/webp', upsert: false })
-  if (uploadError) throw uploadError
-
-  const { data: visit, error: visitError } = await supabase
-    .from('outlet_visits')
-    .insert({
-      outlet_id: payload.outlet_id,
-      sales_person_id: payload.sales_person_id,
-      schedule_id: payload.schedule_id,
-      lat: payload.lat,
-      lng: payload.lng,
-    })
-    .select()
-    .single()
-  if (visitError) throw visitError
-
-  const { error: photoError } = await supabase
-    .from('visit_photos')
-    .insert({
-      visit_id: visit.id,
-      storage_path: storagePath,
-      lat: payload.lat,
-      lng: payload.lng,
-      taken_at: new Date().toISOString(),
-    })
-  if (photoError) throw photoError
-
-
-  return visit
 }
 
 export async function submitOrder(payload: {
@@ -407,6 +364,9 @@ export default function VisitPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const sendTransaction = useTransactionSender(`sales-visit:${scheduleId}`)
+  const sendVisit = useTransactionSender(`check-in:${scheduleId}`, true)
+  const uploadKey = `pilot-upload:${profile?.id}:${scheduleId}`
+  const checkIn = useMemo(() => createVisitCheckIn(sendVisit, () => window.localStorage, uploadKey), [sendVisit, uploadKey])
 
   const [showCamera, setShowCamera] = useState(false)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
@@ -450,6 +410,7 @@ export default function VisitPage() {
       setShowCamera(false)
       setPhotoPreview(null)
       setPhotoBlob(null)
+      window.localStorage.removeItem(uploadKey)
     },
   })
 
@@ -494,8 +455,6 @@ export default function VisitPage() {
     if (!profile || !schedule?.customers) return
     checkInMutation.mutate({
       schedule_id: scheduleId!,
-      outlet_id: schedule.customers.id,
-      sales_person_id: profile.id,
       lat: location?.lat ?? null,
       lng: location?.lng ?? null,
       photo_blob: photoBlob,
@@ -566,6 +525,7 @@ export default function VisitPage() {
     return (
       <div className="min-h-screen bg-gray-50">
         <GirardNav />
+        <TransactionRecovery send={sendVisit} onCommitted={() => { queryClient.invalidateQueries(); setShowCamera(false); setPhotoPreview(null); setPhotoBlob(null); window.localStorage.removeItem(uploadKey) }} />
         <TransactionRecovery send={sendTransaction} onCommitted={() => { queryClient.invalidateQueries(); setShowOrderForm(false); setOrderItems([{ product_id: null, product_name: '', sku: '', quantity: 1, unit_price: 0 }]) }} />
         <div className="p-8 text-gray-400 text-sm text-center">Memuat...</div>
       </div>
@@ -576,6 +536,7 @@ export default function VisitPage() {
     return (
       <div className="min-h-screen bg-gray-50">
         <GirardNav />
+        <TransactionRecovery send={sendVisit} onCommitted={() => { queryClient.invalidateQueries(); setShowCamera(false); setPhotoPreview(null); setPhotoBlob(null); window.localStorage.removeItem(uploadKey) }} />
         <TransactionRecovery send={sendTransaction} onCommitted={() => { queryClient.invalidateQueries(); setShowOrderForm(false); setOrderItems([{ product_id: null, product_name: '', sku: '', quantity: 1, unit_price: 0 }]) }} />
         <div className="p-8 text-red-500 text-sm">{scheduleError ? scheduleError.message : !schedule ? 'Jadwal tidak ditemukan.' : 'Pelanggan untuk jadwal ini tidak tersedia. Hubungi administrator.'}</div>
       </div>
@@ -588,6 +549,7 @@ export default function VisitPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <GirardNav />
+        <TransactionRecovery send={sendVisit} onCommitted={() => { queryClient.invalidateQueries(); setShowCamera(false); setPhotoPreview(null); setPhotoBlob(null); window.localStorage.removeItem(uploadKey) }} />
         <TransactionRecovery send={sendTransaction} onCommitted={() => { queryClient.invalidateQueries(); setShowOrderForm(false); setOrderItems([{ product_id: null, product_name: '', sku: '', quantity: 1, unit_price: 0 }]) }} />
 
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center gap-4">

@@ -9,7 +9,7 @@ export type TransactionSender = ((operation: string, payload: unknown) => Promis
   reconcile: () => Promise<Recovery>
   acknowledgeRecovered: () => void
 }
-type Options = { storage?: () => Storage; storageKey?: string }
+type Options = { storage?: () => Storage; storageKey?: string; rpcName?: 'pilot_order_transaction' | 'pilot_finalize_visit'; recoveryRpcName?: 'pilot_reconcile_request' | 'pilot_reconcile_visit' }
 type Pending = { key: string; id: string; uncertain: boolean; committed?: TransactionResult }
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical)
@@ -53,7 +53,7 @@ export function createTransactionSender(options: Options = {}): TransactionSende
     if ((current?.uncertain || current?.committed) && current.key !== key) throw new Error('Hasil penyimpanan sebelumnya belum terkonfirmasi. Pulihkan hasilnya sebelum mengubah pesanan.')
     const request = current?.key === key ? current : { key, id: crypto.randomUUID(), uncertain: true }
     save({ ...request, uncertain: true }) // before the request: survives reload while HTTP is in flight
-    const { data, error } = await supabase.rpc('pilot_order_transaction', { p_request_id: request.id, p_operation: operation, p_payload: payload })
+    const { data, error } = await supabase.rpc(options.rpcName ?? 'pilot_order_transaction', { p_request_id: request.id, p_operation: operation, p_payload: payload })
     if (error) {
       // A returned SQL error aborts the RPC transaction. Network/gateway ambiguity must stay unresolved.
       if ((/^[0-9A-Z]{5}$/.test(error.code ?? '') && !error.code?.startsWith('08') && error.code !== '40003') || error.code === 'PGRST202') save({ ...request, uncertain: false })
@@ -69,7 +69,7 @@ export function createTransactionSender(options: Options = {}): TransactionSende
     async reconcile(): Promise<Recovery> {
       const request = read()
       if (!request) return { state: 'unknown' }
-      const { data, error } = await supabase.rpc('pilot_reconcile_request', { p_request_id: request.id, p_abandon: true })
+      const { data, error } = await supabase.rpc(options.recoveryRpcName ?? 'pilot_reconcile_request', { p_request_id: request.id, p_abandon: true })
       if (error) throw compatibilityError(error)
       if (!data || !['committed', 'abandoned'].includes(data.state)) throw new Error('Hasil belum dapat dipastikan. Jangan buat permintaan baru.')
       if (data.state === 'committed' && typeof data.result?.id !== 'string') throw new Error('Hasil pemulihan tidak valid. Jangan buat permintaan baru.')
@@ -79,9 +79,9 @@ export function createTransactionSender(options: Options = {}): TransactionSende
     },
   })
 }
-export function useTransactionSender(scope: string): TransactionSender {
+export function useTransactionSender(scope: string, visit = false): TransactionSender {
   const { user } = useAuth()
-  return useMemo(() => createTransactionSender(user?.id ? {
+  return useMemo(() => createTransactionSender({ ...(visit ? { rpcName: 'pilot_finalize_visit', recoveryRpcName: 'pilot_reconcile_visit' } as const : {}), ...(user?.id ? {
     storage: () => window.localStorage, storageKey: `pilot-request:${user.id}:${scope}`,
-  } : {}), [user?.id, scope])
+  } : {}) }), [user?.id, scope, visit])
 }
