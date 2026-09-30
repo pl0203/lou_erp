@@ -1,3 +1,4 @@
+import { calendarDateKey, parseCalendarDate, calendarDayOptions } from '../../lib/calendarDate'
 import { singleRelation } from '../../lib/relations'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -41,7 +42,7 @@ type ScheduleForm = {
 const EMPTY_FORM: ScheduleForm = {
   outlet_id: '',
   sales_person_id: '',
-  scheduled_date: new Date().toISOString().split('T')[0],
+  scheduled_date: calendarDateKey(),
   notes: '',
 }
 
@@ -51,7 +52,7 @@ function getDateOptions(): { value: string; label: string }[] {
     for (let i = 0; i <= 30; i++) {
       const d = new Date(today)
       d.setDate(d.getDate() + i)
-      const value = d.toISOString().split('T')[0]
+      const value = calendarDateKey(d)
       const label = d.toLocaleDateString('id-ID', {
         weekday: 'long', day: 'numeric', month: 'long'
       })
@@ -60,14 +61,12 @@ function getDateOptions(): { value: string; label: string }[] {
     return options
   }
 
-function isEditable(scheduledDate: string): boolean {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const schedDate = new Date(scheduledDate)
-    schedDate.setHours(0, 0, 0, 0)
-    // Can only edit schedules that are more than 1 day from now (i.e. from day after tomorrow onwards)
-    return schedDate > new Date(today.getTime() + 24 * 60 * 60 * 1000)
-  }
+export function isEditable(scheduledDate: string): boolean {
+  const today = new Date()
+  const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)
+  // Preserve the rule: editing starts the day after tomorrow, independent of DST length.
+  return scheduledDate > calendarDateKey(tomorrow)
+}
 
   async function fetchMyCustomers(managerId: string, role: string): Promise<Customer[]> {
     // Sales head and executive can see all customers
@@ -209,12 +208,8 @@ async function deleteSchedule(id: string) {
   if (error) throw error
 }
 
-function getNext30Days(): string[] {
-  return Array.from({ length: 31 }, (_, i) => {
-    const d = new Date()
-    d.setDate(d.getDate() + i)
-    return d.toISOString().split('T')[0]
-  })
+export function getNext30Days(): string[] {
+  return calendarDayOptions(31)
 }
 
 export default function ManagerSchedule() {
@@ -340,7 +335,7 @@ export default function ManagerSchedule() {
           {weekDates.map((date, i) => {
             const daySchedules = allSchedules?.filter(s => s.scheduled_date === date) ?? []
             const isSelected = selectedDate === date
-            const d = new Date(date)
+            const d = parseCalendarDate(date)
             return (
               <button
                 key={date}
@@ -371,7 +366,7 @@ export default function ManagerSchedule() {
               <option value="">Tanggal lainnya...</option>
               {dates.slice(7).map(date => (
                 <option key={date} value={date}>
-                  {new Date(date).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' })}
+                  {parseCalendarDate(date).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' })}
                 </option>
               ))}
             </select>

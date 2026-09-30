@@ -1,3 +1,4 @@
+import { parseCalendarDate, calendarDayOptions } from '../../lib/calendarDate'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -36,11 +37,7 @@ const STATUS_STYLES: Record<string, string> = {
 const DAY_LABELS = ['Hari Ini', 'Besok', 'Dalam 2 Hari', 'Dalam 3 Hari']
 
 function getDateRange(): string[] {
-  return Array.from({ length: 4 }, (_, i) => {
-    const d = new Date()
-    d.setDate(d.getDate() + i)
-    return d.toISOString().split('T')[0]
-  })
+  return calendarDayOptions(4)
 }
 
 async function fetchMyVisitSchedules(userId: string, dates: string[]): Promise<Schedule[]> {
@@ -81,7 +78,7 @@ function isOverdue(lastVisit: string | null, frequencyDays: number): boolean {
 }
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('id-ID', {
+  return parseCalendarDate(dateStr).toLocaleDateString('id-ID', {
     weekday: 'long', day: 'numeric', month: 'long'
   })
 }
@@ -229,7 +226,7 @@ export default function MyVisits() {
                   <p className="text-xs text-gray-400 mb-0.5">Kunjungan terakhir</p>
                   <p className="text-sm font-medium text-gray-900">
                     {customer?.last_visit_date
-                      ? new Date(customer.last_visit_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
+                      ? parseCalendarDate(customer.last_visit_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
                       : 'Belum pernah'}
                   </p>
                 </div>

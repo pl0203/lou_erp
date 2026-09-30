@@ -1,3 +1,4 @@
+import { calendarDateKey, parseCalendarDate } from '../../lib/calendarDate'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
@@ -86,11 +87,11 @@ function getFirstDayOfMonth(offset = 0): string {
   const date = new Date()
   date.setMonth(date.getMonth() + offset, 1)
   date.setHours(0, 0, 0, 0)
-  return date.toISOString().split('T')[0]
+  return calendarDateKey(date)
 }
 
 function getToday(): string {
-  return new Date().toISOString().split('T')[0]
+  return calendarDateKey()
 }
 
 function startOfMonth(date: Date): Date {
@@ -106,12 +107,12 @@ function minDate(a: string, b: string): string {
 }
 
 function monthKey(dateStr: string): string {
-  const date = new Date(dateStr)
+  const date = parseCalendarDate(dateStr)
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
 }
 
 function dayKey(dateStr: string): string {
-  return new Date(dateStr).toISOString().split('T')[0]
+  return dateStr.slice(0, 10)
 }
 
 function displayMonth(key: string): string {
@@ -119,36 +120,36 @@ function displayMonth(key: string): string {
   return new Date(year, month - 1, 1).toLocaleDateString('id-ID', { month: 'short', year: 'numeric' })
 }
 
-function displayDay(key: string): string {
-  return new Date(key).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
+export function displayDay(key: string): string {
+  return parseCalendarDate(key).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
 }
 
 function rangeMonths(start: string, end: string): string[] {
   const result: string[] = []
-  const cursor = new Date(start)
+  const cursor = parseCalendarDate(start)
   cursor.setDate(1)
-  const limit = new Date(end)
+  const limit = parseCalendarDate(end)
   limit.setDate(1)
 
   while (cursor <= limit) {
-    result.push(monthKey(cursor.toISOString()))
+    result.push(monthKey(calendarDateKey(cursor)))
     cursor.setMonth(cursor.getMonth() + 1)
   }
   return result
 }
 
-function rollingMonthKeys(months: number): string[] {
+export function rollingMonthKeys(months: number): string[] {
   const currentMonth = startOfMonth(new Date())
   const start = subtractMonths(currentMonth, months - 1)
-  return rangeMonths(start.toISOString().split('T')[0], currentMonth.toISOString().split('T')[0])
+  return rangeMonths(calendarDateKey(start), calendarDateKey(currentMonth))
 }
 
-function rangeDays(start: string, end: string): string[] {
+export function rangeDays(start: string, end: string): string[] {
   const result: string[] = []
-  const cursor = new Date(start)
-  const limit = new Date(end)
+  const cursor = parseCalendarDate(start)
+  const limit = parseCalendarDate(end)
   while (cursor <= limit) {
-    result.push(dayKey(cursor.toISOString()))
+    result.push(dayKey(calendarDateKey(cursor)))
     cursor.setDate(cursor.getDate() + 1)
   }
   return result
@@ -199,7 +200,7 @@ async function fetchDashboardData(
   status: FilterStatus,
   fulfillment: FulfillmentFilter
 ): Promise<DashboardData> {
-  const rolling12Start = subtractMonths(startOfMonth(new Date()), 11).toISOString().split('T')[0]
+  const rolling12Start = calendarDateKey(subtractMonths(startOfMonth(new Date()), 11))
   const poFetchStart = minDate(startDate, rolling12Start)
 
   let poQuery = supabase
