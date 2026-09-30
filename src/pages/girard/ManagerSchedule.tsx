@@ -1,3 +1,4 @@
+import { singleRelation } from '../../lib/relations'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
@@ -149,7 +150,7 @@ async function fetchSchedules(managerId: string, role: string, dates: string[]):
       .order('scheduled_date')
       .order('created_at')
     if (error) throw error
-    return data as Schedule[]
+    return (data ?? []).map(row => ({ ...row, customers: singleRelation(row.customers), users: singleRelation(row.users) }))
   }
 
   // Sales manager — only their assigned customers
@@ -172,7 +173,7 @@ async function fetchSchedules(managerId: string, role: string, dates: string[]):
     .order('scheduled_date')
     .order('created_at')
   if (error) throw error
-  return data as Schedule[]
+  return (data ?? []).map(row => ({ ...row, customers: singleRelation(row.customers), users: singleRelation(row.users) }))
 }
 
 async function createSchedule(form: ScheduleForm, assignedBy: string) {

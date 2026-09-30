@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { singleRelation } from '../../lib/relations'
+import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
@@ -67,7 +68,7 @@ async function fetchVisitHistory(customerId: string): Promise<VisitHistory[]> {
     .order('checked_in_at', { ascending: false })
     .limit(10)
   if (error) throw error
-  return data as VisitHistory[]
+  return (data ?? []).map(row => ({ ...row, users: singleRelation(row.users) }))
 }
 
 async function fetchOrderHistory(customerId: string): Promise<OrderHistory[]> {
@@ -104,7 +105,7 @@ export default function GirardCustomerDetail() {
     enabled: !!id,
   })
 
-  const { data: stats } = useQuery({
+  const { data: stats, isError: statsError, isLoading: statsLoading } = useQuery({
     queryKey: ['customer_stats_detail', id],
     queryFn: () => fetchCustomerStatsDetail(id!),
     enabled: !!id,
@@ -219,26 +220,26 @@ export default function GirardCustomerDetail() {
               <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
                 <p className="text-xs text-gray-400 mb-1">Pelanggan Sejak</p>
                 <p className="text-sm font-semibold text-gray-900">
-                  {stats?.first_order_date
+                  {statsError ? 'Tidak tersedia' : statsLoading || !stats ? 'Memuat...' : stats.first_order_date
                     ? new Date(stats.first_order_date).toLocaleDateString('id-ID', { month: 'short', year: 'numeric' })
                     : '—'}
                 </p>
               </div>
               <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
                 <p className="text-xs text-gray-400 mb-1">Pesanan (3bl)</p>
-                <p className="text-sm font-semibold text-gray-900">{stats?.order_count_3mo ?? 0}</p>
+                <p className="text-sm font-semibold text-gray-900">{statsError ? 'Tidak tersedia' : statsLoading || !stats ? 'Memuat...' : stats.order_count_3mo}</p>
               </div>
               <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
                 <p className="text-xs text-gray-400 mb-1">Penjualan (3bl)</p>
                 <p className="text-sm font-semibold text-gray-900">
-                  {stats?.total_sales_3mo
+                  {statsError ? 'Tidak tersedia' : statsLoading || !stats ? 'Memuat...' : stats.total_sales_3mo
                     ? `Rp ${(stats.total_sales_3mo / 1_000_000).toFixed(1)}M`
                     : 'Rp 0'}
                 </p>
               </div>
             </div>
 
-            {stats?.top_items && stats.top_items.length > 0 && (
+            {!statsError && stats?.top_items && stats.top_items.length > 0 && (
               <div className="bg-white rounded-xl border border-gray-200 p-5">
                 <h2 className="text-base font-medium text-gray-900 mb-3">Barang Terlaris</h2>
                 <div className="space-y-2">
@@ -362,18 +363,4 @@ export default function GirardCustomerDetail() {
       </div>
     </div>
   )
-}
-
-function CheckInPhoto({ storagePath }: { storagePath: string }) {
-  const [url, setUrl] = useState<string | null>(null)
-
-  useEffect(() => {
-    supabase.storage
-      .from('visits')
-      .createSignedUrl(storagePath, 3600)
-      .then(({ data }) => { if (data) setUrl(data.signedUrl) })
-  }, [storagePath])
-
-  if (!url) return null
-  return <img src={url} alt="Check-in photo" className="w-full h-48 object-cover rounded-xl" />
 }

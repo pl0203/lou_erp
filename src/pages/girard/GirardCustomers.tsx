@@ -1,7 +1,7 @@
+import { singleRelation } from '../../lib/relations'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
-import { useAuth } from '../../lib/AuthContext'
 import GirardNav from '../../components/GirardNav'
 
 type Customer = {
@@ -100,7 +100,7 @@ async function fetchAssignments(): Promise<Assignment[]> {
     .from('customer_manager_assignments')
     .select('customer_id, manager_id, managers:users!customer_manager_assignments_manager_id_fkey(id, full_name)')
   if (error) throw error
-  return data as Assignment[]
+  return (data ?? []).map(row => ({ ...row, managers: singleRelation(row.managers) }))
 }
 
 async function createCustomer(form: CustomerForm, assignedBy: string) {
@@ -184,7 +184,6 @@ async function updateAssignment(
 }
 
 export default function GirardCustomers() {
-  const { profile } = useAuth()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)

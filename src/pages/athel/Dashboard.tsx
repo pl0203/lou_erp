@@ -532,7 +532,7 @@ function BarChartCard({
 }: {
   title: string
   subtitle: string
-  series: { label: string; poValue: number; deliveredValue: number }[]
+  series: DashboardData['monthlySeries']
 }) {
   const maxValue = Math.max(...series.flatMap(item => [item.poValue, item.deliveredValue]), 1)
   const [hovered, setHovered] = useState<string | null>(null)
@@ -589,7 +589,7 @@ function TrendCard({
 }: {
   title: string
   subtitle: string
-  series: { label: string; poValue: number; deliveredCount: number }[]
+  series: DashboardData['dailySeries']
 }) {
   const maxDeliveredValue = Math.max(...series.map(item => item.deliveredValue), 1)
   const maxSJ = Math.max(...series.map(item => item.sjCount), 1)

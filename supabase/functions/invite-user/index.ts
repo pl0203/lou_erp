@@ -28,14 +28,14 @@ serve(async (req) => {
     )
     if (userError || !user) throw new Error('Unauthorized')
 
-    const { data: callerProfile } = await supabaseAdmin
+    const { data: callerProfile, error: callerError } = await supabaseAdmin
       .from('users')
-      .select('role')
+      .select('role, is_active')
       .eq('id', user.id)
       .single()
 
-    if (callerProfile?.role !== 'executive') {
-      throw new Error('Only executives can invite users')
+    if (callerError || callerProfile?.role !== 'executive' || callerProfile.is_active !== true) {
+      throw new Error('Only active executives can invite users')
     }
 
     // Get invite payload
@@ -44,6 +44,9 @@ serve(async (req) => {
     if (!email || !full_name || !role) {
       throw new Error('email, full_name and role are required')
     }
+
+    const allowedRoles = ['executive', 'po_admin', 'sales_head', 'sales_manager', 'sales_person']
+    if (!allowedRoles.includes(role)) throw new Error('Invalid role')
 
     // Invite user via Supabase Auth (sends email with password setup link)
     const { data: invited, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(

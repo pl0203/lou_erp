@@ -1,3 +1,4 @@
+import { singleRelation } from '../../lib/relations'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
@@ -47,7 +48,7 @@ async function fetchMyOrders(userId: string, status: string): Promise<MyOrder[]>
 
   const { data, error } = await query
   if (error) throw error
-  return data as MyOrder[]
+  return (data ?? []).map(row => ({ ...row, customers: singleRelation(row.customers) }))
 }
 
 export default function MyOrders() {

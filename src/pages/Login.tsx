@@ -13,7 +13,7 @@ const ROLE_HOME: Record<string, string> = {
 
 export default function Login() {
   const navigate = useNavigate()
-  const { profile, loading } = useAuth()
+  const { profile, loading, error: profileError } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -30,23 +30,13 @@ export default function Login() {
     setSubmitting(true)
     setError('')
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
-
-    if (signInError) {
-      setError('Email atau kata sandi salah. Silakan coba lagi.')
-      setSubmitting(false)
-      return
-    }
-
-    const { data: profileData } = await supabase
-      .from('users')
-      .select('is_active')
-      .eq('email', email)
-      .single()
-
-    if (profileData && !profileData.is_active) {
-      await supabase.auth.signOut()
-      setError('Akun Anda telah dinonaktifkan. Hubungi administrator Anda.')
+    try {
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+      if (signInError) setError('Email atau kata sandi salah. Silakan coba lagi.')
+      // AuthProvider owns profile validation; do not query by a user-entered email.
+    } catch {
+      setError('Tidak dapat masuk. Periksa koneksi dan coba lagi.')
+    } finally {
       setSubmitting(false)
     }
   }
@@ -101,7 +91,7 @@ export default function Login() {
             />
           </div>
 
-          {error && <p className="text-red-500 text-xs">{error}</p>}
+          {(error || profileError) && <p className="text-red-500 text-xs">{error || profileError}</p>}
 
           <button
             onClick={handleLogin}

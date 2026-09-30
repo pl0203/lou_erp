@@ -1,3 +1,4 @@
+import { singleRelation } from '../../lib/relations'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
@@ -95,7 +96,7 @@ async function fetchPromotions(): Promise<Promotion[]> {
     .order('created_at', { ascending: false })
 
   if (error) throw error
-  return (data ?? []) as Promotion[]
+  return (data ?? []).map(row => ({ ...row, products: singleRelation(row.products) }))
 }
 
 async function createPromotion(form: PromoForm, createdBy: string) {

@@ -1,3 +1,5 @@
+import { singleRelation } from '../../lib/relations'
+import { validateOrderLines } from '../../lib/orderValidation'
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -57,7 +59,7 @@ async function fetchPO(id: string): Promise<POData> {
     .eq('id', id)
     .single()
   if (error) throw error
-  return data as POData
+  return { ...data, customers: singleRelation(data.customers) }
 }
 
 async function fetchLineItems(poId: string) {
@@ -87,12 +89,13 @@ async function fetchProducts(): Promise<Product[]> {
   return data
 }
 
-async function saveEdits(poId: string, payload: {
+export async function saveEdits(poId: string, payload: {
   customer_id: string
   expected_delivery_date: string | null
   notes: string | null
   lineItems: LineItemRow[]
 }) {
+  validateOrderLines(payload.lineItems.filter(line => !line._deleted))
   const { error: poError } = await supabase
     .from('purchase_orders')
     .update({
@@ -434,8 +437,8 @@ export default function POEdit() {
                       <label className="block text-xs text-gray-400 mb-1">Qty</label>
                       <input
                         type="number" min={1}
-                        value={item.quantity}
-                        onChange={e => updateLine(realIndex, 'quantity', parseInt(e.target.value) || 1)}
+                        value={Number.isNaN(item.quantity) ? '' : item.quantity}
+                        onChange={e => updateLine(realIndex, 'quantity', e.target.valueAsNumber)}
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
@@ -446,8 +449,8 @@ export default function POEdit() {
                       </label>
                       <input
                         type="number" min={0}
-                        value={item.unit_price}
-                        onChange={e => updateLine(realIndex, 'unit_price', parseFloat(e.target.value) || 0)}
+                        value={Number.isNaN(item.unit_price) ? '' : item.unit_price}
+                        onChange={e => updateLine(realIndex, 'unit_price', e.target.valueAsNumber)}
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
