@@ -1,7 +1,8 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 const state = vi.hoisted(() => ({ results: {} as Record<string, { data: unknown; error: unknown }> }))
 vi.mock('../src/lib/supabase', () => ({ supabase: { from(table: string) {
-  const q: any = { then: (resolve: any) => Promise.resolve(state.results[table]).then(resolve) }
+  const filters: [string, unknown][] = []
+  const q: any = { is: (key: string,value: unknown) => {filters.push([key,value]);return q}, then: (resolve: any) => { const result=state.results[table];return Promise.resolve({...result,data:Array.isArray(result?.data)?result.data.filter(row=>filters.every(([key,value])=>(row[key]??null)===value)):result?.data}).then(resolve) } }
   for (const m of ['select','in','eq','gte','order']) q[m] = () => q
   return q
 } } }))
@@ -29,3 +30,9 @@ for (const mode of ['batch','detail']) {
   expect(mode === 'batch' ? result[0].total_sales : result.total_sales_3mo).toBe(30)
  })
 }
+
+test('voided deliveries do not contribute to customer sales',async()=>{
+ state.results.surat_jalan.data=[{purchase_order_id:'p',voided_at:'2026-09-30',sj_line_items:[{quantity_delivered:4,po_line_items:{unit_price:50}}]}]
+ expect((await fetchCustomerStatsBatch(['c']))[0].total_sales).toBe(0)
+ expect((await fetchCustomerStatsDetail('c')).total_sales_3mo).toBe(0)
+})

@@ -1,3 +1,6 @@
+import TransactionRecovery from '../../components/TransactionRecovery'
+import { useTransactionSender } from '../../lib/orderTransactions'
+import type { TransactionSender } from '../../lib/orderTransactions'
 import { singleRelation } from '../../lib/relations'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -27,6 +30,7 @@ const STATUS_STYLES: Record<string, string> = {
   pending:  'bg-yellow-100 text-yellow-700',
   approved: 'bg-green-100 text-green-700',
   rejected: 'bg-red-100 text-red-700',
+  cancelled: 'bg-gray-100 text-gray-700',
 }
 
 async function fetchGirardOrders(status: string): Promise<GirardOrder[]> {
@@ -47,78 +51,16 @@ async function fetchGirardOrders(status: string): Promise<GirardOrder[]> {
   return (data ?? []).map(row => ({ ...row, customers: singleRelation(row.customers), users: singleRelation(row.users) }))
 }
 
-async function approveOrder(orderId: string, poNumber: string, expectedDelivery: string) {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
-
-  // Get order details
-  const { data: order, error: orderError } = await supabase
-    .from('girard_orders')
-    .select('customer_id, girard_order_items(product_name, sku, quantity, unit_price)')
-    .eq('id', orderId)
-    .single()
-  if (orderError) throw orderError
-
-  // Create PO in Athel
-  const { data: po, error: poError } = await supabase
-    .from('purchase_orders')
-    .insert({
-      customer_id: order.customer_id,
-      created_by: user.id,
-      po_number: poNumber,
-      status: 'confirm',
-      order_date: new Date().toISOString().split('T')[0],
-      expected_delivery_date: expectedDelivery || null,
-    })
-    .select()
-    .single()
-  if (poError) throw poError
-
-  // Create PO line items
-  const { error: lineError } = await supabase
-    .from('po_line_items')
-    .insert(
-      order.girard_order_items.map((item: any) => ({
-        purchase_order_id: po.id,
-        product_name: item.product_name,
-        sku: item.sku || null,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-      }))
-    )
-  if (lineError) throw lineError
-
-  // Update girard order status and link to PO
-  const { error: updateError } = await supabase
-    .from('girard_orders')
-    .update({
-      status: 'approved',
-      reviewed_by: user.id,
-      po_id: po.id,
-    })
-    .eq('id', orderId)
-  if (updateError) throw updateError
-
-  return po
+async function approveOrder(orderId: string, poNumber: string, expectedDelivery: string, send: TransactionSender) {
+  return send('approve_sales', { order_id: orderId, po_number: poNumber, expected_delivery_date: expectedDelivery || null })
 }
-
-async function rejectOrder(orderId: string, note: string) {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
-
-  const { error } = await supabase
-    .from('girard_orders')
-    .update({
-      status: 'rejected',
-      reviewed_by: user.id,
-      rejection_note: note,
-    })
-    .eq('id', orderId)
-  if (error) throw error
+async function rejectOrder(orderId: string, note: string, send: TransactionSender) {
+  return send('reject_sales', { order_id: orderId, reason: note })
 }
 
 export default function SalesOrders() {
   const queryClient = useQueryClient()
+  const sendTransaction = useTransactionSender('review-sales')
   const navigate = useNavigate()
   const [statusFilter, setStatusFilter] = useState('pending')
   const [approvingOrder, setApprovingOrder] = useState<GirardOrder | null>(null)
@@ -133,7 +75,7 @@ export default function SalesOrders() {
   })
 
   const approveMutation = useMutation({
-    mutationFn: () => approveOrder(approvingOrder!.id, poNumber, expectedDelivery),
+    mutationFn: () => approveOrder(approvingOrder!.id, poNumber, expectedDelivery, sendTransaction),
     onSuccess: (po) => {
       queryClient.invalidateQueries({ queryKey: ['girard_orders'] })
       queryClient.invalidateQueries({ queryKey: ['purchase_orders'] })
@@ -145,7 +87,7 @@ export default function SalesOrders() {
   })
 
   const rejectMutation = useMutation({
-    mutationFn: () => rejectOrder(rejectingOrder!.id, rejectionNote),
+    mutationFn: () => rejectOrder(rejectingOrder!.id, rejectionNote, sendTransaction),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['girard_orders'] })
       setRejectingOrder(null)
@@ -158,6 +100,7 @@ export default function SalesOrders() {
   return (
     <div className="min-h-screen bg-gray-50">
       <AthelNav />
+        <TransactionRecovery send={sendTransaction} onCommitted={(result, operation) => { queryClient.invalidateQueries(); setApprovingOrder(null); setRejectingOrder(null); if (operation === 'approve_sales') navigate(`/athel/po/${result.id}`) }} />
 
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center justify-between flex-wrap gap-3">
         <div>
@@ -180,6 +123,7 @@ export default function SalesOrders() {
             { value: 'pending',  label: 'Pending' },
             { value: 'approved', label: 'Disetujui' },
             { value: 'rejected', label: 'Ditolak' },
+            { value: 'cancelled', label: 'Dibatalkan' },
             { value: 'all',      label: 'Semua' },
           ].map(tab => (
             <button

@@ -51,10 +51,9 @@ const ROLE_STYLES: Record<string, string> = {
 
 async function fetchUsers(): Promise<UserProfile[]> {
   const { data, error } = await supabase
-    .from('users')
-    .select('id, full_name, email, role, phone, birth_date, is_active, manager_id, invited_at')
-    .order('full_name')
+    .rpc('pilot_list_users')
   if (error) throw error
+  if (!Array.isArray(data)) throw new Error('Data pengguna tidak tersedia')
   return data
 }
 

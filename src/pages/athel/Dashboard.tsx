@@ -243,6 +243,7 @@ async function fetchDashboardData(
       supabase
         .from('surat_jalan')
         .select('id, purchase_order_id, sj_date')
+      .is('voided_at', null)
         .in('purchase_order_id', poIds)
         .order('sj_date', { ascending: true }),
     ])

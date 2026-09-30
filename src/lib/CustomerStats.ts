@@ -49,6 +49,7 @@ export async function fetchCustomerStatsBatch(
     const { data: sjs, error: sjError } = await supabase
       .from('surat_jalan')
       .select('purchase_order_id, sj_date, sj_line_items(quantity_delivered, po_line_items(unit_price))')
+      .is('voided_at', null)
       .in('purchase_order_id', eligiblePoIds)
       .gte('sj_date', cutoff)
     if (sjError) throw sjError
@@ -154,6 +155,7 @@ export async function fetchCustomerStatsDetail(customerId: string): Promise<Cust
     const { data: sjs, error: sjError } = await supabase
       .from('surat_jalan')
       .select('sj_date, sj_line_items(quantity_delivered, po_line_items(unit_price))')
+      .is('voided_at', null)
       .in('purchase_order_id', eligiblePoIds)
       .gte('sj_date', cutoff)
 

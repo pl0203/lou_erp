@@ -13,13 +13,13 @@ type ManagerData = {
 
 async function fetchManagersData(): Promise<ManagerData[]> {
   const { data: managers, error } = await supabase
-    .from('users')
-    .select('id, full_name, email, phone')
+    .rpc('pilot_team_directory')
     .eq('role', 'sales_manager')
     .eq('is_active', true)
     .order('full_name')
   if (error) throw error
-  if (!managers || managers.length === 0) return []
+  if (!Array.isArray(managers)) throw new Error('Data manajer tidak tersedia')
+  if (managers.length === 0) return []
 
   const managerIds = managers.map(m => m.id)
 

@@ -39,8 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       if (!user) return
       try {
-        const { data, error } = await supabase.from('users')
-          .select('id, full_name, email, role, is_active, manager_id').eq('id', user.id).single()
+        const { data, error } = await supabase.rpc('pilot_my_profile').single<UserProfile>()
         if (disposed || request !== generation.current) return
         if (error || !data || data.id !== user.id || !data.is_active) {
           clearPrivateCache()

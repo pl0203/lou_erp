@@ -1,3 +1,6 @@
+import TransactionRecovery from '../../components/TransactionRecovery'
+import { createTransactionSender, useTransactionSender } from '../../lib/orderTransactions'
+import type { TransactionSender } from '../../lib/orderTransactions'
 import { singleRelation } from '../../lib/relations'
 import { validateOrderLines } from '../../lib/orderValidation'
 import { useState, useRef, useEffect } from 'react'
@@ -76,6 +79,7 @@ const ORDER_STATUS_STYLES: Record<string, string> = {
   pending:  'bg-yellow-100 text-yellow-700',
   approved: 'bg-green-100 text-green-700',
   rejected: 'bg-red-100 text-red-700',
+  cancelled: 'bg-gray-100 text-gray-700',
 }
 
 async function compressImage(blob: Blob): Promise<Blob> {
@@ -198,57 +202,15 @@ async function checkIn(payload: {
     })
   if (photoError) throw photoError
 
-  await supabase
-    .from('sales_schedules')
-    .update({ status: 'completed' })
-    .eq('id', payload.schedule_id)
-
-  await supabase
-    .from('customers')
-    .update({ last_visit_date: new Date().toISOString().split('T')[0] })
-    .eq('id', payload.outlet_id)
 
   return visit
 }
 
 export async function submitOrder(payload: {
-  customer_id: string
-  visit_id: string
-  submitted_by: string
-  items: OrderItem[]
-}) {
+  customer_id: string; visit_id: string; submitted_by: string; items: OrderItem[]
+}, send: TransactionSender = createTransactionSender()) {
   validateOrderLines(payload.items)
-  const total = payload.items.reduce((sum, i) => sum + i.quantity * i.unit_price, 0)
-
-  const { data: order, error: orderError } = await supabase
-    .from('girard_orders')
-    .insert({
-      customer_id: payload.customer_id,
-      visit_id: payload.visit_id,
-      submitted_by: payload.submitted_by,
-      status: 'pending',
-      source: 'sales_initiated',
-      total_value: total,
-    })
-    .select()
-    .single()
-  if (orderError) throw orderError
-
-  const { error: itemError } = await supabase
-    .from('girard_order_items')
-    .insert(
-      payload.items.map(i => ({
-        order_id: order.id,
-        product_id: i.product_id,
-        product_name: i.product_name,
-        sku: i.sku || null,
-        quantity: i.quantity,
-        unit_price: i.unit_price,
-        is_promo: i.is_promo ?? false,
-        promotion_id: i.promotion_id ?? null,
-      }))
-    )
-  if (itemError) throw itemError
+  return send('submit_sales', { customer_id: payload.customer_id, visit_id: payload.visit_id, items: payload.items })
 }
 
 function SKULookup({ products, onSelect }: {
@@ -444,6 +406,7 @@ export default function VisitPage() {
   const { profile } = useAuth()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const sendTransaction = useTransactionSender(`sales-visit:${scheduleId}`)
 
   const [showCamera, setShowCamera] = useState(false)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
@@ -491,7 +454,7 @@ export default function VisitPage() {
   })
 
   const orderMutation = useMutation({
-    mutationFn: submitOrder,
+    mutationFn: (payload: Parameters<typeof submitOrder>[0]) => submitOrder(payload, sendTransaction),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['visit_orders', visit?.id] })
       setShowOrderForm(false)
@@ -603,6 +566,7 @@ export default function VisitPage() {
     return (
       <div className="min-h-screen bg-gray-50">
         <GirardNav />
+        <TransactionRecovery send={sendTransaction} onCommitted={() => { queryClient.invalidateQueries(); setShowOrderForm(false); setOrderItems([{ product_id: null, product_name: '', sku: '', quantity: 1, unit_price: 0 }]) }} />
         <div className="p-8 text-gray-400 text-sm text-center">Memuat...</div>
       </div>
     )
@@ -612,6 +576,7 @@ export default function VisitPage() {
     return (
       <div className="min-h-screen bg-gray-50">
         <GirardNav />
+        <TransactionRecovery send={sendTransaction} onCommitted={() => { queryClient.invalidateQueries(); setShowOrderForm(false); setOrderItems([{ product_id: null, product_name: '', sku: '', quantity: 1, unit_price: 0 }]) }} />
         <div className="p-8 text-red-500 text-sm">{scheduleError ? scheduleError.message : !schedule ? 'Jadwal tidak ditemukan.' : 'Pelanggan untuk jadwal ini tidak tersedia. Hubungi administrator.'}</div>
       </div>
     )
@@ -623,6 +588,7 @@ export default function VisitPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <GirardNav />
+        <TransactionRecovery send={sendTransaction} onCommitted={() => { queryClient.invalidateQueries(); setShowOrderForm(false); setOrderItems([{ product_id: null, product_name: '', sku: '', quantity: 1, unit_price: 0 }]) }} />
 
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center gap-4">
         <button onClick={() => navigate(-1)} className="text-gray-400 hover:text-gray-600 text-sm">

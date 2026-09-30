@@ -25,12 +25,14 @@ const STATUS_STYLES: Record<string, string> = {
   pending:  'bg-yellow-100 text-yellow-700',
   approved: 'bg-green-100 text-green-700',
   rejected: 'bg-red-100 text-red-700',
+  cancelled: 'bg-gray-100 text-gray-700',
 }
 
 const STATUS_LABELS: Record<string, string> = {
   pending:  'Menunggu Persetujuan',
   approved: 'Disetujui',
   rejected: 'Ditolak',
+  cancelled: 'PO Dibatalkan',
 }
 
 async function fetchMyOrders(userId: string, status: string): Promise<MyOrder[]> {
@@ -97,6 +99,7 @@ export default function MyOrders() {
             { value: 'pending',  label: 'Menunggu' },
             { value: 'approved', label: 'Disetujui' },
             { value: 'rejected', label: 'Ditolak' },
+            { value: 'cancelled', label: 'Dibatalkan' },
           ].map(tab => (
             <button
               key={tab.value}

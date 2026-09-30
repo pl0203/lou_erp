@@ -1,0 +1,57 @@
+name: Pilot safety checks
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  synthetic-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic-ci-only
+          POSTGRES_DB: pilot_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d pilot_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: synthetic-ci-only
+      PGDATABASE: pilot_test
+      VITE_SUPABASE_URL: https://example.invalid
+      VITE_SUPABASE_ANON_KEY: synthetic-test-key
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run build
+      - name: Install official PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Load only synthetic test contract and candidate migrations
+        run: |
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/fixture.sql
+          for file in supabase/migrations/*.sql; do psql -X -v ON_ERROR_STOP=1 -f "$file"; done
+      - name: SQL invariants, real role permissions and Storage metadata policies
+        run: |
+          psql -X -v ON_ERROR_STOP=1 -f supabase/tests/security/explicit_guards.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/tests/security/pilot_security.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/tests/security/storage_helpers.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/tests/security/storage_rls.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/order-transactions.sql
+      - name: Concurrent business operations
+        run: node tests/database/concurrency.mjs

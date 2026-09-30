@@ -106,7 +106,7 @@ async function upsertCustomerTarget(
   if (error) throw error
 }
 
-async function fetchCustomerPerformance(
+export async function fetchCustomerPerformance(
   managerId: string,
   role: string,
   yearMonth: string
@@ -118,19 +118,23 @@ async function fetchCustomerPerformance(
   const managerMap: Record<string, string> = {}
 
   if (role === 'sales_manager') {
-    const { data: assignments } = await supabase
+    const { data: assignments, error: assignmentError } = await supabase
       .from('customer_manager_assignments')
       .select('customer_id')
       .eq('manager_id', managerId)
+    if (assignmentError) throw assignmentError
     customerIds = (assignments ?? []).map(a => a.customer_id)
   } else {
-    const { data: allCustomers } = await supabase
+    const { data: allCustomers, error: customerListError } = await supabase
       .from('customers')
       .select('id')
+  if (customerListError) throw customerListError
+
     customerIds = (allCustomers ?? []).map(c => c.id)
-    const { data: assignments } = await supabase
+    const { data: assignments, error: assignmentError } = await supabase
       .from('customer_manager_assignments')
       .select('customer_id, users!customer_manager_assignments_manager_id_fkey(full_name)')
+    if (assignmentError) throw assignmentError
     for (const a of assignments ?? []) {
       managerMap[a.customer_id] = (a as any).users?.full_name ?? ''
     }
@@ -138,30 +142,36 @@ async function fetchCustomerPerformance(
 
   if (customerIds.length === 0) return []
 
-  const { data: customers } = await supabase
+  const { data: customers, error: customerError } = await supabase
     .from('customers')
     .select('id, name, visit_frequency_days')
     .in('id', customerIds)
     .order('name')
 
-  const { data: visits } = await supabase
+  if (customerError) throw customerError
+
+  const { data: visits, error: visitError } = await supabase
     .from('outlet_visits')
     .select('outlet_id')
     .in('outlet_id', customerIds)
     .gte('checked_in_at', `${from}T00:00:00`)
     .lte('checked_in_at', `${to}T23:59:59`)
 
+  if (visitError) throw visitError
+
   const visitCounts: Record<string, number> = {}
   for (const v of visits ?? []) {
     visitCounts[v.outlet_id] = (visitCounts[v.outlet_id] ?? 0) + 1
   }
 
-  const { data: pos } = await supabase
+  const { data: pos, error: poError } = await supabase
     .from('purchase_orders')
     .select('id, customer_id, status')
     .in('customer_id', customerIds)
     .gte('order_date', from)
     .lte('order_date', to)
+
+  if (poError) throw poError
 
   const poIds = (pos ?? [])
     .filter(po => ['in_progress', 'complete'].includes(po.status))
@@ -169,12 +179,14 @@ async function fetchCustomerPerformance(
 
   const sjSalesMap: Record<string, number> = {}
   if (poIds.length > 0) {
-    const { data: sjs } = await supabase
+    const { data: sjs, error: deliveryError } = await supabase
       .from('surat_jalan')
       .select('purchase_order_id, sj_line_items(quantity_delivered, po_line_items(unit_price))')
+      .is('voided_at', null)
       .in('purchase_order_id', poIds)
       .gte('sj_date', from)
       .lte('sj_date', to)
+    if (deliveryError) throw deliveryError
     for (const sj of sjs ?? []) {
       const po = (pos ?? []).find(p => p.id === sj.purchase_order_id)
       if (!po) continue
@@ -182,19 +194,6 @@ async function fetchCustomerPerformance(
         sjSalesMap[po.customer_id] = (sjSalesMap[po.customer_id] ?? 0) +
           (sli.quantity_delivered ?? 0) * (sli.po_line_items?.unit_price ?? 0)
       }
-    }
-  }
-
-  const poLineMap: Record<string, number> = {}
-  if (poIds.length > 0) {
-    const { data: poli } = await supabase
-      .from('po_line_items')
-      .select('purchase_order_id, quantity, unit_price')
-      .in('purchase_order_id', poIds)
-    for (const li of poli ?? []) {
-      const po = (pos ?? []).find(p => p.id === li.purchase_order_id)
-      if (!po) continue
-      poLineMap[po.customer_id] = (poLineMap[po.customer_id] ?? 0) + li.quantity * li.unit_price
     }
   }
 
@@ -213,7 +212,7 @@ async function fetchCustomerPerformance(
     target_visits: calcTargetVisits(c.visit_frequency_days, days),
     last_visit_date: null,
     order_count: orderCountMap[c.id] ?? 0,
-    total_sales: sjSalesMap[c.id] ?? poLineMap[c.id] ?? 0,
+    total_sales: sjSalesMap[c.id] ?? 0,
     sales_target: targetsMap[c.id] ?? null,
   }))
 }
@@ -344,7 +343,7 @@ export function CustomerPerformanceContent() {
 
   const monthOptions = earliestMonth ? buildMonthOptions(earliestMonth) : []
 
-  const { data: rows, isLoading } = useQuery({
+  const { data: rows, isLoading, isError, refetch } = useQuery({
     queryKey: ['customer_performance', profile?.id, profile?.role, yearMonth],
     queryFn: () => fetchCustomerPerformance(profile!.id, profile!.role, yearMonth),
     enabled: !!profile?.id,
@@ -362,6 +361,8 @@ export function CustomerPerformanceContent() {
     ...r,
     last_visit_date: lastVisits?.[r.id] ?? null,
   })) ?? []
+
+  if (isError) return <div role="alert" className="p-6 text-red-600">Data performa tidak tersedia. <button onClick={() => refetch()} className="underline">Coba lagi</button></div>
 
   const totalSales      = data.reduce((sum, r) => sum + r.total_sales, 0)
   const activePelanggan = data.filter(r => r.order_count > 0).length

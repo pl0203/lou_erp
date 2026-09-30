@@ -1,3 +1,6 @@
+import TransactionRecovery from '../../components/TransactionRecovery'
+import { createTransactionSender, useTransactionSender } from '../../lib/orderTransactions'
+import type { TransactionSender } from '../../lib/orderTransactions'
 import { singleRelation } from '../../lib/relations'
 import { validateOrderLines } from '../../lib/orderValidation'
 import { useState, useEffect } from 'react'
@@ -39,6 +42,7 @@ type POData = {
   status: string
   order_date: string
   expected_delivery_date: string | null
+  updated_at: string
   total_value: number
   notes: string | null
   customer_id: string
@@ -55,7 +59,7 @@ const TIER_LABELS: Record<string, string> = {
 async function fetchPO(id: string): Promise<POData> {
   const { data, error } = await supabase
     .from('purchase_orders')
-    .select('id, po_number, status, order_date, expected_delivery_date, total_value, notes, customer_id, customers(name)')
+    .select('id, po_number, status, order_date, expected_delivery_date, total_value, updated_at, notes, customer_id, customers(name)')
     .eq('id', id)
     .single()
   if (error) throw error
@@ -90,55 +94,11 @@ async function fetchProducts(): Promise<Product[]> {
 }
 
 export async function saveEdits(poId: string, payload: {
-  customer_id: string
-  expected_delivery_date: string | null
-  notes: string | null
-  lineItems: LineItemRow[]
-}) {
-  validateOrderLines(payload.lineItems.filter(line => !line._deleted))
-  const { error: poError } = await supabase
-    .from('purchase_orders')
-    .update({
-      customer_id: payload.customer_id,
-      expected_delivery_date: payload.expected_delivery_date,
-      notes: payload.notes,
-    })
-    .eq('id', poId)
-  if (poError) throw poError
-
-  const toDelete = payload.lineItems.filter(l => l._deleted && l.id)
-  for (const item of toDelete) {
-    const { error } = await supabase.from('po_line_items').delete().eq('id', item.id!)
-    if (error) throw error
-  }
-
-  const toUpdate = payload.lineItems.filter(l => !l._deleted && l.id)
-  for (const item of toUpdate) {
-    const { error } = await supabase
-      .from('po_line_items')
-      .update({
-        product_name: item.product_name,
-        sku: item.sku || null,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-      })
-      .eq('id', item.id!)
-    if (error) throw error
-  }
-
-  const toInsert = payload.lineItems.filter(l => !l._deleted && !l.id)
-  if (toInsert.length > 0) {
-    const { error } = await supabase.from('po_line_items').insert(
-      toInsert.map(item => ({
-        purchase_order_id: poId,
-        product_name: item.product_name,
-        sku: item.sku || null,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-      }))
-    )
-    if (error) throw error
-  }
+  customer_id: string; expected_delivery_date: string | null; notes: string | null; expected_updated_at: string; lineItems: LineItemRow[]
+}, send: TransactionSender = createTransactionSender()) {
+  const items = payload.lineItems.filter(line => !line._deleted)
+  validateOrderLines(items)
+  return send('edit_po', { po_id: poId, customer_id: payload.customer_id, expected_delivery_date: payload.expected_delivery_date, notes: payload.notes, expected_updated_at: payload.expected_updated_at, items })
 }
 
 function SKULookup({ products, onSelect }: {
@@ -193,6 +153,8 @@ export default function POEdit() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const sendTransaction = useTransactionSender(`edit-po:${id}`)
+  const [initialVersion, setInitialVersion] = useState('')
 
   const [customerId, setCustomerId] = useState('')
   const [expectedDelivery, setExpectedDelivery] = useState('')
@@ -223,6 +185,7 @@ export default function POEdit() {
 
   useEffect(() => {
     if (po && existingLines && !initialized) {
+      setInitialVersion(po.updated_at)
       setCustomerId(po.customer_id)
       setExpectedDelivery(po.expected_delivery_date ?? '')
       setNotes(po.notes ?? '')
@@ -243,7 +206,8 @@ export default function POEdit() {
       expected_delivery_date: expectedDelivery || null,
       notes: notes || null,
       lineItems,
-    }),
+      expected_updated_at: initialVersion,
+    }, sendTransaction),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['po', id] })
       queryClient.invalidateQueries({ queryKey: ['po_line_items', id] })
@@ -296,6 +260,7 @@ export default function POEdit() {
     return (
       <div className="min-h-screen bg-gray-50">
         <AthelNav />
+        <TransactionRecovery send={sendTransaction} onCommitted={result => { queryClient.invalidateQueries(); navigate(`/athel/po/${result.id}`) }} />
         <div className="p-8 text-gray-400 text-sm text-center">Memuat...</div>
       </div>
     )
@@ -304,6 +269,7 @@ export default function POEdit() {
   return (
     <div className="min-h-screen bg-gray-50">
       <AthelNav />
+        <TransactionRecovery send={sendTransaction} onCommitted={result => { queryClient.invalidateQueries(); navigate(`/athel/po/${result.id}`) }} />
 
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center gap-4">
         <button

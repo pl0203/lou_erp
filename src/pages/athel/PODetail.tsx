@@ -1,3 +1,6 @@
+import TransactionRecovery from '../../components/TransactionRecovery'
+import { useTransactionSender } from '../../lib/orderTransactions'
+import type { TransactionSender } from '../../lib/orderTransactions'
 import { singleRelation } from '../../lib/relations'
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
@@ -15,6 +18,7 @@ type PO = {
   notes: string | null
   customer_id: string
   customers: { name: string }
+  updated_at: string
   completed_at: string | null
 }
 
@@ -44,6 +48,8 @@ type SJLineItem = {
 
 type SuratJalan = {
   id: string
+  voided_at: string | null
+  void_reason: string | null
   sj_number: string
   sj_date: string
   sj_date_received: string | null
@@ -70,12 +76,13 @@ const STATUS_LABELS: Record<string, string> = {
   confirm:     'Confirm',
   in_progress: 'In Progress',
   complete:    'Complete',
+  cancelled:   'Cancelled',
 }
 
 async function fetchPO(id: string): Promise<PO> {
   const { data, error } = await supabase
     .from('purchase_orders')
-    .select('id, po_number, status, order_date, expected_delivery_date, total_value, notes, customer_id, completed_at, customers(name)')
+    .select('id, po_number, status, order_date, expected_delivery_date, total_value, notes, customer_id, completed_at, updated_at, customers(name)')
     .eq('id', id)
     .single()
   if (error) throw error
@@ -104,123 +111,34 @@ async function fetchAuditLog(poId: string): Promise<AuditEntry[]> {
 async function fetchSuratJalan(poId: string): Promise<SuratJalan[]> {
   const { data, error } = await supabase
     .from('surat_jalan')
-    .select('id, sj_number, sj_date, sj_date_received, sj_date_returned, sj_line_items(id, po_line_item_id, quantity_delivered)')
+    .select('id, sj_number, sj_date, sj_date_received, sj_date_returned, voided_at, void_reason, sj_line_items(id, po_line_item_id, quantity_delivered)')
     .eq('purchase_order_id', poId)
     .order('sj_date', { ascending: true })
   if (error) throw error
   return data as SuratJalan[]
 }
 
-async function updateStatus(id: string, status: string) {
-  const { error } = await supabase
-    .from('purchase_orders')
-    .update({ status })
-    .eq('id', id)
-  if (error) throw error
-}
-
-async function createSJ(payload: {
-  purchase_order_id: string
-  sj_number: string
-  sj_date: string
-  sj_date_received: string | null
-  sj_date_returned: string | null
+type DeliveryPayload = {
+  purchase_order_id: string; expected_updated_at: string; sj_number: string; sj_date: string;
+  sj_date_received: string | null; sj_date_returned: string | null;
   lines: { po_line_item_id: string; quantity_delivered: number }[]
-}) {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
-
-  const { data: sj, error: sjError } = await supabase
-    .from('surat_jalan')
-    .insert({
-      purchase_order_id: payload.purchase_order_id,
-      sj_number: payload.sj_number,
-      sj_date: payload.sj_date,
-      sj_date_received: payload.sj_date_received,
-      sj_date_returned: payload.sj_date_returned,
-      created_by: user.id,
-    })
-    .select()
-    .single()
-
-  if (sjError) throw sjError
-
-  const { error: lineError } = await supabase
-    .from('sj_line_items')
-    .insert(
-      payload.lines
-        .filter(l => l.quantity_delivered > 0)
-        .map(l => ({
-          surat_jalan_id: sj.id,
-          po_line_item_id: l.po_line_item_id,
-          quantity_delivered: l.quantity_delivered,
-        }))
-    )
-
-  if (lineError) throw lineError
+}
+async function createSJ(payload: DeliveryPayload, send: TransactionSender) {
+  const { purchase_order_id, ...rest } = payload
+  return send('save_delivery', { po_id: purchase_order_id, ...rest })
+}
+async function updateSJ(payload: DeliveryPayload & { sj_id: string }, send: TransactionSender) {
+  const { purchase_order_id, ...rest } = payload
+  return send('save_delivery', { po_id: purchase_order_id, ...rest })
 }
 
-async function updateSJ(payload: {
-  sj_id: string
-  sj_number: string
-  sj_date: string
-  sj_date_received: string | null
-  sj_date_returned: string | null
-  lines: { po_line_item_id: string; quantity_delivered: number }[]
-}) {
-  const { error: sjError } = await supabase
-    .from('surat_jalan')
-    .update({
-      sj_number: payload.sj_number,
-      sj_date: payload.sj_date,
-      sj_date_received: payload.sj_date_received,
-      sj_date_returned: payload.sj_date_returned,
-    })
-    .eq('id', payload.sj_id)
-  if (sjError) throw sjError
-
-  const { error: delError } = await supabase
-    .from('sj_line_items')
-    .delete()
-    .eq('surat_jalan_id', payload.sj_id)
-  if (delError) throw delError
-
-  const { error: lineError } = await supabase
-    .from('sj_line_items')
-    .insert(
-      payload.lines
-        .filter(l => l.quantity_delivered > 0)
-        .map(l => ({
-          surat_jalan_id: payload.sj_id,
-          po_line_item_id: l.po_line_item_id,
-          quantity_delivered: l.quantity_delivered,
-        }))
-    )
-  if (lineError) throw lineError
-}
-
-async function deleteSJ(sjId: string) {
-  const { error } = await supabase
-    .from('surat_jalan')
-    .delete()
-    .eq('id', sjId)
-  if (error) throw error
-}
-
-async function deletePO(id: string) {
-  const { error } = await supabase
-    .from('purchase_orders')
-    .delete()
-    .eq('id', id)
-  if (error) throw error
-}
-
-function computeOutstanding(
+export function computeOutstanding(
   lineItems: LineItem[],
   sjList: SuratJalan[]
 ): Record<string, number> {
   const delivered: Record<string, number> = {}
   for (const sj of sjList) {
+    if (sj.voided_at) continue
     for (const sli of sj.sj_line_items) {
       delivered[sli.po_line_item_id] =
         (delivered[sli.po_line_item_id] ?? 0) + sli.quantity_delivered
@@ -237,6 +155,10 @@ export default function PODetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const sendTransaction = useTransactionSender(`po:${id}`)
+  const [editVersion, setEditVersion] = useState('')
+  const [actionVersion, setActionVersion] = useState('')
+  const [actionReason, setActionReason] = useState('')
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showSJModal, setShowSJModal] = useState(false)
@@ -280,22 +202,22 @@ export default function PODetail() {
   }
 
   const sjMutation = useMutation({
-    mutationFn: (payload: Parameters<typeof createSJ>[0]) => createSJ(payload),
+    mutationFn: (payload: Parameters<typeof createSJ>[0]) => createSJ(payload, sendTransaction),
     onSuccess: () => { invalidate(); closeSJModal() },
   })
 
   const updateSJMutation = useMutation({
-    mutationFn: (payload: Parameters<typeof updateSJ>[0]) => updateSJ(payload),
+    mutationFn: (payload: Parameters<typeof updateSJ>[0]) => updateSJ(payload, sendTransaction),
     onSuccess: () => { invalidate(); closeSJModal() },
   })
 
   const deleteSJMutation = useMutation({
-    mutationFn: (sjId: string) => deleteSJ(sjId),
+    mutationFn: (sjId: string) => sendTransaction('void_delivery', { sj_id: sjId, expected_updated_at: actionVersion, reason: actionReason }),
     onSuccess: () => { invalidate(); setDeletingSJId(null) },
   })
 
   const deleteMutation = useMutation({
-    mutationFn: () => deletePO(id!),
+    mutationFn: () => sendTransaction('cancel_po', { po_id: id!, expected_updated_at: actionVersion, reason: actionReason }),
     onSuccess: () => navigate('/athel/po'),
   })
 
@@ -305,6 +227,7 @@ export default function PODetail() {
 
   const openNewSJModal = () => {
     if (!lineItems || !sjList) return
+    setEditVersion(po!.updated_at)
     setSjNumber('')
     setSjDate(new Date().toISOString().split('T')[0])
     setSjDateReceived('')
@@ -323,6 +246,7 @@ export default function PODetail() {
 
   const openEditSJModal = (sj: SuratJalan) => {
     if (!lineItems || !sjList) return
+    setEditVersion(po!.updated_at)
     const otherSJs = sjList.filter(s => s.id !== sj.id)
     const outstandingExcluding = computeOutstanding(lineItems, otherSJs)
     setSjNumber(sj.sj_number)
@@ -371,6 +295,8 @@ export default function PODetail() {
     if (editingSJ) {
       updateSJMutation.mutate({
         sj_id: editingSJ.id,
+        purchase_order_id: id!,
+        expected_updated_at: editVersion,
         sj_number: sjNumber,
         sj_date: sjDate,
         sj_date_received: sjDateReceived || null,
@@ -381,11 +307,9 @@ export default function PODetail() {
         })),
       })
     } else {
-      if (po?.status === 'confirm') {
-        await updateStatus(id!, 'in_progress')
-      }
       sjMutation.mutate({
         purchase_order_id: id!,
+        expected_updated_at: editVersion,
         sj_number: sjNumber,
         sj_date: sjDate,
         sj_date_received: sjDateReceived || null,
@@ -403,15 +327,17 @@ export default function PODetail() {
   
   const isInProgress = po.status === 'in_progress'
   const isComplete = po.status === 'complete'
+  const isCancelled = po.status === 'cancelled'
   const sevenDaysAfterComplete = po.completed_at
     ? new Date(po.completed_at).getTime() + 7 * 24 * 60 * 60 * 1000
     : null
-  const canAddSJ = !isComplete || (sevenDaysAfterComplete !== null && Date.now() <= sevenDaysAfterComplete)
+  const canAddSJ = !isCancelled && (!isComplete || (sevenDaysAfterComplete !== null && Date.now() <= sevenDaysAfterComplete))
   const deletingSJ = sjList?.find(s => s.id === deletingSJId)
 
   return (
     <div className="min-h-screen bg-gray-50">
       <AthelNav />
+        <TransactionRecovery send={sendTransaction} onCommitted={() => { invalidate(); closeSJModal(); setDeletingSJId(null); setShowDeleteConfirm(false) }} />
 
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center justify-between">
@@ -433,7 +359,7 @@ export default function PODetail() {
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
-          {!isComplete && (
+          {!isComplete && !isCancelled && (
             <button
               onClick={() => navigate(`/athel/po/${po.id}/edit`)}
               className="text-sm font-medium text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 px-3 py-1.5 rounded-lg transition-colors"
@@ -442,10 +368,11 @@ export default function PODetail() {
             </button>
           )}
           <button
-            onClick={() => setShowDeleteConfirm(true)}
+            disabled={isCancelled}
+            onClick={() => { setActionVersion(po.updated_at); setActionReason(''); setShowDeleteConfirm(true) }}
             className="text-sm text-red-500 hover:text-red-700 border border-red-200 hover:border-red-400 px-3 py-1.5 rounded-lg transition-colors"
           >
-            Hapus PO
+            Batalkan PO
           </button>
         </div>
       </div>
@@ -592,6 +519,7 @@ export default function PODetail() {
                   <div className="flex items-start justify-between mb-3">
                     <div>
                       <span className="font-medium text-gray-900 text-sm">{sj.sj_number}</span>
+                      {sj.voided_at && <p className="text-xs text-red-600">Dibatalkan: {sj.void_reason} · {new Date(sj.voided_at).toLocaleString('id-ID')}</p>}
                       <div className="flex gap-4 mt-1 flex-wrap">
                         <span className="text-gray-400 text-xs">Created: {sj.sj_date}</span>
                         {sj.sj_date_received && (
@@ -602,7 +530,7 @@ export default function PODetail() {
                         )}
                       </div>
                     </div>
-                    {canAddSJ && (
+                    {canAddSJ && !sj.voided_at && (
                       <div className="flex gap-3 shrink-0">
                         <button
                           onClick={() => openEditSJModal(sj)}
@@ -611,10 +539,10 @@ export default function PODetail() {
                           Ubah
                         </button>
                         <button
-                          onClick={() => setDeletingSJId(sj.id)}
+                          onClick={() => { setActionVersion(po.updated_at); setActionReason(''); setDeletingSJId(sj.id) }}
                           className="text-red-400 hover:text-red-600 text-xs font-medium"
                         >
-                          Hapus
+                          Batalkan
                         </button>
                       </div>
                     )}
@@ -812,11 +740,13 @@ export default function PODetail() {
       {deletingSJId && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 max-w-sm w-full mx-4 shadow-xl">
-            <h3 className="text-base font-semibold text-gray-900 mb-2">Delete Surat Jalan?</h3>
+            <h3 className="text-base font-semibold text-gray-900 mb-2">Batalkan Surat Jalan?</h3>
             <p className="text-sm text-gray-500 mb-5">
-              Apakah Anda yakin ingin menghapus <strong>{deletingSJ?.sj_number}</strong>?
-              Tindakan ini akan membatalkan jumlah pengiriman.
+              Apakah Anda yakin ingin membatalkan <strong>{deletingSJ?.sj_number}</strong>?
+              Jumlah tidak lagi dihitung sebagai pengiriman aktif. Riwayat tetap disimpan.
             </p>
+            <textarea aria-label="Alasan pembatalan" value={actionReason} onChange={e => setActionReason(e.target.value)} placeholder="Alasan pembatalan (wajib)" className="w-full border rounded-lg p-2 mb-3 text-sm" />
+            {(deleteSJMutation.isError || deleteMutation.isError) && <p className="text-red-600 text-xs mb-3">{((deleteSJMutation.error || deleteMutation.error) as Error).message}</p>}
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => setDeletingSJId(null)}
@@ -826,10 +756,10 @@ export default function PODetail() {
               </button>
               <button
                 onClick={() => deleteSJMutation.mutate(deletingSJId)}
-                disabled={deleteSJMutation.isPending}
+                disabled={deleteSJMutation.isPending || !actionReason.trim()}
                 className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
               >
-                {deleteSJMutation.isPending ? 'Deleting...' : 'Yes, delete'}
+                {deleteSJMutation.isPending ? 'Membatalkan...' : 'Ya, batalkan'}
               </button>
             </div>
           </div>
@@ -841,11 +771,13 @@ export default function PODetail() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 max-w-sm w-full mx-4 shadow-xl">
             <h3 className="text-base font-semibold text-gray-900 mb-2">
-              Hapus {po.po_number}?
+              Batalkan {po.po_number}?
             </h3>
             <p className="text-sm text-gray-500 mb-5">
-             Tindakan ini akan menghapus permanen PO <strong>{po.po_number}</strong> beserta semua barangnya. Tindakan ini tidak dapat dibatalkan.
+             PO <strong>{po.po_number}</strong> dibatalkan tanpa menghapus riwayat. Pengiriman aktif harus diselesaikan melalui koreksi terlebih dahulu.
             </p>
+            <textarea aria-label="Alasan pembatalan" value={actionReason} onChange={e => setActionReason(e.target.value)} placeholder="Alasan pembatalan (wajib)" className="w-full border rounded-lg p-2 mb-3 text-sm" />
+            {(deleteSJMutation.isError || deleteMutation.isError) && <p className="text-red-600 text-xs mb-3">{((deleteSJMutation.error || deleteMutation.error) as Error).message}</p>}
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => setShowDeleteConfirm(false)}
@@ -855,10 +787,10 @@ export default function PODetail() {
               </button>
               <button
                 onClick={() => deleteMutation.mutate()}
-                disabled={deleteMutation.isPending}
+                disabled={deleteMutation.isPending || !actionReason.trim()}
                 className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
               >
-                {deleteMutation.isPending ? 'Menghapus...' : 'Ya, hapus'}
+                {deleteMutation.isPending ? 'Membatalkan...' : 'Ya, batalkan'}
               </button>
             </div>
           </div>

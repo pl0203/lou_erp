@@ -19,13 +19,13 @@ type TodayActivity = {
 
 async function fetchTeam(managerId: string): Promise<TeamMember[]> {
   const { data, error } = await supabase
-    .from('users')
-    .select('id, full_name, email, phone')
+    .rpc('pilot_team_directory')
     .eq('manager_id', managerId)
     .eq('role', 'sales_person')
     .eq('is_active', true)
     .order('full_name')
   if (error) throw error
+  if (!Array.isArray(data)) throw new Error('Data tim tidak tersedia')
   return data
 }
 

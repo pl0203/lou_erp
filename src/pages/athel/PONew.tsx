@@ -1,3 +1,6 @@
+import TransactionRecovery from '../../components/TransactionRecovery'
+import { createTransactionSender, useTransactionSender } from '../../lib/orderTransactions'
+import type { TransactionSender } from '../../lib/orderTransactions'
 import { validateOrderLines } from '../../lib/orderValidation'
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -65,45 +68,13 @@ async function fetchProducts(): Promise<Product[]> {
 }
 
 export async function createPO(payload: {
-  customer_id: string
-  po_number: string
-  order_date: string
-  expected_delivery_date: string
-  notes: string
-  lineItems: LineItem[]
-}) {
+  customer_id: string; po_number: string; order_date: string; expected_delivery_date: string; notes: string; lineItems: LineItem[]
+}, send: TransactionSender = createTransactionSender()) {
   validateOrderLines(payload.lineItems)
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Tidak terautentikasi')
-
-  const { data: po, error: poError } = await supabase
-    .from('purchase_orders')
-    .insert({
-      customer_id: payload.customer_id,
-      created_by: user.id,
-      po_number: payload.po_number,
-      status: 'confirm',
-      order_date: payload.order_date,
-      expected_delivery_date: payload.expected_delivery_date || null,
-      notes: payload.notes || null,
-    })
-    .select()
-    .single()
-  if (poError) throw poError
-
-  const { error: lineError } = await supabase
-    .from('po_line_items')
-    .insert(
-      payload.lineItems.map(item => ({
-        purchase_order_id: po.id,
-        product_name: item.product_name,
-        sku: item.sku || null,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-      }))
-    )
-  if (lineError) throw lineError
-  return po
+  return send('create_po', {
+    customer_id: payload.customer_id, po_number: payload.po_number, order_date: payload.order_date,
+    expected_delivery_date: payload.expected_delivery_date || null, notes: payload.notes || null, items: payload.lineItems,
+  })
 }
 
 function SKULookup({
@@ -166,6 +137,7 @@ function SKULookup({
 
 export default function PONew() {
   const navigate = useNavigate()
+  const sendTransaction = useTransactionSender('new-po')
   const [customerId, setCustomerId] = useState('')
   const [poNumber, setPoNumber] = useState('')
   const [orderDate, setOrderDate] = useState(new Date().toISOString().split('T')[0])
@@ -177,7 +149,7 @@ export default function PONew() {
   const { data: products } = useQuery({ queryKey: ['products'], queryFn: fetchProducts })
 
   const mutation = useMutation({
-    mutationFn: createPO,
+    mutationFn: (payload: Parameters<typeof createPO>[0]) => createPO(payload, sendTransaction),
     onSuccess: po => navigate(`/athel/po/${po.id}`),
   })
 
@@ -223,6 +195,7 @@ export default function PONew() {
   return (
     <div className="min-h-screen bg-gray-50">
       <AthelNav />
+        <TransactionRecovery send={sendTransaction} onCommitted={result => navigate(`/athel/po/${result.id}`)} />
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center gap-4">
         <button onClick={() => navigate('/athel/po')} className="text-gray-400 hover:text-gray-600 text-sm">
           ← Kembali
