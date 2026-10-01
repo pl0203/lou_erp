@@ -121,15 +121,18 @@ async function compressImage(blob: Blob): Promise<Blob> {
   })
 }
 
-export async function fetchSchedule(scheduleId: string): Promise<Schedule> {
+class ScheduleCustomerUnavailableError extends Error {}
+
+export async function fetchSchedule(scheduleId: string): Promise<Schedule | null> {
   const { data, error } = await supabase
     .from('sales_schedules')
     .select('id, scheduled_date, status, customers!sales_schedules_outlet_id_fkey(id, name, address, city, pricing_tier)')
     .eq('id', scheduleId)
-    .single()
+    .maybeSingle()
   if (error) throw error
+  if (!data) return null
   const customer = singleRelation(data.customers)
-  if (!customer) throw new Error('Pelanggan untuk jadwal ini tidak tersedia. Hubungi administrator.')
+  if (!customer) throw new ScheduleCustomerUnavailableError('Pelanggan untuk jadwal ini tidak tersedia. Hubungi administrator.')
   return { ...data, customers: customer }
 }
 
@@ -538,7 +541,9 @@ export default function VisitPage() {
         <GirardNav />
         <TransactionRecovery send={sendVisit} onCommitted={() => { queryClient.invalidateQueries(); setShowCamera(false); setPhotoPreview(null); setPhotoBlob(null); window.localStorage.removeItem(uploadKey) }} />
         <TransactionRecovery send={sendTransaction} onCommitted={() => { queryClient.invalidateQueries(); setShowOrderForm(false); setOrderItems([{ product_id: null, product_name: '', sku: '', quantity: 1, unit_price: 0 }]) }} />
-        <div className="p-8 text-red-500 text-sm">{scheduleError ? scheduleError.message : !schedule ? 'Jadwal tidak ditemukan.' : 'Pelanggan untuk jadwal ini tidak tersedia. Hubungi administrator.'}</div>
+        <div className="p-8 text-red-500 text-sm">{scheduleError
+          ? scheduleError instanceof ScheduleCustomerUnavailableError ? scheduleError.message : 'Gagal memuat jadwal. Silakan muat ulang halaman untuk mencoba lagi.'
+          : !schedule ? 'Jadwal tidak ditemukan atau Anda tidak memiliki akses.' : 'Pelanggan untuk jadwal ini tidak tersedia. Hubungi administrator.'}</div>
       </div>
     )
   }
