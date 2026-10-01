@@ -21,7 +21,7 @@ SET LOCAL statement_timeout='60s';
 SET LOCAL plan_cache_mode='${mode}';
 SET LOCAL TIME ZONE 'UTC';
 DO $$ BEGIN
- IF current_database()<>'pilot_test' OR current_user<>'postgres' OR (SELECT count(*) FROM public.pilot_fixture_marker)<>1 OR NOT EXISTS(SELECT 1 FROM public.pilot_fixture_marker WHERE purpose='disposable-pilot-ci') OR (SELECT count(*) FROM public.pilot_scale_manifest)<>1 OR (SELECT manifest->'base'->>'purchase_orders' FROM public.pilot_scale_manifest) IS DISTINCT FROM '6000' THEN RAISE EXCEPTION 'Fixed disposable6k required'; END IF;
+ IF current_database()<>'pilot_test' OR current_user<>'postgres' OR (SELECT count(*) FROM public.pilot_fixture_marker)<>1 OR NOT EXISTS(SELECT 1 FROM public.pilot_fixture_marker WHERE purpose='disposable-pilot-ci') OR (SELECT count(*) FROM public.pilot_scale_manifest)<>1 OR coalesce((SELECT (manifest->'base'->>'purchase_orders')::integer FROM public.pilot_scale_manifest),0) NOT IN(6000,30000) THEN RAISE EXCEPTION 'Declared disposable scale required'; END IF;
  IF (SELECT md5(prosrc) FROM pg_proc WHERE oid='public.pilot_customer_performance_v1(uuid,text,timestamptz,timestamptz,integer,integer)'::regprocedure) IS DISTINCT FROM '${bodyHash}' THEN RAISE EXCEPTION 'Customer function source drift'; END IF;
 END $$;
 ${nested?`LOAD 'auto_explain';

@@ -14,3 +14,9 @@ test('only the fixed comprehensive pooled file receives its measured finite whol
   expect(execute.mock.calls[0][2].timeout).toBe(minutes*60*1000)
  }
 })
+test('the fixed30k pooled matrix alone gets its reviewed history-growth budget',()=>{
+ for(const [file,minutes] of [['tests/database/scalable-pooled-reads.sql',40],['tests/database/fixture.sql',15],['arbitrary-pooled.sql',15]] as const){
+  const execute=vi.fn();runDisposableSql(file,{env:{...env,SCALE_ROWS:'30000'},execute})
+  expect(execute.mock.calls[0][2].timeout).toBe(minutes*60*1000)
+ }
+})

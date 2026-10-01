@@ -1,6 +1,6 @@
 -- Same psql connection, real authenticated RLS, one statement per RPC invocation.
 -- Acceptance regression, not API/browser latency or hosted capacity evidence.
--- Requires the unchanged disposable 6k fixture and reviewed read migrations.
+-- Requires an unchanged declared disposable 6k or 30k fixture and reviewed read migrations.
 -- Expected rows come from owner-created fixture snapshots and explicit actor
 -- cohorts, never from another RPC or from application RLS predicates.
 \set ON_ERROR_STOP on
@@ -9,22 +9,22 @@ SET LOCAL statement_timeout='60s';
 SET LOCAL lock_timeout='5s';
 SET LOCAL TIME ZONE 'UTC';
 SET LOCAL plan_cache_mode=auto;
-DO $guard$ BEGIN
- IF current_user<>'postgres' OR current_database()<>'pilot_test'
+DO $guard$ DECLARE base_rows integer; BEGIN
+ SELECT (manifest->'base'->>'purchase_orders')::integer INTO base_rows FROM public.pilot_scale_manifest;
+ IF base_rows IS NULL OR base_rows NOT IN(6000,30000) OR current_user<>'postgres' OR current_database()<>'pilot_test'
  OR current_setting('session_replication_role')<>'origin'
  OR (SELECT count(*) FROM public.pilot_fixture_marker)<>1
  OR NOT EXISTS(SELECT 1 FROM public.pilot_fixture_marker WHERE purpose='disposable-pilot-ci')
  OR (SELECT count(*) FROM public.pilot_scale_manifest)<>1
- OR (SELECT manifest->'base'->>'purchase_orders' FROM public.pilot_scale_manifest) IS DISTINCT FROM '6000'
- OR (SELECT count(*) FROM public.purchase_orders)<>6007
- OR (SELECT count(*) FROM public.po_line_items)<>60007
- OR (SELECT count(*) FROM public.surat_jalan)<>12005
- OR (SELECT count(*) FROM public.sj_line_items)<>120005
- OR (SELECT count(*) FROM public.girard_orders)<>6007
+ OR (SELECT count(*) FROM public.purchase_orders)<>base_rows+7
+ OR (SELECT count(*) FROM public.po_line_items)<>base_rows*10+7
+ OR (SELECT count(*) FROM public.surat_jalan)<>base_rows*2+5
+ OR (SELECT count(*) FROM public.sj_line_items)<>base_rows*20+5
+ OR (SELECT count(*) FROM public.girard_orders)<>base_rows+7
  OR (SELECT count(*) FROM public.customers)<>101
  OR (SELECT count(*) FROM public.users)<>8
  OR EXISTS(SELECT 1 FROM public.outlet_visits)
- THEN RAISE EXCEPTION 'Unchanged disposable 6k fixture required'; END IF;
+ THEN RAISE EXCEPTION 'Unchanged declared disposable scale fixture required'; END IF;
  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname IN('authenticated','anon') AND (rolsuper OR rolbypassrls)) THEN
   RAISE EXCEPTION 'Application role must enforce RLS'; END IF;
  IF EXISTS(SELECT 1 FROM pg_prepared_statements WHERE name='pooled_read') THEN RAISE EXCEPTION 'Unexpected existing pooled statement'; END IF;
@@ -75,13 +75,14 @@ CREATE INDEX ON pooled_pos(id);
 CREATE INDEX ON pooled_delivery(purchase_order_id);
 CREATE INDEX ON pooled_orders(customer_id);
 ANALYZE pooled_lines; ANALYZE pooled_pos; ANALYZE pooled_delivery; ANALYZE pooled_orders;
-DO $guard$ BEGIN
- IF (SELECT count(*) FROM pg_temp.pooled_pos WHERE scope='A')<>3007
- OR (SELECT count(*) FROM pg_temp.pooled_pos WHERE scope='B')<>3000
+DO $guard$ DECLARE base_rows integer; BEGIN
+ SELECT (manifest->'base'->>'purchase_orders')::integer INTO base_rows FROM public.pilot_scale_manifest;
+ IF (SELECT count(*) FROM pg_temp.pooled_pos WHERE scope='A')<>base_rows/2+7
+ OR (SELECT count(*) FROM pg_temp.pooled_pos WHERE scope='B')<>base_rows/2
  OR (SELECT count(*) FROM pg_temp.pooled_customers WHERE scope='A')<>51
- OR (SELECT count(*) FROM pg_temp.pooled_orders WHERE scope='A')<>3007
- OR (SELECT sum(total_value) FROM pg_temp.pooled_pos)<>6000600
- OR (SELECT sum(value) FROM pg_temp.pooled_delivery)<>3000180 THEN
+ OR (SELECT count(*) FROM pg_temp.pooled_orders WHERE scope='A')<>base_rows/2+7
+ OR (SELECT sum(total_value) FROM pg_temp.pooled_pos)<>base_rows::numeric*1000+600
+ OR (SELECT sum(value) FROM pg_temp.pooled_delivery)<>base_rows::numeric*500+180 THEN
   RAISE EXCEPTION 'Independent fixture cohort/totals mismatch'; END IF;
 END $guard$;
 
