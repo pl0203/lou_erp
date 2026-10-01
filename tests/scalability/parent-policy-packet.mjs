@@ -9,8 +9,11 @@ const snapshots={
  grants_before:"SELECT md5(jsonb_agg(jsonb_build_array(c.oid,c.relacl,c.relrowsecurity,c.relforcerowsecurity) ORDER BY c.oid)::text) AS grants_before FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind='r'",
  constraints_before:"SELECT md5(jsonb_agg(jsonb_build_array(c.oid,pg_get_constraintdef(c.oid)) ORDER BY c.oid)::text) AS constraints_before FROM pg_constraint c JOIN pg_namespace n ON n.oid=c.connamespace WHERE n.nspname='public'",
 }
-export function buildParentPolicyPackets(source,setup,parity){
- if(!setup.includes('PARENT_SET_DRIFT_GUARD_VERIFIED')||!parity.includes('PARENT_SET_POLICY_PARITY_VERIFIED'))throw new Error('Reviewed setup and parity fragments required')
+export function buildParentPolicyPackets(source,setup,parity,variant='parent-set'){
+ if(!['parent-set','scalar-profile'].includes(variant))throw new Error('Unknown fixed policy variant')
+ const applyRoutine=variant==='parent-set'?'pg_temp.apply_parent_set_policy()':'pg_temp.apply_scalar_profile_policy()'
+ const parityMarker=variant==='parent-set'?'PARENT_SET_POLICY_PARITY_VERIFIED':'SCALAR_PROFILE_POLICY_PARITY_VERIFIED'
+ if(!setup.includes('PARENT_SET_DRIFT_GUARD_VERIFIED')||!parity.includes(parityMarker))throw new Error('Reviewed setup and parity fragments required')
  if(/^\s*COMMIT\s*;/m.test(setup+'\n'+parity))throw new Error('Trial fragments may not commit')
  const base=buildSummaryDPackets(source).find(p=>p.name==='d-dynamic-lookup-only-admin')
  let prefix=base.sql.split('SET LOCAL ROLE authenticated;')[0]
@@ -25,7 +28,7 @@ export function buildParentPolicyPackets(source,setup,parity){
 SELECT set_config('request.jwt.claim.sub','${actor}',true);
 DO $$ BEGIN IF NOT row_security_active('public.purchase_orders') OR NOT row_security_active('public.po_line_items') OR NOT row_security_active('public.surat_jalan') OR NOT row_security_active('public.sj_line_items') OR public.current_user_role()::text IS DISTINCT FROM '${expectedRole}' THEN RAISE EXCEPTION 'Benchmark role/RLS mismatch'; END IF; END $$;
 SET LOCAL search_path='';
-PREPARE trial_cost(date,date,date,text,text) AS
+${variant==='scalar-profile'?`SELECT '${phase}-${role}-profile-count' AS diagnostic;\nEXPLAIN (ANALYZE,BUFFERS,VERBOSE,TIMING OFF) SELECT count(*) FROM public.sj_line_items;\n`:''}PREPARE trial_cost(date,date,date,text,text) AS
 ${extractSummaryStatement(source)}
 EXPLAIN (VERBOSE,COSTS) EXECUTE trial_cost('${from}','2026-09-30','2025-10-01','all','all');
 DEALLOCATE trial_cost;
@@ -49,10 +52,10 @@ INSERT INTO public.users(id,full_name,email,role,is_active,manager_id)
 SELECT ('84000000-0000-0000-0000-'||lpad(i::text,12,'0'))::uuid,'Synthetic policy actor '||i,'policy-actor-'||i||'@example.invalid',(CASE i WHEN 1 THEN 'executive' WHEN 2 THEN 'sales_manager' WHEN 3 THEN 'sales_manager' WHEN 4 THEN 'sales_person' WHEN 5 THEN 'sales_person' WHEN 6 THEN 'po_admin' WHEN 7 THEN 'sales_head' ELSE 'executive' END)::public.user_role,i<>8,CASE i WHEN 4 THEN '84000000-0000-0000-0000-000000000002'::uuid WHEN 5 THEN '84000000-0000-0000-0000-000000000003'::uuid END FROM generate_series(1,8)i;
 SET LOCAL session_replication_role='origin';
 `
- const small="BEGIN;\nSET LOCAL statement_timeout='60s';\nSET LOCAL lock_timeout='5s';\nSET LOCAL pilot.policy_trial_mode='parity';\n"+emptyCheck+capture+seed+setup+'\n'+parity+'\nRESET ROLE;\nROLLBACK;\n'+checks+emptyCheck+"SELECT 'PARITY_ROLLBACK_EMPTY_VERIFIED' AS result;\nSELECT 'SCALE_DIAGNOSTIC_VERIFIED' AS result,'parent-set-parity' AS diagnostic;\n"
+ const small="BEGIN;\nSET LOCAL statement_timeout='60s';\nSET LOCAL lock_timeout='5s';\nSET LOCAL pilot.policy_trial_mode='parity';\n"+emptyCheck+capture+seed+setup+'\n'+parity+'\nRESET ROLE;\nROLLBACK;\n'+checks+emptyCheck+"SELECT 'PARITY_ROLLBACK_EMPTY_VERIFIED' AS result;\nSELECT 'SCALE_DIAGNOSTIC_VERIFIED' AS result,'"+variant+"-parity' AS diagnostic;\n"
  const benchmarks=['baseline','candidate'].flatMap(phase=>['admin','manager'].map(role=>{
-  const name=`parent-set-${phase}-${role}`
-  const sql=prefix+"SET LOCAL pilot.policy_trial_mode='benchmark';\n"+setup+'\n'+(phase==='candidate'?'SELECT pg_temp.apply_parent_set_policy();\n':'')+benchmark(phase,role)+'SELECT pg_temp.assert_trial_preserved();\nROLLBACK;\n'+restored+checks+`SELECT 'SCALE_DIAGNOSTIC_VERIFIED' AS result,'${name}' AS diagnostic;\n`
+  const name=`${variant}-${phase}-${role}`
+  const sql=prefix+"SET LOCAL pilot.policy_trial_mode='benchmark';\n"+setup+'\n'+(phase==='candidate'?`SELECT ${applyRoutine};\n`:'')+benchmark(phase,role)+'SELECT pg_temp.assert_trial_preserved();\nROLLBACK;\n'+restored+checks+`SELECT 'SCALE_DIAGNOSTIC_VERIFIED' AS result,'${name}' AS diagnostic;\n`
   return {name,sql}
  }))
  return {parity:small,benchmarks}

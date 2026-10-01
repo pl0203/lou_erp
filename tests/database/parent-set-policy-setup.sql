@@ -50,12 +50,20 @@ CREATE TEMP TABLE trial_unchanged_functions AS SELECT p.oid,p.prosrc,p.prosecdef
 CREATE TEMP TABLE trial_unchanged_relations AS SELECT c.oid,c.relacl,c.relrowsecurity,c.relforcerowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind='r';
 CREATE TEMP TABLE trial_unchanged_columns AS SELECT a.attrelid,a.attnum,a.attacl FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind='r' AND a.attnum>0 AND NOT a.attisdropped;
 CREATE TEMP TABLE trial_unchanged_policies AS SELECT * FROM pg_policies WHERE schemaname IN ('public','storage') AND NOT (schemaname='public' AND ((tablename IN ('po_line_items','po_audit_log','surat_jalan') AND policyname='pilot_po_visibility') OR (tablename='sj_line_items' AND policyname='pilot_parent_visibility')));
-CREATE FUNCTION pg_temp.assert_trial_preserved() RETURNS void LANGUAGE plpgsql SECURITY INVOKER AS $$
+CREATE FUNCTION pg_temp.assert_trial_metadata_preserved() RETURNS void LANGUAGE plpgsql SECURITY INVOKER AS $$
 BEGIN
  IF EXISTS((SELECT * FROM trial_unchanged_functions EXCEPT SELECT p.oid,p.prosrc,p.prosecdef,p.provolatile,p.proconfig,p.proacl FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname IN ('public','private')) UNION ALL (SELECT p.oid,p.prosrc,p.prosecdef,p.provolatile,p.proconfig,p.proacl FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname IN ('public','private') EXCEPT SELECT * FROM trial_unchanged_functions)) THEN RAISE EXCEPTION 'Function or ACL drift'; END IF;
  IF EXISTS((SELECT * FROM trial_unchanged_relations EXCEPT SELECT c.oid,c.relacl,c.relrowsecurity,c.relforcerowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind='r') UNION ALL (SELECT c.oid,c.relacl,c.relrowsecurity,c.relforcerowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind='r' EXCEPT SELECT * FROM trial_unchanged_relations)) THEN RAISE EXCEPTION 'Relation grant/RLS drift'; END IF;
  IF EXISTS((SELECT * FROM trial_unchanged_columns EXCEPT SELECT a.attrelid,a.attnum,a.attacl FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind='r' AND a.attnum>0 AND NOT a.attisdropped) UNION ALL (SELECT a.attrelid,a.attnum,a.attacl FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind='r' AND a.attnum>0 AND NOT a.attisdropped EXCEPT SELECT * FROM trial_unchanged_columns)) THEN RAISE EXCEPTION 'Column ACL drift'; END IF;
+END $$;
+CREATE FUNCTION pg_temp.assert_trial_policies_preserved() RETURNS void LANGUAGE plpgsql SECURITY INVOKER AS $$
+BEGIN
  IF EXISTS((SELECT * FROM trial_unchanged_policies EXCEPT SELECT * FROM pg_policies) UNION ALL (SELECT * FROM pg_policies WHERE schemaname IN ('public','storage') AND NOT(schemaname='public' AND ((tablename IN ('po_line_items','po_audit_log','surat_jalan') AND policyname='pilot_po_visibility') OR (tablename='sj_line_items' AND policyname='pilot_parent_visibility'))) EXCEPT SELECT * FROM trial_unchanged_policies)) THEN RAISE EXCEPTION 'Untargeted policy drift'; END IF;
+END $$;
+CREATE FUNCTION pg_temp.assert_trial_preserved() RETURNS void LANGUAGE plpgsql SECURITY INVOKER AS $$
+BEGIN
+ PERFORM pg_temp.assert_trial_metadata_preserved();
+ PERFORM pg_temp.assert_trial_policies_preserved();
 END $$;
 CREATE FUNCTION pg_temp.assert_parent_set_contract() RETURNS void LANGUAGE plpgsql SECURITY INVOKER SET search_path=public,pg_catalog AS $$
 DECLARE t text; parent_key smallint; child_key smallint;

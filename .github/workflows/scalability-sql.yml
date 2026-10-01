@@ -13,6 +13,8 @@ on:
       - tests/scalability/query-plan-packets.mjs
       - tests/scalability/summary-ab-packets.mjs
       - tests/scalability/parent-policy-packet.mjs
+      - tests/scalability/scalar-profile-packet.mjs
+      - tests/database/scalar-profile-policy-setup.sql
       - tests/database/parent-set-policy-setup.sql
       - tests/database/parent-set-parity.sql
       - tests/database/scalability-ground-truth.sql
@@ -72,10 +74,11 @@ jobs:
       - name: Verify small hosted-policy parity and rollback to empty
         id: policy_parity
         run: |
-          node tests/scalability/parent-policy-packet.mjs
+          node tests/scalability/scalar-profile-packet.mjs
           node scripts/run-disposable-psql.mjs --file scale-results/policy-parity.sql 2>&1 | tee scale-results/policy-parity.log
           grep -Eq '^[[:space:]]*PARENT_SET_DRIFT_GUARD_VERIFIED[[:space:]]*' scale-results/policy-parity.log
-          grep -Eq '^[[:space:]]*PARENT_SET_POLICY_PARITY_VERIFIED[[:space:]]*' scale-results/policy-parity.log
+          grep -Eq '^[[:space:]]*SCALAR_PROFILE_DRIFT_GUARD_VERIFIED[[:space:]]*' scale-results/policy-parity.log
+          grep -Eq '^[[:space:]]*SCALAR_PROFILE_POLICY_PARITY_VERIFIED[[:space:]]*' scale-results/policy-parity.log
           grep -Eq '^[[:space:]]*PARITY_ROLLBACK_EMPTY_VERIFIED[[:space:]]*' scale-results/policy-parity.log
           grep -Eq '^[[:space:]]*SCALE_DIAGNOSTIC_VERIFIED[[:space:]]*\|' scale-results/policy-parity.log
       - name: Emit and load permitted synthetic fixture with actual SQL marker guard
