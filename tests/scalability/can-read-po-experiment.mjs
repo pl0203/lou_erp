@@ -143,6 +143,41 @@ RESET ROLE;
   benchmarks:['baseline','candidate','candidate','baseline'].flatMap((variant,i)=>rpcs.map((rpc,j)=>packet(rpc,variant,i*4+j,false))),
  }
 }
+export function buildHelperDailyDiagnostic(){
+ const migration=read('supabase/migrations/202610010002_scalable_report_reads.sql')
+ const definition=migration.match(/CREATE FUNCTION public\.pilot_athel_daily_v1[\s\S]*?END \$\$;/)?.[0]
+ if(!definition)throw new Error('Exact daily definition missing')
+ const body=definition.split('AS $$')[1].split('$$;')[0]
+ const first=body.indexOf(' WITH pos'),last=body.indexOf('\n RETURN result;')
+ if(first<0||last<=first)throw new Error('Daily query boundaries changed')
+ const originalQuery=body.slice(first+1,last)
+ if((originalQuery.match(/ INTO result/g)||[]).length!==1)throw new Error('Daily INTO layout changed')
+ const bindings=['p_from','p_to','p_rolling_from','p_status','p_page','p_page_size','total_days','page_offset']
+ const query=originalQuery.replace(' INTO result','').replace(/\b(p_from|p_to|p_rolling_from|p_status|p_page|p_page_size|total_days|page_offset)\b/g,name=>'$'+(bindings.indexOf(name)+1))
+ const source=read('tests/database/scalable-pooled-reads.sql')
+ const from=source.indexOf('DO $guard$ DECLARE base_rows integer;'),to=source.indexOf('PREPARE pooled_read(integer,text,boolean)')
+ if(from<0||to<=from)throw new Error('Frozen daily oracle missing')
+ const oracle=source.slice(from,to)
+ const parameters="'2026-09-01'::date,'2026-09-30'::date,'2025-10-01'::date,'all'::text,1::integer,30::integer,('2026-09-30'::date-'2026-09-01'::date+1)::integer,((1::bigint-1)*30)::bigint"
+ const packets=['manager','admin'].flatMap(role=>['force_custom_plan','force_generic_plan','auto'].map(mode=>{
+  const analyze=mode==='auto',name=`daily-${role}-${mode}`
+  return {name,role,mode,analyze,sql:start(30000)+`SELECT pg_temp.apply_can_read_po_trial();
+DO $$ BEGIN IF (SELECT md5(prosrc) FROM pg_proc WHERE oid='public.pilot_athel_daily_v1(date,date,date,text,text,integer,integer)'::regprocedure)<>'${md5(body)}' THEN RAISE EXCEPTION 'Installed daily SQL differs from diagnostic source'; END IF; END $$;
+`+oracle+'\n'+roleSetup(role)+`SET LOCAL plan_cache_mode=${mode};
+PREPARE daily_inner(date,date,date,text,integer,integer,integer,bigint) AS
+${query}
+SELECT 'DAILY_COST_PLAN ${name}' AS probe;
+EXPLAIN (VERBOSE, COSTS ON) EXECUTE daily_inner(${parameters});
+`+(analyze?`SELECT 'DAILY_INSTRUMENTED_INNER_PLAN ${name}' AS probe;
+EXPLAIN (ANALYZE,BUFFERS,VERBOSE,TIMING OFF) EXECUTE daily_inner(${parameters});
+`:'')+`-- RPC timing and the complete independent response oracle are separate from instrumented EXPLAIN.
+SELECT pg_temp.pooled_check(${role==='manager'?2:6},'daily',false);
+DEALLOCATE daily_inner;
+RESET ROLE;
+`+during('candidate')+'ROLLBACK;\n'+restored(name)}
+ }))
+ return {query,packets}
+}
 export function buildHelperAcceptancePackets(rows){
  if(![6000,30000].includes(rows))throw new Error('Fixed acceptance sizes only')
  const packets={truth:buildHelperExperiment().truth,policy:buildHelperExperiment().policy.find(p=>p.variant==='candidate').sql}

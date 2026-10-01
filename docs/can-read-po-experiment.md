@@ -120,12 +120,12 @@ RPC medians were:
 | PO lines | 34933.844 | 2927.894 | 91.6% |
 | Daily deliveries | 29755.092 | 4262.606 | 85.7% |
 
-Oracle-and-validation intervals were 8–149 ms. Several candidate times remain
+Paired oracle-and-validation intervals were 8–149 ms. Several candidate times remain
 above the desired latency goals. This is screening evidence, not hosted latency,
 p95 or full acceptance. Container shutdown logs included an autovacuum
 cancellation during fixture loading; the actual test queries and markers passed.
 
-## Full candidate acceptance preparation
+## Full candidate acceptance
 
 `helper-read-acceptance.yml` uses separate fixed 6k and 30k jobs. It preserves the
 complete existing all-role ground truth and 242-success/33-denial same-connection
@@ -145,6 +145,42 @@ Original suite paths preserve relative includes; session 60-second and process
 ceiling. Restoration is attempted after a failure, while the failure still makes
 the gate fail. Unknown helper or catalog drift is never overwritten.
 
-At this revision the full candidate acceptance stage is **not yet run**. It adds
-no deployable migration, hosted helper change or migration-history repair.
-Publication of its reviewed synthetic workflow remains the execution gate.
+The full candidate stage passed at `6eb156c627991b41fefa289d0f9da3b5bfe40b7b`
+in [run 36924334756](https://github.com/pl0203/lou_erp/actions/runs/36924334756).
+Both fixed sizes completed all-role ground truth, 242 successful assertions
+(22 per RPC), 33 denied assertions, same-connection identity/filter transitions
+and final pooled/restoration markers. The separate candidate job completed all
+15 compatibility suites, 12 cross-session races and exact original restoration.
+The same-head normal safety run also passed 717 application tests, SQL suites,
+12 races, rollout lifecycle and importer recovery/size checks.
+
+This closes the candidate correctness/session/race gates for these synthetic
+fixtures. It does not approve a hosted helper change or establish latency p95.
+Observed 30k RPC maxima included daily 9800.379 ms, customer stats 5200.360 ms,
+sales page 4394.811 ms, summary 3526.369 ms and PO lines 3453.250 ms.
+The 6k daily maximum was 9717.410 ms. These are individual observed maxima,
+not directly comparable performance regressions across separate runners.
+
+## Bounded daily-query diagnosis
+
+The next diagnostic keeps the original daily function from migration 002 and
+the accepted experimental helper. It changes no deployable migration or policy.
+On the unchanged fixed30k fixture it extracts the daily SELECT exactly, removing
+only INTO and binding six used arguments plus typed total_days/page_offset.
+The unused fulfillment argument remains validated by the actual RPC; no new
+metric interpretation is introduced. The installed daily body hash is checked.
+
+Manager and PO-admin each receive custom/generic cost-only plans and one auto
+EXPLAIN ANALYZE/BUFFERS/VERBOSE/TIMING OFF of the identical inner SELECT.
+All six packets separately call the actual RPC with its complete independent
+page/date/value/SJ-count oracle and streamed RPC/oracle intervals. Instrumented
+inner-plan time is distinct from RPC time; each packet is a fresh connection.
+Every statement retains 60 seconds, every packet requires exact rollback/catalog
+restoration, and the synthetic-only job remains finite at 20 minutes.
+
+The source evidence does not yet identify the remaining bottleneck. Six identical
+manager pooled calls were steady around 4.21–4.26 seconds at30k, while global-role
+broad calls were 9.35–9.80 seconds and narrow cancelled scope was 0.15–0.19 seconds.
+Plans will distinguish join/cardinality, RLS and sorting costs before any query
+rewrite is proposed. Both header-PO and line-PO cohort membership, all date/page
+boundaries, nonvoid filtering and distinct shipment counts must be preserved.
