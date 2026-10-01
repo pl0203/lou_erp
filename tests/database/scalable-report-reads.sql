@@ -166,20 +166,37 @@ DO $$ DECLARE n integer; variant text; cid uuid; pid uuid; BEGIN
  END LOOP;
 END $$;
 SET LOCAL session_replication_role='origin';
+ANALYZE public.users,public.customers,public.customer_manager_assignments,public.purchase_orders,
+ public.girard_orders,public.po_line_items,public.surat_jalan,public.sj_line_items;
+CREATE FUNCTION pg_temp.verify_cap_case(n integer,variant text) RETURNS void LANGUAGE plpgsql AS $$
+DECLARE cid uuid; pid uuid; r jsonb; truth numeric; started timestamptz;
+BEGIN
+ cid:=md5('independent-cap-'||variant||n)::uuid;pid:=md5('independent-po-'||variant||n)::uuid;
+ started:=clock_timestamp(); RAISE NOTICE 'CAP_GROUND_TRUTH_START variant=% rows=%',variant,n;
+ SELECT sum(d.quantity_delivered::numeric*l.unit_price) INTO truth FROM public.surat_jalan s JOIN public.sj_line_items d ON d.surat_jalan_id=s.id JOIN public.po_line_items l ON l.id=d.po_line_item_id WHERE s.purchase_order_id=pid AND s.voided_at IS NULL;
+ RAISE NOTICE 'CAP_GROUND_TRUTH_FINISH variant=% rows=% elapsed_ms=%',variant,n,extract(epoch FROM clock_timestamp()-started)*1000;
+ started:=clock_timestamp(); RAISE NOTICE 'CAP_STATS_START variant=% rows=%',variant,n;
+ r:=public.pilot_customer_stats_v1(ARRAY[cid],'2024-01-01',3);
+ RAISE NOTICE 'CAP_STATS_FINISH variant=% rows=% elapsed_ms=%',variant,n,extract(epoch FROM clock_timestamp()-started)*1000;
+ PERFORM pg_temp.assert_true((r->'items'->0->>'order_count')::integer=1 AND (r->'items'->0->>'total_sales')::numeric=truth AND truth=n,'Independent '||variant||' cap boundary '||n);
+ started:=clock_timestamp(); RAISE NOTICE 'CAP_LINES_START variant=% rows=%',variant,n;
+ r:=public.pilot_po_lines_v1(pid,1,100);
+ RAISE NOTICE 'CAP_LINES_FINISH variant=% rows=% elapsed_ms=%',variant,n,extract(epoch FROM clock_timestamp()-started)*1000;
+ PERFORM pg_temp.assert_true((r->>'total')::integer=CASE WHEN variant='lines' THEN n ELSE 1 END,'Complete PO-line total at child boundary');
+END $$;
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub','81000000-0000-0000-0000-000000000002',true);
-DO $$ DECLARE n integer; variant text; cid uuid; pid uuid; r jsonb; truth numeric; BEGIN
- FOREACH n IN ARRAY ARRAY[999,1000,1001] LOOP
-  FOREACH variant IN ARRAY ARRAY['lines','headers','delivery_lines'] LOOP
-   cid:=md5('independent-cap-'||variant||n)::uuid;pid:=md5('independent-po-'||variant||n)::uuid;
-   SELECT sum(d.quantity_delivered::numeric*l.unit_price) INTO truth FROM public.surat_jalan s JOIN public.sj_line_items d ON d.surat_jalan_id=s.id JOIN public.po_line_items l ON l.id=d.po_line_item_id WHERE s.purchase_order_id=pid AND s.voided_at IS NULL;
-   r:=public.pilot_customer_stats_v1(ARRAY[cid],'2024-01-01',3);
-   PERFORM pg_temp.assert_true((r->'items'->0->>'order_count')::integer=1 AND (r->'items'->0->>'total_sales')::numeric=truth AND truth=n,'Independent '||variant||' cap boundary '||n);
-   r:=public.pilot_po_lines_v1(pid,1,100);
-   PERFORM pg_temp.assert_true((r->>'total')::integer=CASE WHEN variant='lines' THEN n ELSE 1 END,'Complete PO-line total at child boundary');
-  END LOOP;
- END LOOP;
-END $$;
+SELECT pg_temp.assert_true(row_security_active('public.purchase_orders'),'Child-boundary cases keep actual manager RLS');
+-- Each case has its own existing 60s statement budget; timings do not imply API latency.
+SELECT pg_temp.verify_cap_case(999,'lines');
+SELECT pg_temp.verify_cap_case(1000,'lines');
+SELECT pg_temp.verify_cap_case(1001,'lines');
+SELECT pg_temp.verify_cap_case(999,'headers');
+SELECT pg_temp.verify_cap_case(1000,'headers');
+SELECT pg_temp.verify_cap_case(1001,'headers');
+SELECT pg_temp.verify_cap_case(999,'delivery_lines');
+SELECT pg_temp.verify_cap_case(1000,'delivery_lines');
+SELECT pg_temp.verify_cap_case(1001,'delivery_lines');
 RESET ROLE;
 SELECT 'SCALABLE_REPORT_READS_VERIFIED' AS result;
 ROLLBACK;
