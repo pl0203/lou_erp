@@ -45,10 +45,10 @@ BEGIN
  IF (SELECT md5(prosrc) FROM pg_proc WHERE oid=${target})<>'${md5(helperCandidate)}' THEN RAISE EXCEPTION 'Wrong helper candidate body'; END IF;
 END $apply$;
 `
+const normalizedCatalog=catalog.replace('to_jsonb(p) ORDER BY p.oid',()=>`(CASE WHEN p.oid=${target} THEN jsonb_set(to_jsonb(p),'{prosrc}',to_jsonb(${literal(helperOriginal)}::text)) ELSE to_jsonb(p) END) ORDER BY p.oid`)
 function capture() { return "SET statement_timeout='60s';\nSET lock_timeout='5s';\nSET TIME ZONE 'UTC';\n"+guard+catalog+' AS helper_catalog_before\n\\gset\n' }
 function during(variant) {
- const normalized=catalog.replace('to_jsonb(p) ORDER BY p.oid',`(CASE WHEN p.oid=${target} THEN jsonb_set(to_jsonb(p),'{prosrc}',to_jsonb(${literal(helperOriginal)}::text)) ELSE to_jsonb(p) END) ORDER BY p.oid`)
- return `SELECT 1/CASE WHEN (${normalized})=:'helper_catalog_before' AND (SELECT md5(prosrc) FROM pg_proc WHERE oid=${target})='${md5(variant==='candidate'?helperCandidate:helperOriginal)}' THEN 1 ELSE 0 END AS helper_only_body_changed;\n`
+ return `SELECT 1/CASE WHEN (${normalizedCatalog})=:'helper_catalog_before' AND (SELECT md5(prosrc) FROM pg_proc WHERE oid=${target})='${md5(variant==='candidate'?helperCandidate:helperOriginal)}' THEN 1 ELSE 0 END AS helper_only_body_changed;\n`
 }
 function restored(name) { return `SELECT 1/CASE WHEN (${catalog})=:'helper_catalog_before' THEN 1 ELSE 0 END AS helper_catalog_restored;
 ${guard}SELECT 'HELPER_EXPERIMENT_RESTORED' AS result,${literal(name)} AS packet;
@@ -141,6 +141,41 @@ RESET ROLE;
  return {
   warmups:rpcs.flatMap((rpc,i)=>['baseline','candidate'].map((variant,j)=>packet(rpc,variant,i*2+j,true))),
   benchmarks:['baseline','candidate','candidate','baseline'].flatMap((variant,i)=>rpcs.map((rpc,j)=>packet(rpc,variant,i*4+j,false))),
+ }
+}
+export function buildHelperAcceptancePackets(rows){
+ if(![6000,30000].includes(rows))throw new Error('Fixed acceptance sizes only')
+ const packets={truth:buildHelperExperiment().truth,policy:buildHelperExperiment().policy.find(p=>p.variant==='candidate').sql}
+ for(const [name,path] of [['ground-truth','tests/database/scalability-ground-truth.sql'],['pooled-reads','tests/database/scalable-pooled-reads.sql']]){
+  const source=read(path)
+  if((source.match(/^BEGIN;$/gm)||[]).length!==1||(source.match(/^ROLLBACK;$/gm)||[]).length!==1||/^\s*COMMIT\s*;/m.test(source))throw new Error('Unexpected acceptance suite transaction shape')
+  const prefix=start(rows)
+  packets[name]=source.replace('BEGIN;',()=>prefix+'SELECT pg_temp.apply_can_read_po_trial();\n').replace(/^ROLLBACK;$/m,()=>during('candidate')+'ROLLBACK;')+'\n'+restored(`acceptance-${rows}-${name}`)
+ }
+ return packets
+}
+const emptyRaceFixture=`DO $empty$ DECLARE t text;n bigint; BEGIN
+ IF to_regclass('public.pilot_scale_manifest') IS NOT NULL OR EXISTS(SELECT 1 FROM auth.users) OR EXISTS(SELECT 1 FROM storage.objects) OR EXISTS(SELECT 1 FROM private.pilot_order_requests) THEN RAISE EXCEPTION 'Source fixture must be empty'; END IF;
+ FOR t IN SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename<>'pilot_fixture_marker' LOOP
+  EXECUTE format('SELECT count(*) FROM public.%I',t) INTO n;
+  IF n<>0 THEN RAISE EXCEPTION 'Source fixture must be empty: %',t; END IF;
+ END LOOP;
+END $empty$;
+`
+export function helperRaceStateSql(){
+ const either=guard.replace(`AND md5(p.prosrc)='${md5(helperOriginal)}'`,()=>`AND md5(p.prosrc) IN ('${md5(helperOriginal)}','${md5(helperCandidate)}')`)
+ return `BEGIN READ ONLY; SET LOCAL statement_timeout='60s'; SET LOCAL lock_timeout='5s'; SET LOCAL TIME ZONE 'UTC';\n`+either+`SELECT jsonb_build_object('marker','HELPER_RACE_STATE','catalog_md5',(${catalog}),'normalized_catalog_md5',(${normalizedCatalog}),'helper_source_md5',(SELECT md5(prosrc) FROM pg_proc WHERE oid=${target}),'buckets_md5',(SELECT md5(coalesce(jsonb_agg(to_jsonb(b) ORDER BY id),'[]'::jsonb)::text) FROM storage.buckets b));\nROLLBACK;\n`
+}
+export function buildHelperRaceLifecycle(expectedCatalog){
+ if(!/^[a-f0-9]{32}$/.test(expectedCatalog))throw new Error('Exact captured catalog digest required')
+ const originalCreate=originalDefinition.replace(/^CREATE FUNCTION/,()=> 'CREATE OR REPLACE FUNCTION')
+ const candidateGuard=guard.replaceAll(md5(helperOriginal),md5(helperCandidate))
+ return {
+  originalHash:md5(helperOriginal),candidateHash:md5(helperCandidate),
+  empty:"SET statement_timeout='60s'; SET lock_timeout='5s';\n"+guard+emptyRaceFixture+"SELECT 'HELPER_RACE_EMPTY_VERIFIED';\n",
+  candidateEmpty:"SET statement_timeout='60s'; SET lock_timeout='5s';\n"+candidateGuard+emptyRaceFixture+"SELECT 'HELPER_RACE_EMPTY_VERIFIED';\n",
+  install:capture()+`SELECT 1/CASE WHEN :'helper_catalog_before'='${expectedCatalog}' THEN 1 ELSE 0 END AS captured_catalog_matches;\nBEGIN;\nSET LOCAL statement_timeout='60s';\nSET LOCAL lock_timeout='5s';\n`+emptyRaceFixture+setup+'SELECT pg_temp.apply_can_read_po_trial();\n'+during('candidate')+'COMMIT;\n'+during('candidate')+"SELECT 'HELPER_RACE_CANDIDATE_COMMITTED';\n",
+  restore:"SET statement_timeout='60s'; SET lock_timeout='5s'; SET TIME ZONE 'UTC';\nBEGIN;\n"+candidateGuard+`SELECT 1/CASE WHEN (${normalizedCatalog})='${expectedCatalog}' THEN 1 ELSE 0 END AS known_candidate_metadata;\n`+originalCreate+`\nSELECT 1/CASE WHEN (${catalog})='${expectedCatalog}' THEN 1 ELSE 0 END AS restored_before_commit;\nCOMMIT;\nSELECT 1/CASE WHEN (${catalog})='${expectedCatalog}' THEN 1 ELSE 0 END AS restored_after_commit;\n`+guard+"SELECT 'HELPER_RACE_RESTORED';\n",
  }
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){

@@ -108,5 +108,43 @@ The other selected workloads retain their complete existing normalized oracle.
 Each call streams RPC time separately from oracle-and-validation cost. Missing
 observations, mismatched oracles, timeout or missing restoration fail the screen.
 Fresh connections still do not prove same-session or candidate race acceptance.
-At this revision the 30k helper screen is **not yet run**. Parent publication of
-the reviewed synthetic-only workflow remains its execution gate.
+The screen passed at `a3ea078cb34dd4292f68edb539fa8d22a75f65f6` in
+[run 36919498957](https://github.com/pl0203/lou_erp/actions/runs/36919498957).
+All 24 RPC/oracle checks and 27 restoration markers completed. Manager paired
+RPC medians were:
+
+| Read | Original (ms) | Candidate (ms) | Reduction |
+| --- | ---: | ---: | ---: |
+| Summary | 28216.560 | 2783.404 | 90.1% |
+| Customer stats | 43609.144 | 3759.185 | 91.4% |
+| PO lines | 34933.844 | 2927.894 | 91.6% |
+| Daily deliveries | 29755.092 | 4262.606 | 85.7% |
+
+Oracle-and-validation intervals were 8–149 ms. Several candidate times remain
+above the desired latency goals. This is screening evidence, not hosted latency,
+p95 or full acceptance. Container shutdown logs included an autovacuum
+cancellation during fixture loading; the actual test queries and markers passed.
+
+## Full candidate acceptance preparation
+
+`helper-read-acceptance.yml` uses separate fixed 6k and 30k jobs. It preserves the
+complete existing all-role ground truth and 242-success/33-denial same-connection
+suites byte-for-byte between callback-inserted helper setup and restoration.
+Each RPC still has 60 seconds. The exact generated pooled path receives only
+the existing 18/40-minute process budgets and 20/45-minute job budgets.
+Every candidate helper replacement in these jobs rolls back.
+
+A third job has its own fresh PostgreSQL17 service and `pilot_test` database.
+That isolated companion temporarily commits the reviewed candidate so separate
+race connections can observe it. Its runner captures and persists original
+catalog/body/bucket fingerprints first, verifies the candidate changes only its
+body, runs all 15 unchanged SQL compatibility suites and all 12 existing races,
+then restores the exact original helper and verifies an empty synthetic fixture.
+Original suite paths preserve relative includes; session 60-second and process
+120-second bounds remain. The race subprocess itself has a finite five-minute
+ceiling. Restoration is attempted after a failure, while the failure still makes
+the gate fail. Unknown helper or catalog drift is never overwritten.
+
+At this revision the full candidate acceptance stage is **not yet run**. It adds
+no deployable migration, hosted helper change or migration-history repair.
+Publication of its reviewed synthetic workflow remains the execution gate.
