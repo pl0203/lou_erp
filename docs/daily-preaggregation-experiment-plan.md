@@ -90,5 +90,47 @@ The small matrix has226 observations:113 per arm, comprising eight repeated
 manager calls followed by seven active roles across15 cases. Inactive, orphan,
 NULL and anonymous identities are separate rejection probes. Four warmup, eight
 AB/BA and four instrumented-plan packets each require exact role, full oracle
-and restoration markers. Actual runtime SQL compilation/parity and performance
-are still unverified until the reviewed candidate runs.
+and restoration markers. At source freeze, runtime SQL compilation/parity and performance were still
+unverified; the following measured-result section records their subsequent pass.
+
+## First measured result
+
+The frozen test-only candidate atb159e09e4a335742205ee70d6e3d2ede69bf6017 passed
+[run36928572704](https://github.com/pl0203/lou_erp/actions/runs/36928572704).
+Its226 small parity observations, both deliberate oracle-negative controls,
+all16 RPC/oracle observations and20 restoration markers completed.
+
+Same-run two-observation-per-arm medians were manager3156.019→1905.129ms
+(39.6% lower) and PO-admin7554.113→2580.457ms (65.8% lower). These are
+fresh-connection screening medians after shared-buffer warmups, not p95.
+
+Actual plans aggregate6004/12004 visible eligible shipment groups once. Temporary
+reads fell from129014/514026 blocks to258/515 for manager/admin. The remaining
+nested join still rejected3,019,509/12,039,009 pairs, approximately ten times
+fewer than baseline. Shared-buffer hits were unchanged in the paired plans;
+this trial reduced intermediate-row work rather than removing RLS checks.
+
+Full6k/30k same-session acceptance with this daily candidate is still pending.
+The prior completed helper-only acceptance does not establish that combined gate.
+No deployable migration or hosted optimization has been applied.
+
+## Combined correctness acceptance preparation
+
+The next fixed workflow installs both reviewed bodies together only in disposable
+PostgreSQL17. Separate6k/30k jobs retain the complete original all-role ground
+truth and242-success/33-denial same-connection suites, plus the small daily
+literal matrix. No timeout increases:60s statements,18/40-minute pooled process
+budgets and20/45-minute jobs. Only the exact combined generated pooled filename
+is added to the established bounded timeout classification.
+
+The cross-session companion shares the already tested15-suite/12-race runner,
+with unchanged helper-only defaults. Its fixed combined entrypoint captures both
+original bodies and full catalog evidence, atomically installs both candidates,
+then atomically restores both originals. Only original-original and
+candidate-candidate pairs are recognized; mixed pairs and metadata drift fail
+without blind overwrite. Separate rollback-only negative probes deliberately
+install each mixed pair and require the precise guard error.
+
+All original helper-only and daily-screen generated packets remain byte-identical
+to their previously verified versions. Combined runtime acceptance is a new gate;
+its source checks do not replace actual completion markers.

@@ -9,7 +9,7 @@ export function runDisposableSql(file, { env = process.env, execute = execFileSy
   const connection = sanitizeConnectionEnv(env)
   verifyScaleConnectionTarget({ host: connection.PGHOST, database: connection.PGDATABASE, permit: env.SCALE_PERMIT, rows: Number(env.SCALE_ROWS) })
   return execute('psql', ['-X', '--no-password', '--set=ON_ERROR_STOP=1', `--file=${file}`], {
-    env: connection, stdio: 'inherit', timeout: (['tests/database/scalable-pooled-reads.sql','scale-results/helper-acceptance/pooled-reads.sql'].includes(file) ? (Number(env.SCALE_ROWS) === 30000 ? 40 : 18) : 15) * 60 * 1000, shell: false,
+    env: connection, stdio: 'inherit', timeout: (['tests/database/scalable-pooled-reads.sql','scale-results/helper-acceptance/pooled-reads.sql','scale-results/combined-read-acceptance/pooled-reads.sql'].includes(file) ? (Number(env.SCALE_ROWS) === 30000 ? 40 : 18) : 15) * 60 * 1000, shell: false,
   })
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

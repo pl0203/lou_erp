@@ -178,7 +178,7 @@ RESET ROLE;
  }))
  return {query,packets}
 }
-export function buildDailyPreaggregationExperiment(){
+function dailyTrialControl(){
  const original=read('supabase/migrations/202610010002_scalable_report_reads.sql').match(/CREATE FUNCTION public\.pilot_athel_daily_v1[\s\S]*?END \$\$;/)?.[0]
  if(!original)throw new Error('Original daily definition missing')
  const candidate=read('tests/database/experiments/daily-preaggregation.sql').trim()
@@ -197,6 +197,10 @@ END $daily_apply$;
 `
  function check(variant){return `SELECT 1/CASE WHEN (${dailyCatalog})=:'helper_catalog_before' AND (SELECT md5(prosrc) FROM pg_proc WHERE oid=${target})='${md5(helperCandidate)}' AND (SELECT md5(prosrc) FROM pg_proc WHERE oid=${dailyTarget})='${md5(variant==='candidate'?candidateBody:originalBody)}' THEN 1 ELSE 0 END AS daily_and_helper_only_bodies_changed;\n`}
  function end(name,variant){return 'RESET ROLE;\n'+check(variant)+'ROLLBACK;\n'+restored(name)}
+ return {original,candidate,originalBody,candidateBody,dailyTarget,dailyCatalog,dailySetup,check,end}
+}
+export function buildDailyPreaggregationExperiment(){
+ const {original,candidate,dailySetup,end}=dailyTrialControl()
  const source=read('tests/database/scalable-pooled-reads.sql'),from=source.indexOf('DO $guard$ DECLARE base_rows integer;'),to=source.indexOf('PREPARE pooled_read(integer,text,boolean)')
  if(from<0||to<=from)throw new Error('Frozen daily oracle boundaries missing')
  const oracle=source.slice(from,to)
@@ -231,6 +235,57 @@ export function summarizeDailyPreaggregation(rows){
   const b=rows.filter(r=>r.role===role&&r.variant==='baseline').reduce((s,r)=>s+r.ms,0)/2,c=rows.filter(r=>r.role===role&&r.variant==='candidate').reduce((s,r)=>s+r.ms,0)/2
   return [role,{baselineMedianMs:b,candidateMedianMs:c,improvementPercent:100*(b-c)/b}]
  }))
+}
+export function buildCombinedAcceptancePackets(rows){
+ if(![6000,30000].includes(rows))throw new Error('Fixed combined acceptance sizes only')
+ const d=dailyTrialControl(),small=buildHelperExperiment()
+ const packets={truth:small.truth,policy:small.policy.find(p=>p.variant==='candidate').sql,'daily-parity':buildDailyPreaggregationExperiment().parity}
+ packets['mixed-controls']=capture()+'BEGIN;\n'+[['helper_only',candidateDefinition],['daily_only',d.candidate]].map(([name,definition])=>`DO $mixed$ BEGIN
+ BEGIN
+ EXECUTE ${literal(definition)};
+ EXECUTE ${literal(combinedPairGuard())};
+ RAISE EXCEPTION 'Mixed state escaped guard';
+ EXCEPTION WHEN raise_exception THEN
+ IF SQLERRM<>'Unknown or mixed combined function bodies' THEN RAISE; END IF;
+ END;
+END $mixed$;
+SELECT 'COMBINED_MIXED_BODY_REJECTED ${name}';\n`).join('')+during('baseline')+'ROLLBACK;\n'+restored('combined-mixed-controls')
+
+ for(const [name,path] of [['ground-truth','tests/database/scalability-ground-truth.sql'],['pooled-reads','tests/database/scalable-pooled-reads.sql']]){
+  const source=read(path)
+  if((source.match(/^BEGIN;$/gm)||[]).length!==1||(source.match(/^ROLLBACK;$/gm)||[]).length!==1||/^\s*COMMIT\s*;/m.test(source))throw new Error('Unexpected combined acceptance layout')
+  packets[name]=source.replace('BEGIN;',()=>start(rows)+'SELECT pg_temp.apply_can_read_po_trial();\n'+d.dailySetup+'SELECT pg_temp.apply_daily_preaggregation();\n').replace(/^ROLLBACK;$/m,()=>d.check('candidate')+'ROLLBACK;')+'\n'+restored(`combined-${rows}-${name}`)
+ }
+ return packets
+}
+function combinedPairGuard(){
+ const d=dailyTrialControl()
+ return `DO $$ DECLARE h text;d text;BEGIN
+ SELECT md5(prosrc) INTO h FROM pg_proc WHERE oid=${target};
+ SELECT md5(prosrc) INTO d FROM pg_proc WHERE oid=${d.dailyTarget};
+ IF NOT ((h='${md5(helperOriginal)}' AND d='${md5(d.originalBody)}') OR (h='${md5(helperCandidate)}' AND d='${md5(d.candidateBody)}')) THEN RAISE EXCEPTION 'Unknown or mixed combined function bodies'; END IF;
+END $$;\n`
+}
+export function combinedRaceStateSql(){
+ const d=dailyTrialControl(),either=guard.replace(`AND md5(p.prosrc)='${md5(helperOriginal)}'`,()=>`AND md5(p.prosrc) IN ('${md5(helperOriginal)}','${md5(helperCandidate)}')`)
+ return `BEGIN READ ONLY; SET LOCAL statement_timeout='60s'; SET LOCAL lock_timeout='5s'; SET LOCAL TIME ZONE 'UTC';\n`+either+combinedPairGuard()+`SELECT jsonb_build_object('marker','HELPER_RACE_STATE','catalog_md5',(${catalog}),'normalized_catalog_md5',(${d.dailyCatalog}),'helper_source_md5',(SELECT md5(prosrc) FROM pg_proc WHERE oid=${target}),'daily_source_md5',(SELECT md5(prosrc) FROM pg_proc WHERE oid=${d.dailyTarget}),'combined_source_md5',(SELECT md5(h.prosrc||chr(10)||d.prosrc) FROM pg_proc h CROSS JOIN pg_proc d WHERE h.oid=${target} AND d.oid=${d.dailyTarget}),'buckets_md5',(SELECT md5(coalesce(jsonb_agg(to_jsonb(b) ORDER BY id),'[]'::jsonb)::text) FROM storage.buckets b));\nROLLBACK;\n`
+}
+export function buildCombinedRaceLifecycle(expectedCatalog){
+ if(!/^[a-f0-9]{32}$/.test(expectedCatalog))throw new Error('Exact combined catalog digest required')
+ const d=dailyTrialControl(),originalHash=md5(helperOriginal+'\n'+d.originalBody),candidateHash=md5(helperCandidate+'\n'+d.candidateBody)
+ const pairHash=`SELECT md5(h.prosrc||chr(10)||d.prosrc) FROM pg_proc h CROSS JOIN pg_proc d WHERE h.oid=${target} AND d.oid=${d.dailyTarget}`
+ const either=guard.replace(`AND md5(p.prosrc)='${md5(helperOriginal)}'`,()=>`AND md5(p.prosrc) IN ('${md5(helperOriginal)}','${md5(helperCandidate)}')`)
+ const limits="SET statement_timeout='60s'; SET lock_timeout='5s'; SET TIME ZONE 'UTC';\n"
+ return {originalHash,candidateHash,
+ empty:limits+guard+combinedPairGuard()+`SELECT 1/CASE WHEN (${pairHash})='${originalHash}' THEN 1 ELSE 0 END;\n`+emptyRaceFixture+"SELECT 'HELPER_RACE_EMPTY_VERIFIED';\n",
+ candidateEmpty:limits+either+combinedPairGuard()+`SELECT 1/CASE WHEN (${pairHash})='${candidateHash}' THEN 1 ELSE 0 END;\n`+emptyRaceFixture+"SELECT 'HELPER_RACE_EMPTY_VERIFIED';\n",
+ install:capture()+`SELECT 1/CASE WHEN :'helper_catalog_before'='${expectedCatalog}' THEN 1 ELSE 0 END;\nBEGIN;\n`+emptyRaceFixture+setup+'SELECT pg_temp.apply_can_read_po_trial();\n'+d.dailySetup+'SELECT pg_temp.apply_daily_preaggregation();\n'+d.check('candidate')+'COMMIT;\n'+d.check('candidate')+"SELECT 'HELPER_RACE_CANDIDATE_COMMITTED';\n",
+ restore:limits+either+combinedPairGuard()+`BEGIN;
+DO $$ BEGIN IF (${pairHash})<>'${candidateHash}' OR (${d.dailyCatalog})<>'${expectedCatalog}' THEN RAISE EXCEPTION 'Confirmed combined candidate required'; END IF; END $$;
+`+originalDefinition.replace(/^CREATE FUNCTION/,()=> 'CREATE OR REPLACE FUNCTION')+'\n'+d.original.replace(/^CREATE FUNCTION/,()=> 'CREATE OR REPLACE FUNCTION')+`\nSELECT 1/CASE WHEN (${catalog})='${expectedCatalog}' AND (${pairHash})='${originalHash}' THEN 1 ELSE 0 END AS restored_both_bodies;
+COMMIT;
+SELECT 1/CASE WHEN (${catalog})='${expectedCatalog}' THEN 1 ELSE 0 END;
+SELECT 'HELPER_RACE_RESTORED';\n`}
 }
 export function buildHelperAcceptancePackets(rows){
  if(![6000,30000].includes(rows))throw new Error('Fixed acceptance sizes only')
