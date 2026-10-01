@@ -159,4 +159,4 @@ Candidate migration SHA-256 inventory (source identity, not execution evidence):
 - `supabase/migrations/202610010001_scalable_order_reads.sql`: `071ea9280adf79b6ba5c0eb405e7b66706332f2ce2e183a9983a312a025614da`
 - `supabase/migrations/202610010002_scalable_report_reads.sql`: `8a7ee2a24e942f1c0d82d48b3d122ad88b25d48a090a88cc35f194d3882f03e4`
 - `supabase/migrations/202610010004_scalable_order_lookup_index.sql`: `9e8d5afba857af858e743b33a516eaf3f240738f7c2a5ea544f8fdc171ba0088`
-- `supabase/migrations/202610010007_read_policy_plans.sql`: `e81e08c54871fd740df6fa3db11230b360ca5175c11171d2dc3d908d25a23fb5`
+- `supabase/migrations/202610010007_read_policy_plans.sql`: `7cf626f169b52d993c00724c0ba34ba96438c85e03adea8b2c646a2e1a51c9dd`
