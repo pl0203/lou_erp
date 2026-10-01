@@ -218,7 +218,7 @@ CREATE FUNCTION pg_temp.pooled_check(actor integer,rpc text,narrow boolean) RETU
 LANGUAGE plpgsql SECURITY INVOKER AS $check$
 DECLARE profile pg_temp.pooled_actors%ROWTYPE; r jsonb; wanted jsonb; manager uuid; po_id uuid;
  from_day date:=CASE WHEN narrow THEN '2026-07-01'::date ELSE '2026-09-01'::date END;
- until_day date:=(from_day+interval '1 month')::date; started timestamptz:=clock_timestamp(); rpc_finished timestamptz;
+ until_day date:=(from_day+interval '1 month')::date; started timestamptz:=clock_timestamp(); rpc_finished timestamptz; assertion_finished timestamptz;
 BEGIN
  SELECT * INTO profile FROM pg_temp.pooled_actors WHERE n=actor;
  IF current_user<>'authenticated' OR auth.uid() IS DISTINCT FROM profile.id OR public.current_user_role()::text IS DISTINCT FROM profile.role
@@ -250,14 +250,17 @@ BEGIN
   r:=public.pilot_manager_customers_v1(manager,'2026-09-01','2026-09-30T23:59:59Z',1,10);
  ELSE RAISE EXCEPTION 'Unknown pooled RPC'; END CASE;
  rpc_finished:=clock_timestamp();
+ RAISE NOTICE 'POOLED_RPC_FINISH actor=% rpc=% narrow=% rpc_elapsed_ms=%',actor,rpc,narrow,extract(epoch FROM rpc_finished-started)*1000;
  IF r->>'version' IS DISTINCT FROM '1' OR r->>'as_of' IS NULL THEN RAISE EXCEPTION 'Invalid read envelope'; END IF;
  r:=r-'version'-'as_of';
  IF rpc='summary' THEN r:=jsonb_build_object('metrics',r->'metrics','statusBreakdown',r->'statusBreakdown','monthlySeries',r->'monthlySeries'); END IF;
  wanted:=pg_temp.pooled_expected(actor,rpc,narrow);
  IF pg_temp.pooled_normalize(r) IS DISTINCT FROM wanted THEN
   RAISE EXCEPTION 'Pooled exact result mismatch actor %, rpc %, narrow %: expected %, actual %',actor,rpc,narrow,wanted,r; END IF;
+ assertion_finished:=clock_timestamp();
+ RAISE NOTICE 'POOLED_ASSERTION_FINISH actor=% rpc=% narrow=% rpc_elapsed_ms=% oracle_elapsed_ms=% total_elapsed_ms=%',actor,rpc,narrow,extract(epoch FROM rpc_finished-started)*1000,extract(epoch FROM assertion_finished-rpc_finished)*1000,extract(epoch FROM assertion_finished-started)*1000;
  INSERT INTO pg_temp.pooled_evidence VALUES(actor,rpc,narrow,current_setting('plan_cache_mode'),
-  extract(epoch FROM rpc_finished-started)*1000,extract(epoch FROM clock_timestamp()-started)*1000,'verified');
+  extract(epoch FROM rpc_finished-started)*1000,extract(epoch FROM assertion_finished-started)*1000,'verified');
  RETURN format('POOLED_RPC_VERIFIED actor=%s rpc=%s narrow=%s',actor,rpc,narrow);
 END $check$;
 

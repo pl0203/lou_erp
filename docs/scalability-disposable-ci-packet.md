@@ -160,3 +160,11 @@ Candidate migration SHA-256 inventory (source identity, not execution evidence):
 - `supabase/migrations/202610010002_scalable_report_reads.sql`: `8a7ee2a24e942f1c0d82d48b3d122ad88b25d48a090a88cc35f194d3882f03e4`
 - `supabase/migrations/202610010004_scalable_order_lookup_index.sql`: `9e8d5afba857af858e743b33a516eaf3f240738f7c2a5ea544f8fdc171ba0088`
 - `supabase/migrations/202610010007_read_policy_plans.sql`: `7cf626f169b52d993c00724c0ba34ba96438c85e03adea8b2c646a2e1a51c9dd`
+
+## First clean-candidate runtime evidence
+
+Run [36865407948](https://github.com/pl0203/lou_erp/actions/runs/36865407948) passed all five preflight rejection cases, the installed 620-case matrix/rollback, unchanged 6k load, all three fresh summary diagnostics, and the complete seven-role ground-truth marker. Fresh summary observations were admin 1.283s, forced-generic admin 1.287s and manager 3.585s. Normal safety run 36865407669 separately passed 475 app tests, SQL/security/parity checks and 12 races.
+
+The pooled stage remained incomplete: the wrapper's 15-minute total-process limit stopped it after 238 of 242 success assertions and all 33 denials. There was no PostgreSQL statement-timeout error or mismatched-result assertion in the completed log. The final rollback/completion marker was absent, so this is a failed acceptance gate. Twenty-one customer-performance assertions consumed 606.754seconds including independent oracle work; privileged-role cases took54.6–58.3 seconds each. Their RPC/oracle split was not available because the evidence table printed only at successful completion.
+
+The next harness-only revision streams RPC completion time before the oracle and separate oracle/total times after each assertion. Only the exact pooled test file receives an 18-minute total-process budget, supported by the observed nearly complete 15-minute run; all other process limits remain 15 minutes, every SQL statement remains 60 seconds and the job remains 20 minutes. Coverage, same-session transitions, strict failure propagation and final rollback marker stay required. This budget accommodates the comprehensive correctness matrix; it does not relax any product latency target or explain away the unresolved customer-report cost.
