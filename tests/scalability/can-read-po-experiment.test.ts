@@ -62,3 +62,10 @@ test('extension configuration remains privileged and capture/restoration have se
   expect(packet.sql).toContain("RESET ROLE;\nSET LOCAL auto_explain.log_min_duration='1s';\nSET LOCAL auto_explain.log_analyze=off;\nSET LOCAL ROLE authenticated;")
  }
 })
+
+test('every generated packet preserves the exact dollar-quoted apply routine from the passing truth packet',()=>{
+ const r=buildHelperExperiment()
+ const routine=r.truth.match(/CREATE FUNCTION pg_temp\.apply_can_read_po_trial\(\)[\s\S]*?END \$apply\$;/)![0]
+ expect(routine).toContain('AS $$')
+ for(const p of [...r.policy,...r.warmups,...r.benchmarks,...r.plans])expect(p.sql).toContain(routine)
+})
