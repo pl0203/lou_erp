@@ -15,17 +15,17 @@ function stepScript(name:string) {
 function executeStep(name:string, output:string, status:number) {
  const dir=mkdtempSync(join(tmpdir(),'scale-pipeline-'));mkdirSync(join(dir,'scale-results'))
  try {
-  mkdirSync(join(dir,'scale-results/diagnostics'))
-  for(const name of ['one','two','three','four'])writeFileSync(join(dir,`scale-results/diagnostics/${name}.sql`),'synthetic command placeholder')
+  mkdirSync(join(dir,'scale-results/customer-diagnostics'))
+  for(const name of ['one','two','three','four'])writeFileSync(join(dir,`scale-results/customer-diagnostics/${name}.sql`),'synthetic command placeholder')
   // Run the actual workflow script, replacing only the external database/fixture commands.
-  const script=stepScript(name).replace(/^.*node tests\/scalability\/(?:generate-fixtures|diagnostic-packets|query-plan-packets|summary-ab-packets|parent-policy-packet|scalar-profile-packet|final-read-checks).*$/gm,':').replace(/node scripts\/run-disposable-psql\.mjs --file (?:[^ |]+|"[^"]+")/g,`( printf '%s\\n' '${output}'; exit ${status} )`)
+  const script=stepScript(name).replace(/^.*node tests\/scalability\/(?:generate-fixtures|diagnostic-packets|query-plan-packets|summary-ab-packets|parent-policy-packet|scalar-profile-packet|final-read-checks|customer-plan-packets).*$/gm,':').replace(/node scripts\/run-disposable-psql\.mjs --file (?:[^ |]+|"[^"]+")/g,`( printf '%s\\n' '${output}'; exit ${status} )`)
   const explicitBash=/defaults:\s*\n\s+run:\s*\n\s+shell: bash/.test(workflow)
   return spawnSync('bash',explicitBash?['--noprofile','--norc','-e','-o','pipefail','-c',script]:['-e','-c',script],{cwd:dir,encoding:'utf8'}).status
  }finally{rmSync(dir,{recursive:true,force:true})}
 }
 const cases=[
  ['Verify installed policy matrix and rollback','FINAL_READ_POLICY_MATRIX_VERIFIED\nFINAL_READ_POLICY_ROLLBACK_VERIFIED'],
- ['Fresh-session recent and full-history SQL diagnostics',' FINAL_READ_DIAGNOSTIC_VERIFIED | synthetic-case'],
+ ['Customer report plan diagnostics',' CUSTOMER_PLAN_DIAGNOSTIC_VERIFIED | synthetic-case'],
  ['Emit and load permitted synthetic fixture with actual SQL marker guard',' SYNTHETIC_SCALE_FIXTURE_LOADED | 53010959'],
  ['Exact role ground truth and bounded query diagnostics',' SCALABILITY_ROLE_GROUND_TRUTH_VERIFIED | PostgreSQL17 | 53010959'],
  ['Same-session repeated reads and identity transitions','SCALABLE_POOLED_READS_VERIFIED'],

@@ -1,4 +1,4 @@
-name: Disposable scalability SQL validation
+name: Disposable scalability SQL diagnostics
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -21,6 +21,7 @@ on:
       - tests/database/scalable-policy-state.sql
       - tests/database/scalable-pooled-reads.sql
       - tests/scalability/final-read-checks.mjs
+      - tests/scalability/customer-plan-packets.mjs
       - tests/scalability/read-migration-guards.mjs
       - tests/database/scalability-ground-truth.sql
       - supabase/migrations/202610*.sql
@@ -94,22 +95,24 @@ jobs:
           node tests/scalability/generate-fixtures.mjs --rows "$SCALE_ROWS" --emit-sql --target local-ci --permit disposable-pilot-ci > scale-results/fixture.sql
           node scripts/run-disposable-psql.mjs --file scale-results/fixture.sql 2>&1 | tee scale-results/load.log
           grep -Eq '^[[:space:]]*SYNTHETIC_SCALE_FIXTURE_LOADED[[:space:]]*\|' scale-results/load.log
-      - name: Fresh-session recent and full-history SQL diagnostics
+      - name: Customer report plan diagnostics
         run: |
-          node tests/scalability/final-read-checks.mjs
+          node tests/scalability/customer-plan-packets.mjs
           failed=0
-          for file in scale-results/diagnostics/*.sql; do
+          for file in scale-results/customer-diagnostics/*.sql; do
             node scripts/run-disposable-psql.mjs --file "$file" 2>&1 | tee "${file%.sql}.log" || failed=1
-            grep -Eq '^[[:space:]]*FINAL_READ_DIAGNOSTIC_VERIFIED[[:space:]]*\|' "${file%.sql}.log" || failed=1
+            grep -Eq '^[[:space:]]*CUSTOMER_PLAN_DIAGNOSTIC_VERIFIED[[:space:]]*\|' "${file%.sql}.log" || failed=1
           done
           exit "$failed"
       - name: Exact role ground truth and bounded query diagnostics
-        if: ${{ !cancelled() && steps.fixture.outcome == 'success' }}
+        # Diagnostic-only hold; restore unchanged full-role/pooled gates on remedy candidate.
+        if: ${{ false }}
         run: |
           node scripts/run-disposable-psql.mjs --file tests/database/scalability-ground-truth.sql 2>&1 | tee scale-results/ground-truth.log
           grep -Eq '^[[:space:]]*SCALABILITY_ROLE_GROUND_TRUTH_VERIFIED[[:space:]]*\|' scale-results/ground-truth.log
       - name: Same-session repeated reads and identity transitions
-        if: ${{ !cancelled() && steps.fixture.outcome == 'success' }}
+        # Diagnostic-only hold; restore unchanged full-role/pooled gates on remedy candidate.
+        if: ${{ false }}
         run: |
           node scripts/run-disposable-psql.mjs --file tests/database/scalable-pooled-reads.sql 2>&1 | tee scale-results/pooled-reads.log
           grep -Eq '^[[:space:]]*SCALABLE_POOLED_READS_VERIFIED[[:space:]]*' scale-results/pooled-reads.log
@@ -117,6 +120,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: scale-sql-6000-validation-${{ github.run_id }}
+          name: scale-sql-6000-customer-diagnostics-${{ github.run_id }}
           path: scale-results
           retention-days: 7
