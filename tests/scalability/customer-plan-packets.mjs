@@ -2,7 +2,7 @@ import { readFileSync,mkdirSync,writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
 function definition(source){
- const block=source.match(/CREATE FUNCTION public\.pilot_customer_performance_v1\([^]*?AS \$\$([^]*?)END \$\$;/)?.[1]
+ const block=source.match(/CREATE(?: OR REPLACE)? FUNCTION public\.pilot_customer_performance_v1\([^]*?AS \$\$([^]*?)END \$\$;/)?.[1]
  if(!block)throw new Error('Expected customer function definition')
  return block+'END '
 }
@@ -14,7 +14,7 @@ export function extractCustomerStatement(source){
 }
 export function buildCustomerPlanPackets(source){
  const inner=extractCustomerStatement(source),bodyHash=createHash('md5').update(definition(source)).digest('hex')
- const roles={manager:{id:'84000000-0000-0000-0000-000000000002',role:'sales_manager',month:'2026-09',end:'2026-10-01',count:51,sales:125130},executive:{id:'84000000-0000-0000-0000-000000000001',role:'executive',month:'2026-07',end:'2026-08-01',count:101,sales:250000}}
+ const roles={manager:{id:'84000000-0000-0000-0000-000000000002',role:'sales_manager',month:'2026-09',end:'2026-10-01',count:51,sales:125180},executive:{id:'84000000-0000-0000-0000-000000000001',role:'executive',month:'2026-07',end:'2026-08-01',count:101,sales:250000}}
  const args=r=>`${r.role==='sales_manager'?`'${r.id}'::uuid`:'NULL::uuid'},'${r.month}','${r.month}-01'::timestamptz,'${r.end}'::timestamptz,1,10`
  function prefix(role,mode,nested=false){const r=roles[role];return `BEGIN READ ONLY;
 SET LOCAL statement_timeout='60s';
@@ -55,7 +55,7 @@ SET LOCAL search_path='';
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  if(process.argv.length!==2)throw new Error('No custom diagnostic inputs')
- const source=readFileSync('supabase/migrations/202610010002_scalable_report_reads.sql','utf8')
+ const source=readFileSync('supabase/migrations/202610010008_customer_delivery_aggregation.sql','utf8')
  mkdirSync('scale-results/customer-diagnostics',{recursive:true})
  for(const p of buildCustomerPlanPackets(source))writeFileSync(`scale-results/customer-diagnostics/${p.name}.sql`,p.sql,{flag:'wx'})
 }

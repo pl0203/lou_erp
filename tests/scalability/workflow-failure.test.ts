@@ -24,6 +24,7 @@ function executeStep(name:string, output:string, status:number) {
  }finally{rmSync(dir,{recursive:true,force:true})}
 }
 const cases=[
+ ['Verify customer report parity','SCALABLE_CUSTOMER_PARITY_VERIFIED'],
  ['Verify installed policy matrix and rollback','FINAL_READ_POLICY_MATRIX_VERIFIED\nFINAL_READ_POLICY_ROLLBACK_VERIFIED'],
  ['Customer report plan diagnostics',' CUSTOMER_PLAN_DIAGNOSTIC_VERIFIED | synthetic-case'],
  ['Emit and load permitted synthetic fixture with actual SQL marker guard',' SYNTHETIC_SCALE_FIXTURE_LOADED | 53010959'],

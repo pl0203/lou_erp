@@ -84,6 +84,7 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f tests/database/scalable-policy-state.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/scalable-index.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/scalable-summary-parity.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/scalable-customer-parity.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/scalable-order-reads.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/scalable-report-boundaries.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/scalable-report-reads.sql
