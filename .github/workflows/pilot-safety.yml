@@ -45,7 +45,29 @@ jobs:
       - name: Load only synthetic test contract and candidate migrations
         run: |
           psql -X -v ON_ERROR_STOP=1 -f tests/database/fixture.sql
-          for file in supabase/migrations/*.sql; do psql -X -v ON_ERROR_STOP=1 -f "$file"; done
+          for file in supabase/migrations/*.sql; do
+            if [[ "$file" < supabase/migrations/202610010001_scalable_order_reads.sql ]]; then psql -X -v ON_ERROR_STOP=1 -f "$file"; fi
+          done
+          psql -X -v ON_ERROR_STOP=1 <<'SQL'
+          DO $red$ BEGIN
+            BEGIN
+              PERFORM public.pilot_po_page_v1('all','',1,10);
+              RAISE EXCEPTION 'Order read unexpectedly exists before candidate migration';
+            EXCEPTION WHEN undefined_function THEN
+              RAISE NOTICE 'ORDER_READ_BASELINE_UNDEFINED_FUNCTION_VERIFIED';
+            END;
+            BEGIN
+              PERFORM public.pilot_athel_summary_v1('2026-09-01','2026-09-30','2026-07-01','all','all');
+              RAISE EXCEPTION 'Report read unexpectedly exists before candidate migration';
+            EXCEPTION WHEN undefined_function THEN
+              RAISE NOTICE 'REPORT_READ_BASELINE_UNDEFINED_FUNCTION_VERIFIED';
+            END;
+          END $red$;
+          SQL
+          for file in supabase/migrations/*.sql; do
+            if [[ "$file" < supabase/migrations/202610010001_scalable_order_reads.sql ]]; then continue; fi
+            psql -X -v ON_ERROR_STOP=1 -f "$file"
+          done
       - name: SQL invariants, real role permissions and Storage metadata policies
         run: |
           psql -X -v ON_ERROR_STOP=1 -f supabase/tests/security/explicit_guards.sql
@@ -54,5 +76,7 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f supabase/tests/security/storage_rls.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/order-transactions.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/visit-transactions.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/scalable-order-reads.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/scalable-report-reads.sql
       - name: Concurrent business operations
         run: node tests/database/concurrency.mjs

@@ -2,7 +2,8 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "git": {
     "deploymentEnabled": {
-      "fix/pilot-database": true
+      "fix/pilot-database": true,
+      "fix/pilot-scale-sql": false
     }
   },
   "rewrites": [

@@ -12,7 +12,7 @@ test('Vercel serves the SPA entry point for fresh client-side deep links', () =>
 })
 
 test('SPA routing preserves database preview deployment and backend guard configuration', () => {
-  expect(config.git).toEqual({ deploymentEnabled: { 'fix/pilot-database': true } })
+  expect(config.git).toEqual({ deploymentEnabled: { 'fix/pilot-database': true, 'fix/pilot-scale-sql': false } })
   const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
   expect(pkg.scripts.build).toBe('node scripts/verify-preview-backend.mjs && vite build')
 })
