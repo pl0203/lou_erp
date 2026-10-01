@@ -1,8 +1,14 @@
 import { calendarDateKey, parseCalendarDate } from '../../lib/calendarDate'
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import AthelNav from '../../components/AthelNav'
+
+const DashboardCharts = lazy(() => import('../../components/athel/DashboardCharts').catch(() => ({
+  default: function ChartsUnavailable() {
+    return <p role="status" className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">Grafik tidak dapat dimuat. Muat ulang halaman untuk mencoba lagi.</p>
+  },
+})))
 
 type FilterStatus = 'all' | 'confirm' | 'in_progress' | 'complete' | 'cancelled'
 type FulfillmentFilter = 'all' | 'undelivered' | 'partial' | 'complete'
@@ -43,7 +49,7 @@ type SJLineItem = {
   quantity_delivered: number
 }
 
-type DashboardData = {
+export type DashboardData = {
   metrics: {
     totalPOCount: number
     totalPOValue: number
@@ -153,45 +159,6 @@ export function rangeDays(start: string, end: string): string[] {
     cursor.setDate(cursor.getDate() + 1)
   }
   return result
-}
-
-function makeDonutBackground(items: { value: number; color: string }[]): string {
-  const total = items.reduce((sum, item) => sum + item.value, 0)
-  if (total <= 0) return 'conic-gradient(#e5e7eb 0deg 360deg)'
-
-  let current = 0
-  const stops = items.map(item => {
-    const start = current
-    const degrees = (item.value / total) * 360
-    current += degrees
-    return `${item.color} ${start}deg ${current}deg`
-  })
-  return `conic-gradient(${stops.join(', ')})`
-}
-
-function Tooltip({
-  title,
-  lines,
-}: {
-  title: string
-  lines: { label: string; value: string; color?: string }[]
-}) {
-  return (
-    <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-3 w-max min-w-40 -translate-x-1/2 rounded-xl border border-gray-200 bg-white px-3 py-2 shadow-xl">
-      <p className="text-xs font-semibold text-gray-900">{title}</p>
-      <div className="mt-2 space-y-1.5">
-        {lines.map(line => (
-          <div key={line.label} className="flex items-center justify-between gap-4 text-xs">
-            <div className="flex items-center gap-2 text-gray-500">
-              {line.color && <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: line.color }} />}
-              <span>{line.label}</span>
-            </div>
-            <span className="font-medium text-gray-900">{line.value}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
 }
 
 async function fetchDashboardData(
@@ -392,8 +359,7 @@ async function fetchDashboardData(
   }))
 
   const days = rangeDays(startDate, endDate)
-  const sampledDays = days.length > 14 ? days.filter((_, index) => index % Math.ceil(days.length / 14) === 0 || index === days.length - 1) : days
-  const dailySeries = sampledDays.map(key => ({
+  const dailySeries = days.map(key => ({
     key,
     label: displayDay(key),
     deliveredValue: deliveredValueByDay[key] ?? 0,
@@ -452,202 +418,6 @@ function StatCard({
       <p className="text-sm text-gray-500">{label}</p>
       <p className="mt-2 text-3xl font-semibold tracking-tight text-gray-900">{value}</p>
       <p className="mt-2 text-sm text-gray-500">{helper}</p>
-    </div>
-  )
-}
-
-function DonutCard({
-  title,
-  items,
-  centerLabel,
-  centerValue,
-}: {
-  title: string
-  items: { label: string; value: number; color: string }[]
-  centerLabel: string
-  centerValue?: string
-}) {
-  const total = items.reduce((sum, item) => sum + item.value, 0)
-  const [hovered, setHovered] = useState<string | null>(null)
-  const hoveredItem = items.find(item => item.label === hovered) ?? null
-
-  return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-      <h3 className="text-base font-semibold text-gray-900">{title}</h3>
-      {items.length === 0 ? (
-        <div className="py-16 text-center text-sm text-gray-400">Belum ada data pada filter ini.</div>
-      ) : (
-        <div className="mt-6 flex flex-col gap-6 lg:flex-row lg:items-center">
-          <div className="mx-auto grid place-items-center">
-            <div
-              className="relative h-64 w-64 rounded-full"
-              style={{ background: makeDonutBackground(items) }}
-              onMouseLeave={() => setHovered(null)}
-            >
-              {hoveredItem && (
-                <Tooltip
-                  title={hoveredItem.label}
-                  lines={[
-                    { label: 'Nilai', value: formatCompactCurrency(hoveredItem.value), color: hoveredItem.color },
-                    { label: 'Proporsi', value: total > 0 ? formatPercent((hoveredItem.value / total) * 100) : '0%' },
-                  ]}
-                />
-              )}
-              <div className="absolute inset-[26%] rounded-full bg-white shadow-inner" />
-              <div className="absolute inset-0 grid place-items-center px-10 text-center">
-                <div>
-                  <p className="text-sm font-medium text-gray-500">{centerLabel}</p>
-                  <p className="mt-1 text-2xl font-semibold text-gray-900">{centerValue ?? formatCompactCurrency(total)}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="grid flex-1 gap-3">
-            {items.map(item => (
-              <div
-                key={item.label}
-                className="flex items-center justify-between gap-3 rounded-lg px-2 py-1 transition-colors hover:bg-gray-50"
-                onMouseEnter={() => setHovered(item.label)}
-                onMouseLeave={() => setHovered(null)}
-              >
-                <div className="flex items-center gap-3 text-sm text-gray-700">
-                  <span className="h-3 w-3 rounded-full" style={{ backgroundColor: item.color }} />
-                  <span>{item.label}</span>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-semibold text-gray-900">{formatCompactCurrency(item.value)}</p>
-                  <p className="text-xs text-gray-400">{total > 0 ? formatPercent((item.value / total) * 100) : '0%'}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function BarChartCard({
-  title,
-  subtitle,
-  series,
-}: {
-  title: string
-  subtitle: string
-  series: DashboardData['monthlySeries']
-}) {
-  const maxValue = Math.max(...series.flatMap(item => [item.poValue, item.deliveredValue]), 1)
-  const [hovered, setHovered] = useState<string | null>(null)
-
-  return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-base font-semibold text-gray-900">{title}</h3>
-          <p className="mt-1 text-sm text-gray-500">{subtitle}</p>
-        </div>
-        <div className="flex gap-4 text-xs text-gray-500">
-          <span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-blue-600" />Total PO</span>
-          <span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-orange-400" />Terkirim</span>
-        </div>
-      </div>
-      <div className="mt-8 flex h-72 items-end gap-3 overflow-x-auto">
-        {series.map(item => (
-          <div
-            key={item.key}
-            className="relative flex min-w-20 flex-1 flex-col items-center gap-3"
-            onMouseEnter={() => setHovered(item.key)}
-            onMouseLeave={() => setHovered(null)}
-          >
-            {hovered === item.key && (
-              <Tooltip
-                title={item.label}
-                lines={[
-                  { label: 'Total PO', value: formatCurrency(item.poValue), color: '#2563eb' },
-                  { label: 'Terkirim', value: formatCurrency(item.deliveredValue), color: '#fb923c' },
-                ]}
-              />
-            )}
-            <div className="flex h-56 items-end gap-2">
-              <div className="flex w-8 flex-col justify-end rounded-t-md bg-blue-600/90" style={{ height: `${(item.poValue / maxValue) * 100}%` }}>
-                <span className="px-1 py-1 text-center text-[10px] font-medium text-white">{item.poValue > 0 ? formatCompactCurrency(item.poValue) : ''}</span>
-              </div>
-              <div className="flex w-8 flex-col justify-end rounded-t-md bg-orange-300" style={{ height: `${(item.deliveredValue / maxValue) * 100}%` }}>
-                <span className="px-1 py-1 text-center text-[10px] font-medium text-gray-700">{item.deliveredValue > 0 ? formatCompactCurrency(item.deliveredValue) : ''}</span>
-              </div>
-            </div>
-            <p className="text-center text-xs text-gray-500">{item.label}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function TrendCard({
-  title,
-  subtitle,
-  series,
-}: {
-  title: string
-  subtitle: string
-  series: DashboardData['dailySeries']
-}) {
-  const maxDeliveredValue = Math.max(...series.map(item => item.deliveredValue), 1)
-  const maxSJ = Math.max(...series.map(item => item.sjCount), 1)
-  const [hovered, setHovered] = useState<string | null>(null)
-
-  const linePoints = series.map((item, index) => {
-    const x = series.length === 1 ? 0 : (index / (series.length - 1)) * 100
-    const y = 100 - (item.sjCount / maxSJ) * 100
-    return `${x},${y}`
-  }).join(' ')
-
-  return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-base font-semibold text-gray-900">{title}</h3>
-          <p className="mt-1 text-sm text-gray-500">{subtitle}</p>
-        </div>
-        <div className="flex gap-4 text-xs text-gray-500">
-          <span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-blue-600" />Nilai item terkirim</span>
-          <span className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-amber-500" />Nomor SJ</span>
-        </div>
-      </div>
-      <div className="mt-6 grid grid-cols-[repeat(auto-fit,minmax(32px,1fr))] items-end gap-2">
-        {series.map(item => (
-          <div
-            key={item.key}
-            className="relative flex flex-col items-center gap-2"
-            onMouseEnter={() => setHovered(item.key)}
-            onMouseLeave={() => setHovered(null)}
-          >
-            {hovered === item.key && (
-              <Tooltip
-                title={item.label}
-                lines={[
-                  { label: 'Nilai terkirim', value: formatCurrency(item.deliveredValue), color: '#2563eb' },
-                  { label: 'Nomor SJ', value: String(item.sjCount), color: '#f59e0b' },
-                ]}
-              />
-            )}
-            <div className="h-36 w-full rounded-t-md bg-blue-600/85" style={{ height: `${Math.max((item.deliveredValue / maxDeliveredValue) * 144, 8)}px` }} />
-            <p className="text-[11px] text-gray-500">{item.label}</p>
-          </div>
-        ))}
-      </div>
-      <div className="-mt-44 h-40">
-        <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="h-full w-full overflow-visible">
-          <polyline
-            fill="none"
-            stroke="#f59e0b"
-            strokeWidth="2.5"
-            vectorEffect="non-scaling-stroke"
-            points={linePoints}
-          />
-        </svg>
-      </div>
     </div>
   )
 }
@@ -785,32 +555,9 @@ export default function AthelDashboard() {
               />
             </div>
 
-            <div className="grid gap-6 xl:grid-cols-[1.1fr_1.3fr]">
-              <DonutCard
-                title="Proporsi Customer Berdasarkan Total PO"
-                items={data.customerShare}
-                centerLabel="Total PO"
-              />
-              <BarChartCard
-                title="PO vs Pengiriman Bulanan"
-                subtitle="Rolling 12 bulan dengan bulan berjalan di sisi paling kanan."
-                series={data.monthlySeries}
-              />
-            </div>
-
-            <div className="grid gap-6 xl:grid-cols-[1fr_1.35fr]">
-              <DonutCard
-                title="Komposisi Status PO"
-                items={data.statusBreakdown}
-                centerLabel="Jumlah PO"
-                centerValue={String(data.metrics.totalPOCount)}
-              />
-              <TrendCard
-                title="Tren Pengiriman Harian"
-                subtitle="Batang menunjukkan total delivered items value, garis menunjukkan jumlah distinct Nomor SJ per hari."
-                series={data.dailySeries}
-              />
-            </div>
+            <Suspense fallback={<div role="status" className="rounded-2xl border border-slate-200 bg-white p-12 text-center text-sm text-slate-500">Memuat grafik...</div>}>
+              <DashboardCharts key={`${startDate}:${endDate}:${status}:${fulfillment}`} data={data} />
+            </Suspense>
 
             <div className="grid gap-6 xl:grid-cols-2">
               <DataTableCard
