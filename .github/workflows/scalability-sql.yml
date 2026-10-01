@@ -1,4 +1,4 @@
-name: Disposable scalability SQL validation
+name: Disposable scalability SQL diagnostics
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -10,6 +10,7 @@ on:
       - tests/scalability/measure-reads.mjs
       - tests/scalability/generate-fixtures.mjs
       - tests/scalability/diagnostic-packets.mjs
+      - tests/scalability/query-plan-packets.mjs
       - tests/database/scalability-ground-truth.sql
       - supabase/migrations/202610*.sql
 permissions:
@@ -39,6 +40,8 @@ jobs:
       PGUSER: postgres
       PGPASSWORD: synthetic-ci-only
       PGDATABASE: pilot_test
+      # Diagnostic-only candidate; restore full ground truth for remedy acceptance.
+      SCALE_DIAGNOSTIC_ONLY: 'true'
       SCALE_ROWS: '6000'
       SCALE_PERMIT: disposable-pilot-ci
       PGHOSTADDR: ''
@@ -70,7 +73,7 @@ jobs:
           grep -Eq '^[[:space:]]*SYNTHETIC_SCALE_FIXTURE_LOADED[[:space:]]*\|' scale-results/load.log
       - name: Fresh-session recent and full-history SQL diagnostics
         run: |
-          node tests/scalability/diagnostic-packets.mjs
+          node tests/scalability/query-plan-packets.mjs
           failed=0
           for file in scale-results/diagnostics/*.sql; do
             node scripts/run-disposable-psql.mjs --file "$file" 2>&1 | tee "${file%.sql}.log" || failed=1
@@ -78,7 +81,7 @@ jobs:
           done
           exit "$failed"
       - name: Exact role ground truth and bounded query diagnostics
-        if: ${{ !cancelled() && steps.fixture.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.fixture.outcome == 'success' && env.SCALE_DIAGNOSTIC_ONLY != 'true' }}
         run: |
           node scripts/run-disposable-psql.mjs --file tests/database/scalability-ground-truth.sql 2>&1 | tee scale-results/ground-truth.log
           grep -Eq '^[[:space:]]*SCALABILITY_ROLE_GROUND_TRUTH_VERIFIED[[:space:]]*\|' scale-results/ground-truth.log
@@ -86,6 +89,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: scale-sql-6000-validation-${{ github.run_id }}
+          name: scale-sql-6000-diagnostics-${{ github.run_id }}
           path: scale-results
           retention-days: 7
