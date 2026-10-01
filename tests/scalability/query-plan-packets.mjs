@@ -36,7 +36,7 @@ export function buildQueryPlanPackets(source){
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  if(process.argv.length!==2)throw new Error('No custom diagnostic arguments accepted')
- const source=readFileSync('supabase/migrations/202610010006_scoped_summary_plan.sql','utf8')
+ const source=readFileSync('supabase/migrations/202610010007_read_policy_plans.sql','utf8')
  mkdirSync('scale-results/diagnostics',{recursive:true})
  for(const p of buildQueryPlanPackets(source))writeFileSync(`scale-results/diagnostics/${p.name}.sql`,p.sql,{flag:'wx'})
 }

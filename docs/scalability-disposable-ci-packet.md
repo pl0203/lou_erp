@@ -134,3 +134,29 @@ Run [36858223722](https://github.com/pl0203/lou_erp/actions/runs/36858223722) ag
 The next isolated trial keeps parent-set policies in both arms. It changes only the five pilot_active_profile USING/WITH CHECK predicates to scalar SELECT calls of the unchanged STABLE role helper. Permissive policies, row-dependent helpers, role semantics and all other expressions stay protected by exact metadata assertions. The same620-observation read/write/prepared-identity matrix runs before the6k load, including a new rejected drift probe and rollback-to-empty checks.
 
 Each large packet additionally records an actual RLS count plan for delivery lines, separately from the report timing, so InitPlan execution counts can be inspected. Both arms get that same probe; it is not an API sample and it warms shared buffers. The fixed summary, independent KPI totals,60second per-statement limits, separate role packets and final restoration guards remain unchanged. This is still disposable-only diagnostics, with full-role, pooled-session,30k and hosted/API acceptance outstanding.
+
+## Clean installed-candidate validation
+
+The scalar comparison in run [36859858055](https://github.com/pl0203/lou_erp/actions/runs/36859858055) passed the 620-observation matrix and restoration checks. On the same fixture, parent-set alone versus parent-set plus scalar active-profile checks measured admin 2.724→1.594 seconds and manager 4.785→3.856 seconds. Actual count plans showed statement InitPlans running once per occurrence. These are individual SQL observations; the manager result remains above the latency target and does not establish API/browser p95.
+
+The next packet installs one clean candidate and restores mandatory validation. The deployable scalability inventory is exactly:
+
+- `supabase/migrations/202610010001_scalable_order_reads.sql`
+- `supabase/migrations/202610010002_scalable_report_reads.sql`
+- `supabase/migrations/202610010004_scalable_order_lookup_index.sql`
+- `supabase/migrations/202610010007_read_policy_plans.sql`
+
+There is no 202610010003 migration. Existing 202609300003 is the earlier Storage migration. Rejected 202610010005/006 files are retained only under `tests/database/experiments/`, outside automatic migration discovery. The clean candidate never drops an existing index; it rejects named rejected-index state for separate review. 007 atomically guards the exact role, policy, helper source, FK and summary-base contracts; preserves untargeted functions, table/column grants and policies; applies the measured parent-set/scalar predicates; and uses the original report query with fixed typed execution. No authorization helper or permissive policy is rewritten.
+
+Disposable CI alone reconstructs the reviewed hosted-equivalent policy/FK topology before 007. Five negative preflight tests must reject ACL, policy, FK, helper-source and experimental-index drift. Their wrapper executes only the exact preflight inside rollback transactions, never the migration COMMIT. Hosted rollout must inspect the actual catalog and apply no synthetic reconstruction.
+
+Before large loading, the installed candidate must pass the literal 620-case read/write/state matrix and roll back to verified empty state. The unchanged 6,000-PO fixture then runs three bounded public-RPC diagnostics, full-role exact ground truth, and a single-connection pooled regression with 242 successful calls and 33 fail-closed calls across all 11 read RPCs. Each RPC has a separate 60 second statement boundary. The pooled sequence includes six default-mode calls before actor/filter changes, forced-generic calls, inactive/missing/anonymous denial, and restored identity. Exact row/metric expectations come from independent fixture aggregates; existing small parity suites additionally cover ranking, date boundaries and hidden labels.
+
+Required evidence includes every final marker, successful normal security/transaction/concurrency suites, and complete logs even on failure. Explicit bash pipefail and required output markers prevent incomplete SQL from producing a false-green result. Final 6k compilation/correctness/session results are pending until this candidate runs. The fixed 30k candidate follows those gates; fresh-session percentile sampling and actual hosted/API/browser measurements remain separate. No hosted migration approval follows from this packet. 007 rollout must be reviewed separately, and rollback must restore exact prior policies/summary from the approved artifact; 004 should only be removed if deployment records prove this rollout created it.
+
+Candidate migration SHA-256 inventory (source identity, not execution evidence):
+
+- `supabase/migrations/202610010001_scalable_order_reads.sql`: `071ea9280adf79b6ba5c0eb405e7b66706332f2ce2e183a9983a312a025614da`
+- `supabase/migrations/202610010002_scalable_report_reads.sql`: `8a7ee2a24e942f1c0d82d48b3d122ad88b25d48a090a88cc35f194d3882f03e4`
+- `supabase/migrations/202610010004_scalable_order_lookup_index.sql`: `9e8d5afba857af858e743b33a516eaf3f240738f7c2a5ea544f8fdc171ba0088`
+- `supabase/migrations/202610010007_read_policy_plans.sql`: `e81e08c54871fd740df6fa3db11230b360ca5175c11171d2dc3d908d25a23fb5`

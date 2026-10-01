@@ -48,6 +48,7 @@ jobs:
           for file in supabase/migrations/*.sql; do
             if [[ "$file" < supabase/migrations/202610010001_scalable_order_reads.sql ]]; then psql -X -v ON_ERROR_STOP=1 -f "$file"; fi
           done
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/hosted-read-policy-fixture.sql
           psql -X -v ON_ERROR_STOP=1 <<'SQL'
           DO $red$ BEGIN
             BEGIN
@@ -66,6 +67,10 @@ jobs:
           SQL
           for file in supabase/migrations/*.sql; do
             if [[ "$file" < supabase/migrations/202610010001_scalable_order_reads.sql ]]; then continue; fi
+            if [[ "$file" == supabase/migrations/202610010007_read_policy_plans.sql ]]; then
+              node tests/scalability/read-migration-guards.mjs
+              psql -X -v ON_ERROR_STOP=1 -f scale-results/read-migration-guards.sql
+            fi
             psql -X -v ON_ERROR_STOP=1 -f "$file"
           done
       - name: SQL invariants, real role permissions and Storage metadata policies
@@ -76,6 +81,7 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f supabase/tests/security/storage_rls.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/order-transactions.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/visit-transactions.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/scalable-policy-state.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/scalable-index.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/scalable-summary-parity.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/scalable-order-reads.sql

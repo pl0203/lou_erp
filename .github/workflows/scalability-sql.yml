@@ -1,4 +1,4 @@
-name: Disposable scalability SQL diagnostics
+name: Disposable scalability SQL validation
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -17,6 +17,11 @@ on:
       - tests/database/scalar-profile-policy-setup.sql
       - tests/database/parent-set-policy-setup.sql
       - tests/database/parent-set-parity.sql
+      - tests/database/hosted-read-policy-fixture.sql
+      - tests/database/scalable-policy-state.sql
+      - tests/database/scalable-pooled-reads.sql
+      - tests/scalability/final-read-checks.mjs
+      - tests/scalability/read-migration-guards.mjs
       - tests/database/scalability-ground-truth.sql
       - supabase/migrations/202610*.sql
 permissions:
@@ -46,8 +51,6 @@ jobs:
       PGUSER: postgres
       PGPASSWORD: synthetic-ci-only
       PGDATABASE: pilot_test
-      # Controlled diagnostic-only trial; restore full validation before acceptance.
-      SCALE_DIAGNOSTIC_ONLY: 'true'
       SCALE_ROWS: '6000'
       SCALE_PERMIT: disposable-pilot-ci
       PGHOSTADDR: ''
@@ -70,17 +73,21 @@ jobs:
       - name: Load only fresh synthetic schema and reviewed migrations
         run: |
           node scripts/run-disposable-psql.mjs --file tests/database/fixture.sql
-          for file in supabase/migrations/*.sql; do node scripts/run-disposable-psql.mjs --file "$file"; done
-      - name: Verify small hosted-policy parity and rollback to empty
-        id: policy_parity
+          for file in supabase/migrations/*.sql; do
+            if [[ "$file" == supabase/migrations/202610010001_scalable_order_reads.sql ]]; then
+              node scripts/run-disposable-psql.mjs --file tests/database/hosted-read-policy-fixture.sql
+            fi
+            if [[ "$file" == supabase/migrations/202610010007_read_policy_plans.sql ]]; then
+              node tests/scalability/read-migration-guards.mjs
+              node scripts/run-disposable-psql.mjs --file scale-results/read-migration-guards.sql
+            fi
+            node scripts/run-disposable-psql.mjs --file "$file"
+          done
+      - name: Verify installed policy matrix and rollback
         run: |
-          node tests/scalability/scalar-profile-packet.mjs
-          node scripts/run-disposable-psql.mjs --file scale-results/policy-parity.sql 2>&1 | tee scale-results/policy-parity.log
-          grep -Eq '^[[:space:]]*PARENT_SET_DRIFT_GUARD_VERIFIED[[:space:]]*' scale-results/policy-parity.log
-          grep -Eq '^[[:space:]]*SCALAR_PROFILE_DRIFT_GUARD_VERIFIED[[:space:]]*' scale-results/policy-parity.log
-          grep -Eq '^[[:space:]]*SCALAR_PROFILE_POLICY_PARITY_VERIFIED[[:space:]]*' scale-results/policy-parity.log
-          grep -Eq '^[[:space:]]*PARITY_ROLLBACK_EMPTY_VERIFIED[[:space:]]*' scale-results/policy-parity.log
-          grep -Eq '^[[:space:]]*SCALE_DIAGNOSTIC_VERIFIED[[:space:]]*\|' scale-results/policy-parity.log
+          node scripts/run-disposable-psql.mjs --file tests/database/scalable-policy-state.sql 2>&1 | tee scale-results/policy-state.log
+          grep -Eq '^[[:space:]]*FINAL_READ_POLICY_MATRIX_VERIFIED[[:space:]]*' scale-results/policy-state.log
+          grep -Eq '^[[:space:]]*FINAL_READ_POLICY_ROLLBACK_VERIFIED[[:space:]]*' scale-results/policy-state.log
       - name: Emit and load permitted synthetic fixture with actual SQL marker guard
         id: fixture
         run: |
@@ -89,22 +96,27 @@ jobs:
           grep -Eq '^[[:space:]]*SYNTHETIC_SCALE_FIXTURE_LOADED[[:space:]]*\|' scale-results/load.log
       - name: Fresh-session recent and full-history SQL diagnostics
         run: |
-          # Benchmark packet was emitted before the required small parity step.
+          node tests/scalability/final-read-checks.mjs
           failed=0
           for file in scale-results/diagnostics/*.sql; do
             node scripts/run-disposable-psql.mjs --file "$file" 2>&1 | tee "${file%.sql}.log" || failed=1
-            grep -Eq '^[[:space:]]*SCALE_DIAGNOSTIC_VERIFIED[[:space:]]*\|' "${file%.sql}.log" || failed=1
+            grep -Eq '^[[:space:]]*FINAL_READ_DIAGNOSTIC_VERIFIED[[:space:]]*\|' "${file%.sql}.log" || failed=1
           done
           exit "$failed"
       - name: Exact role ground truth and bounded query diagnostics
-        if: ${{ !cancelled() && steps.fixture.outcome == 'success' && env.SCALE_DIAGNOSTIC_ONLY != 'true' }}
+        if: ${{ !cancelled() && steps.fixture.outcome == 'success' }}
         run: |
           node scripts/run-disposable-psql.mjs --file tests/database/scalability-ground-truth.sql 2>&1 | tee scale-results/ground-truth.log
           grep -Eq '^[[:space:]]*SCALABILITY_ROLE_GROUND_TRUTH_VERIFIED[[:space:]]*\|' scale-results/ground-truth.log
+      - name: Same-session repeated reads and identity transitions
+        if: ${{ !cancelled() && steps.fixture.outcome == 'success' }}
+        run: |
+          node scripts/run-disposable-psql.mjs --file tests/database/scalable-pooled-reads.sql 2>&1 | tee scale-results/pooled-reads.log
+          grep -Eq '^[[:space:]]*SCALABLE_POOLED_READS_VERIFIED[[:space:]]*' scale-results/pooled-reads.log
       - name: Preserve synthetic-only evidence, including failures
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: scale-sql-6000-diagnostics-${{ github.run_id }}
+          name: scale-sql-6000-validation-${{ github.run_id }}
           path: scale-results
           retention-days: 7
