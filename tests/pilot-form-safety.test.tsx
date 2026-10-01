@@ -87,7 +87,8 @@ test('browser-style Back can be cancelled then accepted and Forward still works'
   fireEvent.click(await screen.findByRole('button', { name: 'Buang perubahan' }))
   await waitFor(() => expect(router.state.location.pathname).toBe('/elsewhere'))
   await act(() => router.navigate(1))
-  expect(screen.getByText('PO Baru')).toBeTruthy()
+  await waitFor(() => expect(router.state.location.pathname).toBe('/athel/po/new'))
+  expect(await screen.findByText('PO Baru')).toBeTruthy()
   expect(screen.queryByRole('dialog')).toBeNull()
 })
 

@@ -18,7 +18,7 @@ function executeStep(name:string, output:string, status:number) {
   mkdirSync(join(dir,'scale-results/diagnostics'))
   for(const name of ['one','two','three','four'])writeFileSync(join(dir,`scale-results/diagnostics/${name}.sql`),'synthetic command placeholder')
   // Run the actual workflow script, replacing only the external database/fixture commands.
-  const script=stepScript(name).replace(/^.*node tests\/scalability\/(?:generate-fixtures|diagnostic-packets|query-plan-packets).*$/gm,':').replace(/node scripts\/run-disposable-psql\.mjs --file (?:[^ |]+|"[^"]+")/g,`( printf '%s\\n' '${output}'; exit ${status} )`)
+  const script=stepScript(name).replace(/^.*node tests\/scalability\/(?:generate-fixtures|diagnostic-packets|query-plan-packets|summary-ab-packets).*$/gm,':').replace(/node scripts\/run-disposable-psql\.mjs --file (?:[^ |]+|"[^"]+")/g,`( printf '%s\\n' '${output}'; exit ${status} )`)
   const explicitBash=/defaults:\s*\n\s+run:\s*\n\s+shell: bash/.test(workflow)
   return spawnSync('bash',explicitBash?['--noprofile','--norc','-e','-o','pipefail','-c',script]:['-e','-c',script],{cwd:dir,encoding:'utf8'}).status
  }finally{rmSync(dir,{recursive:true,force:true})}
