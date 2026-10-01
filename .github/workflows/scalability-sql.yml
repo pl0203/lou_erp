@@ -1,4 +1,4 @@
-name: Disposable scalability SQL diagnostics
+name: Disposable scalability SQL validation
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -21,6 +21,7 @@ on:
       - tests/database/scalable-policy-state.sql
       - tests/database/scalable-pooled-reads.sql
       - tests/database/scalable-customer-parity.sql
+      - tests/database/scalable-sales-page-parity.sql
       - tests/scalability/final-read-checks.mjs
       - tests/scalability/customer-plan-packets.mjs
       - tests/scalability/sales-plan-packets.mjs
@@ -95,6 +96,10 @@ jobs:
         run: |
           node scripts/run-disposable-psql.mjs --file tests/database/scalable-customer-parity.sql 2>&1 | tee scale-results/customer-parity.log
           grep -Eq '^[[:space:]]*SCALABLE_CUSTOMER_PARITY_VERIFIED[[:space:]]*' scale-results/customer-parity.log
+      - name: Verify sales page parity
+        run: |
+          node scripts/run-disposable-psql.mjs --file tests/database/scalable-sales-page-parity.sql 2>&1 | tee scale-results/sales-parity.log
+          grep -Eq '^[[:space:]]*SCALABLE_SALES_PAGE_PARITY_VERIFIED[[:space:]]*' scale-results/sales-parity.log
       - name: Emit and load permitted synthetic fixture with actual SQL marker guard
         id: fixture
         run: |
@@ -111,14 +116,12 @@ jobs:
           done
           exit "$failed"
       - name: Exact role ground truth and bounded query diagnostics
-        # Diagnostic-only hold; restore unchanged full-role/pooled gates on remedy candidate.
-        if: ${{ false }}
+        if: ${{ !cancelled() && steps.fixture.outcome == 'success' }}
         run: |
           node scripts/run-disposable-psql.mjs --file tests/database/scalability-ground-truth.sql 2>&1 | tee scale-results/ground-truth.log
           grep -Eq '^[[:space:]]*SCALABILITY_ROLE_GROUND_TRUTH_VERIFIED[[:space:]]*\|' scale-results/ground-truth.log
       - name: Same-session repeated reads and identity transitions
-        # Diagnostic-only hold; restore unchanged full-role/pooled gates on remedy candidate.
-        if: ${{ false }}
+        if: ${{ !cancelled() && steps.fixture.outcome == 'success' }}
         run: |
           node scripts/run-disposable-psql.mjs --file tests/database/scalable-pooled-reads.sql 2>&1 | tee scale-results/pooled-reads.log
           grep -Eq '^[[:space:]]*SCALABLE_POOLED_READS_VERIFIED[[:space:]]*' scale-results/pooled-reads.log
@@ -126,6 +129,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: scale-sql-30000-sales-diagnostics-${{ github.run_id }}
+          name: scale-sql-30000-validation-${{ github.run_id }}
           path: scale-results
           retention-days: 7

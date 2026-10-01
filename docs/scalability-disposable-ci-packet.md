@@ -129,7 +129,7 @@ The diagnostic now emits four independent rollback packets (baseline/candidate Ã
 
 ## Isolated scalar active-profile experiment
 
-Run [36858223722](https://github.com/pl0203/lou_erp/actions/runs/36858223722) again passed small parity and restoration. On the same hosted-equivalent6k fixture, both old-policy baseline roles timed out60seconds; the parent-set candidate completed admin2.769seconds and manager4.761seconds with exact KPI and restoration markers. The estimated plans now use hashed visible-parent/header sets, but still evaluate the row-independent active-profile function on large child scans. The overall comparison remains failed because the old baseline timed out; candidate acceptance is still pending.
+Run [36858223722](https://github.com/pl0203/lou_erp/actions/runs/36858223722) again passed small parity and restoration. On the same hosted-equivalent6k fixture, both old-policy baseline roles timed out 60 seconds; the parent-set candidate completed admin2.769seconds and manager4.761seconds with exact KPI and restoration markers. The estimated plans now use hashed visible-parent/header sets, but still evaluate the row-independent active-profile function on large child scans. The overall comparison remains failed because the old baseline timed out; candidate acceptance is still pending.
 
 The next isolated trial keeps parent-set policies in both arms. It changes only the five pilot_active_profile USING/WITH CHECK predicates to scalar SELECT calls of the unchanged STABLE role helper. Permissive policies, row-dependent helpers, role semantics and all other expressions stay protected by exact metadata assertions. The same620-observation read/write/prepared-identity matrix runs before the6k load, including a new rejected drift probe and rollback-to-empty checks.
 
@@ -146,6 +146,7 @@ The next packet installs one clean candidate and restores mandatory validation. 
 - `supabase/migrations/202610010004_scalable_order_lookup_index.sql`
 - `supabase/migrations/202610010007_read_policy_plans.sql`
 - `supabase/migrations/202610010008_customer_delivery_aggregation.sql`
+- `supabase/migrations/202610010009_sales_page_enrichment.sql`
 
 There is no 202610010003 migration. Existing 202609300003 is the earlier Storage migration. Rejected 202610010005/006 files are retained only under `tests/database/experiments/`, outside automatic migration discovery. The clean candidate never drops an existing index; it rejects named rejected-index state for separate review. 007 atomically guards the exact role, policy, helper source, FK and summary-base contracts; preserves untargeted functions, table/column grants and policies; applies the measured parent-set/scalar predicates; and uses the original report query with fixed typed execution. No authorization helper or permissive policy is rewritten.
 
@@ -200,3 +201,14 @@ The 6k pooled matrix took about 6 minutes 11 seconds. The fixed 30k pooled file 
 Run [36873667768](https://github.com/pl0203/lou_erp/actions/runs/36873667768) loaded the exact 30k fixture and passed customer diagnostics and full seven-role ground truth. Pooled validation stopped after 11 successes: five identical manager sales-page calls took 4.27â€“4.33 seconds, then the sixth timed out at 60 seconds inside the RPC before its finish marker. No 40-minute process limit was involved, and no final pooled marker exists. 30k correctness/session acceptance is therefore incomplete. Full-history manager summary calls also took about 36 seconds; passing exact totals does not meet a latency target.
 
 The next source packet is diagnostic-only with unchanged full-role/pooled commands held. Five read-only packets bind the exact 001 sales-page SELECT and verify its installed source hash: custom and generic cost plans, six identical auto-mode cost EXPLAINs with planner counters, and fresh auto/forced-generic actual RPC calls. The same real manager identity, 30k manifest, 15007 matching rows, ten-row page, 60-second statements and rollback/failure markers remain. Session-only nested cost logging accompanies actual RPCs. No policy, helper, index or product-query change is included. The plan must distinguish repeated nullable-label joins from a broader authorization cost before selecting the next narrow remedy; all acceptance commands must return unchanged afterward.
+
+
+## Sales-page late-label trial
+
+Run [36875622342](https://github.com/pl0203/lou_erp/actions/runs/36875622342) confirmed the sales-page plan change: five custom plans followed by one generic plan, with the generic estimating one order and nesting full customer/user scans. Fresh auto completed 4.378 seconds; forced-generic timed out 60 seconds. Customer/user relations are PK-unique nullable labels and do not participate in this RPC's filters, sort or counts.
+
+Candidate 009 therefore keeps matching orders and all filter/count/status logic together, materializes the bounded created_at/id page, then enriches only those rows through the same RLS-filtered nullable joins within the same statement. It does not force planner settings or change helpers/policies. Exact base-body and relation-PK guards precede replacement; signature/defaults/security attributes remain unchanged.
+
+A new rollback-only oracle compares untouched 001 and 009 across all seven roles, five status selections, both own flags, optional customer/visit filters, tied dates, first/second/empty pages. Independent checks retain exact total/status counts and authorized rows whose customer and submitter labels are hidden. The fixture uses a test-only restrictive user-label policy to exercise the latter without granting access. Existing PO punctuation/literal-search tests remain required; the sales RPC has no text-search argument. Full 30k ground truth and unchanged 242+33 pooled gates are restored, with diagnostics bound to 009. Runtime equivalence and improvement remain pending.
+
+Candidate SHA-256: `supabase/migrations/202610010009_sales_page_enrichment.sql`: `40f8109d8e5bb449c2ea65ac54843915d80ac3ecd0431aeff33fb661427edd74`

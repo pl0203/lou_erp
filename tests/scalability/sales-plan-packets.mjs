@@ -40,7 +40,7 @@ EXPLAIN (ANALYZE,BUFFERS,VERBOSE,TIMING OFF) WITH response AS MATERIALIZED(SELEC
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  if(process.argv.length!==2)throw new Error('No custom diagnostic inputs')
- const source=readFileSync('supabase/migrations/202610010001_scalable_order_reads.sql','utf8')
+ const source=readFileSync('supabase/migrations/202610010009_sales_page_enrichment.sql','utf8')
  mkdirSync('scale-results/sales-diagnostics',{recursive:true})
  for(const p of buildSalesPlanPackets(source))writeFileSync(`scale-results/sales-diagnostics/${p.name}.sql`,p.sql,{flag:'wx'})
 }

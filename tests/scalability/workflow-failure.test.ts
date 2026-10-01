@@ -24,6 +24,7 @@ function executeStep(name:string, output:string, status:number) {
  }finally{rmSync(dir,{recursive:true,force:true})}
 }
 const cases=[
+ ['Verify sales page parity','SCALABLE_SALES_PAGE_PARITY_VERIFIED'],
  ['Verify customer report parity','SCALABLE_CUSTOMER_PARITY_VERIFIED'],
  ['Verify installed policy matrix and rollback','FINAL_READ_POLICY_MATRIX_VERIFIED\nFINAL_READ_POLICY_ROLLBACK_VERIFIED'],
  ['Sales page plan diagnostics',' SALES_PLAN_DIAGNOSTIC_VERIFIED | synthetic-case'],
