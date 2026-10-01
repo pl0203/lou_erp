@@ -1,75 +1,9 @@
-import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { supabase } from '../../lib/supabase'
+import { usePagedRead } from '../../lib/reads/usePagedRead'
+import { fetchRevenuePage } from '../../lib/reads/reports'
+import type { CustomerRevenue } from '../../lib/reads/contracts'
+import { formatMoney, moneyPercentage } from '../../lib/reads/money'
+import PaginationControls from '../../components/PaginationControls'
 import GirardNav from '../../components/GirardNav'
-
-type CustomerRevenue = {
-  customer_id: string
-  customer_name: string
-  manager_name: string | null
-  order_count: number
-  total_sales: number
-  last_order_date: string | null
-}
-
-function getDateRange(period: string): { from: string; to: string } {
-  const to = new Date()
-  const from = new Date()
-  if (period === '30d') from.setDate(from.getDate() - 30)
-  else if (period === '90d') from.setDate(from.getDate() - 90)
-  else if (period === '1y') from.setFullYear(from.getFullYear() - 1)
-  return {
-    from: from.toISOString().split('T')[0],
-    to: to.toISOString().split('T')[0],
-  }
-}
-
-async function fetchRevenue(period: string): Promise<CustomerRevenue[]> {
-  const { from, to } = getDateRange(period)
-
-  const { data: orders, error } = await supabase
-    .from('girard_orders')
-    .select('id, customer_id, total_value, created_at, status')
-    .gte('created_at', `${from}T00:00:00`)
-    .lte('created_at', `${to}T23:59:59`)
-    .eq('status', 'approved')
-  if (error) throw error
-
-  const { data: customers } = await supabase
-    .from('customers')
-    .select('id, name')
-
-  const { data: assignments } = await supabase
-    .from('customer_manager_assignments')
-    .select('customer_id, users!customer_manager_assignments_manager_id_fkey(full_name)')
-
-  const customerMap = Object.fromEntries((customers ?? []).map(c => [c.id, c.name]))
-  const assignmentMap = Object.fromEntries(
-    (assignments ?? []).map(a => [a.customer_id, (a as any).users?.full_name])
-  )
-
-  const revenueMap: Record<string, CustomerRevenue> = {}
-  for (const order of orders ?? []) {
-    if (!revenueMap[order.customer_id]) {
-      revenueMap[order.customer_id] = {
-        customer_id: order.customer_id,
-        customer_name: customerMap[order.customer_id] ?? 'Unknown',
-        manager_name: assignmentMap[order.customer_id] ?? null,
-        order_count: 0,
-        total_sales: 0,
-        last_order_date: null,
-      }
-    }
-    revenueMap[order.customer_id].order_count++
-    revenueMap[order.customer_id].total_sales += order.total_value ?? 0
-    if (!revenueMap[order.customer_id].last_order_date ||
-        order.created_at > revenueMap[order.customer_id].last_order_date!) {
-      revenueMap[order.customer_id].last_order_date = order.created_at
-    }
-  }
-
-  return Object.values(revenueMap).sort((a, b) => b.total_sales - a.total_sales)
-}
 
 const PERIODS = [
   { value: '30d', label: '30 hari terakhir' },
@@ -80,9 +14,9 @@ const PERIODS = [
 function RevenueSummaryCards({
   totalSales, totalOrders, topCustomer, revenueLength
 }: {
-  totalSales: number
+  totalSales: string
   totalOrders: number
-  topCustomer: CustomerRevenue | undefined
+  topCustomer: CustomerRevenue | null
   revenueLength: number
 }) {
   return (
@@ -90,7 +24,7 @@ function RevenueSummaryCards({
       <div className="bg-white rounded-xl border border-gray-200 p-5">
         <p className="text-xs text-gray-400 mb-1">Total Penjualan</p>
         <p className="text-2xl font-bold text-gray-900">
-          Rp {(totalSales / 1_000_000).toFixed(1)}M
+          Rp {formatMoney(totalSales, 'millions')}M
         </p>
         <p className="text-xs text-gray-400 mt-1">dari {totalOrders} pesanan</p>
       </div>
@@ -106,7 +40,7 @@ function RevenueSummaryCards({
         </p>
         {topCustomer && (
           <p className="text-xs text-gray-400 mt-1">
-            Rp {(topCustomer.total_sales / 1_000_000).toFixed(1)}M
+            Rp {formatMoney(topCustomer.total_sales, 'millions')}M
           </p>
         )}
       </div>
@@ -115,10 +49,11 @@ function RevenueSummaryCards({
 }
 
 function RevenueTable({
-  revenue, totalSales
+  revenue, totalSales, offset
 }: {
   revenue: CustomerRevenue[]
-  totalSales: number
+  offset: number
+  totalSales: string
 }) {
   return (
     <>
@@ -144,12 +79,12 @@ function RevenueTable({
               <tr key={r.customer_id} className="border-b border-gray-50 hover:bg-gray-50">
                 <td className="px-5 py-4">
                   <span className={`text-sm font-bold ${
-                    i === 0 ? 'text-yellow-500'
-                    : i === 1 ? 'text-gray-400'
-                    : i === 2 ? 'text-orange-400'
+                    i + offset === 0 ? 'text-yellow-500'
+                    : i + offset === 1 ? 'text-gray-400'
+                    : i + offset === 2 ? 'text-orange-400'
                     : 'text-gray-300'
                   }`}>
-                    #{i + 1}
+                    #{i + offset + 1}
                   </span>
                 </td>
                 <td className="px-5 py-4 font-medium text-gray-900">{r.customer_name}</td>
@@ -163,18 +98,18 @@ function RevenueTable({
                     : '—'}
                 </td>
                 <td className="px-5 py-4 text-right font-semibold text-gray-900">
-                  Rp {(r.total_sales / 1_000_000).toFixed(2)}M
+                  Rp {formatMoney(r.total_sales, 'millions')}M
                 </td>
                 <td className="px-5 py-4 text-right">
                   <div className="flex items-center justify-end gap-2">
                     <div className="w-16 bg-gray-100 rounded-full h-1.5">
                       <div
                         className="bg-green-500 h-1.5 rounded-full"
-                        style={{ width: `${totalSales > 0 ? (r.total_sales / totalSales) * 100 : 0}%` }}
+                        style={{ width: `${moneyPercentage(r.total_sales, totalSales, 1)}%` }}
                       />
                     </div>
                     <span className="text-xs text-gray-500 w-8 text-right">
-                      {totalSales > 0 ? Math.round((r.total_sales / totalSales) * 100) : 0}%
+                      {moneyPercentage(r.total_sales, totalSales)}%
                     </span>
                   </div>
                 </td>
@@ -187,7 +122,7 @@ function RevenueTable({
                 Total
               </td>
               <td className="px-5 py-3 text-right font-bold text-gray-900">
-                Rp {(totalSales / 1_000_000).toFixed(2)}M
+                Rp {formatMoney(totalSales, 'millions')}M
               </td>
               <td className="px-5 py-3 text-right text-xs text-gray-400">100%</td>
             </tr>
@@ -203,28 +138,28 @@ function RevenueTable({
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className={`text-sm font-bold ${
-                    i === 0 ? 'text-yellow-500'
-                    : i === 1 ? 'text-gray-400'
-                    : i === 2 ? 'text-orange-400'
+                    i + offset === 0 ? 'text-yellow-500'
+                    : i + offset === 1 ? 'text-gray-400'
+                    : i + offset === 2 ? 'text-orange-400'
                     : 'text-gray-300'
-                  }`}>#{i + 1}</span>
+                  }`}>#{i + offset + 1}</span>
                   <p className="font-semibold text-gray-900 truncate">{r.customer_name}</p>
                 </div>
                 <p className="text-xs text-gray-400 mt-0.5">{r.manager_name ?? 'Tanpa manajer'}</p>
               </div>
               <p className="font-bold text-gray-900 ml-3 shrink-0">
-                Rp {(r.total_sales / 1_000_000).toFixed(1)}M
+                Rp {formatMoney(r.total_sales, 'millions')}M
               </p>
             </div>
             <div className="flex items-center gap-2">
               <div className="flex-1 bg-gray-100 rounded-full h-1.5">
                 <div
                   className="bg-green-500 h-1.5 rounded-full"
-                  style={{ width: `${totalSales > 0 ? (r.total_sales / totalSales) * 100 : 0}%` }}
+                  style={{ width: `${moneyPercentage(r.total_sales, totalSales, 1)}%` }}
                 />
               </div>
               <span className="text-xs text-gray-500">
-                {totalSales > 0 ? Math.round((r.total_sales / totalSales) * 100) : 0}%
+                {moneyPercentage(r.total_sales, totalSales)}%
               </span>
               <span className="text-xs text-gray-400">•</span>
               <span className="text-xs text-gray-400">{r.order_count} pesanan</span>
@@ -237,124 +172,19 @@ function RevenueTable({
 }
 
 export default function GirardRevenue() {
-  const [period, setPeriod] = useState('30d')
-
-  const { data: revenue, isLoading } = useQuery({
-    queryKey: ['revenue', period],
-    queryFn: () => fetchRevenue(period),
-  })
-
-  const totalSales  = revenue?.reduce((sum, r) => sum + r.total_sales, 0) ?? 0
-  const totalOrders = revenue?.reduce((sum, r) => sum + r.order_count, 0) ?? 0
-  const topCustomer = revenue?.[0]
-
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <GirardNav />
-
-      <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900">Penjualan dari Lapangan</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Penjualan dari pesanan sales lapangan</p>
-        </div>
-        <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-          {PERIODS.map(p => (
-            <button
-              key={p.value}
-              onClick={() => setPeriod(p.value)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                period === p.value
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="px-4 md:px-8 py-6 space-y-6">
-        <RevenueSummaryCards
-          totalSales={totalSales}
-          totalOrders={totalOrders}
-          topCustomer={topCustomer}
-          revenueLength={revenue?.length ?? 0}
-        />
-
-        {isLoading && (
-          <div className="text-center text-gray-400 text-sm py-12">Memuat data penjualan...</div>
-        )}
-        {!isLoading && (!revenue || revenue.length === 0) && (
-          <div className="text-center py-12">
-            <p className="text-gray-400 text-sm">Tidak ada data penjualan untuk periode ini.</p>
-            <p className="text-gray-300 text-xs mt-1">Pesanan perlu disetujui untuk muncul di sini.</p>
-          </div>
-        )}
-        {!isLoading && revenue && revenue.length > 0 && (
-          <RevenueTable revenue={revenue} totalSales={totalSales} />
-        )}
-      </div>
-    </div>
-  )
+  return <div className="min-h-screen bg-gray-50"><GirardNav /><RevenueContent /></div>
 }
-
-// ─── Named export for Dashboard ───────────────────────────────────────────────
 export function RevenueContent() {
-  const [period, setPeriod] = useState('30d')
-
-  const { data: revenue, isLoading } = useQuery({
-    queryKey: ['revenue', period],
-    queryFn: () => fetchRevenue(period),
-  })
-
-  const totalSales  = revenue?.reduce((sum, r) => sum + r.total_sales, 0) ?? 0
-  const totalOrders = revenue?.reduce((sum, r) => sum + r.order_count, 0) ?? 0
-  const topCustomer = revenue?.[0]
-
-  return (
-    <div className="px-4 md:px-8 py-6 space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900">Penjualan dari Lapangan</h2>
-          <p className="text-sm text-gray-500 mt-0.5">Penjualan dari pesanan sales lapangan</p>
-        </div>
-        <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-          {PERIODS.map(p => (
-            <button
-              key={p.value}
-              onClick={() => setPeriod(p.value)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                period === p.value
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <RevenueSummaryCards
-        totalSales={totalSales}
-        totalOrders={totalOrders}
-        topCustomer={topCustomer}
-        revenueLength={revenue?.length ?? 0}
-      />
-
-      {isLoading && (
-        <div className="text-center text-gray-400 text-sm py-12">Memuat data penjualan...</div>
-      )}
-      {!isLoading && (!revenue || revenue.length === 0) && (
-        <div className="text-center py-12">
-          <p className="text-gray-400 text-sm">Tidak ada data penjualan untuk periode ini.</p>
-          <p className="text-gray-300 text-xs mt-1">Pesanan perlu disetujui untuk muncul di sini.</p>
-        </div>
-      )}
-      {!isLoading && revenue && revenue.length > 0 && (
-        <RevenueTable revenue={revenue} totalSales={totalSales} />
-      )}
+  const { data, filters, setFilters, setPage, isPending, isError, refetch } = usePagedRead('revenue', { period: '30d' }, (filters, page, signal) => fetchRevenuePage(filters.period, page, signal))
+  return <div className="px-4 md:px-8 py-6 space-y-6">
+    <div className="flex items-center justify-between flex-wrap gap-3">
+      <div><h2 className="text-lg font-semibold text-gray-900">Penjualan dari Lapangan</h2><p className="text-sm text-gray-500 mt-0.5">Penjualan dari pesanan sales lapangan</p></div>
+      <div className="flex gap-1 bg-gray-100 rounded-lg p-1">{PERIODS.map(period => <button key={period.value} onClick={() => setFilters({ period: period.value })} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${filters.period === period.value ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>{period.label}</button>)}</div>
     </div>
-  )
+    {isError ? <div role="alert" className="text-red-600">Data penjualan tidak tersedia. <button onClick={() => refetch()} className="underline">Coba lagi</button></div> : !data ? <p className="text-center text-gray-400 text-sm py-12">Memuat data penjualan...</p> : <>
+      <PaginationControls page={data.page} total={data.total} pageSize={data.page_size} pending={isPending} onPageChange={setPage} />
+      <RevenueSummaryCards totalSales={data.summary.total_sales} totalOrders={data.summary.total_orders} topCustomer={data.summary.top_customer} revenueLength={data.summary.active_customers} />
+      {data.items.length === 0 ? <div className="text-center py-12"><p className="text-gray-400 text-sm">Tidak ada data penjualan untuk periode ini.</p><p className="text-gray-300 text-xs mt-1">Pesanan perlu disetujui untuk muncul di sini.</p></div> : <RevenueTable revenue={data.items} totalSales={data.summary.total_sales} offset={(data.page - 1) * data.page_size} />}
+    </>}
+  </div>
 }

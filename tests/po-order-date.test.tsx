@@ -6,9 +6,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 const mocks = vi.hoisted(() => ({ rpc: vi.fn(), navigate: vi.fn() }))
 vi.mock('../src/lib/supabase', () => ({ supabase: {
   rpc: mocks.rpc,
-  from: (table: string) => ({ select: () => ({ order: async () => ({
-    data: table === 'customers' ? [{ id: 'dummy-customer', name: 'Dummy customer', pricing_tier: 'luar_kota' }] : [], error: null,
-  }) }) }),
+  from: (table: string) => {
+    const rows = table === 'customers' ? [{ id: 'dummy-customer', name: 'Dummy customer', pricing_tier: 'luar_kota' }] : []
+    let from = 0, to = 499
+    const q: any = { then: (resolve: any) => Promise.resolve({ data: rows.slice(from, to + 1), count: rows.length, error: null }).then(resolve) }
+    q.select = q.order = q.abortSignal = () => q
+    q.range = (start: number, end: number) => { from = start; to = end; return q }
+    return q
+  },
 } }))
 vi.mock('../src/lib/AuthContext', () => ({ useAuth: () => ({ user: { id: 'dummy-actor' } }) }))
 vi.mock('../src/components/AthelNav', () => ({ default: () => null }))

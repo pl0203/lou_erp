@@ -8,6 +8,7 @@
     "build": "node scripts/verify-preview-backend.mjs && vite build",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:scalability": "vitest run tests/scalability",
     "typecheck": "tsc --noEmit -p tsconfig.app.json"
   },
   "dependencies": {

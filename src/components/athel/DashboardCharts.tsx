@@ -1,5 +1,6 @@
 import { useId, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
+import { moneyPercentage, moneyToChartNumber } from '../../lib/reads/money'
 import type { DashboardData } from '../../pages/athel/Dashboard'
 import EChart from '../charts/EChart'
 import type { ChartZoomEvent } from '../charts/EChart'
@@ -42,7 +43,7 @@ function MonthlyChart({ series }: { series: DashboardData['monthlySeries'] }) {
   return <ChartCard title="PO vs Pengiriman Bulanan" subtitle="Rolling 12 bulan · bulan berjalan di sisi kanan">
     <SeriesControls items={[{ name: 'Total PO', color: CHART_COLORS.po }, { name: 'Terkirim', color: CHART_COLORS.delivered }]} selected={selected} onToggle={name => setSelected(previous => ({ ...previous, [name]: !previous[name as keyof typeof previous] }))} />
     <div className="mt-3"><EChart label="PO vs Pengiriman Bulanan" option={option} height={300} /></div>
-    {series.every(item => item.poValue === 0 && item.deliveredValue === 0) && <p className="mt-1 text-xs text-slate-500">Belum ada nilai PO atau pengiriman pada periode ini.</p>}
+    {series.every(item => moneyToChartNumber(item.poValue) === 0 && moneyToChartNumber(item.deliveredValue) === 0) && <p className="mt-1 text-xs text-slate-500">Belum ada nilai PO atau pengiriman pada periode ini.</p>}
     <ChartData caption="PO vs Pengiriman Bulanan" headers={['Bulan', 'Total PO', 'Terkirim']} rows={series.map(item => [item.label, currency(item.poValue), currency(item.deliveredValue)])} />
   </ChartCard>
 }
@@ -71,19 +72,18 @@ function DailyChart({ series }: { series: DashboardData['dailySeries'] }) {
       </div>
       <button type="button" onClick={() => setWindow({ start: 0, end: last })} className="mt-3 min-h-9 rounded-md border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 focus-visible:outline-2 focus-visible:outline-blue-600">Tampilkan semua tanggal</button>
     </details>}
-    {series.every(item => item.deliveredValue === 0 && item.sjCount === 0) && <p className="mt-2 text-xs text-slate-500">Belum ada pengiriman pada periode ini.</p>}
+    {series.every(item => moneyToChartNumber(item.deliveredValue) === 0 && item.sjCount === 0) && <p className="mt-2 text-xs text-slate-500">Belum ada pengiriman pada periode ini.</p>}
     <ChartData caption="Tren Pengiriman Harian" headers={['Tanggal', 'Nilai terkirim', 'Nomor SJ']} rows={series.map(item => [item.label, currency(item.deliveredValue), count(item.sjCount)])} />
   </ChartCard>
 }
 
-function CustomerChart({ items }: { items: DashboardData['customerShare'] }) {
-  const option = useMemo(() => customerOptions(items), [items])
-  const total = items.reduce((sum, item) => sum + item.value, 0)
+function CustomerChart({ items, total }: { items: DashboardData['customerShare']; total: string }) {
+  const option = useMemo(() => customerOptions(items, total), [items, total])
   return <ChartCard title="Kontribusi Customer" subtitle="Proporsi nilai PO · 5 customer teratas dan lainnya">
     {items.length === 0 ? <p className="grid h-80 place-items-center text-sm text-slate-400">Belum ada data pada filter ini.</p> : <>
       <div className="mt-4 flex flex-wrap items-baseline gap-x-2"><span className="text-xl font-semibold tracking-tight text-slate-900">{currency(total)}</span><span className="text-xs text-slate-500">total nilai PO</span></div>
       <EChart label="Kontribusi Customer" option={option} height={300} />
-      <ChartData caption="Kontribusi Customer" headers={['Customer', 'Total PO', 'Proporsi']} rows={items.map(item => [item.label, currency(item.value), percent(item.value, total)])} />
+      <ChartData caption="Kontribusi Customer" headers={['Customer', 'Total PO', 'Proporsi']} rows={items.map(item => [item.label, currency(item.value), `${moneyPercentage(item.value, total, 1)}%`])} />
     </>}
   </ChartCard>
 }
@@ -107,7 +107,7 @@ export default function DashboardCharts({ data }: { data: DashboardData }) {
   const dailyKey = `${data.dailySeries[0]?.key}:${data.dailySeries.at(-1)?.key}:${data.dailySeries.length}`
   return <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
     <MonthlyChart series={data.monthlySeries} />
-    <CustomerChart items={data.customerShare} />
+    <CustomerChart items={data.customerShare} total={data.metrics.totalPOValue} />
     <DailyChart key={dailyKey} series={data.dailySeries} />
     <StatusChart items={data.statusBreakdown} />
   </div>

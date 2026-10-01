@@ -1,3 +1,5 @@
+import ReadFailure from '../../components/ReadFailure'
+import { readCompleteQuery } from '../../lib/reads/completeQuery'
 import TransactionRecovery from '../../components/TransactionRecovery'
 import { createTransactionSender, useTransactionSender } from '../../lib/orderTransactions'
 import type { TransactionSender } from '../../lib/orderTransactions'
@@ -5,7 +7,7 @@ import { validateOrderLines } from '../../lib/orderValidation'
 import { hasOrderItemChanges, useUnsavedChanges } from '../../lib/useUnsavedChanges'
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import AthelNav from '../../components/AthelNav'
 
@@ -50,22 +52,22 @@ const TIER_LABELS: Record<string, string> = {
   depo_bangunan: 'Depo Bangunan',
 }
 
-async function fetchCustomers(): Promise<Customer[]> {
-  const { data, error } = await supabase
+async function fetchCustomers(signal?: AbortSignal): Promise<Customer[]> {
+  const data = await readCompleteQuery((offset, limit) => supabase
     .from('customers')
-    .select('id, name, pricing_tier')
-    .order('name')
-  if (error) throw error
-  return data
+    .select('id, name, pricing_tier', { count: 'exact' })
+    .order('id')
+    .range(offset, offset + limit - 1), row => row.id, signal)
+  return data.sort((a, b) => a.name.localeCompare(b.name))
 }
 
-async function fetchProducts(): Promise<Product[]> {
-  const { data, error } = await supabase
+async function fetchProducts(signal?: AbortSignal): Promise<Product[]> {
+  const data = await readCompleteQuery((offset, limit) => supabase
     .from('products')
-    .select('id, name, sku, size, unit_price, harga_pokok, luar_kota, dalam_kota, depo_bangunan')
-    .order('name')
-  if (error) throw error
-  return data
+    .select('id, name, sku, size, unit_price, harga_pokok, luar_kota, dalam_kota, depo_bangunan', { count: 'exact' })
+    .order('id')
+    .range(offset, offset + limit - 1), row => row.id, signal)
+  return data.sort((a, b) => a.name.localeCompare(b.name))
 }
 
 export async function createPO(payload: {
@@ -138,6 +140,7 @@ function SKULookup({
 
 export default function PONew() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const sendTransaction = useTransactionSender('new-po')
   const [customerId, setCustomerId] = useState('')
   const [poNumber, setPoNumber] = useState('')
@@ -149,12 +152,17 @@ export default function PONew() {
   const itemsDirty = hasOrderItemChanges(lineItems)
   const unsaved = useUnsavedChanges(!!customerId || !!poNumber || !!expectedDelivery || !!notes || orderDate !== initialOrderDate || itemsDirty)
 
-  const { data: customers } = useQuery({ queryKey: ['customers'], queryFn: fetchCustomers })
-  const { data: products } = useQuery({ queryKey: ['products'], queryFn: fetchProducts })
+  const { data: customers, isError: customerReadError, refetch: retryCustomers } = useQuery({ queryKey: ['customers'], queryFn: ({ signal }) => fetchCustomers(signal) })
+  const { data: products, isError: productReadError, refetch: retryProducts } = useQuery({ queryKey: ['products', 'complete', 'po-new'], queryFn: ({ signal }) => fetchProducts(signal) })
+
+  const onCommitted = (po: { id: string }) => {
+    queryClient.invalidateQueries()
+    unsaved.runWithoutPrompt(() => navigate(`/athel/po/${po.id}`))
+  }
 
   const mutation = useMutation({
     mutationFn: (payload: Parameters<typeof createPO>[0]) => createPO(payload, sendTransaction),
-    onSuccess: po => unsaved.runWithoutPrompt(() => navigate(`/athel/po/${po.id}`)),
+    onSuccess: onCommitted,
   })
 
   // Get selected customer's pricing tier
@@ -200,7 +208,8 @@ export default function PONew() {
     <div className="min-h-screen bg-gray-50">
       {unsaved.dialog}
       <AthelNav />
-        <TransactionRecovery send={sendTransaction} onCommitted={result => unsaved.runWithoutPrompt(() => navigate(`/athel/po/${result.id}`))} />
+      {(customerReadError || productReadError) && <ReadFailure onRetry={() => { void retryCustomers(); void retryProducts() }} />}
+        <TransactionRecovery send={sendTransaction} onCommitted={onCommitted} />
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center gap-4">
         <button onClick={() => navigate('/athel/po')} className="text-gray-400 hover:text-gray-600 text-sm">
           ← Kembali
@@ -394,7 +403,7 @@ export default function PONew() {
           </button>
           <button
             onClick={handleSubmit}
-            disabled={mutation.isPending}
+            disabled={mutation.isPending || customerReadError || productReadError}
             className="px-5 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 transition-colors"
           >
             {mutation.isPending ? 'Menyimpan...' : 'Simpan PO'}

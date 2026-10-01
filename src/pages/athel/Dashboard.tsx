@@ -1,7 +1,10 @@
-import { calendarDateKey, parseCalendarDate } from '../../lib/calendarDate'
+import { calendarDateKey } from '../../lib/calendarDate'
 import { lazy, Suspense, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { supabase } from '../../lib/supabase'
+import { fetchDashboardData } from '../../lib/reads/reports'
+export { displayDay, rangeDays, rollingMonthKeys } from '../../lib/reads/reports'
+export type { DashboardData } from '../../lib/reads/reports'
+import { formatMoney, formatCompactMoney, moneyPercentage } from '../../lib/reads/money'
 import AthelNav from '../../components/AthelNav'
 
 const DashboardCharts = lazy(() => import('../../components/athel/DashboardCharts').catch(() => ({
@@ -13,396 +16,16 @@ const DashboardCharts = lazy(() => import('../../components/athel/DashboardChart
 type FilterStatus = 'all' | 'confirm' | 'in_progress' | 'complete' | 'cancelled'
 type FulfillmentFilter = 'all' | 'undelivered' | 'partial' | 'complete'
 
-type PurchaseOrder = {
-  id: string
-  po_number: string
-  status: string
-  order_date: string
-  total_value: number
-  customer_id: string | null
-}
-
-type Customer = {
-  id: string
-  name: string | null
-}
-
-type POLineItem = {
-  id: string
-  purchase_order_id: string
-  product_name: string
-  sku: string | null
-  quantity: number
-  unit_price: number
-  line_total: number | null
-}
-
-type SuratJalan = {
-  id: string
-  purchase_order_id: string
-  sj_date: string
-}
-
-type SJLineItem = {
-  surat_jalan_id: string
-  po_line_item_id: string
-  quantity_delivered: number
-}
-
-export type DashboardData = {
-  metrics: {
-    totalPOCount: number
-    totalPOValue: number
-    deliveredValue: number
-    outstandingValue: number
-    averagePOValue: number
-    completedPOCount: number
-  }
-  customerShare: { label: string; value: number; color: string }[]
-  monthlySeries: { key: string; label: string; poValue: number; deliveredValue: number }[]
-  dailySeries: { key: string; label: string; deliveredValue: number; sjCount: number }[]
-  statusBreakdown: { label: string; value: number; color: string }[]
-  topCustomers: { rank: number; name: string; poValue: number; deliveredValue: number; fulfillmentRate: number }[]
-  outstandingItems: { rank: number; sku: string; productName: string; outstandingQty: number; outstandingValue: number }[]
-}
-
-const DONUT_COLORS = ['#3b82f6', '#10b981', '#f97316', '#8b5cf6', '#ef4444', '#64748b']
-const STATUS_META: Record<string, { label: string; color: string }> = {
-  confirm: { label: 'Confirm', color: '#3b82f6' },
-  in_progress: { label: 'In Progress', color: '#f59e0b' },
-  complete: { label: 'Complete', color: '#10b981' },
-  cancelled: { label: 'Cancelled', color: '#94a3b8' },
-}
-
-function formatCurrency(value: number): string {
-  return `Rp${value.toLocaleString('id-ID')}`
-}
-
-function formatCompactCurrency(value: number): string {
-  if (value >= 1_000_000_000) return `Rp${(value / 1_000_000_000).toFixed(2)}B`
-  if (value >= 1_000_000) return `Rp${(value / 1_000_000).toFixed(1)}M`
-  if (value >= 1_000) return `Rp${(value / 1_000).toFixed(0)}K`
-  return `Rp${value.toLocaleString('id-ID')}`
-}
-
-function formatPercent(value: number): string {
-  return `${value.toFixed(1)}%`
-}
-
+const formatCurrency = (value: string) => `Rp${formatMoney(value, 'full')}`
+const formatCompactCurrency = formatCompactMoney
+const formatPercent = (value: number) => `${value.toFixed(1)}%`
 function getFirstDayOfMonth(offset = 0): string {
   const date = new Date()
   date.setMonth(date.getMonth() + offset, 1)
   date.setHours(0, 0, 0, 0)
   return calendarDateKey(date)
 }
-
-function getToday(): string {
-  return calendarDateKey()
-}
-
-function startOfMonth(date: Date): Date {
-  return new Date(date.getFullYear(), date.getMonth(), 1)
-}
-
-function subtractMonths(date: Date, months: number): Date {
-  return new Date(date.getFullYear(), date.getMonth() - months, 1)
-}
-
-function minDate(a: string, b: string): string {
-  return a < b ? a : b
-}
-
-function monthKey(dateStr: string): string {
-  const date = parseCalendarDate(dateStr)
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-}
-
-function dayKey(dateStr: string): string {
-  return dateStr.slice(0, 10)
-}
-
-function displayMonth(key: string): string {
-  const [year, month] = key.split('-').map(Number)
-  return new Date(year, month - 1, 1).toLocaleDateString('id-ID', { month: 'short', year: 'numeric' })
-}
-
-export function displayDay(key: string): string {
-  return parseCalendarDate(key).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
-}
-
-function rangeMonths(start: string, end: string): string[] {
-  const result: string[] = []
-  const cursor = parseCalendarDate(start)
-  cursor.setDate(1)
-  const limit = parseCalendarDate(end)
-  limit.setDate(1)
-
-  while (cursor <= limit) {
-    result.push(monthKey(calendarDateKey(cursor)))
-    cursor.setMonth(cursor.getMonth() + 1)
-  }
-  return result
-}
-
-export function rollingMonthKeys(months: number): string[] {
-  const currentMonth = startOfMonth(new Date())
-  const start = subtractMonths(currentMonth, months - 1)
-  return rangeMonths(calendarDateKey(start), calendarDateKey(currentMonth))
-}
-
-export function rangeDays(start: string, end: string): string[] {
-  const result: string[] = []
-  const cursor = parseCalendarDate(start)
-  const limit = parseCalendarDate(end)
-  while (cursor <= limit) {
-    result.push(dayKey(calendarDateKey(cursor)))
-    cursor.setDate(cursor.getDate() + 1)
-  }
-  return result
-}
-
-async function fetchDashboardData(
-  startDate: string,
-  endDate: string,
-  status: FilterStatus,
-  fulfillment: FulfillmentFilter
-): Promise<DashboardData> {
-  const rolling12Start = calendarDateKey(subtractMonths(startOfMonth(new Date()), 11))
-  const poFetchStart = minDate(startDate, rolling12Start)
-
-  let poQuery = supabase
-    .from('purchase_orders')
-    .select('id, po_number, status, order_date, total_value, customer_id')
-    .gte('order_date', poFetchStart)
-    .lte('order_date', endDate)
-    .order('order_date', { ascending: true })
-
-  if (status !== 'all') poQuery = poQuery.eq('status', status)
-
-  const { data: poData, error: poError } = await poQuery
-  if (poError) throw poError
-
-  const allPurchaseOrders = (poData ?? []) as PurchaseOrder[]
-  const purchaseOrders = allPurchaseOrders.filter(po => po.order_date >= startDate && po.order_date <= endDate)
-  const poIds = allPurchaseOrders.map(po => po.id)
-  const customerIds = [...new Set(allPurchaseOrders.map(po => po.customer_id).filter(Boolean))] as string[]
-
-  let customers: Customer[] = []
-  if (customerIds.length > 0) {
-    const { data: customerData, error: customerError } = await supabase
-      .from('customers')
-      .select('id, name')
-      .in('id', customerIds)
-
-    if (customerError) throw customerError
-    customers = (customerData ?? []) as Customer[]
-  }
-
-  let lineItems: POLineItem[] = []
-  let sjList: SuratJalan[] = []
-  let sjLineItems: SJLineItem[] = []
-
-  if (poIds.length > 0) {
-    const [{ data: liData, error: liError }, { data: sjData, error: sjError }] = await Promise.all([
-      supabase
-        .from('po_line_items')
-        .select('id, purchase_order_id, product_name, sku, quantity, unit_price, line_total')
-        .in('purchase_order_id', poIds),
-      supabase
-        .from('surat_jalan')
-        .select('id, purchase_order_id, sj_date')
-      .is('voided_at', null)
-        .in('purchase_order_id', poIds)
-        .order('sj_date', { ascending: true }),
-    ])
-
-    if (liError) throw liError
-    if (sjError) throw sjError
-    lineItems = (liData ?? []) as POLineItem[]
-    sjList = (sjData ?? []) as SuratJalan[]
-
-    const sjIds = sjList.map(sj => sj.id)
-    if (sjIds.length > 0) {
-      const { data: sjiData, error: sjiError } = await supabase
-        .from('sj_line_items')
-        .select('surat_jalan_id, po_line_item_id, quantity_delivered')
-        .in('surat_jalan_id', sjIds)
-
-      if (sjiError) throw sjiError
-      sjLineItems = (sjiData ?? []) as SJLineItem[]
-    }
-  }
-
-  const customerNameById = Object.fromEntries(customers.map(customer => [customer.id, customer.name ?? 'Tanpa Pelanggan']))
-  const lineItemById = Object.fromEntries(lineItems.map(item => [item.id, item]))
-  const suratJalanById = Object.fromEntries(sjList.map(sj => [sj.id, sj]))
-
-  const deliveredByLineId: Record<string, number> = {}
-  const deliveredValueByPO: Record<string, number> = {}
-  const deliveredValueByDay: Record<string, number> = {}
-  const distinctSJByDay: Record<string, Set<string>> = {}
-  const deliveredValueByMonth: Record<string, number> = {}
-
-  for (const line of sjLineItems) {
-    const sj = suratJalanById[line.surat_jalan_id]
-    const poLineItem = lineItemById[line.po_line_item_id]
-    if (!sj || !poLineItem) continue
-
-    const sjDay = dayKey(sj.sj_date)
-    const sjMonth = monthKey(sj.sj_date)
-
-    deliveredByLineId[line.po_line_item_id] = (deliveredByLineId[line.po_line_item_id] ?? 0) + (line.quantity_delivered ?? 0)
-
-    const lineValue = (line.quantity_delivered ?? 0) * (poLineItem.unit_price ?? 0)
-    deliveredValueByPO[sj.purchase_order_id] = (deliveredValueByPO[sj.purchase_order_id] ?? 0) + lineValue
-
-    if (sj.sj_date >= startDate && sj.sj_date <= endDate) {
-      deliveredValueByDay[sjDay] = (deliveredValueByDay[sjDay] ?? 0) + lineValue
-      if (!distinctSJByDay[sjDay]) distinctSJByDay[sjDay] = new Set()
-      distinctSJByDay[sjDay].add(sj.id)
-    }
-    if (sj.sj_date >= rolling12Start && sj.sj_date <= endDate) {
-      deliveredValueByMonth[sjMonth] = (deliveredValueByMonth[sjMonth] ?? 0) + lineValue
-    }
-  }
-
-  const poTotalsByLine: Record<string, number> = {}
-  const poOutstandingValue: Record<string, number> = {}
-  const poOutstandingQty: Record<string, number> = {}
-  const outstandingItemMap: Record<string, { sku: string; productName: string; outstandingQty: number; outstandingValue: number }> = {}
-
-  for (const item of lineItems) {
-    const orderedQty = item.quantity ?? 0
-    const deliveredQty = deliveredByLineId[item.id] ?? 0
-    const outstandingQty = Math.max(0, orderedQty - deliveredQty)
-    const lineTotal = item.line_total ?? orderedQty * (item.unit_price ?? 0)
-    const outstandingValue = outstandingQty * (item.unit_price ?? 0)
-
-    poTotalsByLine[item.purchase_order_id] = (poTotalsByLine[item.purchase_order_id] ?? 0) + lineTotal
-    poOutstandingValue[item.purchase_order_id] = (poOutstandingValue[item.purchase_order_id] ?? 0) + outstandingValue
-    poOutstandingQty[item.purchase_order_id] = (poOutstandingQty[item.purchase_order_id] ?? 0) + outstandingQty
-
-    if (outstandingQty > 0) {
-      const outstandingKey = item.sku ?? item.product_name
-      if (!outstandingItemMap[outstandingKey]) {
-        outstandingItemMap[outstandingKey] = {
-          sku: item.sku ?? '—',
-          productName: item.product_name,
-          outstandingQty: 0,
-          outstandingValue: 0,
-        }
-      }
-      outstandingItemMap[outstandingKey].outstandingQty += outstandingQty
-      outstandingItemMap[outstandingKey].outstandingValue += outstandingValue
-    }
-  }
-
-  const filteredPOs = purchaseOrders.filter(po => {
-    const outstandingQty = poOutstandingQty[po.id] ?? 0
-    const deliveredValue = deliveredValueByPO[po.id] ?? 0
-    const totalValue = po.total_value ?? poTotalsByLine[po.id] ?? 0
-
-    if (fulfillment === 'all') return true
-    if (fulfillment === 'undelivered') return deliveredValue === 0
-    if (fulfillment === 'complete') return outstandingQty === 0 && totalValue > 0
-    return deliveredValue > 0 && outstandingQty > 0
-  })
-
-  const totalPOValue = filteredPOs.reduce((sum, po) => sum + (po.total_value ?? 0), 0)
-  const deliveredValue = filteredPOs.reduce((sum, po) => sum + (deliveredValueByPO[po.id] ?? 0), 0)
-  const outstandingValue = filteredPOs.reduce((sum, po) => sum + (poOutstandingValue[po.id] ?? 0), 0)
-
-  const customerMap: Record<string, { name: string; poValue: number; deliveredValue: number }> = {}
-  const statusCounts: Record<string, number> = {}
-  const monthlyPOValue: Record<string, number> = {}
-
-  const filteredPOIds = new Set(filteredPOs.map(po => po.id))
-
-  for (const po of filteredPOs) {
-    const customerId = po.customer_id ?? po.id
-    const customerName = po.customer_id ? (customerNameById[po.customer_id] ?? 'Tanpa Pelanggan') : 'Tanpa Pelanggan'
-    if (!customerMap[customerId]) {
-      customerMap[customerId] = { name: customerName, poValue: 0, deliveredValue: 0 }
-    }
-    customerMap[customerId].poValue += po.total_value ?? 0
-    customerMap[customerId].deliveredValue += deliveredValueByPO[po.id] ?? 0
-
-    statusCounts[po.status] = (statusCounts[po.status] ?? 0) + 1
-  }
-
-  for (const po of allPurchaseOrders) {
-    if (!filteredPOIds.has(po.id)) continue
-    const poMonth = monthKey(po.order_date)
-    if (po.order_date >= rolling12Start && po.order_date <= endDate) {
-      monthlyPOValue[poMonth] = (monthlyPOValue[poMonth] ?? 0) + (po.total_value ?? 0)
-    }
-  }
-
-  const customerEntries = Object.values(customerMap).sort((a, b) => b.poValue - a.poValue)
-  const topCustomerTotal = customerEntries.reduce((sum, item) => sum + item.poValue, 0)
-  const customerShare = customerEntries.slice(0, 5).map((item, index) => ({
-    label: item.name,
-    value: item.poValue,
-    color: DONUT_COLORS[index],
-  }))
-
-  if (customerEntries.length > 5) {
-    const otherValue = customerEntries.slice(5).reduce((sum, item) => sum + item.poValue, 0)
-    customerShare.push({ label: 'Lainnya', value: otherValue, color: DONUT_COLORS[5] })
-  }
-
-  const monthlySeries = rollingMonthKeys(12).map(key => ({
-    key,
-    label: displayMonth(key),
-    poValue: monthlyPOValue[key] ?? 0,
-    deliveredValue: deliveredValueByMonth[key] ?? 0,
-  }))
-
-  const days = rangeDays(startDate, endDate)
-  const dailySeries = days.map(key => ({
-    key,
-    label: displayDay(key),
-    deliveredValue: deliveredValueByDay[key] ?? 0,
-    sjCount: distinctSJByDay[key]?.size ?? 0,
-  }))
-
-  const statusBreakdown = Object.entries(statusCounts).map(([key, value]) => ({
-    label: STATUS_META[key]?.label ?? key,
-    value,
-    color: STATUS_META[key]?.color ?? '#94a3b8',
-  }))
-
-  const topCustomers = customerEntries.slice(0, 10).map((item, index) => ({
-    rank: index + 1,
-    name: item.name,
-    poValue: item.poValue,
-    deliveredValue: item.deliveredValue,
-    fulfillmentRate: item.poValue > 0 ? (item.deliveredValue / item.poValue) * 100 : 0,
-  }))
-
-  const outstandingItems = Object.values(outstandingItemMap)
-    .filter(row => row.outstandingValue > 0)
-    .sort((a, b) => b.outstandingValue - a.outstandingValue)
-    .slice(0, 10)
-    .map((row, index) => ({ ...row, rank: index + 1 }))
-
-  return {
-    metrics: {
-      totalPOCount: filteredPOs.length,
-      totalPOValue,
-      deliveredValue,
-      outstandingValue,
-      averagePOValue: filteredPOs.length > 0 ? totalPOValue / filteredPOs.length : 0,
-      completedPOCount: filteredPOs.filter(po => po.status === 'complete').length,
-    },
-    customerShare: topCustomerTotal > 0 ? customerShare : [],
-    monthlySeries,
-    dailySeries,
-    statusBreakdown,
-    topCustomers,
-    outstandingItems,
-  }
-}
+function getToday(): string { return calendarDateKey() }
 
 function StatCard({
   label,
@@ -448,9 +71,9 @@ export default function AthelDashboard() {
   const [status, setStatus] = useState<FilterStatus>('all')
   const [fulfillment, setFulfillment] = useState<FulfillmentFilter>('all')
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['athel_dashboard', startDate, endDate, status, fulfillment],
-    queryFn: () => fetchDashboardData(startDate, endDate, status, fulfillment),
+    queryFn: ({ signal }) => fetchDashboardData(startDate, endDate, status, fulfillment, signal),
   })
 
   return (
@@ -525,8 +148,8 @@ export default function AthelDashboard() {
         )}
 
         {isError && (
-          <div className="rounded-2xl border border-red-200 bg-red-50 px-6 py-20 text-center text-sm text-red-500 shadow-sm">
-            Gagal memuat dashboard. Periksa koneksi atau struktur data Supabase.
+          <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 px-6 py-20 text-center text-sm text-red-500 shadow-sm">
+            Gagal memuat dashboard. <button onClick={() => refetch()} className="underline">Coba lagi</button>
           </div>
         )}
 
@@ -541,7 +164,7 @@ export default function AthelDashboard() {
               <StatCard
                 label="Nilai Terkirim"
                 value={formatCurrency(data.metrics.deliveredValue)}
-                helper={`${data.metrics.totalPOValue > 0 ? formatPercent((data.metrics.deliveredValue / data.metrics.totalPOValue) * 100) : '0%'} dari total nilai PO`}
+                helper={`${moneyPercentage(data.metrics.deliveredValue, data.metrics.totalPOValue, 1)}% dari total nilai PO`}
               />
               <StatCard
                 label="Outstanding Value"
@@ -550,7 +173,7 @@ export default function AthelDashboard() {
               />
               <StatCard
                 label="Rata-rata Nilai PO"
-                value={formatCurrency(Math.round(data.metrics.averagePOValue))}
+                value={formatCurrency(data.metrics.averagePOValue)}
                 helper={`${data.metrics.completedPOCount} PO selesai pada filter ini`}
               />
             </div>

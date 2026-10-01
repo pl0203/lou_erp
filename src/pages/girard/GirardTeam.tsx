@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
+import { readComplete } from '../../lib/reads/completeReads'
+import { fetchTeamActivity } from '../../lib/reads/reports'
 import { useAuth } from '../../lib/AuthContext'
 import GirardNav from '../../components/GirardNav'
 
@@ -10,101 +12,37 @@ type TeamMember = {
   phone: string | null
 }
 
-type TodayActivity = {
-  sales_person_id: string
-  total_scheduled: number
-  total_visited: number
-  total_orders: number
-}
-
-async function fetchTeam(managerId: string): Promise<TeamMember[]> {
-  const { data, error } = await supabase
-    .rpc('pilot_team_directory')
-    .eq('manager_id', managerId)
-    .eq('role', 'sales_person')
-    .eq('is_active', true)
-    .order('full_name')
-  if (error) throw error
-  if (!Array.isArray(data)) throw new Error('Data tim tidak tersedia')
-  return data
-}
-
-async function fetchTodayActivity(
-  teamIds: string[]
-): Promise<TodayActivity[]> {
-  if (teamIds.length === 0) return []
-  const today = new Date().toISOString().split('T')[0]
-
-  const { data: schedules, error: schedError } = await supabase
-    .from('sales_schedules')
-    .select('id, sales_person_id, outlet_visits(id)')
-    .in('sales_person_id', teamIds)
-    .eq('scheduled_date', today)
-  if (schedError) throw schedError
-
-  const { data: orders, error: ordError } = await supabase
-    .from('girard_orders')
-    .select('id, submitted_by, created_at')
-    .in('submitted_by', teamIds)
-    .gte('created_at', `${today}T00:00:00`)
-    .lte('created_at', `${today}T23:59:59`)
-  if (ordError) throw ordError
-
-  return teamIds.map(id => {
-    const mySchedules = (schedules ?? []).filter(s => s.sales_person_id === id)
-    const myVisited = mySchedules.filter(s => (s.outlet_visits as any[]).length > 0)
-    const myOrders = (orders ?? []).filter(o => o.submitted_by === id)
-    return {
-      sales_person_id: id,
-      total_scheduled: mySchedules.length,
-      total_visited: myVisited.length,
-      total_orders: myOrders.length,
-    }
-  })
-}
-
-async function fetchWeeklyStats(teamIds: string[]): Promise<Record<string, number>> {
-  if (teamIds.length === 0) return {}
-  const weekAgo = new Date()
-  weekAgo.setDate(weekAgo.getDate() - 7)
-  const cutoff = weekAgo.toISOString().split('T')[0]
-
-  const { data, error } = await supabase
-    .from('outlet_visits')
-    .select('sales_person_id')
-    .in('sales_person_id', teamIds)
-    .gte('checked_in_at', cutoff)
-  if (error) throw error
-
-  const counts: Record<string, number> = {}
-  for (const v of data ?? []) {
-    counts[v.sales_person_id] = (counts[v.sales_person_id] ?? 0) + 1
-  }
-  return counts
+async function fetchTeam(managerId: string, signal?: AbortSignal): Promise<TeamMember[]> {
+  const team = await readComplete<TeamMember>(async (offset, limit) => {
+    let query = supabase.rpc('pilot_team_directory', {}, { count: 'exact' }).select('id, full_name, email, phone')
+      .eq('manager_id', managerId).eq('role', 'sales_person').eq('is_active', true).order('id').range(offset, offset + limit - 1)
+    if (signal) query = query.abortSignal(signal)
+    const { data, error, count } = await query
+    if (error) throw error
+    return { items: (data ?? []) as unknown as TeamMember[], total: count as number }
+  }, row => row.id, signal)
+  return team.sort((a, b) => a.full_name.localeCompare(b.full_name) || a.id.localeCompare(b.id))
 }
 
 export default function GirardTeam() {
   const { profile } = useAuth()
 
-  const { data: team, isLoading } = useQuery({
+  const { data: team, isLoading: teamLoading, isError: teamError, refetch: refetchTeam } = useQuery({
     queryKey: ['manager_team', profile?.id],
-    queryFn: () => fetchTeam(profile!.id),
+    queryFn: ({ signal }) => fetchTeam(profile!.id, signal),
     enabled: !!profile?.id,
   })
 
   const teamIds = team?.map(t => t.id) ?? []
 
-  const { data: todayActivity } = useQuery({
-    queryKey: ['today_activity', teamIds],
-    queryFn: () => fetchTodayActivity(teamIds),
+  const { data: todayActivity, isPending: activityLoading, isError: activityError, refetch: refetchActivity } = useQuery({
+    queryKey: ['today_activity', profile?.id, teamIds],
+    queryFn: ({ signal }) => fetchTeamActivity(teamIds, signal),
     enabled: teamIds.length > 0,
   })
-
-  const { data: weeklyStats } = useQuery({
-    queryKey: ['weekly_stats', teamIds],
-    queryFn: () => fetchWeeklyStats(teamIds),
-    enabled: teamIds.length > 0,
-  })
+  const isLoading = teamLoading || (teamIds.length > 0 && activityLoading)
+  const isError = teamError || activityError
+  const weeklyStats = Object.fromEntries((todayActivity ?? []).map(row => [row.sales_person_id, row.weekly_visits]))
 
   const activityMap = Object.fromEntries(
     (todayActivity ?? []).map(a => [a.sales_person_id, a])
@@ -124,18 +62,19 @@ export default function GirardTeam() {
       </div>
 
       <div className="px-4 md:px-8 py-6">
-        {isLoading && (
+        {isError && <div role="alert" className="text-center text-red-600 text-sm py-8">Data tim tidak tersedia. <button onClick={() => { refetchTeam(); if (teamIds.length) refetchActivity() }} className="underline">Coba lagi</button></div>}
+        {!isError && isLoading && (
           <div className="text-center text-gray-400 text-sm py-24">Memuat data tim...</div>
         )}
 
-        {!isLoading && (!team || team.length === 0) && (
+        {!isError && !isLoading && (!team || team.length === 0) && (
           <div className="text-center py-24">
             <p className="text-gray-400 text-sm">Belum ada anggota tim yang ditugaskan.</p>
             <p className="text-gray-300 text-xs mt-1">Hubungi manajer anda untuk menugaskan sales ke tim Anda.</p>
           </div>
         )}
 
-        {!isLoading && team && team.length > 0 && (
+        {!isError && !isLoading && team && team.length > 0 && (
           <>
             {/* Desktop table */}
             <div className="hidden md:block bg-white rounded-xl border border-gray-200 overflow-hidden">

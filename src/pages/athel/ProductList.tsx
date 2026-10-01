@@ -51,10 +51,11 @@ async function fetchProducts(search: string, page: number): Promise<ProductListR
     .from('products')
     .select('id, name, sku, size, unit_price, harga_pokok, luar_kota, dalam_kota, depo_bangunan', { count: 'exact' })
     .order('name')
+    .order('id')
     .range(from, to)
 
   if (trimmedSearch) {
-    query = query.or(`name.ilike.%${trimmedSearch}%,sku.ilike.%${trimmedSearch}%`)
+    query = query.or(literalSearchFilter(['name', 'sku'], trimmedSearch))
   }
 
   const { data, error, count } = await query
@@ -467,3 +468,4 @@ export default function ProductList() {
     </div>
   )
 }
+import { literalSearchFilter } from '../../lib/reads/literalSearch'

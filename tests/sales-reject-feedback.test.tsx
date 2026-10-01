@@ -4,7 +4,8 @@ import { afterEach, expect, test, vi } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 const mocks=vi.hoisted(()=>({rpc:vi.fn()}))
 vi.mock('../src/lib/supabase',()=>({supabase:{rpc:mocks.rpc,from:()=>{const q:any={select:()=>q,eq:()=>q,order:()=>q,then:(resolve:any)=>Promise.resolve({data:[{id:'dummy',status:'pending',total_value:10,created_at:'2026-09-30',customers:{name:'Dummy customer'},users:{full_name:'Dummy sales'},girard_order_items:[]}],error:null}).then(resolve)};return q}}}))
-vi.mock('../src/lib/AuthContext',()=>({useAuth:()=>({user:{id:'dummy-user'}})}))
+vi.mock('../src/lib/reads/orders',()=>({fetchSalesOrderPage:async()=>({version:1,as_of:'2026-10-01T00:00:00Z',items:[{id:'dummy',status:'pending',total_value:'10.00',created_at:'2026-09-30T00:00:00Z',rejection_note:null,customers:{name:'Dummy customer'},users:{full_name:'Dummy sales'}}],total:1,page:1,page_size:10,status_counts:{pending:1,approved:0,rejected:0,cancelled:0}})}))
+vi.mock('../src/lib/AuthContext',()=>({useAuth:()=>({user:{id:'dummy-user'},profile:{id:'dummy-user',role:'sales_person'}})}))
 vi.mock('../src/components/AthelNav',()=>({default:()=>null}))
 vi.mock('react-router-dom',()=>({useNavigate:()=>()=>{}}))
 import SalesOrders from '../src/pages/athel/SalesOrders'

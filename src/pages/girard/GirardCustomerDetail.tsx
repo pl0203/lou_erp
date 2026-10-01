@@ -1,3 +1,4 @@
+import { formatMoney, moneyToChartNumber } from '../../lib/reads/money'
 import { singleRelation } from '../../lib/relations'
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
@@ -66,6 +67,7 @@ async function fetchVisitHistory(customerId: string): Promise<VisitHistory[]> {
     .select('id, checked_in_at, users!outlet_visits_sales_person_id_fkey(full_name)')
     .eq('outlet_id', customerId)
     .order('checked_in_at', { ascending: false })
+    .order('id', { ascending: false })
     .limit(10)
   if (error) throw error
   return (data ?? []).map(row => ({ ...row, users: singleRelation(row.users) }))
@@ -77,6 +79,7 @@ async function fetchOrderHistory(customerId: string): Promise<OrderHistory[]> {
     .select('id, po_number, status, total_value, order_date, expected_delivery_date')
     .eq('customer_id', customerId)
     .order('order_date', { ascending: false })
+    .order('id', { ascending: false })
     .limit(20)
   if (error) throw error
   return data as OrderHistory[]
@@ -220,20 +223,20 @@ export default function GirardCustomerDetail() {
               <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
                 <p className="text-xs text-gray-400 mb-1">Pelanggan Sejak</p>
                 <p className="text-sm font-semibold text-gray-900">
-                  {statsError ? 'Tidak tersedia' : statsLoading || !stats ? 'Memuat...' : stats.first_order_date
+                  {statsError || (!statsLoading && !stats) ? 'Tidak tersedia' : statsLoading || !stats ? 'Memuat...' : stats.first_order_date
                     ? new Date(stats.first_order_date).toLocaleDateString('id-ID', { month: 'short', year: 'numeric' })
                     : '—'}
                 </p>
               </div>
               <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
                 <p className="text-xs text-gray-400 mb-1">Pesanan (3bl)</p>
-                <p className="text-sm font-semibold text-gray-900">{statsError ? 'Tidak tersedia' : statsLoading || !stats ? 'Memuat...' : stats.order_count_3mo}</p>
+                <p className="text-sm font-semibold text-gray-900">{statsError || (!statsLoading && !stats) ? 'Tidak tersedia' : statsLoading || !stats ? 'Memuat...' : stats.order_count_3mo}</p>
               </div>
               <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
                 <p className="text-xs text-gray-400 mb-1">Penjualan (3bl)</p>
                 <p className="text-sm font-semibold text-gray-900">
-                  {statsError ? 'Tidak tersedia' : statsLoading || !stats ? 'Memuat...' : stats.total_sales_3mo
-                    ? `Rp ${(stats.total_sales_3mo / 1_000_000).toFixed(1)}M`
+                  {statsError || (!statsLoading && !stats) ? 'Tidak tersedia' : statsLoading || !stats ? 'Memuat...' : !/^0(?:\.0+)?$/.test(String(stats.total_sales_3mo))
+                    ? `Rp ${formatMoney(String(stats.total_sales_3mo), 'millions')}M`
                     : 'Rp 0'}
                 </p>
               </div>
@@ -250,15 +253,15 @@ export default function GirardCustomerDetail() {
                         <div className="flex items-center justify-between mb-1">
                           <p className="text-sm text-gray-900 truncate">{item.name}</p>
                           <p className="text-xs text-gray-500 ml-2 shrink-0">
-                            Rp {item.revenue.toLocaleString('id-ID')}
+                            Rp {formatMoney(String(item.revenue), 'full')}
                           </p>
                         </div>
                         <div className="w-full bg-gray-100 rounded-full h-1">
                           <div
                             className="bg-green-500 h-1 rounded-full"
                             style={{
-                              width: `${stats.top_items[0].revenue > 0
-                                ? (item.revenue / stats.top_items[0].revenue) * 100
+                              width: `${moneyToChartNumber(String(stats.top_items[0].revenue)) > 0
+                                ? (moneyToChartNumber(String(item.revenue)) / moneyToChartNumber(String(stats.top_items[0].revenue))) * 100
                                 : 0}%`
                             }}
                           />

@@ -1,3 +1,4 @@
+import { fetchCompletePOLines, fetchCompleteRows, priceForEdit } from '../../lib/reads/detailReads'
 import TransactionRecovery from '../../components/TransactionRecovery'
 import { createTransactionSender, useTransactionSender } from '../../lib/orderTransactions'
 import type { TransactionSender } from '../../lib/orderTransactions'
@@ -66,40 +67,11 @@ async function fetchPO(id: string): Promise<POData> {
   return { ...data, customers: singleRelation(data.customers) }
 }
 
-async function fetchLineItems(poId: string) {
-  const { data, error } = await supabase
-    .from('po_line_items')
-    .select('id, product_name, sku, quantity, unit_price')
-    .eq('purchase_order_id', poId)
-  if (error) throw error
-  return data
+async function fetchCustomers(signal?: AbortSignal): Promise<Customer[]> {
+  return (await fetchCompleteRows<Customer>('customers', 'id, name, pricing_tier', {}, signal)).sort((a, b) => a.name.localeCompare(b.name))
 }
-
-type DeliveryHistory = { voided_at: string | null; sj_line_items: { po_line_item_id: string; quantity_delivered: number }[] }
-async function fetchDeliveryHistory(poId: string): Promise<DeliveryHistory[]> {
-  const { data, error } = await supabase.from('surat_jalan')
-    .select('voided_at, sj_line_items(po_line_item_id, quantity_delivered)')
-    .eq('purchase_order_id', poId)
-  if (error) throw error
-  return data ?? []
-}
-
-async function fetchCustomers(): Promise<Customer[]> {
-  const { data, error } = await supabase
-    .from('customers')
-    .select('id, name, pricing_tier')
-    .order('name')
-  if (error) throw error
-  return data
-}
-
-async function fetchProducts(): Promise<Product[]> {
-  const { data, error } = await supabase
-    .from('products')
-    .select('id, name, sku, size, unit_price, harga_pokok, luar_kota, dalam_kota, depo_bangunan')
-    .order('name')
-  if (error) throw error
-  return data
+async function fetchProducts(signal?: AbortSignal): Promise<Product[]> {
+  return (await fetchCompleteRows<Product>('products', 'id, name, sku, size, unit_price, harga_pokok, luar_kota, dalam_kota, depo_bangunan', {}, signal)).sort((a, b) => a.name.localeCompare(b.name))
 }
 
 export async function saveEdits(poId: string, payload: {
@@ -169,42 +141,37 @@ export default function POEdit() {
   const [expectedDelivery, setExpectedDelivery] = useState('')
   const [notes, setNotes] = useState('')
   const [lineItems, setLineItems] = useState<LineItemRow[]>([])
-  const [initialized, setInitialized] = useState(false)
+  const [initializedFor, setInitializedFor] = useState<string | null>(null)
+  const initialized = initializedFor === id
 
-  const { data: po, isLoading: poLoading, isError: poError, refetch: refetchPO } = useQuery({
+  const { data: po, isLoading: poLoading, isError: poError, isFetching: poFetching, refetch: refetchPO } = useQuery({
     queryKey: ['po', id, 'edit'],
     queryFn: () => fetchPO(id!),
   })
 
-  const { data: existingLines, isLoading: linesLoading, isError: linesError, refetch: refetchLines } = useQuery({
-    queryKey: ['po_line_items', id, 'edit'],
-    queryFn: () => fetchLineItems(id!),
-    enabled: !!id,
+  const { data: lineState, isLoading: linesLoading, isError: linesError, isFetching: linesFetching, refetch: refetchLines } = useQuery({
+    queryKey: ['po_line_state', id, 'edit', po?.updated_at],
+    queryFn: async ({ signal }) => {
+      const result = await fetchCompletePOLines(id!, po!.updated_at, signal)
+      return { ...result, items: result.items.map(line => ({ ...line, unit_price: priceForEdit(line.unit_price) })) }
+    },
+    enabled: !!id && !!po,
   })
-
-  const { data: deliveryHistory, isLoading: historyLoading, isError: historyError, refetch: refetchHistory } = useQuery({
-    queryKey: ['po_edit_deliveries', id], queryFn: () => fetchDeliveryHistory(id!), enabled: !!id,
+  const readReady = !!po && po.id === id && !!lineState && lineState.po_updated_at === po.updated_at && !poError && !linesError && !poFetching && !linesFetching
+  const existingLines = lineState?.items
+  const historicalLineIds = new Set((existingLines ?? []).filter(line => line.has_delivery_history).map(line => line.id))
+  const deliveredByLine = Object.fromEntries((existingLines ?? []).map(line => [line.id, line.delivered_quantity]))
+  const hasDeliveryHistory = lineState?.po_has_delivery_history ?? false
+  const { data: customers, isError: customersError, refetch: refetchCustomers } = useQuery({
+    queryKey: ['customers', 'complete', 'po-edit'], queryFn: ({ signal }) => fetchCustomers(signal),
   })
-  const historicalLineIds = new Set((deliveryHistory ?? []).flatMap(sj => sj.sj_line_items.map(line => line.po_line_item_id)))
-  const deliveredByLine: Record<string, number> = {}
-  for (const sj of deliveryHistory ?? []) if (!sj.voided_at) for (const line of sj.sj_line_items) {
-    deliveredByLine[line.po_line_item_id] = (deliveredByLine[line.po_line_item_id] ?? 0) + line.quantity_delivered
-  }
-  const hasDeliveryHistory = (deliveryHistory?.length ?? 0) > 0
-
-  const { data: customers } = useQuery({
-    queryKey: ['customers'],
-    queryFn: fetchCustomers,
-  })
-
-  const { data: products } = useQuery({
-    queryKey: ['products'],
-    queryFn: fetchProducts,
+  const { data: products, isError: productsError, refetch: refetchProducts } = useQuery({
+    queryKey: ['products', 'complete', 'po-edit'], queryFn: ({ signal }) => fetchProducts(signal),
   })
 
   useEffect(() => {
-    if (po && existingLines && !initialized) {
-      setInitialVersion(po.updated_at)
+    if (readReady && po && lineState && existingLines && !initialized) {
+      setInitialVersion(lineState.po_updated_at)
       setCustomerId(po.customer_id)
       setExpectedDelivery(po.expected_delivery_date ?? '')
       setNotes(po.notes ?? '')
@@ -215,12 +182,13 @@ export default function POEdit() {
         quantity: l.quantity,
         unit_price: l.unit_price,
       })))
-      setInitialized(true)
+      setInitializedFor(id!)
     }
-  }, [po, existingLines, initialized])
+  }, [id, po, lineState, existingLines, initialized, readReady])
 
   const mutation = useMutation({
     mutationFn: () => {
+      if (!readReady || !initialized || !lineState || lineState.po_updated_at !== initialVersion) throw new Error('Data PO berubah atau belum lengkap. Muat ulang sebelum menyimpan.')
       if (lineItems.some(line => !line._deleted && line.quantity < (deliveredByLine[line.id ?? ''] ?? 0))) throw new Error('Jumlah tidak boleh kurang dari jumlah terkirim aktif.')
       return saveEdits(id!, {
       customer_id: customerId,
@@ -231,11 +199,7 @@ export default function POEdit() {
     }, sendTransaction)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['po', id] })
-      queryClient.invalidateQueries({ queryKey: ['po_line_items', id] })
-      queryClient.invalidateQueries({ queryKey: ['po_edit_deliveries', id] })
-      queryClient.invalidateQueries({ queryKey: ['po_audit_log', id] })
-      queryClient.invalidateQueries({ queryKey: ['purchase_orders'] })
+      queryClient.invalidateQueries()
       navigate(`/athel/po/${id}`)
     },
   })
@@ -281,7 +245,7 @@ export default function POEdit() {
 
   const recovery = <TransactionRecovery send={sendTransaction} onCommitted={result => { queryClient.invalidateQueries(); navigate(`/athel/po/${result.id}`) }} />
 
-  if (poLoading || linesLoading || historyLoading) {
+  if (poLoading || linesLoading || (!initialized && (poFetching || linesFetching))) {
     return (
       <div className="min-h-screen bg-gray-50">
         <AthelNav />
@@ -291,10 +255,10 @@ export default function POEdit() {
     )
   }
 
-  if (poError || linesError || historyError || !po || !existingLines || !deliveryHistory) {
+  if (poError || linesError || !po || !existingLines || !lineState || (initialized && lineState.po_updated_at !== initialVersion)) {
     return <div className="min-h-screen bg-gray-50"><AthelNav />{recovery}<div role="alert" className="p-8 text-red-600">
       <p>Data PO atau riwayat pengiriman belum dapat dimuat. Pengubahan belum tersedia.</p>
-      <button onClick={() => { refetchPO(); refetchLines(); refetchHistory() }} className="mt-2 underline">Coba lagi</button>
+      <button onClick={() => { setInitializedFor(null); refetchPO(); refetchLines() }} className="mt-2 underline">Coba lagi</button>
     </div></div>
   }
   if (!['confirm', 'in_progress'].includes(po.status)) {
@@ -324,6 +288,8 @@ export default function POEdit() {
 
       <div className="px-4 md:px-8 py-6 max-w-4xl mx-auto space-y-6">
 
+        {(customersError || productsError) && <div role="alert" className="text-sm text-red-600">Pilihan pelanggan atau produk belum lengkap. <button className="underline" onClick={() => { refetchCustomers(); refetchProducts() }}>Coba lagi</button></div>}
+        {(poFetching || linesFetching) && <p role="status" className="text-sm text-blue-600">Memperbarui data PO… Penyimpanan menunggu data lengkap; isian Anda tetap tersimpan di formulir.</p>}
         {/* Detail PO */}
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h2 className="text-base font-medium text-gray-900 mb-4">Detail PO</h2>
@@ -507,7 +473,7 @@ export default function POEdit() {
           </button>
           <button
             onClick={handleSave}
-            disabled={mutation.isPending}
+            disabled={mutation.isPending || !readReady || !initialized}
             className="px-5 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 transition-colors"
           >
             {mutation.isPending ? 'Menyimpan...' : 'Simpan Perubahan'}

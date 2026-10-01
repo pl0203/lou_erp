@@ -1,3 +1,6 @@
+import ReadFailure from '../../components/ReadFailure'
+import { readCompleteQuery } from '../../lib/reads/completeQuery'
+import { chunkIds } from '../../lib/reads/completeReads'
 import { calendarDateKey, parseCalendarDate, calendarDayOptions } from '../../lib/calendarDate'
 import { singleRelation } from '../../lib/relations'
 import { useState } from 'react'
@@ -68,111 +71,52 @@ export function isEditable(scheduledDate: string): boolean {
   return scheduledDate > calendarDateKey(tomorrow)
 }
 
-  async function fetchMyCustomers(managerId: string, role: string): Promise<Customer[]> {
-    // Sales head and executive can see all customers
-    if (role === 'sales_head' || role === 'executive') {
-      const { data, error } = await supabase
-        .from('customers')
-        .select('id, name, city, address, last_visit_date, visit_frequency_days')
-        .order('name')
-      if (error) throw error
-      return data
-    }
-  
-    // Sales manager only sees their assigned customers
-    const { data, error } = await supabase
-      .from('customer_manager_assignments')
-      .select('customers(id, name, city, address, last_visit_date, visit_frequency_days)')
-      .eq('manager_id', managerId)
-    if (error) throw error
-    return (data ?? []).map((d: any) => d.customers).filter(Boolean)
+async function fetchMyCustomers(managerId: string, role: string, signal?: AbortSignal): Promise<Customer[]> {
+  if (role === 'sales_head' || role === 'executive') {
+    const data = await readCompleteQuery((offset, limit) => supabase.from('customers')
+      .select('id, name, city, address, last_visit_date, visit_frequency_days', { count: 'exact' })
+      .order('id').range(offset, offset + limit - 1), row => row.id, signal)
+    return data.sort((a, b) => a.name.localeCompare(b.name))
   }
-
-async function fetchMyTeam(managerId: string, role: string): Promise<SalesPerson[]> {
-  // Executive can assign anyone except other executives
-  if (role === 'executive') {
-    const { data, error } = await supabase
-      .from('users')
-      .select('id, full_name')
-      .in('role', ['sales_head', 'sales_manager', 'sales_person', 'executive'])
-      .eq('is_active', true)
-      .order('full_name')
-    if (error) throw error
-    return data
-  }
-
-  // Sales head can assign sales managers and sales persons (not executives)
-  if (role === 'sales_head') {
-    const { data, error } = await supabase
-      .from('users')
-      .select('id, full_name')
-      .in('role', ['sales_manager', 'sales_person', 'sales_head'])
-      .eq('is_active', true)
-      .order('full_name')
-    if (error) throw error
-    return data
-  }
-
-  // Sales manager — their own team + themselves
-  const { data: teamMembers, error: teamError } = await supabase
-    .from('users')
-    .select('id, full_name')
-    .eq('manager_id', managerId)
-    .eq('is_active', true)
-    .order('full_name')
-  if (teamError) throw teamError
-
-  const { data: self, error: selfError } = await supabase
-    .from('users')
-    .select('id, full_name')
-    .eq('id', managerId)
-    .single()
-  if (selfError) throw selfError
-
-  const others = (teamMembers ?? []).filter(m => m.id !== managerId)
-  return [self, ...others]
+  const data = await readCompleteQuery((offset, limit) => supabase.from('customer_manager_assignments')
+    .select('id, customers(id, name, city, address, last_visit_date, visit_frequency_days)', { count: 'exact' })
+    .eq('manager_id', managerId).order('id').range(offset, offset + limit - 1), row => row.id, signal)
+  return data.map(row => singleRelation(row.customers)).filter((row): row is Customer => row !== null).sort((a, b) => a.name.localeCompare(b.name))
 }
 
-async function fetchSchedules(managerId: string, role: string, dates: string[]): Promise<Schedule[]> {
-  let customerIds: string[] = []
-
-  if (role === 'sales_head' || role === 'executive') {
-    // See all schedules
-    const { data, error } = await supabase
-      .from('sales_schedules')
-      .select(`
-        id, outlet_id, sales_person_id, scheduled_date, status, notes,
-        customers!sales_schedules_outlet_id_fkey(id, name, city),
-        users!sales_schedules_sales_person_id_fkey(id, full_name)
-      `)
-      .in('scheduled_date', dates)
-      .order('scheduled_date')
-      .order('created_at')
-    if (error) throw error
-    return (data ?? []).map(row => ({ ...row, customers: singleRelation(row.customers), users: singleRelation(row.users) }))
+async function fetchMyTeam(managerId: string, role: string, signal?: AbortSignal): Promise<SalesPerson[]> {
+  if (role === 'executive' || role === 'sales_head') {
+    const roles = role === 'executive' ? ['sales_head', 'sales_manager', 'sales_person', 'executive'] : ['sales_manager', 'sales_person', 'sales_head']
+    const data = await readCompleteQuery((offset, limit) => supabase.from('users').select('id, full_name', { count: 'exact' })
+      .in('role', roles).eq('is_active', true).order('id').range(offset, offset + limit - 1), row => row.id, signal)
+    return data.sort((a, b) => a.full_name.localeCompare(b.full_name))
   }
-
-  // Sales manager — only their assigned customers
-  const { data: assignments } = await supabase
-    .from('customer_manager_assignments')
-    .select('customer_id')
-    .eq('manager_id', managerId)
-  customerIds = (assignments ?? []).map((a: any) => a.customer_id)
-  if (customerIds.length === 0) return []
-
-  const { data, error } = await supabase
-    .from('sales_schedules')
-    .select(`
-      id, outlet_id, sales_person_id, scheduled_date, status, notes,
-      customers!sales_schedules_outlet_id_fkey(id, name, city),
-      users!sales_schedules_sales_person_id_fkey(id, full_name)
-    `)
-    .in('outlet_id', customerIds)
-    .in('scheduled_date', dates)
-    .order('scheduled_date')
-    .order('created_at')
+  const team = await readCompleteQuery((offset, limit) => supabase.from('users').select('id, full_name', { count: 'exact' })
+    .eq('manager_id', managerId).eq('is_active', true).order('id').range(offset, offset + limit - 1), row => row.id, signal)
+  let selfQuery = supabase.from('users').select('id, full_name').eq('id', managerId)
+  if (signal) selfQuery = selfQuery.abortSignal(signal)
+  const { data: self, error } = await selfQuery.single()
   if (error) throw error
-  return (data ?? []).map(row => ({ ...row, customers: singleRelation(row.customers), users: singleRelation(row.users) }))
+  return [self, ...team.filter(row => row.id !== managerId).sort((a, b) => a.full_name.localeCompare(b.full_name))]
+}
+
+async function fetchSchedules(managerId: string, role: string, dates: string[], signal?: AbortSignal): Promise<Schedule[]> {
+  const read = (ids?: string[]) => readCompleteQuery((offset, limit) => {
+    let query = supabase.from('sales_schedules')
+      .select('id, outlet_id, sales_person_id, scheduled_date, status, notes, created_at, customers!sales_schedules_outlet_id_fkey(id, name, city), users!sales_schedules_sales_person_id_fkey(id, full_name)', { count: 'exact' })
+      .in('scheduled_date', dates).order('scheduled_date').order('created_at').order('id').range(offset, offset + limit - 1)
+    if (ids) query = query.in('outlet_id', ids)
+    return query
+  }, row => row.id, signal)
+  let rows: Awaited<ReturnType<typeof read>> = []
+  if (role === 'sales_head' || role === 'executive') rows = await read()
+  else {
+    const assignments = await readCompleteQuery((offset, limit) => supabase.from('customer_manager_assignments')
+      .select('id, customer_id', { count: 'exact' }).eq('manager_id', managerId).order('id').range(offset, offset + limit - 1), row => row.id, signal)
+    for (const ids of chunkIds(assignments.map(row => row.customer_id))) rows.push(...await read(ids))
+    rows.sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date) || (a.created_at ?? '').localeCompare(b.created_at ?? '') || a.id.localeCompare(b.id))
+  }
+  return rows.map(row => ({ ...row, customers: singleRelation(row.customers), users: singleRelation(row.users) }))
 }
 
 async function createSchedule(form: ScheduleForm, assignedBy: string) {
@@ -224,21 +168,21 @@ export default function ManagerSchedule() {
   const [form, setForm] = useState<ScheduleForm>(EMPTY_FORM)
   const [deleteId, setDeleteId] = useState<string | null>(null)
 
-  const { data: customers } = useQuery({
+  const { data: customers, isError: customerReadError, refetch: retryCustomers } = useQuery({
     queryKey: ['manager_customers', profile?.id, profile?.role],
-    queryFn: () => fetchMyCustomers(profile!.id, profile!.role),
+    queryFn: ({ signal }) => fetchMyCustomers(profile!.id, profile!.role, signal),
     enabled: !!profile?.id,
   })
 
-  const { data: team } = useQuery({
+  const { data: team, isError: teamReadError, refetch: retryTeam } = useQuery({
     queryKey: ['manager_team', profile?.id, profile?.role],
-    queryFn: () => fetchMyTeam(profile!.id, profile!.role),
+    queryFn: ({ signal }) => fetchMyTeam(profile!.id, profile!.role, signal),
     enabled: !!profile?.id,
   })
 
-  const { data: allSchedules, isLoading } = useQuery({
+  const { data: allSchedules, isLoading, isError: scheduleReadError, refetch: retrySchedules } = useQuery({
     queryKey: ['manager_schedules', profile?.id, profile?.role, dates],
-    queryFn: () => fetchSchedules(profile!.id, profile!.role, dates),
+    queryFn: ({ signal }) => fetchSchedules(profile!.id, profile!.role, dates, signal),
     enabled: !!profile?.id,
   })
 
@@ -249,7 +193,7 @@ export default function ManagerSchedule() {
   const createMutation = useMutation({
     mutationFn: () => createSchedule(form, profile!.id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['manager_schedules'] })
+      queryClient.invalidateQueries()
       setShowForm(false)
       setForm(EMPTY_FORM)
       if (form.sales_person_id === profile?.id) {
@@ -261,7 +205,7 @@ export default function ManagerSchedule() {
   const updateMutation = useMutation({
     mutationFn: () => updateSchedule(editingId!, form),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['manager_schedules'] })
+      queryClient.invalidateQueries()
       setShowForm(false)
       setEditingId(null)
       setForm(EMPTY_FORM)
@@ -271,7 +215,7 @@ export default function ManagerSchedule() {
   const deleteMutation = useMutation({
     mutationFn: () => deleteSchedule(deleteId!),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['manager_schedules'] })
+      queryClient.invalidateQueries()
       setDeleteId(null)
     },
   })
@@ -308,6 +252,8 @@ export default function ManagerSchedule() {
 
   // Group dates by week for the date picker tabs
   const weekDates = dates.slice(0, 7)
+
+  if (customerReadError || teamReadError || scheduleReadError) return <div className="min-h-screen bg-gray-50"><GirardNav /><ReadFailure onRetry={() => { void retryCustomers(); void retryTeam(); void retrySchedules() }} /></div>
 
   return (
     <div className="min-h-screen bg-gray-50">

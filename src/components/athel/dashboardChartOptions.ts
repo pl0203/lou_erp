@@ -1,11 +1,12 @@
 import type { ComposeOption } from 'echarts/core'
 import type { BarSeriesOption, LineSeriesOption, PieSeriesOption } from 'echarts/charts'
 import type { AriaComponentOption, DataZoomComponentOption, GridComponentOption, LegendComponentOption, TooltipComponentOption } from 'echarts/components'
+import { formatMoney, moneyToChartNumber, moneyPercentage } from '../../lib/reads/money'
 import type { DashboardData } from '../../pages/athel/Dashboard'
 
 export type DashboardChartOption = ComposeOption<BarSeriesOption | LineSeriesOption | PieSeriesOption | AriaComponentOption | DataZoomComponentOption | GridComponentOption | LegendComponentOption | TooltipComponentOption>
 export const CHART_COLORS = { po: '#2563eb', delivered: '#0d9488', count: '#b45309', text: '#475569', grid: '#e2e8f0' }
-export const currency = (value: number) => `Rp${value.toLocaleString('id-ID')}`
+export const currency = (value: string | number) => `Rp${typeof value === 'string' ? formatMoney(value, 'full') : value.toLocaleString('id-ID')}`
 export const count = (value: number) => value.toLocaleString('id-ID')
 export const percent = (value: number, total: number) => `${(total > 0 ? value / total * 100 : 0).toFixed(1)}%`
 export function compactCurrency(value: number) {
@@ -47,13 +48,13 @@ export function monthlyOptions(series: DashboardData['monthlySeries'], selected:
     legend: { show: false, selected },
     tooltip: { ...base.tooltip, trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: params => {
       const rows = Array.isArray(params) ? params : [params]
-      return [labels.get(String(rows[0]?.name)) ?? '', ...rows.map(row => `${row.seriesName}: ${currency(Number(row.value))}`)].join('\n')
+      return [labels.get(String(rows[0]?.name)) ?? '', ...rows.map(row => `${row.seriesName}: ${currency(series[Number(row.dataIndex)]?.[row.seriesName === 'Total PO' ? 'poValue' : 'deliveredValue'] ?? Number(row.value))}`)].join('\n')
     } },
     xAxis: { ...categoryAxis, data: series.map(item => item.key), axisLabel: { ...categoryAxis.axisLabel, formatter: key => labels.get(key) ?? key } },
     yAxis: { ...valueAxis, name: 'Nilai PO / terkirim', nameTextStyle: { align: 'left', color: CHART_COLORS.text } },
     series: [
-      { name: 'Total PO', type: 'bar', data: series.map(item => item.poValue), barMaxWidth: 24, itemStyle: { ...barStyle, color: CHART_COLORS.po }, emphasis: { focus: 'series' } },
-      { name: 'Terkirim', type: 'bar', data: series.map(item => item.deliveredValue), barMaxWidth: 24, itemStyle: { ...barStyle, color: CHART_COLORS.delivered }, emphasis: { focus: 'series' } },
+      { name: 'Total PO', type: 'bar', data: series.map(item => moneyToChartNumber(item.poValue)), barMaxWidth: 24, itemStyle: { ...barStyle, color: CHART_COLORS.po }, emphasis: { focus: 'series' } },
+      { name: 'Terkirim', type: 'bar', data: series.map(item => moneyToChartNumber(item.deliveredValue)), barMaxWidth: 24, itemStyle: { ...barStyle, color: CHART_COLORS.delivered }, emphasis: { focus: 'series' } },
     ],
   }
 }
@@ -67,7 +68,7 @@ export function dailyOptions(series: DashboardData['dailySeries'], selected: Rec
     legend: { show: false, selected },
     tooltip: { ...base.tooltip, trigger: 'axis', axisPointer: { type: 'line', lineStyle: { color: '#94a3b8', type: 'dashed' } }, formatter: params => {
       const rows = Array.isArray(params) ? params : [params]
-      return [labels.get(String(rows[0]?.name)) ?? '', ...rows.map(row => `${row.seriesName}: ${row.seriesName === 'Nomor SJ' ? `${count(Number(row.value))} SJ` : currency(Number(row.value))}`)].join('\n')
+      return [labels.get(String(rows[0]?.name)) ?? '', ...rows.map(row => `${row.seriesName}: ${row.seriesName === 'Nomor SJ' ? `${count(Number(row.value))} SJ` : currency(series[Number(row.dataIndex)]?.deliveredValue ?? Number(row.value))}`)].join('\n')
     } },
     xAxis: { ...categoryAxis, data: series.map(item => item.key), axisLabel: { ...categoryAxis.axisLabel, formatter: key => labels.get(key) ?? key } },
     yAxis: [
@@ -79,24 +80,23 @@ export function dailyOptions(series: DashboardData['dailySeries'], selected: Rec
       { type: 'inside', startValue: start, endValue: end, filterMode: 'none', zoomOnMouseWheel: false, moveOnMouseWheel: false, moveOnMouseMove: false },
     ] : [],
     series: [
-      { name: 'Nilai terkirim', type: 'bar', data: series.map(item => item.deliveredValue), barMaxWidth: 24, barMinHeight: 0, itemStyle: { ...barStyle, color: CHART_COLORS.delivered }, emphasis: { focus: 'series' } },
+      { name: 'Nilai terkirim', type: 'bar', data: series.map(item => moneyToChartNumber(item.deliveredValue)), barMaxWidth: 24, barMinHeight: 0, itemStyle: { ...barStyle, color: CHART_COLORS.delivered }, emphasis: { focus: 'series' } },
       { name: 'Nomor SJ', type: 'line', yAxisIndex: 1, data: series.map(item => item.sjCount), showSymbol: series.length <= 31, symbol: 'circle', symbolSize: 6, smooth: false, itemStyle: { color: CHART_COLORS.count }, lineStyle: { color: CHART_COLORS.count, width: 2 }, emphasis: { focus: 'series' } },
     ],
   }
 }
 
-export function customerOptions(items: DashboardData['customerShare']): DashboardChartOption {
-  const total = items.reduce((sum, item) => sum + item.value, 0)
+export function customerOptions(items: DashboardData['customerShare'], total: string): DashboardChartOption {
   return {
     ...base,
     grid: { left: 8, right: 68, top: 12, bottom: 8, outerBoundsMode: 'same', outerBoundsContain: 'all' },
     tooltip: { ...base.tooltip, trigger: 'item', formatter: params => {
       const row = Array.isArray(params) ? params[0] : params
-      return `${row.name}\n${currency(Number(row.value))} · ${percent(Number(row.value), total)}`
+      return `${row.name}\n${currency(items[Number(row.dataIndex)]?.value ?? '0')} · ${moneyPercentage(items[Number(row.dataIndex)]?.value ?? '0', total, 1)}%`
     } },
     xAxis: { ...valueAxis, axisLabel: { color: CHART_COLORS.text, formatter: compactCurrency, hideOverlap: true }, splitNumber: 2 },
     yAxis: { ...categoryAxis, inverse: true, data: items.map(item => item.label), axisLine: { show: false }, axisLabel: { color: CHART_COLORS.text, width: 100, overflow: 'truncate', interval: 0 } },
-    series: [{ name: 'Total PO', type: 'bar', data: items.map(item => item.value), barMaxWidth: 20, itemStyle: { color: CHART_COLORS.po, borderRadius: [0, 3, 3, 0] }, label: { show: true, position: 'right', color: CHART_COLORS.text, formatter: row => percent(Number(row.value), total) } }],
+    series: [{ name: 'Total PO', type: 'bar', data: items.map(item => moneyToChartNumber(item.value)), barMaxWidth: 20, itemStyle: { color: CHART_COLORS.po, borderRadius: [0, 3, 3, 0] }, label: { show: true, position: 'right', color: CHART_COLORS.text, formatter: row => `${moneyPercentage(items[row.dataIndex]?.value ?? '0', total, 1)}%` } }],
   }
 }
 

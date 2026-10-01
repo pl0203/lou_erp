@@ -4,7 +4,7 @@ import { fetchPromotions, isCurrentlyActive } from '../lib/promotions'
 export default function ActivePromotionsBanner() {
   const { data: promotions } = useQuery({
     queryKey: ['promotions', 'highlights'],
-    queryFn: fetchPromotions,
+    queryFn: ({ signal }) => fetchPromotions(signal),
   })
 
   const activePromotions = promotions?.filter(isCurrentlyActive) ?? []

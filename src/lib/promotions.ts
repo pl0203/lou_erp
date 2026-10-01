@@ -1,3 +1,4 @@
+import { readCompleteQuery } from './reads/completeQuery'
 import { singleRelation } from './relations'
 import { supabase } from './supabase'
 
@@ -14,12 +15,9 @@ export function isCurrentlyActive(promo: ActivePromotion): boolean {
   return promo.is_active && promo.start_date <= today && promo.end_date >= today
 }
 
-export async function fetchPromotions(): Promise<ActivePromotion[]> {
-  const { data, error } = await supabase
-    .from('promotions')
-    .select('id, start_date, end_date, is_active, products(name, sku, size)')
-    .order('created_at', { ascending: false })
-
-  if (error) throw error
-  return (data ?? []).map(row => ({ ...row, products: singleRelation(row.products) }))
+export async function fetchPromotions(signal?: AbortSignal): Promise<ActivePromotion[]> {
+  const data = await readCompleteQuery((offset, limit) => supabase.from('promotions')
+    .select('id, start_date, end_date, is_active, products(name, sku, size)', { count: 'exact' })
+    .order('created_at', { ascending: false }).order('id').range(offset, offset + limit - 1), row => row.id, signal)
+  return data.map(row => ({ ...row, products: singleRelation(row.products) }))
 }

@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { createMemoryRouter, Link, RouterProvider } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { cacheProbe } from './scalability/cache-probe'
 
 const state = vi.hoisted(() => ({ send: vi.fn(), reconcile: vi.fn(), unresolved: false, visit: true }))
 vi.mock('../src/lib/supabase', () => ({ supabase: {} }))
@@ -92,6 +93,7 @@ test('browser-style Back can be cancelled then accepted and Forward still works'
 
 test('successful PO save bypasses the dirty guard and sends optional customer expiry unchanged', async () => {
   const router = mount(); dirtyPO()
+  const probe = cacheProbe(clients.at(-1)!)
   const expiry = screen.getByLabelText('Tanggal Kedaluwarsa PO (opsional)')
   expect(expiry.hasAttribute('required')).toBe(false)
   fireEvent.change(expiry, { target: { value: '2026-12-31' } })
@@ -99,13 +101,17 @@ test('successful PO save bypasses the dirty guard and sends optional customer ex
   await waitFor(() => expect(router.state.location.pathname).toBe('/athel/po/saved'))
   expect(state.send).toHaveBeenCalledWith('create_po', expect.objectContaining({ expected_delivery_date: '2026-12-31' }))
   expect(screen.queryByRole('dialog')).toBeNull()
+  await waitFor(() => probe.refreshed())
+  probe.stop()
 })
 
 test('unknown save outcomes remain recoverable and recovered success does not leave a blocker', async () => {
   const router = mount(); dirtyPO()
+  const probe = cacheProbe(clients.at(-1)!)
   state.send.mockImplementationOnce(async () => { state.unresolved = true; throw new Error('Hasil belum pasti') })
   fireEvent.click(screen.getByRole('button', { name: 'Simpan PO' }))
   await screen.findByText('Hasil belum pasti')
+  probe.unchanged()
   fireEvent.click(screen.getByRole('link', { name: 'Dashboard' }))
   fireEvent.click(await screen.findByRole('button', { name: 'Tetap mengedit' }))
   expect(state.unresolved).toBe(true)
@@ -114,6 +120,8 @@ test('unknown save outcomes remain recoverable and recovered success does not le
   fireEvent.click(screen.getByRole('button', { name: 'Pulihkan hasil penyimpanan' }))
   await waitFor(() => expect(router.state.location.pathname).toBe('/athel/po/recovered'))
   expect(screen.queryByRole('dialog')).toBeNull()
+  await waitFor(() => probe.refreshed())
+  probe.stop()
 })
 
 test('dirty visit orders can keep editing on Cancel and warn again before leaving', async () => {

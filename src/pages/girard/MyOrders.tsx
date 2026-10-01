@@ -1,25 +1,11 @@
-import { singleRelation } from '../../lib/relations'
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { supabase } from '../../lib/supabase'
-import { useAuth } from '../../lib/AuthContext'
+import { usePagedRead } from '../../lib/reads/usePagedRead'
+import { fetchSalesOrderPage } from '../../lib/reads/orders'
+import type { SalesStatusFilter } from '../../lib/reads/contracts'
+import { formatMoney } from '../../lib/reads/money'
+import PaginationControls from '../../components/PaginationControls'
+import SalesOrderItems from '../../components/SalesOrderItems'
 import GirardNav from '../../components/GirardNav'
-
-type MyOrder = {
-  id: string
-  status: string
-  total_value: number
-  created_at: string
-  rejection_note: string | null
-  customers: { name: string }
-  girard_order_items: {
-    id: string
-    product_name: string
-    sku: string | null
-    quantity: number
-    unit_price: number
-  }[]
-}
 
 const STATUS_STYLES: Record<string, string> = {
   pending:  'bg-yellow-100 text-yellow-700',
@@ -35,37 +21,16 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled: 'PO Dibatalkan',
 }
 
-async function fetchMyOrders(userId: string, status: string): Promise<MyOrder[]> {
-  let query = supabase
-    .from('girard_orders')
-    .select(`
-      id, status, total_value, created_at, rejection_note,
-      customers!girard_orders_customer_id_fkey(name),
-      girard_order_items(id, product_name, sku, quantity, unit_price)
-    `)
-    .eq('submitted_by', userId)
-    .order('created_at', { ascending: false })
-
-  if (status !== 'all') query = query.eq('status', status)
-
-  const { data, error } = await query
-  if (error) throw error
-  return (data ?? []).map(row => ({ ...row, customers: singleRelation(row.customers) }))
-}
-
 export default function MyOrders() {
-  const { profile } = useAuth()
-  const [statusFilter, setStatusFilter] = useState('all')
-
-  const { data: orders, isLoading, isError, refetch } = useQuery({
-    queryKey: ['my_orders', profile?.id, statusFilter],
-    queryFn: () => fetchMyOrders(profile!.id, statusFilter),
-    enabled: !!profile?.id,
-  })
-
-  const pendingCount = orders?.filter(o => o.status === 'pending').length ?? 0
-  const approvedCount = orders?.filter(o => o.status === 'approved').length ?? 0
-  const rejectedCount = orders?.filter(o => o.status === 'rejected').length ?? 0
+  const [expanded, setExpanded] = useState<string[]>([])
+  const { data, filters, setFilters, setPage, isPending, isError, refetch } = usePagedRead('my_orders', { status: 'all' as SalesStatusFilter, ownOnly: true }, fetchSalesOrderPage)
+  const statusFilter = filters.status
+  const setStatusFilter = (status: string) => setFilters({ status: status as SalesStatusFilter, ownOnly: true })
+  const orders = data?.items
+  const isLoading = !data && isPending
+  const pendingCount = data?.status_counts.pending ?? 0
+  const approvedCount = data?.status_counts.approved ?? 0
+  const rejectedCount = data?.status_counts.rejected ?? 0
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -117,6 +82,7 @@ export default function MyOrders() {
       </div>
 
       <div className="px-4 md:px-8 py-6 max-w-2xl mx-auto space-y-4">
+        {!isError && data && <PaginationControls page={data.page} total={data.total} pageSize={data.page_size} pending={isPending} onPageChange={setPage} />}
         {isLoading && (
           <div className="text-center text-gray-400 text-sm py-24">Memuat pesanan...</div>
         )}
@@ -155,7 +121,7 @@ export default function MyOrders() {
                     {STATUS_LABELS[order.status] ?? order.status}
                   </span>
                   <p className="text-sm font-semibold text-gray-900">
-                    Rp {order.total_value.toLocaleString('id-ID')}
+                    Rp {formatMoney(order.total_value, 'full')}
                   </p>
                 </div>
               </div>
@@ -187,27 +153,9 @@ export default function MyOrders() {
               )}
             </div>
 
-            {/* Line items */}
             <div className="px-5 py-3">
-              <p className="text-xs text-gray-400 mb-2">Barang dipesan</p>
-              <div className="space-y-1.5">
-                {order.girard_order_items.map(item => (
-                  <div key={item.id} className="flex items-center justify-between text-sm">
-                    <div className="flex-1 min-w-0">
-                      <span className="text-gray-900 truncate block">{item.product_name}</span>
-                      {item.sku && (
-                        <span className="text-xs text-gray-400 font-mono uppercase">{item.sku}</span>
-                      )}
-                    </div>
-                    <div className="text-right ml-4 shrink-0">
-                      <p className="text-gray-600 text-xs">x{item.quantity}</p>
-                      <p className="text-gray-900 font-medium text-xs">
-                        Rp {(item.quantity * item.unit_price).toLocaleString('id-ID')}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <button type="button" aria-expanded={expanded.includes(order.id)} onClick={() => setExpanded(previous => previous.includes(order.id) ? previous.filter(id => id !== order.id) : [...previous, order.id])} className="text-xs font-medium text-green-600">{expanded.includes(order.id) ? 'Sembunyikan barang' : 'Lihat barang'}</button>
+              {expanded.includes(order.id) && <SalesOrderItems orderId={order.id} />}
             </div>
           </div>
         ))}

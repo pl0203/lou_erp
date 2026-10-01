@@ -1,3 +1,5 @@
+import ReadFailure from '../../components/ReadFailure'
+import { readCompleteQuery } from '../../lib/reads/completeQuery'
 import { singleRelation } from '../../lib/relations'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -80,23 +82,20 @@ function getPromotionTierPrice(
   return promo[tier] ?? promo.products?.[tier] ?? null
 }
 
-async function fetchProducts(): Promise<Product[]> {
-  const { data, error } = await supabase
+async function fetchProducts(signal?: AbortSignal): Promise<Product[]> {
+  const data = await readCompleteQuery((offset, limit) => supabase
     .from('products')
-    .select('id, name, sku, size, harga_pokok, luar_kota, dalam_kota, depo_bangunan')
-    .order('name')
-  if (error) throw error
-  return data
+    .select('id, name, sku, size, harga_pokok, luar_kota, dalam_kota, depo_bangunan', { count: 'exact' })
+    .order('id')
+    .range(offset, offset + limit - 1), row => row.id, signal)
+  return data.sort((a, b) => a.name.localeCompare(b.name))
 }
 
-async function fetchPromotions(): Promise<Promotion[]> {
-  const { data, error } = await supabase
-    .from('promotions')
-    .select('id, product_id, start_date, end_date, harga_pokok, luar_kota, dalam_kota, depo_bangunan, is_active, created_at, products(name, sku, size, harga_pokok, luar_kota, dalam_kota, depo_bangunan)')
-    .order('created_at', { ascending: false })
-
-  if (error) throw error
-  return (data ?? []).map(row => ({ ...row, products: singleRelation(row.products) }))
+async function fetchPromotions(signal?: AbortSignal): Promise<Promotion[]> {
+  const data = await readCompleteQuery((offset, limit) => supabase.from('promotions')
+    .select('id, product_id, start_date, end_date, harga_pokok, luar_kota, dalam_kota, depo_bangunan, is_active, created_at, products(name, sku, size, harga_pokok, luar_kota, dalam_kota, depo_bangunan)', { count: 'exact' })
+    .order('created_at', { ascending: false }).order('id').range(offset, offset + limit - 1), row => row.id, signal)
+  return data.map(row => ({ ...row, products: singleRelation(row.products) }))
 }
 
 async function createPromotion(form: PromoForm, createdBy: string) {
@@ -139,14 +138,14 @@ export default function Promotions() {
   const [form, setForm] = useState<PromoForm>(EMPTY_FORM)
   const [deleteId, setDeleteId] = useState<string | null>(null)
 
-  const { data: products } = useQuery({
-    queryKey: ['products'],
-    queryFn: fetchProducts,
+  const { data: products, isError: productReadError, refetch: retryProducts } = useQuery({
+    queryKey: ['products', 'complete', 'promotions'],
+    queryFn: ({ signal }) => fetchProducts(signal),
   })
 
-  const { data: promotions, isLoading } = useQuery({
+  const { data: promotions, isLoading, isError: promotionReadError, refetch: retryPromotions } = useQuery({
     queryKey: ['promotions'],
-    queryFn: fetchPromotions,
+    queryFn: ({ signal }) => fetchPromotions(signal),
   })
 
   const activeCount = promotions?.filter(isCurrentlyActive).length ?? 0
@@ -219,6 +218,8 @@ export default function Promotions() {
   }
 
   const deleteTarget = promotions?.find(p => p.id === deleteId)
+
+  if (productReadError || promotionReadError) return <div className="min-h-screen bg-gray-50"><GirardNav /><ReadFailure onRetry={() => { void retryProducts(); void retryPromotions() }} /></div>
 
   return (
     <div className="min-h-screen bg-gray-50">

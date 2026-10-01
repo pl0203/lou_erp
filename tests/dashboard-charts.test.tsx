@@ -19,10 +19,10 @@ beforeEach(() => {
   state.loading = false
   state.charts = {}
   state.data = {
-    metrics: { totalPOCount: 2, totalPOValue: 1000000, deliveredValue: 0, outstandingValue: 1000000, averagePOValue: 500000, completedPOCount: 0 },
-    customerShare: [{ label: 'Customer <img src=x onerror=alert(1)>', value: 1000000, color: '#3b82f6' }],
-    monthlySeries: [{ key: '2026-09', label: 'Sep 2026', poValue: 1000000, deliveredValue: 0 }],
-    dailySeries: [{ key: '2026-09-30', label: '30 Sep', deliveredValue: 0, sjCount: 2 }],
+    metrics: { totalPOCount: 2, totalPOValue: '1000000', deliveredValue: '0', outstandingValue: '1000000', averagePOValue: '500000', completedPOCount: 0 },
+    customerShare: [{ label: 'Customer <img src=x onerror=alert(1)>', value: '1000000', color: '#3b82f6' }],
+    monthlySeries: [{ key: '2026-09', label: 'Sep 2026', poValue: '1000000', deliveredValue: '0' }],
+    dailySeries: [{ key: '2026-09-30', label: '30 Sep', deliveredValue: '0', sjCount: 2 }],
     statusBreakdown: [{ label: 'Confirm', value: 2, color: '#3b82f6' }],
     topCustomers: [], outstandingItems: [],
   }
@@ -59,12 +59,12 @@ test('series controls are keyboard-accessible and affect only chart visibility',
   fireEvent.click(control)
   await waitFor(() => expect(state.charts['PO vs Pengiriman Bulanan'].legend.selected.Terkirim).toBe(false))
   expect(control.getAttribute('aria-pressed')).toBe('false')
-  expect(state.data.metrics.totalPOValue).toBe(1000000)
+  expect(state.data.metrics.totalPOValue).toBe('1000000')
   expect(state.charts['PO vs Pengiriman Bulanan'].series[1].data).toEqual([0])
 })
 
 test('all daily values remain in the chart with date zoom and an accessible data table', async () => {
-  state.data.dailySeries = Array.from({ length: 40 }, (_, index) => ({ key: `day-${index}`, label: `Day ${index}`, deliveredValue: index, sjCount: index % 3 }))
+  state.data.dailySeries = Array.from({ length: 40 }, (_, index) => ({ key: `day-${index}`, label: `Day ${index}`, deliveredValue: String(index), sjCount: index % 3 }))
   render(<Dashboard />)
   const region = await screen.findByRole('region', { name: 'Tren Pengiriman Harian' })
   const option = state.charts['Tren Pengiriman Harian']
@@ -77,7 +77,7 @@ test('all daily values remain in the chart with date zoom and an accessible data
 })
 
 test('daily zoom controls update the plotted range and can restore all dates without changing data', async () => {
-  state.data.dailySeries = Array.from({ length: 40 }, (_, index) => ({ key: `day-${index}`, label: `Day ${index}`, deliveredValue: index, sjCount: index % 3 }))
+  state.data.dailySeries = Array.from({ length: 40 }, (_, index) => ({ key: `day-${index}`, label: `Day ${index}`, deliveredValue: String(index), sjCount: index % 3 }))
   render(<Dashboard />)
   const slider = await screen.findByRole('slider', { name: 'Tanggal mulai grafik' })
   fireEvent.change(slider, { target: { value: '12' } })
@@ -89,11 +89,11 @@ test('daily zoom controls update the plotted range and can restore all dates wit
 })
 
 test('filter data replacement clears old marks and resets daily zoom', async () => {
-  state.data.dailySeries = Array.from({ length: 40 }, (_, index) => ({ key: `day-${index}`, label: `Day ${index}`, deliveredValue: index, sjCount: index % 3 }))
+  state.data.dailySeries = Array.from({ length: 40 }, (_, index) => ({ key: `day-${index}`, label: `Day ${index}`, deliveredValue: String(index), sjCount: index % 3 }))
   const view = render(<Dashboard />)
   const slider = await screen.findByRole('slider', { name: 'Tanggal mulai grafik' })
   fireEvent.change(slider, { target: { value: '12' } })
-  state.data = { ...state.data, dailySeries: [{ key: '2026-10-01', label: '1 Okt', deliveredValue: 0, sjCount: 0 }] }
+  state.data = { ...state.data, dailySeries: [{ key: '2026-10-01', label: '1 Okt', deliveredValue: '0', sjCount: 0 }] }
   view.rerender(<Dashboard />)
   await waitFor(() => expect(state.charts['Tren Pengiriman Harian'].series[0].data).toEqual([0]))
   expect(state.charts['Tren Pengiriman Harian'].xAxis.data).toEqual(['2026-10-01'])

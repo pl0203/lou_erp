@@ -1,3 +1,7 @@
+import ReadFailure from '../../components/ReadFailure'
+import { readCompleteQuery } from '../../lib/reads/completeQuery'
+import { chunkIds } from '../../lib/reads/completeReads'
+import { formatMoney } from '../../lib/reads/money'
 import { parseCalendarDate, calendarDayOptions } from '../../lib/calendarDate'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -40,35 +44,19 @@ function getDateRange(): string[] {
   return calendarDayOptions(4)
 }
 
-async function fetchMyVisitSchedules(userId: string, dates: string[]): Promise<Schedule[]> {
-  const { data, error } = await supabase
-    .from('sales_schedules')
-    .select(`
-      id, scheduled_date, status, notes, outlet_id,
-      outlet_visits(id, checked_in_at)
-    `)
-    .eq('sales_person_id', userId)
-    .in('scheduled_date', dates)
-    .order('scheduled_date')
-    .order('created_at')
-  if (error) throw error
-  if (!data || data.length === 0) return []
-
-  const outletIds = [...new Set(data.map((s: any) => s.outlet_id as string))]
-  if (outletIds.length === 0) return data as Schedule[]
-
-  const { data: customerData, error: customerError } = await supabase
-    .from('customers')
-    .select('id, name, address, city, last_visit_date, visit_frequency_days')
-    .in('id', outletIds)
-  if (customerError) throw customerError
-
-  const customerMap = Object.fromEntries((customerData ?? []).map(c => [c.id, c]))
-
-  return data.map((s: any) => ({
-    ...s,
-    customers: customerMap[s.outlet_id] ?? null,
-  })) as Schedule[]
+async function fetchMyVisitSchedules(userId: string, dates: string[], signal?: AbortSignal): Promise<Schedule[]> {
+  const data = await readCompleteQuery((offset, limit) => supabase.from('sales_schedules')
+    .select('id, scheduled_date, status, notes, outlet_id, outlet_visits(id, checked_in_at)', { count: 'exact' })
+    .eq('sales_person_id', userId).in('scheduled_date', dates)
+    .order('scheduled_date').order('created_at').order('id').range(offset, offset + limit - 1), row => row.id, signal)
+  const customerMap = new Map<string, Schedule['customers']>()
+  for (const ids of chunkIds(data.map(row => row.outlet_id))) {
+    const customers = await readCompleteQuery((offset, limit) => supabase.from('customers')
+      .select('id, name, address, city, last_visit_date, visit_frequency_days', { count: 'exact' })
+      .in('id', ids).order('id').range(offset, offset + limit - 1), row => row.id, signal)
+    for (const customer of customers) customerMap.set(customer.id, customer)
+  }
+  return data.map(row => ({ ...row, customers: customerMap.get(row.outlet_id) ?? null })) as Schedule[]
 }
 
 function isOverdue(lastVisit: string | null, frequencyDays: number): boolean {
@@ -89,9 +77,9 @@ export default function MyVisits() {
   const dates = getDateRange()
   const [selectedDate, setSelectedDate] = useState(dates[0])
 
-  const { data: allSchedules, isLoading } = useQuery({
+  const { data: allSchedules, isLoading, isError: scheduleReadError, refetch } = useQuery({
     queryKey: ['my_visits', profile?.id, dates],
-    queryFn: () => fetchMyVisitSchedules(profile!.id, dates),
+    queryFn: ({ signal }) => fetchMyVisitSchedules(profile!.id, dates, signal),
     enabled: !!profile?.id,
   })
 
@@ -111,6 +99,8 @@ export default function MyVisits() {
   const todaySchedules = allSchedules?.filter(s => s.scheduled_date === dates[0]) ?? []
   const completed = todaySchedules.filter(s => s.outlet_visits.length > 0).length
   const total = todaySchedules.length
+
+  if (scheduleReadError) return <div className="min-h-screen bg-gray-50"><GirardNav /><ReadFailure onRetry={() => { void refetch() }} /></div>
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -232,13 +222,13 @@ export default function MyVisits() {
                 </div>
                 <div className="px-4 py-3 text-center">
                   <p className="text-xs text-gray-400 mb-0.5">Pesanan (3bl)</p>
-                  <p className="text-sm font-medium text-gray-900">{statsError ? 'Tidak tersedia' : statsLoading || !stats ? 'Memuat...' : stats.order_count}</p>
+                  <p className="text-sm font-medium text-gray-900">{statsError || (!statsLoading && !stats) ? 'Tidak tersedia' : statsLoading || !stats ? 'Memuat...' : stats.order_count}</p>
                 </div>
                 <div className="px-4 py-3 text-center">
                   <p className="text-xs text-gray-400 mb-0.5">Penjualan (3bl)</p>
                   <p className="text-sm font-medium text-gray-900">
-                    {statsError ? 'Tidak tersedia' : statsLoading || !stats ? 'Memuat...' : stats.total_sales
-                      ? `Rp ${(stats.total_sales / 1_000_000).toFixed(1)}M`
+                    {statsError || (!statsLoading && !stats) ? 'Tidak tersedia' : statsLoading || !stats ? 'Memuat...' : !/^0(?:\.0+)?$/.test(String(stats.total_sales))
+                      ? `Rp ${formatMoney(String(stats.total_sales), 'millions')}M`
                       : 'Rp 0'}
                   </p>
                 </div>

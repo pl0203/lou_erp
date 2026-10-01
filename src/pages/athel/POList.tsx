@@ -1,24 +1,11 @@
 import { useEffect, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
+import { fetchPOPage } from '../../lib/reads/orders'
+import type { POStatusFilter } from '../../lib/reads/contracts'
+import { usePagedRead } from '../../lib/reads/usePagedRead'
+import { formatMoney } from '../../lib/reads/money'
+import PaginationControls from '../../components/PaginationControls'
 import AthelNav from '../../components/AthelNav'
-
-type PO = {
-  id: string
-  po_number: string
-  status: string
-  order_date: string
-  expected_delivery_date: string | null
-  total_value: number
-  customers: { name: string }
-  surat_jalan: { sj_number: string }[]
-}
-
-type POListResponse = {
-  items: PO[]
-  total: number
-}
 
 const STATUS_STYLES: Record<string, string> = {
   confirm:     'bg-blue-100 text-blue-700',
@@ -34,114 +21,17 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled:   'Dibatalkan',
 }
 
-const PAGE_SIZE = 10
-
-function applyStatusFilter(query: any, status: string) {
-  if (status === 'all') return query
-  return query.eq('status', status)
-}
-
-async function fetchMatchingCustomerIds(search: string): Promise<string[]> {
-  const { data, error } = await supabase
-    .from('customers')
-    .select('id')
-    .ilike('name', `%${search}%`)
-    .limit(100)
-
-  if (error) throw error
-  return (data ?? []).map(customer => customer.id)
-}
-
-async function fetchMatchingPOIdsFromSJ(search: string): Promise<string[]> {
-  const { data, error } = await supabase
-    .from('surat_jalan')
-    .select('purchase_order_id')
-    .ilike('sj_number', `%${search}%`)
-    .limit(100)
-
-  if (error) throw error
-  return [...new Set((data ?? []).map(item => item.purchase_order_id))]
-}
-
-async function fetchPOs(status: string, search: string, page: number): Promise<POListResponse> {
-  const from = (page - 1) * PAGE_SIZE
-  const to = from + PAGE_SIZE - 1
-  const trimmedSearch = search.trim()
-
-  let query = applyStatusFilter(
-    supabase
-    .from('purchase_orders')
-    .select(
-      'id, po_number, status, order_date, expected_delivery_date, total_value, customer_id, customers(name), surat_jalan(sj_number)',
-      { count: 'exact' }
-    )
-    .order('created_at', { ascending: false })
-    .range(from, to),
-    status
-  )
-
-  if (!trimmedSearch) {
-    const { data, error, count } = await query
-    if (error) throw error
-    return {
-      items: data as PO[],
-      total: count ?? 0,
-    }
-  }
-
-  const [customerIds, poIdsFromSJ] = await Promise.all([
-    fetchMatchingCustomerIds(trimmedSearch),
-    fetchMatchingPOIdsFromSJ(trimmedSearch),
-  ])
-
-  const searchFilters = [`po_number.ilike.%${trimmedSearch}%`]
-
-  if (customerIds.length > 0) {
-    searchFilters.push(`customer_id.in.(${customerIds.join(',')})`)
-  }
-  if (poIdsFromSJ.length > 0) {
-    searchFilters.push(`id.in.(${poIdsFromSJ.join(',')})`)
-  }
-
-  query = query.or(searchFilters.join(','))
-
-  const { data, error, count } = await query
-  if (error) throw error
-
-  return {
-    items: data as PO[],
-    total: count ?? 0,
-  }
-}
-
 export default function POList() {
   const navigate = useNavigate()
-  const [status, setStatus] = useState('all')
   const [search, setSearch] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [page, setPage] = useState(1)
-
-  const handleSearch = (val: string) => {
-    setSearch(val)
-    clearTimeout((window as any)._searchTimer)
-    ;(window as any)._searchTimer = setTimeout(() => setDebouncedSearch(val), 300)
-  }
-
+  const { data, filters, setFilters, setPage, isPending, isError, refetch } = usePagedRead('purchase_orders', { status: 'all' as POStatusFilter, search: '' }, fetchPOPage)
   useEffect(() => {
-    setPage(1)
-  }, [status, debouncedSearch])
-
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ['purchase_orders', status, debouncedSearch, page],
-    queryFn: () => fetchPOs(status, debouncedSearch, page),
-    placeholderData: previousData => previousData,
-  })
-
+    const timer = setTimeout(() => setFilters(previous => previous.search === search ? previous : { ...previous, search }), 300)
+    return () => clearTimeout(timer)
+  }, [search, setFilters])
   const pos = data?.items ?? []
-  const totalItems = data?.total ?? 0
-  const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE))
-  const startItem = totalItems === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
-  const endItem = totalItems === 0 ? 0 : Math.min(page * PAGE_SIZE, totalItems)
+  const totalItems = data?.total
+  const isLoading = !data && isPending
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -150,7 +40,7 @@ export default function POList() {
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Pesanan Pembelian</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{totalItems} pesanan</p>
+          <p className="text-sm text-gray-500 mt-0.5">{isError ? 'Data tidak tersedia' : totalItems === undefined ? 'Memuat pesanan…' : `${totalItems} pesanan`}</p>
         </div>
         <button
           onClick={() => navigate('/athel/po/new')}
@@ -165,12 +55,12 @@ export default function POList() {
           type="text"
           placeholder="Cari nomor PO, pelanggan, atau SJ..."
           value={search}
-          onChange={e => handleSearch(e.target.value)}
+          onChange={e => setSearch(e.target.value)}
           className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full sm:w-80 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
         <select
-          value={status}
-          onChange={e => setStatus(e.target.value)}
+          value={filters.status}
+          onChange={e => setFilters(previous => ({ ...previous, status: e.target.value as POStatusFilter }))}
           className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="all">Semua status</option>
@@ -181,11 +71,12 @@ export default function POList() {
       </div>
 
       <div className="px-4 md:px-8 py-6">
+        {!isError && data && <PaginationControls page={data.page} total={data.total} pageSize={data.page_size} pending={isPending} onPageChange={setPage} />}
         {isLoading && (
           <div className="text-center text-gray-400 py-24 text-sm">Memuat pesanan pembelian...</div>
         )}
         {isError && (
-          <div className="text-center text-red-500 py-24 text-sm">Gagal memuat data. Periksa koneksi Anda.</div>
+          <div role="alert" className="text-center text-red-500 py-24 text-sm">Gagal memuat data. Periksa koneksi Anda. <button onClick={() => refetch()} className="underline">Coba lagi</button></div>
         )}
         {!isLoading && !isError && pos.length === 0 && (
           <div className="text-center text-gray-400 py-24 text-sm">Tidak ada pesanan pembelian ditemukan.</div>
@@ -220,7 +111,7 @@ export default function POList() {
                       <td className="px-5 py-4 text-gray-600">{po.order_date}</td>
                       <td className="px-5 py-4 text-gray-600">{po.expected_delivery_date ?? '—'}</td>
                       <td className="px-5 py-4 text-right text-gray-900 font-medium">
-                        Rp {po.total_value.toLocaleString('id-ID')}
+                        Rp {formatMoney(po.total_value, 'full')}
                       </td>
                       <td className="px-5 py-4 text-right">
                         <button
@@ -269,7 +160,7 @@ export default function POList() {
                     </div>
                     <div className="col-span-2">
                       <p className="text-gray-400">Total Nilai</p>
-                      <p className="text-gray-900 font-semibold">Rp {po.total_value.toLocaleString('id-ID')}</p>
+                      <p className="text-gray-900 font-semibold">Rp {formatMoney(po.total_value, 'full')}</p>
                     </div>
                   </div>
                   <div className="flex gap-2 pt-3 border-t border-gray-100">
@@ -293,30 +184,6 @@ export default function POList() {
               ))}
             </div>
 
-            <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-gray-500">
-                Menampilkan {startItem}-{endItem} dari {totalItems} pesanan
-              </p>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setPage(prev => Math.max(1, prev - 1))}
-                  disabled={page === 1}
-                  className="px-3 py-2 text-sm rounded-lg border border-gray-200 bg-white text-gray-700 disabled:text-gray-300 disabled:bg-gray-50 disabled:cursor-not-allowed"
-                >
-                  Sebelumnya
-                </button>
-                <span className="text-sm text-gray-500 min-w-24 text-center">
-                  Halaman {page} / {totalPages}
-                </span>
-                <button
-                  onClick={() => setPage(prev => Math.min(totalPages, prev + 1))}
-                  disabled={page === totalPages}
-                  className="px-3 py-2 text-sm rounded-lg border border-gray-200 bg-white text-gray-700 disabled:text-gray-300 disabled:bg-gray-50 disabled:cursor-not-allowed"
-                >
-                  Berikutnya
-                </button>
-              </div>
-            </div>
           </>
         )}
       </div>

@@ -54,10 +54,11 @@ async function fetchCustomers(search: string, page: number): Promise<CustomerLis
     .from('customers')
     .select('id, name, address, city, phone, email, pricing_tier', { count: 'exact' })
     .order('name')
+    .order('id')
     .range(from, to)
 
   if (trimmedSearch) {
-    query = query.or(`name.ilike.%${trimmedSearch}%,city.ilike.%${trimmedSearch}%`)
+    query = query.or(literalSearchFilter(['name', 'city'], trimmedSearch))
   }
 
   const { data, error, count } = await query
@@ -446,3 +447,4 @@ export default function CustomerList() {
     </div>
   )
 }
+import { literalSearchFilter } from '../../lib/reads/literalSearch'

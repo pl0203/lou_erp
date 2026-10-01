@@ -1,8 +1,13 @@
+import { fetchCompletePOLines, fetchAuditPage, fetchDeliveryPage, fetchDeliveryLines, fetchDeliveryForEdit } from '../../lib/reads/detailReads'
+import type { DeliveryHeader, DeliveryLine } from '../../lib/reads/detailReads'
+import { usePagedRead } from '../../lib/reads/usePagedRead'
+import { formatMoney } from '../../lib/reads/money'
+import PaginationControls from '../../components/PaginationControls'
 import TransactionRecovery from '../../components/TransactionRecovery'
 import { useTransactionSender } from '../../lib/orderTransactions'
 import type { TransactionSender } from '../../lib/orderTransactions'
 import { singleRelation } from '../../lib/relations'
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
@@ -31,31 +36,7 @@ type LineItem = {
   line_total: number
 }
 
-type AuditEntry = {
-  id: string
-  field_changed: string
-  old_value: string | null
-  new_value: string | null
-  changed_at: string
-  users: { full_name: string }
-}
-
-type SJLineItem = {
-  id: string
-  po_line_item_id: string
-  quantity_delivered: number
-}
-
-type SuratJalan = {
-  id: string
-  voided_at: string | null
-  void_reason: string | null
-  sj_number: string
-  sj_date: string
-  sj_date_received: string | null
-  sj_date_returned: string | null
-  sj_line_items: SJLineItem[]
-}
+type SuratJalan = DeliveryHeader & { sj_line_items: DeliveryLine[] }
 
 type SJFormLine = {
   po_line_item_id: string
@@ -87,35 +68,6 @@ async function fetchPO(id: string): Promise<PO> {
     .single()
   if (error) throw error
   return { ...data, customers: singleRelation(data.customers) }
-}
-
-async function fetchLineItems(poId: string): Promise<LineItem[]> {
-  const { data, error } = await supabase
-    .from('po_line_items')
-    .select('id, product_name, sku, quantity, unit_price, line_total')
-    .eq('purchase_order_id', poId)
-  if (error) throw error
-  return data
-}
-
-async function fetchAuditLog(poId: string): Promise<AuditEntry[]> {
-  const { data, error } = await supabase
-    .from('po_audit_log')
-    .select('id, field_changed, old_value, new_value, changed_at, users(full_name)')
-    .eq('purchase_order_id', poId)
-    .order('changed_at', { ascending: false })
-  if (error) throw error
-  return (data ?? []).map(row => ({ ...row, users: singleRelation(row.users) }))
-}
-
-async function fetchSuratJalan(poId: string): Promise<SuratJalan[]> {
-  const { data, error } = await supabase
-    .from('surat_jalan')
-    .select('id, sj_number, sj_date, sj_date_received, sj_date_returned, voided_at, void_reason, sj_line_items(id, po_line_item_id, quantity_delivered)')
-    .eq('purchase_order_id', poId)
-    .order('sj_date', { ascending: true })
-  if (error) throw error
-  return data as SuratJalan[]
 }
 
 type DeliveryPayload = {
@@ -171,35 +123,36 @@ export default function PODetail() {
   const [sjDateReturned, setSjDateReturned] = useState('')
   const [sjLines, setSjLines] = useState<SJFormLine[]>([])
 
-  const { data: po, isLoading } = useQuery({
-    queryKey: ['po', id],
-    queryFn: () => fetchPO(id!),
+  const { data: po, isLoading, isError: poError, refetch: refetchPO } = useQuery({
+    queryKey: ['po', id], queryFn: () => fetchPO(id!),
+  })
+  const { data: lineState, isError: linesError, isFetching: linesPending, refetch: refetchLines } = useQuery({
+    queryKey: ['po_line_state', id, 'detail', po?.updated_at],
+    queryFn: ({ signal }) => fetchCompletePOLines(id!, po!.updated_at, signal), enabled: !!id && !!po,
+  })
+  const lineItems = lineState?.items
+  const lineReady = !!lineState && !linesError && !linesPending && lineState.po_updated_at === po?.updated_at
+  const audits = usePagedRead('po_audit_log', { poId: id! }, (filters, page, signal) => fetchAuditPage(filters.poId, page, signal))
+  const deliveries = usePagedRead('surat_jalan', { poId: id! }, (filters, page, signal) => fetchDeliveryPage(filters.poId, page, signal))
+  const sjList = deliveries.data?.items
+  const auditLog = audits.data?.items
+  const [selectedSJId, setSelectedSJId] = useState<string | null>(null)
+  const [preparingSJ, setPreparingSJ] = useState(false)
+  const [preparationError, setPreparationError] = useState(false)
+  const preparation = useRef<AbortController | null>(null)
+  useEffect(() => () => preparation.current?.abort(), [])
+  useEffect(() => {
+    audits.setFilters({ poId: id! }); deliveries.setFilters({ poId: id! })
+    setSelectedSJId(null); preparation.current?.abort()
+    setPreparingSJ(false); setPreparationError(false)
+    setShowSJModal(false); setEditingSJ(null); setSjLines([])
+    setShowDeleteConfirm(false); setDeletingSJId(null); setActionReason('')
+  }, [id, audits.setFilters, deliveries.setFilters])
+  const selectedLines = useQuery({
+    queryKey: ['sj_lines', selectedSJId], queryFn: ({ signal }) => fetchDeliveryLines(selectedSJId!, signal), enabled: !!selectedSJId,
   })
 
-  const { data: lineItems } = useQuery({
-    queryKey: ['po_line_items', id],
-    queryFn: () => fetchLineItems(id!),
-    enabled: !!id,
-  })
-
-  const { data: auditLog } = useQuery({
-    queryKey: ['po_audit_log', id],
-    queryFn: () => fetchAuditLog(id!),
-    enabled: !!id,
-  })
-
-  const { data: sjList } = useQuery({
-    queryKey: ['surat_jalan', id],
-    queryFn: () => fetchSuratJalan(id!),
-    enabled: !!id,
-  })
-
-  const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ['po', id] })
-    queryClient.invalidateQueries({ queryKey: ['po_audit_log', id] })
-    queryClient.invalidateQueries({ queryKey: ['surat_jalan', id] })
-    queryClient.invalidateQueries({ queryKey: ['purchase_orders'] })
-  }
+  const invalidate = () => { queryClient.invalidateQueries() }
 
   const sjMutation = useMutation({
     mutationFn: (payload: Parameters<typeof createSJ>[0]) => createSJ(payload, sendTransaction),
@@ -218,16 +171,14 @@ export default function PODetail() {
 
   const deleteMutation = useMutation({
     mutationFn: () => sendTransaction('cancel_po', { po_id: id!, expected_updated_at: actionVersion, reason: actionReason }),
-    onSuccess: () => navigate('/athel/po'),
+    onSuccess: () => { invalidate(); navigate('/athel/po') },
   })
 
-  const outstanding = lineItems && sjList
-    ? computeOutstanding(lineItems, sjList)
-    : {}
+  const outstanding = Object.fromEntries((lineItems ?? []).map(line => [line.id, Math.max(0, line.quantity - line.delivered_quantity)]))
 
   const openNewSJModal = () => {
-    if (!lineItems || !sjList) return
-    setEditVersion(po!.updated_at)
+    if (!lineReady || !lineItems) return
+    setEditVersion(lineState!.po_updated_at)
     setSjNumber('')
     setSjDate(new Date().toISOString().split('T')[0])
     setSjDateReceived('')
@@ -244,28 +195,28 @@ export default function PODetail() {
     setShowSJModal(true)
   }
 
-  const openEditSJModal = (sj: SuratJalan) => {
-    if (!lineItems || !sjList) return
-    setEditVersion(po!.updated_at)
-    const otherSJs = sjList.filter(s => s.id !== sj.id)
-    const outstandingExcluding = computeOutstanding(lineItems, otherSJs)
-    setSjNumber(sj.sj_number)
-    setSjDate(sj.sj_date)
-    setSjDateReceived(sj.sj_date_received ?? '')
-    setSjDateReturned(sj.sj_date_returned ?? '')
-    setSjLines(lineItems.map(li => {
-      const existing = sj.sj_line_items.find(sli => sli.po_line_item_id === li.id)
-      return {
-        po_line_item_id: li.id,
-        product_name: li.product_name,
-        sku: li.sku,
-        quantity_ordered: li.quantity,
-        quantity_outstanding: outstandingExcluding[li.id] ?? 0,
-        quantity_to_deliver: existing?.quantity_delivered ?? 0,
-      }
-    }))
-    setEditingSJ(sj)
-    setShowSJModal(true)
+  const openEditSJModal = async (header: DeliveryHeader) => {
+    if (!lineReady || !lineItems || preparingSJ) return
+    preparation.current?.abort()
+    const controller = new AbortController(); preparation.current = controller
+    setPreparingSJ(true); setPreparationError(false)
+    try {
+      const items = await fetchDeliveryForEdit(id!, header.id, lineState!.po_updated_at, controller.signal)
+      if (controller.signal.aborted) return
+      const sj = { ...header, sj_line_items: items }
+      setEditVersion(lineState!.po_updated_at)
+      setSjNumber(sj.sj_number); setSjDate(sj.sj_date)
+      setSjDateReceived(sj.sj_date_received ?? ''); setSjDateReturned(sj.sj_date_returned ?? '')
+      setSjLines(lineItems.map(li => {
+        const existing = items.find(line => line.po_line_item_id === li.id)
+        return { po_line_item_id: li.id, product_name: li.product_name, sku: li.sku,
+          quantity_ordered: li.quantity,
+          quantity_outstanding: Math.max(0, li.quantity - li.delivered_quantity + (existing?.quantity_delivered ?? 0)),
+          quantity_to_deliver: existing?.quantity_delivered ?? 0 }
+      }))
+      setEditingSJ(sj); setShowSJModal(true)
+    } catch { if (!controller.signal.aborted) setPreparationError(true) }
+    finally { if (!controller.signal.aborted) setPreparingSJ(false) }
   }
 
   const closeSJModal = () => {
@@ -287,6 +238,7 @@ export default function PODetail() {
   }
 
   const handleSaveSJ = async () => {
+    if (!lineReady || editVersion !== lineState?.po_updated_at) return
     if (!sjNumber.trim()) return alert('SJ number is required.')
     if (!sjDate) return alert('SJ date is required.')
     if (sjLines.every(l => l.quantity_to_deliver === 0))
@@ -323,7 +275,7 @@ export default function PODetail() {
   }
 
   if (isLoading) return <div className="p-8 text-gray-400 text-sm">Loading...</div>
-  if (!po) return <div className="p-8 text-red-500 text-sm">PO not found.</div>
+  if (poError || !po) return <div role="alert" className="p-8 text-red-500 text-sm">Data PO belum tersedia. <button onClick={() => refetchPO()}>Coba lagi</button><TransactionRecovery send={sendTransaction} onCommitted={() => queryClient.invalidateQueries()} /></div>
   
   const isInProgress = po.status === 'in_progress'
   const isComplete = po.status === 'complete'
@@ -379,6 +331,10 @@ export default function PODetail() {
 
       <div className="px-4 md:px-8 py-6 max-w-4xl mx-auto space-y-6">
 
+        {(!lineReady || preparationError) && <div role={linesError || preparationError ? 'alert' : 'status'} className="text-sm text-red-600">
+          {linesError || preparationError ? 'Data barang atau pengiriman belum lengkap. Pengiriman belum dapat diubah.' : 'Memuat seluruh barang PO…'}
+          <button className="ml-2 underline" onClick={() => { setPreparationError(false); refetchPO(); refetchLines() }}>Coba lagi</button>
+        </div>}
         {/* Status card */}
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h2 className="text-base font-medium text-gray-900 mb-4">Status</h2>
@@ -403,7 +359,8 @@ export default function PODetail() {
             ))}
             {canAddSJ && (
               <button
-                onClick={openNewSJModal}
+                disabled={!lineReady || preparingSJ}
+                  onClick={openNewSJModal}
                 className="ml-auto bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
               >
                 + Surat Jalan
@@ -486,10 +443,10 @@ export default function PODetail() {
                     </td>
                   )}
                   <td className="px-6 py-3 text-right text-gray-700">
-                    Rp {item.unit_price.toLocaleString('id-ID')}
+                    Rp {formatMoney(item.unit_price, 'full')}
                   </td>
                   <td className="px-6 py-3 text-right text-gray-900 font-medium">
-                    Rp {item.line_total.toLocaleString('id-ID')}
+                    Rp {formatMoney(item.line_total, 'full')}
                   </td>
                 </tr>
               ))}
@@ -507,83 +464,43 @@ export default function PODetail() {
           </table>
         </div>
 
-        {/* Deliveries */}
-        {sjList && sjList.length > 0 && (
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100">
-              <h2 className="text-base font-medium text-gray-900">Pengiriman (Daftar Surat Jalan)</h2>
-            </div>
-            <div className="divide-y divide-gray-100">
-              {sjList.map(sj => (
-                <div key={sj.id} className="px-6 py-4">
-                  <div className="flex items-start justify-between mb-3">
-                    <div>
-                      <span className="font-medium text-gray-900 text-sm">{sj.sj_number}</span>
-                      {sj.voided_at && <p className="text-xs text-red-600">Dibatalkan: {sj.void_reason} · {new Date(sj.voided_at).toLocaleString('id-ID')}</p>}
-                      <div className="flex gap-4 mt-1 flex-wrap">
-                        <span className="text-gray-400 text-xs">Created: {sj.sj_date}</span>
-                        {sj.sj_date_received && (
-                          <span className="text-gray-400 text-xs">Diterima Toko: {sj.sj_date_received}</span>
-                        )}
-                        {sj.sj_date_returned && (
-                          <span className="text-gray-400 text-xs">SJ Kembali: {sj.sj_date_returned}</span>
-                        )}
-                      </div>
-                    </div>
-                    {canAddSJ && !sj.voided_at && (
-                      <div className="flex gap-3 shrink-0">
-                        <button
-                          onClick={() => openEditSJModal(sj)}
-                          className="text-blue-600 hover:text-blue-800 text-xs font-medium"
-                        >
-                          Ubah
-                        </button>
-                        <button
-                          onClick={() => { setActionVersion(po.updated_at); setActionReason(''); setDeletingSJId(sj.id) }}
-                          className="text-red-400 hover:text-red-600 text-xs font-medium"
-                        >
-                          Batalkan
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="text-gray-400">
-                        <th className="text-left pb-1 font-medium">Item</th>
-                        <th className="text-left pb-1 font-medium">SKU</th>
-                        <th className="text-right pb-1 font-medium">Qty Terkirim</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sj.sj_line_items.map(sli => {
-                        const li = lineItems?.find(l => l.id === sli.po_line_item_id)
-                        return (
-                          <tr key={sli.id}>
-                            <td className="py-0.5 text-gray-700">{li?.product_name ?? '—'}</td>
-                            <td className="py-0.5 text-gray-400 font-mono uppercase">{li?.sku ?? '—'}</td>
-                            <td className="py-0.5 text-right text-gray-700 font-medium">
-                              {sli.quantity_delivered}
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* Delivery headers are presentation only; quantities come from lineState. */}
+        <div role="region" aria-label="Riwayat pengiriman" className="bg-white rounded-xl border border-gray-200 overflow-hidden p-6">
+          <h2 className="text-base font-medium text-gray-900">Pengiriman (Daftar Surat Jalan)</h2>
+          {deliveries.isError ? <p role="alert">Riwayat pengiriman gagal dimuat. <button onClick={() => deliveries.refetch()}>Coba lagi</button></p>
+            : <div aria-busy={deliveries.isPending}>
+              {(sjList ?? []).map(sj => <div key={sj.id} className="py-4 border-b border-gray-100">
+                <div className="flex justify-between gap-3"><div>
+                  <span className="font-medium text-sm">{sj.sj_number}</span>
+                  {sj.voided_at && <p className="text-xs text-red-600">Dibatalkan: {sj.void_reason} · {new Date(sj.voided_at).toLocaleString('id-ID')}</p>}
+                  <p className="text-xs text-gray-400">Created: {sj.sj_date}</p>
+                  {sj.sj_date_received && <p className="text-xs text-gray-400">Diterima Toko: {sj.sj_date_received}</p>}
+                  {sj.sj_date_returned && <p className="text-xs text-gray-400">SJ Kembali: {sj.sj_date_returned}</p>}
+                </div><div className="flex gap-3">
+                  <button disabled={deliveries.isPending} onClick={() => setSelectedSJId(selectedSJId === sj.id ? null : sj.id)} className="text-blue-600 text-xs">{selectedSJId === sj.id ? 'Tutup barang' : 'Lihat barang'}</button>
+                  {canAddSJ && !sj.voided_at && <>
+                    <button disabled={!lineReady || preparingSJ || deliveries.isPending} onClick={() => openEditSJModal(sj)} className="text-blue-600 text-xs">Ubah</button>
+                    <button disabled={deliveries.isPending} onClick={() => { setActionVersion(po.updated_at); setActionReason(''); setDeletingSJId(sj.id) }} className="text-red-500 text-xs">Batalkan</button>
+                  </>}
+                </div></div>
+                {selectedSJId === sj.id && (selectedLines.isError ? <p role="alert">Barang pengiriman gagal dimuat. <button onClick={() => selectedLines.refetch()}>Coba lagi</button></p>
+                  : selectedLines.isPending ? <p role="status">Memuat barang…</p> : <table className="w-full mt-3 text-xs"><thead><tr><th className="text-left">Item</th><th>SKU</th><th>Qty Terkirim</th></tr></thead><tbody>
+                    {selectedLines.data?.map(sli => { const li = lineItems?.find(line => line.id === sli.po_line_item_id); return <tr key={sli.id}><td>{li?.product_name ?? '—'}</td><td>{li?.sku ?? '—'}</td><td>{sli.quantity_delivered}</td></tr> })}
+                  </tbody></table>)}
+              </div>)}
+              {!deliveries.isPending && sjList?.length === 0 && <p className="text-sm text-gray-400">Belum ada pengiriman.</p>}
+              <PaginationControls page={deliveries.page} total={deliveries.data?.total ?? 0} pageSize={20} pending={deliveries.isPending} onPageChange={deliveries.setPage} />
+            </div>}
+        </div>
 
         {/* Audit Log */}
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h2 className="text-base font-medium text-gray-900 mb-4">Riwayat Perubahan</h2>
-          {!auditLog || auditLog.length === 0 ? (
+          {audits.isError ? <p role="alert">Riwayat perubahan gagal dimuat. <button onClick={() => audits.refetch()}>Coba lagi</button></p> : !audits.isPending && auditLog?.length === 0 ? (
             <p className="text-sm text-gray-400">Belum ada perubahan tercatat.</p>
           ) : (
             <div className="space-y-3">
-              {auditLog.map(entry => (
+              {auditLog?.map(entry => (
                 <div key={entry.id} className="flex gap-4 text-sm">
                   <div className="w-1 rounded-full bg-blue-200 shrink-0" />
                   <div>
@@ -608,6 +525,7 @@ export default function PODetail() {
               ))}
             </div>
           )}
+          {!audits.isError && <PaginationControls page={audits.page} total={audits.data?.total ?? 0} pageSize={20} pending={audits.isPending} onPageChange={audits.setPage} />}
         </div>
 
       </div>
@@ -719,7 +637,7 @@ export default function PODetail() {
               </button>
               <button
                 onClick={handleSaveSJ}
-                disabled={sjMutation.isPending || updateSJMutation.isPending}
+                disabled={sjMutation.isPending || updateSJMutation.isPending || !lineReady || editVersion !== lineState?.po_updated_at}
                 className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
               >
                 {sjMutation.isPending || updateSJMutation.isPending
@@ -727,6 +645,7 @@ export default function PODetail() {
                   : editingSJ ? 'Update SJ' : 'Create SJ'}
               </button>
             </div>
+            {(!lineReady || editVersion !== lineState?.po_updated_at) && <p className="px-6 pb-4 text-sm text-red-600">Data PO belum lengkap atau berubah. Tutup formulir lalu muat ulang sebelum menyimpan; isian Anda tetap terlihat sampai formulir ditutup.</p>}
             {(sjMutation.isError || updateSJMutation.isError) && (
               <p className="text-red-500 text-xs px-6 pb-4 text-right">
                 {((sjMutation.error || updateSJMutation.error) as Error)?.message}

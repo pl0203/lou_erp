@@ -1,54 +1,25 @@
 import TransactionRecovery from '../../components/TransactionRecovery'
 import { useTransactionSender } from '../../lib/orderTransactions'
 import type { TransactionSender } from '../../lib/orderTransactions'
-import { singleRelation } from '../../lib/relations'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { supabase } from '../../lib/supabase'
+import { usePagedRead } from '../../lib/reads/usePagedRead'
+import { fetchSalesOrderPage } from '../../lib/reads/orders'
+import { fetchSalesOrderLines } from '../../lib/reads/detailReads'
+import type { SalesOrderSummary, SalesStatusFilter } from '../../lib/reads/contracts'
+import { formatMoney } from '../../lib/reads/money'
+import PaginationControls from '../../components/PaginationControls'
+import SalesOrderItems from '../../components/SalesOrderItems'
 import AthelNav from '../../components/AthelNav'
 import { useNavigate } from 'react-router-dom'
 
-type GirardOrder = {
-  id: string
-  status: string
-  total_value: number
-  created_at: string
-  rejection_note: string | null
-  customers: { name: string }
-  users: { full_name: string }
-  girard_order_items: {
-    id: string
-    product_name: string
-    sku: string | null
-    quantity: number
-    unit_price: number
-    is_promo: boolean
-  }[]
-}
+type GirardOrder = SalesOrderSummary
 
 const STATUS_STYLES: Record<string, string> = {
   pending:  'bg-yellow-100 text-yellow-700',
   approved: 'bg-green-100 text-green-700',
   rejected: 'bg-red-100 text-red-700',
   cancelled: 'bg-gray-100 text-gray-700',
-}
-
-async function fetchGirardOrders(status: string): Promise<GirardOrder[]> {
-  let query = supabase
-    .from('girard_orders')
-    .select(`
-      id, status, total_value, created_at, rejection_note,
-      customers!girard_orders_customer_id_fkey(name),
-      users!girard_orders_submitted_by_fkey(full_name),
-      girard_order_items(id, product_name, sku, quantity, unit_price, is_promo)
-    `)
-    .order('created_at', { ascending: false })
-
-  if (status !== 'all') query = query.eq('status', status)
-
-  const { data, error } = await query
-  if (error) throw error
-  return (data ?? []).map(row => ({ ...row, customers: singleRelation(row.customers), users: singleRelation(row.users) }))
 }
 
 async function approveOrder(orderId: string, poNumber: string, expectedDelivery: string, send: TransactionSender) {
@@ -62,23 +33,24 @@ export default function SalesOrders() {
   const queryClient = useQueryClient()
   const sendTransaction = useTransactionSender('review-sales')
   const navigate = useNavigate()
-  const [statusFilter, setStatusFilter] = useState('pending')
+  const [expanded, setExpanded] = useState<string[]>([])
+  const { data, filters, setFilters, setPage, isPending, isError, refetch } = usePagedRead('girard_orders', { status: 'pending' as SalesStatusFilter, ownOnly: false }, fetchSalesOrderPage)
+  const statusFilter = filters.status
+  const setStatusFilter = (status: string) => setFilters({ status: status as SalesStatusFilter, ownOnly: false })
+  const orders = data?.items
+  const isLoading = !data && isPending
   const [approvingOrder, setApprovingOrder] = useState<GirardOrder | null>(null)
   const [rejectingOrder, setRejectingOrder] = useState<GirardOrder | null>(null)
   const [poNumber, setPoNumber] = useState('')
   const [expectedDelivery, setExpectedDelivery] = useState('')
   const [rejectionNote, setRejectionNote] = useState('')
 
-  const { data: orders, isLoading, isError, refetch } = useQuery({
-    queryKey: ['girard_orders', statusFilter],
-    queryFn: () => fetchGirardOrders(statusFilter),
-  })
+  const approvalLines = useQuery({ queryKey: ['sales_order_lines', approvingOrder?.id], queryFn: ({ signal }) => fetchSalesOrderLines(approvingOrder!.id, signal), enabled: !!approvingOrder })
 
   const approveMutation = useMutation({
     mutationFn: () => approveOrder(approvingOrder!.id, poNumber, expectedDelivery, sendTransaction),
     onSuccess: (po) => {
-      queryClient.invalidateQueries({ queryKey: ['girard_orders'] })
-      queryClient.invalidateQueries({ queryKey: ['purchase_orders'] })
+      queryClient.invalidateQueries()
       setApprovingOrder(null)
       setPoNumber('')
       setExpectedDelivery('')
@@ -89,13 +61,13 @@ export default function SalesOrders() {
   const rejectMutation = useMutation({
     mutationFn: () => rejectOrder(rejectingOrder!.id, rejectionNote, sendTransaction),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['girard_orders'] })
+      queryClient.invalidateQueries()
       setRejectingOrder(null)
       setRejectionNote('')
     },
   })
 
-  const pendingCount = orders?.filter(o => o.status === 'pending').length ?? 0
+  const pendingCount = data?.status_counts.pending ?? 0
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -142,6 +114,7 @@ export default function SalesOrders() {
       </div>
 
       <div className="px-4 md:px-8 py-6 space-y-4">
+        {!isError && data && <PaginationControls page={data.page} total={data.total} pageSize={data.page_size} pending={isPending} onPageChange={setPage} />}
         {isLoading && (
           <div className="text-center text-gray-400 text-sm py-24">Memuat PO...</div>
         )}
@@ -176,59 +149,27 @@ export default function SalesOrders() {
                 )}
               </div>
               <p className="font-semibold text-gray-900 shrink-0">
-                Rp {order.total_value.toLocaleString('id-ID')}
+                Rp {formatMoney(order.total_value, 'full')}
               </p>
             </div>
 
-            {/* Line items */}
             <div className="px-5 py-3">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-gray-400">
-                    <th className="text-left pb-2 font-medium">Produk</th>
-                    <th className="text-left pb-2 font-medium hidden sm:table-cell">SKU</th>
-                    <th className="text-right pb-2 font-medium">Qty</th>
-                    <th className="text-right pb-2 font-medium">Harga Satuan</th>
-                    <th className="text-right pb-2 font-medium">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {order.girard_order_items.map(item => (
-                    <tr key={item.id} className="border-t border-gray-50">
-                      <td className="py-1.5 text-gray-700">
-                        <span>{item.product_name}</span>
-                        {item.is_promo && (
-                          <span className="ml-2 text-xs bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded font-medium">
-                            🔥 Harga Promosi
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-1.5 text-gray-400 font-mono uppercase hidden sm:table-cell">
-                        {item.sku ?? '—'}
-                      </td>
-                      <td className="py-1.5 text-right text-gray-700">{item.quantity}</td>
-                      <td className="py-1.5 text-right text-gray-700">
-                        Rp {item.unit_price.toLocaleString('id-ID')}
-                      </td>
-                      <td className="py-1.5 text-right text-gray-900 font-medium">
-                        Rp {(item.quantity * item.unit_price).toLocaleString('id-ID')}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <button type="button" aria-expanded={expanded.includes(order.id)} onClick={() => setExpanded(previous => previous.includes(order.id) ? previous.filter(id => id !== order.id) : [...previous, order.id])} className="text-xs font-medium text-blue-600">{expanded.includes(order.id) ? 'Sembunyikan barang' : 'Lihat barang'}</button>
+              {expanded.includes(order.id) && <SalesOrderItems orderId={order.id} />}
             </div>
 
             {/* Actions — only for pending */}
             {order.status === 'pending' && (
               <div className="px-5 py-4 border-t border-gray-100 flex gap-3 justify-end">
                 <button
+                  disabled={isPending}
                   onClick={() => { rejectMutation.reset(); setRejectionNote(''); setRejectingOrder(order) }}
                   className="px-4 py-2 text-sm text-red-500 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
                 >
                   Tolak
                 </button>
                 <button
+                  disabled={isPending}
                   onClick={() => {
                     setApprovingOrder(order)
                     setPoNumber('')
@@ -279,9 +220,11 @@ export default function SalesOrders() {
               </div>
 
               {/* Order summary */}
+              {approvalLines.isError && <p role="alert" className="text-sm text-red-600">Barang pesanan belum dapat dimuat. <button type="button" onClick={() => approvalLines.refetch()} className="underline">Coba lagi</button></p>}
+              {(approvalLines.isPending || approvalLines.isFetching) && <p role="status" className="text-sm text-gray-500">Memuat semua barang pesanan...</p>}
               <div className="bg-gray-50 rounded-lg p-3 space-y-1">
                 <p className="text-xs text-gray-500 font-medium mb-2">Ringkasan PO</p>
-                {approvingOrder.girard_order_items.map(item => (
+                {(approvalLines.data ?? []).map(item => (
                   <div key={item.id} className="flex justify-between text-xs text-gray-600">
                     <span>{item.product_name} x{item.quantity}</span>
                     <span>Rp {(item.quantity * item.unit_price).toLocaleString('id-ID')}</span>
@@ -289,7 +232,7 @@ export default function SalesOrders() {
                 ))}
                 <div className="flex justify-between text-xs font-semibold text-gray-900 pt-2 border-t border-gray-200 mt-2">
                   <span>Total</span>
-                  <span>Rp {approvingOrder.total_value.toLocaleString('id-ID')}</span>
+                  <span>Rp {formatMoney(approvingOrder.total_value, 'full')}</span>
                 </div>
               </div>
             </div>
@@ -302,10 +245,11 @@ export default function SalesOrders() {
               </button>
               <button
                 onClick={() => {
+                  if (!approvalLines.data || approvalLines.isPending || approvalLines.isFetching || approvalLines.isError) return
                   if (!poNumber.trim()) return alert('PO number is required.')
                   approveMutation.mutate()
                 }}
-                disabled={approveMutation.isPending}
+                disabled={approvalLines.isPending || approvalLines.isFetching || approvalLines.isError || !approvalLines.data || approveMutation.isPending}
                 className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
               >
                 {approveMutation.isPending ? 'Creating PO...' : 'Confirm & Create PO'}

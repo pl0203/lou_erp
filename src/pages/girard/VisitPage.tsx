@@ -1,3 +1,9 @@
+import { fetchSalesOrderPage } from '../../lib/reads/orders'
+import { fetchSalesOrderLines, fetchCompleteRows } from '../../lib/reads/detailReads'
+import { readComplete } from '../../lib/reads/completeReads'
+import { usePagedRead } from '../../lib/reads/usePagedRead'
+import { formatMoney } from '../../lib/reads/money'
+import PaginationControls from '../../components/PaginationControls'
 import { createVisitCheckIn } from '../../lib/visitCheckIn'
 import TransactionRecovery from '../../components/TransactionRecovery'
 import { createTransactionSender, useTransactionSender } from '../../lib/orderTransactions'
@@ -54,20 +60,6 @@ type Product = {
   luar_kota: number
   dalam_kota: number
   depo_bangunan: number
-}
-
-type GirardOrder = {
-  id: string
-  status: string
-  total_value: number
-  created_at: string
-  girard_order_items: {
-    id: string
-    product_name: string
-    sku: string | null
-    quantity: number
-    unit_price: number
-  }[]
 }
 
 const TIER_LABELS: Record<string, string> = {
@@ -149,24 +141,8 @@ async function fetchVisit(scheduleId: string): Promise<Visit | null> {
   return data as Visit | null
 }
 
-async function fetchOrders(customerId: string, visitId: string): Promise<GirardOrder[]> {
-  const { data, error } = await supabase
-    .from('girard_orders')
-    .select('id, status, total_value, created_at, girard_order_items(id, product_name, sku, quantity, unit_price)')
-    .eq('customer_id', customerId)
-    .eq('visit_id', visitId)
-    .order('created_at', { ascending: false })
-  if (error) throw error
-  return data as GirardOrder[]
-}
-
-async function fetchProducts(): Promise<Product[]> {
-  const { data, error } = await supabase
-    .from('products')
-    .select('id, name, sku, size, unit_price, harga_pokok, luar_kota, dalam_kota, depo_bangunan')
-    .order('name')
-  if (error) throw error
-  return data
+async function fetchProducts(signal?: AbortSignal): Promise<Product[]> {
+  return (await fetchCompleteRows<Product>('products', 'id, name, sku, size, unit_price, harga_pokok, luar_kota, dalam_kota, depo_bangunan', {}, signal)).sort((a, b) => a.name.localeCompare(b.name))
 }
 
 export async function submitOrder(payload: {
@@ -362,16 +338,17 @@ type ActivePromo = {
   } | null
 }
 
-async function fetchActivePromos(): Promise<ActivePromo[]> {
+async function fetchActivePromos(signal?: AbortSignal): Promise<ActivePromo[]> {
   const today = new Date().toISOString().split('T')[0]
-  const { data, error } = await supabase
-    .from('promotions')
-    .select('id, product_id, harga_pokok, luar_kota, dalam_kota, depo_bangunan, products(name, sku, size, harga_pokok, luar_kota, dalam_kota, depo_bangunan)')
-    .eq('is_active', true)
-    .lte('start_date', today)
-    .gte('end_date', today)
-  if (error) throw error
-  return (data ?? []).map(row => ({ ...row, products: singleRelation(row.products) }))
+  return readComplete<ActivePromo>(async (offset, limit) => {
+    let query = supabase.from('promotions')
+      .select('id, product_id, harga_pokok, luar_kota, dalam_kota, depo_bangunan, products(name, sku, size, harga_pokok, luar_kota, dalam_kota, depo_bangunan)', { count: 'exact' })
+      .eq('is_active', true).lte('start_date', today).gte('end_date', today).order('id').range(offset, offset + limit - 1)
+    if (signal) query = query.abortSignal(signal)
+    const { data, error, count } = await query
+    if (error) throw error
+    return { items: (data ?? []).map(row => ({ ...row, products: singleRelation(row.products) })), total: count as number }
+  }, row => row.id, signal)
 }
 
 function getActivePromoTierPrice(
@@ -381,10 +358,32 @@ function getActivePromoTierPrice(
   return promo[tier] ?? promo.products?.[tier] ?? promo.luar_kota ?? promo.products?.luar_kota ?? 0
 }
 
+function VisitOrderHistory({ customerId, visitId }: { customerId: string; visitId: string }) {
+  const orders = usePagedRead('visit_orders', { status: 'all' as const, ownOnly: false, customerId, visitId }, fetchSalesOrderPage)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const lines = useQuery({ queryKey: ['sales_order_lines', selectedId], queryFn: ({ signal }) => fetchSalesOrderLines(selectedId!, signal), enabled: !!selectedId })
+  if (orders.isError) return <div role="alert" className="p-5 text-sm text-red-600">Riwayat pesanan gagal dimuat. <button onClick={() => orders.refetch()} className="underline">Coba lagi</button></div>
+  return <div className="p-5" aria-busy={orders.isPending}>
+    {!orders.isPending && orders.data?.total === 0 && <p className="text-sm text-gray-400">Belum ada pesanan dalam kunjungan ini.</p>}
+    {orders.data?.items?.map(order => <div key={order.id} className="py-4 border-b border-gray-100">
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${ORDER_STATUS_STYLES[order.status] ?? 'bg-gray-100 text-gray-600'}`}>{order.status === 'pending' ? 'Menunggu' : order.status === 'approved' ? 'Disetujui' : order.status === 'rejected' ? 'Ditolak' : order.status}</span>
+        <span className="text-xs text-gray-400">{new Date(order.created_at).toLocaleString('id-ID')}</span>
+      </div>
+      <div className="flex justify-between text-sm"><button disabled={orders.isPending} className="text-blue-600" onClick={() => setSelectedId(selectedId === order.id ? null : order.id)}>{selectedId === order.id ? 'Tutup barang' : 'Lihat barang'}</button><span>Rp {formatMoney(order.total_value, 'full')}</span></div>
+      {selectedId === order.id && (lines.isError ? <p role="alert" className="text-sm text-red-600">Barang pesanan gagal dimuat. <button onClick={() => lines.refetch()}>Coba lagi</button></p>
+        : lines.isPending ? <p role="status">Memuat barang…</p> : <table className="w-full mt-3 text-xs"><thead><tr><th className="text-left">Barang</th><th>Jml</th><th>Harga</th><th>Total</th></tr></thead><tbody>
+          {lines.data?.map(item => <tr key={item.id}><td>{item.product_name}</td><td>{item.quantity}</td><td>Rp {item.unit_price.toLocaleString('id-ID')}</td><td>Rp {(item.quantity * item.unit_price).toLocaleString('id-ID')}</td></tr>)}
+        </tbody></table>)}
+    </div>)}
+    <PaginationControls page={orders.page} total={orders.data?.total ?? 0} pageSize={10} pending={orders.isPending} onPageChange={page => { setSelectedId(null); orders.setPage(page) }} />
+  </div>
+}
+
 export default function VisitPage() {
-  const { data: activePromos } = useQuery({
-    queryKey: ['active_promos'],
-    queryFn: fetchActivePromos,
+  const { data: activePromos, isError: promosError, refetch: refetchPromos } = useQuery({
+    queryKey: ['active_promos', 'complete'],
+    queryFn: ({ signal }) => fetchActivePromos(signal),
   })
   const { scheduleId } = useParams<{ scheduleId: string }>()
   const { profile } = useAuth()
@@ -419,23 +418,14 @@ export default function VisitPage() {
     enabled: !!scheduleId,
   })
 
-  const { data: orders } = useQuery({
-    queryKey: ['visit_orders', visit?.id],
-    queryFn: () => fetchOrders(schedule!.customers.id, visit!.id),
-    enabled: !!visit && !!schedule?.customers,
-  })
-
-  const { data: products } = useQuery({
-    queryKey: ['products'],
-    queryFn: fetchProducts,
+  const { data: products, isError: productsError, refetch: refetchProducts } = useQuery({
+    queryKey: ['products', 'complete', 'visit'], queryFn: ({ signal }) => fetchProducts(signal),
   })
 
   const checkInMutation = useMutation({
     mutationFn: checkIn,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['visit', scheduleId] })
-      queryClient.invalidateQueries({ queryKey: ['my_visits'] })
-      queryClient.invalidateQueries({ queryKey: ['schedules'] })
+      queryClient.invalidateQueries()
       setShowCamera(false)
       setPhotoPreview(null)
       setPhotoBlob(null)
@@ -446,7 +436,7 @@ export default function VisitPage() {
   const orderMutation = useMutation({
     mutationFn: (payload: Parameters<typeof submitOrder>[0]) => submitOrder(payload, sendTransaction),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['visit_orders', visit?.id] })
+      queryClient.invalidateQueries()
       setShowOrderForm(false)
       setOrderItems([{ product_id: null, product_name: '', sku: '', quantity: 1, unit_price: 0 }])
     },
@@ -937,61 +927,8 @@ export default function VisitPage() {
               </div>
             )}
 
-            {!orders || orders.length === 0 ? (
-              <div className="px-5 py-8 text-center">
-                <p className="text-gray-400 text-sm">Belum ada pesanan dalam kunjungan ini.</p>
-              </div>
-            ) : (
-              <div className="divide-y divide-gray-100">
-                {orders.map(order => (
-                  <div key={order.id} className="px-5 py-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium capitalize ${ORDER_STATUS_STYLES[order.status] ?? 'bg-gray-100 text-gray-600'}`}>
-                        {order.status === 'pending' ? 'Menunggu'
-                          : order.status === 'approved' ? 'Disetujui'
-                          : order.status === 'rejected' ? 'Ditolak'
-                          : order.status}
-                      </span>
-                      <span className="text-xs text-gray-400">
-                        {new Date(order.created_at).toLocaleString('id-ID')}
-                      </span>
-                    </div>
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="text-gray-400">
-                          <th className="text-left pb-1 font-medium">Barang</th>
-                          <th className="text-right pb-1 font-medium">Jml</th>
-                          <th className="text-right pb-1 font-medium">Harga</th>
-                          <th className="text-right pb-1 font-medium">Total</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {order.girard_order_items.map(item => (
-                          <tr key={item.id}>
-                            <td className="py-0.5 text-gray-700">{item.product_name}</td>
-                            <td className="py-0.5 text-right text-gray-600">{item.quantity}</td>
-                            <td className="py-0.5 text-right text-gray-600">
-                              Rp {item.unit_price.toLocaleString('id-ID')}
-                            </td>
-                            <td className="py-0.5 text-right text-gray-900 font-medium">
-                              Rp {(item.quantity * item.unit_price).toLocaleString('id-ID')}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr className="border-t border-gray-100">
-                          <td colSpan={3} className="pt-2 text-right text-gray-500 font-medium">Total</td>
-                          <td className="pt-2 text-right text-gray-900 font-semibold">
-                            Rp {order.total_value.toLocaleString('id-ID')}
-                          </td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                ))}
-              </div>
-            )}
+            {(productsError || promosError) && <div role="alert" className="p-5 text-sm text-red-600">Pilihan produk atau promosi belum lengkap. <button onClick={() => { refetchProducts(); refetchPromos() }} className="underline">Coba lagi</button></div>}
+            <VisitOrderHistory key={visit.id} customerId={schedule.customers.id} visitId={visit.id} />
           </div>
         )}
       </div>

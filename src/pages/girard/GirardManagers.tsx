@@ -1,3 +1,7 @@
+import ReadFailure from '../../components/ReadFailure'
+import { readCompleteQuery } from '../../lib/reads/completeQuery'
+import { chunkIds } from '../../lib/reads/completeReads'
+import { singleRelation } from '../../lib/relations'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import GirardNav from '../../components/GirardNav'
@@ -11,45 +15,44 @@ type ManagerData = {
   team: { id: string; full_name: string }[]
 }
 
-async function fetchManagersData(): Promise<ManagerData[]> {
-  const { data: managers, error } = await supabase
-    .rpc('pilot_team_directory')
-    .eq('role', 'sales_manager')
-    .eq('is_active', true)
-    .order('full_name')
-  if (error) throw error
-  if (!Array.isArray(managers)) throw new Error('Data manajer tidak tersedia')
-  if (managers.length === 0) return []
-
-  const managerIds = managers.map(m => m.id)
-
-  const { data: assignments } = await supabase
-    .from('customer_manager_assignments')
-    .select('manager_id, customers!customer_manager_assignments_customer_id_fkey(id, name)')
-    .in('manager_id', managerIds)
-
-  const { data: team } = await supabase
-    .from('users')
-    .select('id, full_name, manager_id')
-    .eq('role', 'sales_person')
-    .eq('is_active', true)
-    .in('manager_id', managerIds)
-
-  return managers.map(m => ({
-    ...m,
-    customers: (assignments ?? [])
-      .filter(a => a.manager_id === m.id)
-      .map(a => (a.customers as any))
-      .filter(Boolean),
-    team: (team ?? []).filter(t => t.manager_id === m.id),
+async function fetchManagersData(signal?: AbortSignal): Promise<ManagerData[]> {
+  const managers = await readCompleteQuery<Omit<ManagerData, 'customers' | 'team'>>((offset, limit) => supabase
+    .rpc('pilot_team_directory', {}, { count: 'exact' }).eq('role', 'sales_manager').eq('is_active', true)
+    .order('id').range(offset, offset + limit - 1), row => row.id, signal)
+  const customerMap = new Map<string, ManagerData['customers']>()
+  const teamMap = new Map<string, ManagerData['team']>()
+  for (const ids of chunkIds(managers.map(row => row.id))) {
+    const assignments = await readCompleteQuery((offset, limit) => supabase.from('customer_manager_assignments')
+      .select('id, manager_id, customers!customer_manager_assignments_customer_id_fkey(id, name)', { count: 'exact' })
+      .in('manager_id', ids).order('id').range(offset, offset + limit - 1), row => row.id, signal)
+    const team = await readCompleteQuery((offset, limit) => supabase.from('users').select('id, full_name, manager_id', { count: 'exact' })
+      .eq('role', 'sales_person').eq('is_active', true).in('manager_id', ids).order('id').range(offset, offset + limit - 1), row => row.id, signal)
+    for (const assignment of assignments) {
+      const customer = singleRelation(assignment.customers)
+      if (customer) {
+        const group = customerMap.get(assignment.manager_id) ?? []
+        group.push(customer)
+        customerMap.set(assignment.manager_id, group)
+      }
+    }
+    for (const member of team) if (member.manager_id) {
+      const group = teamMap.get(member.manager_id) ?? []
+      group.push(member)
+      teamMap.set(member.manager_id, group)
+    }
+  }
+  return managers.sort((a, b) => a.full_name.localeCompare(b.full_name)).map(manager => ({
+    ...manager, customers: customerMap.get(manager.id) ?? [], team: teamMap.get(manager.id) ?? [],
   }))
 }
 
 export default function GirardManagers() {
-  const { data: managers, isLoading } = useQuery({
+  const { data: managers, isLoading, isError: readError, refetch } = useQuery({
     queryKey: ['managers_data'],
-    queryFn: fetchManagersData,
+    queryFn: ({ signal }) => fetchManagersData(signal),
   })
+
+  if (readError) return <div className="min-h-screen bg-gray-50"><GirardNav /><ReadFailure onRetry={() => { void refetch() }} /></div>
 
   return (
     <div className="min-h-screen bg-gray-50">

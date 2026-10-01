@@ -1,0 +1,73 @@
+name: Disposable scalability SQL validation
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [fix/pilot-database]
+    paths:
+      - .github/workflows/scalability-sql.yml
+      - scripts/verify-scale-target.mjs
+      - scripts/run-disposable-psql.mjs
+      - tests/scalability/measure-reads.mjs
+      - tests/scalability/generate-fixtures.mjs
+      - tests/database/scalability-ground-truth.sql
+      - supabase/migrations/202610*.sql
+permissions:
+  contents: read
+jobs:
+  disposable-scale:
+    if: ${{ github.event.pull_request.number == 3 && github.event.pull_request.head.ref == 'fix/pilot-scale-sql' && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic-ci-only
+          POSTGRES_DB: pilot_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d pilot_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: synthetic-ci-only
+      PGDATABASE: pilot_test
+      SCALE_ROWS: '6000'
+      SCALE_PERMIT: disposable-pilot-ci
+      PGHOSTADDR: ''
+      PGSERVICE: ''
+      PGSERVICEFILE: /dev/null
+      PGOPTIONS: ''
+      PGPASSFILE: /dev/null
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install official PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Prepare evidence directory and manifest without connecting
+        run: |
+          mkdir -p scale-results
+          git rev-parse HEAD > scale-results/commit.txt
+          node tests/scalability/generate-fixtures.mjs --rows "$SCALE_ROWS" > scale-results/manifest.json
+      - name: Load only fresh synthetic schema and reviewed migrations
+        run: |
+          node scripts/run-disposable-psql.mjs --file tests/database/fixture.sql
+          for file in supabase/migrations/*.sql; do node scripts/run-disposable-psql.mjs --file "$file"; done
+      - name: Emit and load permitted synthetic fixture with actual SQL marker guard
+        run: |
+          node tests/scalability/generate-fixtures.mjs --rows "$SCALE_ROWS" --emit-sql --target local-ci --permit disposable-pilot-ci > scale-results/fixture.sql
+          node scripts/run-disposable-psql.mjs --file scale-results/fixture.sql | tee scale-results/load.log
+      - name: Exact role ground truth and bounded query diagnostics
+        run: node scripts/run-disposable-psql.mjs --file tests/database/scalability-ground-truth.sql 2>&1 | tee scale-results/ground-truth.log
+      - name: Preserve synthetic-only evidence, including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scale-sql-6000-validation-${{ github.run_id }}
+          path: scale-results
+          retention-days: 7

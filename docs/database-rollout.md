@@ -1,4 +1,16 @@
-# Database safety candidate: rollout gates
+# Database rollout gates
+
+## Current read-scale candidate as of 1 October 2026
+
+**Production is not approved.** Follow [the populated-staging packet](scalability-staging-packet.md), [verification record](scalability-verification.md), and [rollback boundary](scalability-rollback.md) for the additive read migrations. Staging already contains users and business records. Do not run an empty-project bootstrap, synthetic fixture, reset, or cleanup against that project.
+
+The reviewed read migrations add 11 public invoker RPCs and four private validation helpers. Existing transaction functions, RLS policies, business tables, data, and write grants must remain unchanged. Apply the verified backend before enabling its compatible client. Preserve explicit report errors rather than falling back to capped raw reads.
+
+Normal PostgreSQL CI now verifies real-role/RLS and concurrent transactions. The latest SQL-only checkpoint is commit `63b1c199611520658fbd77a3e0f1005e7c0e78a8`, tree `dee3e1a742b303938e32e056116b5049a24dedab`, run `36832401749`; all three new read SQL suites and 12 concurrency scenarios passed. This does not establish hosted Auth/PostgREST behavior or 6k/30k performance. The final integrated application requires its own fresh evidence.
+
+## Historical transaction candidate notes
+
+The notes below describe the earlier transaction/security rollout. Their empty-project bootstrap and single-user-only limitations are historical, not instructions to repeat setup or a description of the latest normal-session CI evidence. Existing write, evidence-preservation and hosted-validation safeguards still apply.
 
 This branch is a coordinated database + client change. It is not approved for production deployment. Existing application-only preview work remains separate; automatic previews for this database branch are held until staging configuration is verified.
 

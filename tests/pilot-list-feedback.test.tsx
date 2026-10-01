@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 const state = vi.hoisted(()=>({error:true, loading:false, refetch:vi.fn()}))
 vi.mock('@tanstack/react-query',()=>({useQuery:()=>({data:[],isLoading:state.loading,isError:state.error,refetch:state.refetch}),useQueryClient:()=>({}),useMutation:()=>({})}))
+vi.mock('../src/lib/reads/usePagedRead',()=>({usePagedRead:(_key:string,filters:any)=>({data:state.loading?undefined:{items:[],total:0,page:1,page_size:10,status_counts:{pending:0,approved:0,rejected:0,cancelled:0}},filters,setFilters:vi.fn(),setPage:vi.fn(),isPending:state.loading,isError:state.error,refetch:state.refetch})}))
 vi.mock('../src/lib/supabase',()=>({supabase:{}}))
 vi.mock('../src/lib/AuthContext',()=>({useAuth:()=>({profile:{id:'dummy'}})}))
 vi.mock('../src/components/GirardNav',()=>({default:()=>null}))

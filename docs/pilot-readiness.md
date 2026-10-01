@@ -1,4 +1,18 @@
-# Pilot readiness: database-stage candidate
+# Pilot readiness
+
+## Current decision as of 1 October 2026
+
+**Not cleared for real-order launch.** The read-scale implementation is being integrated; correctness/RLS SQL suites passed on the SQL checkpoint, while final combined verification, 6,000/30,000-PO measurement and hosted role/browser acceptance remain open. See [the current evidence matrix](scalability-verification.md).
+
+Demo target: Monday 5 October at approximately 10:00 WIB (03:00 UTC). The user plans to create real administrator accounts during the demo; those administrators will enter orders. Before real use, verify account invitation delivery, authentication, active profile creation, administrator role assignment, permitted/denied actions and the actual deployed invitation Edge Function. Source hardening alone does not establish that deployment or the invitation journey works.
+
+A historical spreadsheet import is a separate pending workflow. Obtain the workbook and selected population, then review field mapping, duplicates, dates/statuses, partial deliveries and exact reconciliation in an isolated dry run. Do not treat the scalability fixtures as import data or load business records before specific approval.
+
+Launch blockers are: final combined CI/review; safe additive staging apply and hosted RPC checks; actual-role order/edit/partial-delivery/correction/cancellation and account-switch UAT; invitation/admin setup; actual device camera/GPS and Storage recovery; measured scale results with any justified index review; restorable backups and separate production approval. Optional expiry notifications and new action lists are deferred.
+
+## Historical transaction candidate checkpoint
+
+The earlier counts and single-user test notes below are retained as historical evidence. They are superseded by the current verification matrix for the read-scale candidate. The existing security, transaction, Storage and restore acceptance scenarios remain required.
 
 **Not cleared for real-order launch.** This branch pairs database migrations with matching application changes. Do not deploy its frontend against an unmigrated database. The earlier application-only draft remains a separate review step.
 

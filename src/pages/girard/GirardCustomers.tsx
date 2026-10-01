@@ -1,3 +1,5 @@
+import ReadFailure from '../../components/ReadFailure'
+import { readCompleteQuery } from '../../lib/reads/completeQuery'
 import { singleRelation } from '../../lib/relations'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -75,32 +77,31 @@ function isOverdue(lastVisit: string | null, frequencyDays: number): boolean {
   return diff > frequencyDays
 }
 
-async function fetchAllCustomers(): Promise<Customer[]> {
-  const { data, error } = await supabase
+async function fetchAllCustomers(signal?: AbortSignal): Promise<Customer[]> {
+  const data = await readCompleteQuery((offset, limit) => supabase
     .from('customers')
-    .select('id, name, address, city, phone, email, last_visit_date, visit_frequency_days, pricing_tier')
-    .order('name')
-  if (error) throw error
-  return data
+    .select('id, name, address, city, phone, email, last_visit_date, visit_frequency_days, pricing_tier', { count: 'exact' })
+    .order('id')
+    .range(offset, offset + limit - 1), row => row.id, signal)
+  return data.sort((a, b) => a.name.localeCompare(b.name))
 }
 
-async function fetchManagers(): Promise<Manager[]> {
-  const { data, error } = await supabase
+async function fetchManagers(signal?: AbortSignal): Promise<Manager[]> {
+  const data = await readCompleteQuery((offset, limit) => supabase
     .from('users')
-    .select('id, full_name')
+    .select('id, full_name', { count: 'exact' })
     .in('role', ['sales_manager', 'sales_head', 'executive'])
     .eq('is_active', true)
-    .order('full_name')
-  if (error) throw error
-  return data
+    .order('id')
+    .range(offset, offset + limit - 1), row => row.id, signal)
+  return data.sort((a, b) => a.full_name.localeCompare(b.full_name))
 }
 
-async function fetchAssignments(): Promise<Assignment[]> {
-  const { data, error } = await supabase
-    .from('customer_manager_assignments')
-    .select('customer_id, manager_id, managers:users!customer_manager_assignments_manager_id_fkey(id, full_name)')
-  if (error) throw error
-  return (data ?? []).map(row => ({ ...row, managers: singleRelation(row.managers) }))
+async function fetchAssignments(signal?: AbortSignal): Promise<Assignment[]> {
+  const data = await readCompleteQuery((offset, limit) => supabase.from('customer_manager_assignments')
+    .select('id, customer_id, manager_id, managers:users!customer_manager_assignments_manager_id_fkey(id, full_name)', { count: 'exact' })
+    .order('id').range(offset, offset + limit - 1), row => row.id, signal)
+  return data.map(row => ({ ...row, managers: singleRelation(row.managers) }))
 }
 
 async function createCustomer(form: CustomerForm, assignedBy: string) {
@@ -138,10 +139,11 @@ async function assignExistingCustomer(
   pricingTier: string,
   assignedBy: string
 ) {
-  await supabase
+  const { error: customerError } = await supabase
     .from('customers')
     .update({ visit_frequency_days: frequencyDays, pricing_tier: pricingTier })
     .eq('id', customerId)
+  if (customerError) throw customerError
 
   const { error } = await supabase
     .from('customer_manager_assignments')
@@ -161,13 +163,14 @@ async function updateAssignment(
   pricingTier: string,
   assignedBy: string
 ) {
-  await supabase
+  const { error: customerError } = await supabase
     .from('customers')
     .update({ visit_frequency_days: frequencyDays, pricing_tier: pricingTier })
     .eq('id', customerId)
+  if (customerError) throw customerError
 
   if (managerId) {
-    await supabase
+    const { error } = await supabase
       .from('customer_manager_assignments')
       .upsert({
         customer_id: customerId,
@@ -175,11 +178,13 @@ async function updateAssignment(
         assigned_by: assignedBy,
         assigned_at: new Date().toISOString(),
       }, { onConflict: 'customer_id' })
+    if (error) throw error
   } else {
-    await supabase
+    const { error } = await supabase
       .from('customer_manager_assignments')
       .delete()
       .eq('customer_id', customerId)
+    if (error) throw error
   }
 }
 
@@ -196,19 +201,19 @@ export default function GirardCustomers() {
   const [existingManagerId, setExistingManagerId] = useState('')
   const [existingPricingTier, setExistingPricingTier] = useState('luar_kota')
 
-  const { data: customers, isLoading } = useQuery({
+  const { data: customers, isLoading, isError: customerReadError, refetch: retryCustomers } = useQuery({
     queryKey: ['all_customers'],
-    queryFn: fetchAllCustomers,
+    queryFn: ({ signal }) => fetchAllCustomers(signal),
   })
 
-  const { data: managers } = useQuery({
+  const { data: managers, isError: managerReadError, refetch: retryManagers } = useQuery({
     queryKey: ['managers_list'],
-    queryFn: fetchManagers,
+    queryFn: ({ signal }) => fetchManagers(signal),
   })
 
-  const { data: assignments } = useQuery({
+  const { data: assignments, isError: assignmentReadError, refetch: retryAssignments } = useQuery({
     queryKey: ['assignments'],
-    queryFn: fetchAssignments,
+    queryFn: ({ signal }) => fetchAssignments(signal),
   })
 
   const assignmentMap = Object.fromEntries(
@@ -224,8 +229,7 @@ export default function GirardCustomers() {
       await createCustomer(form, user.id)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['all_customers'] })
-      queryClient.invalidateQueries({ queryKey: ['assignments'] })
+      queryClient.invalidateQueries()
       closeModal()
     },
   })
@@ -240,8 +244,7 @@ export default function GirardCustomers() {
       )
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['all_customers'] })
-      queryClient.invalidateQueries({ queryKey: ['assignments'] })
+      queryClient.invalidateQueries()
       closeModal()
     },
   })
@@ -256,8 +259,7 @@ export default function GirardCustomers() {
       )
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['all_customers'] })
-      queryClient.invalidateQueries({ queryKey: ['assignments'] })
+      queryClient.invalidateQueries()
       closeModal()
     },
   })
@@ -306,6 +308,8 @@ export default function GirardCustomers() {
       <option value="depo_bangunan">Depo Bangunan</option>
     </select>
   )
+
+  if (customerReadError || managerReadError || assignmentReadError) return <div className="min-h-screen bg-gray-50"><GirardNav /><ReadFailure onRetry={() => { void retryCustomers(); void retryManagers(); void retryAssignments() }} /></div>
 
   return (
     <div className="min-h-screen bg-gray-50">

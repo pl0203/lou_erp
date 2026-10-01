@@ -2,6 +2,7 @@ import React from 'react'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { cacheProbe } from './scalability/cache-probe'
 const state = vi.hoisted(() => ({ checkIn: vi.fn(), imageFailure: false }))
 vi.mock('react-router-dom', () => ({ useNavigate: () => () => {}, useParams: () => ({ scheduleId: 's' }) }))
 vi.mock('../src/lib/useUnsavedChanges', () => ({ hasOrderItemChanges: () => false, useUnsavedChanges: () => ({ dialog: null, runWithoutPrompt: (action: () => void) => action() }) }))
@@ -64,15 +65,23 @@ test('a stream resolving after camera cancellation is stopped instead of retaine
 test('capture stops camera and a failed upload keeps the same photo available for retry', async () => {
   state.checkIn.mockRejectedValueOnce(new Error('Upload gagal')).mockResolvedValue({ id: 'v' })
   mount(); await openCamera()
+  const probe = cacheProbe(clients.at(-1)!)
+  window.localStorage.setItem('pilot-upload:u:s', 'pending-upload')
   fireEvent.click(screen.getByRole('button', { name: 'Ambil foto' }))
   await screen.findByText('Foto berhasil diambil')
   expect(stop).toHaveBeenCalledTimes(1)
   fireEvent.click(screen.getByRole('button', { name: /Konfirmasi Check-in/ }))
   await screen.findByText('Upload gagal')
+  probe.unchanged()
+  expect(window.localStorage.getItem('pilot-upload:u:s')).toBe('pending-upload')
   expect(screen.getByAltText('Foto check-in')).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: /Konfirmasi Check-in/ }))
   await waitFor(() => expect(state.checkIn).toHaveBeenCalledTimes(2))
   expect(state.checkIn.mock.calls[0][0].photo_blob).toBe(state.checkIn.mock.calls[1][0].photo_blob)
+  await waitFor(() => probe.refreshed())
+  expect(window.localStorage.getItem('pilot-upload:u:s')).toBeNull()
+  expect(screen.queryByAltText('Foto check-in')).toBeNull()
+  probe.stop()
 })
 
 test('compression failure exits busy state and offers a retry without an unhandled rejection', async () => {
