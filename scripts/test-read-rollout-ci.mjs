@@ -54,7 +54,7 @@ INSERT INTO storage.objects(bucket_id,name,owner_id,metadata) VALUES('visits','s
   if(current.data_md5===before.data_md5||current.schema_md5!==after.schema_md5)throw new Error('Intervening synthetic write did not change only data')
   console.log(`READ_ROLLOUT_CURRENT_DATA_CHANGED reuse=${reuse}`)
   const rollbackOptions={repoRoot,expectedDatabase:'pilot_rollout_test',expectedSchemaHash:after.schema_md5,baselineSchemaHash:before.schema_md5,indexCreated:receipt.index_created}
-  reject(await buildGuardedReadRollback({...rollbackOptions,expectedSchemaHash:'0'.repeat(32)}),'Confirmed post-apply schema drift')
+  reject(await buildGuardedReadRollback({...rollbackOptions,expectedSchemaHash:'0'.repeat(32)}),'Confirmed post-apply schema drift; rollback refused')
   const rejectedState=snapshot()
   if(rejectedState.schema_md5!==after.schema_md5||rejectedState.data_md5!==current.data_md5)throw new Error('Rejected rollback changed state')
   console.log(`READ_ROLLOUT_BAD_ROLLBACK_REJECTED reuse=${reuse}`)
