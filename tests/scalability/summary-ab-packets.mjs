@@ -29,9 +29,25 @@ export function buildSummaryAbPackets(source){
  packets.push({name:'c-dynamic-child-indexes-admin-generic',sql:c.sql.replaceAll('c-dynamic-child-indexes-admin','c-dynamic-child-indexes-admin-generic').replace("SET LOCAL plan_cache_mode='auto'","SET LOCAL plan_cache_mode='force_generic_plan'")})
  return packets
 }
+export function buildSummaryDPackets(source){
+ return buildSummaryAbPackets(source).filter(p=>p.name.startsWith('c-')).map(p=>{
+  const name=p.name.replace('c-dynamic-child-indexes','d-dynamic-lookup-only')
+  let sql=p.sql.replaceAll(p.name,name).replace('CREATE FUNCTION pg_temp.ab_summary',()=> 'DROP INDEX public.pilot_po_line_items_purchase_order_id_idx;\nDROP INDEX public.pilot_sj_line_items_surat_jalan_id_idx;\nCREATE FUNCTION pg_temp.ab_summary')
+  const checker=`CREATE FUNCTION pg_temp.assert_d_totals(value jsonb,expected_count integer,expected_po numeric,expected_delivered numeric,expected_outstanding numeric) RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path='' AS $check$
+BEGIN
+ IF (value->'metrics'->>'totalPOCount')::integer IS DISTINCT FROM expected_count OR (value->'metrics'->>'totalPOValue')::numeric IS DISTINCT FROM expected_po OR (value->'metrics'->>'deliveredValue')::numeric IS DISTINCT FROM expected_delivered OR (value->'metrics'->>'outstandingValue')::numeric IS DISTINCT FROM expected_outstanding THEN RAISE EXCEPTION 'D diagnostic role/cohort totals differ from independent fixture constants'; END IF;
+ RETURN value;
+END $check$;
+`
+  sql=sql.replace('SET LOCAL ROLE authenticated;',()=>checker+'SET LOCAL ROLE authenticated;')
+  const expected=p.name.includes('-manager')?'756,750500,375130,375370':'6007,6000600,3000180,3000420'
+  sql=sql.replace(/SELECT pg_temp\.ab_summary\(([^]*?)\);\nROLLBACK;/,(_match,args)=>`SELECT pg_temp.assert_d_totals(pg_temp.ab_summary(${args}),${expected});\nROLLBACK;`)
+  return {name,sql}
+ })
+}
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  if(process.argv.length!==2)throw new Error('No custom diagnostic arguments accepted')
  const source=readFileSync('supabase/migrations/202610010002_scalable_report_reads.sql','utf8')
  mkdirSync('scale-results/diagnostics',{recursive:true})
- for(const p of buildSummaryAbPackets(source))writeFileSync(`scale-results/diagnostics/${p.name}.sql`,p.sql,{flag:'wx'})
+ for(const p of buildSummaryDPackets(source))writeFileSync(`scale-results/diagnostics/${p.name}.sql`,p.sql,{flag:'wx'})
 }

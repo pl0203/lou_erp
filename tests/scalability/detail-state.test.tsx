@@ -66,7 +66,9 @@ test('audit paging shows later entries without changing line readiness',async()=
 test('complete editing retains the final line and invalidates cached full report summaries',async()=>{
  state.lines=Array.from({length:101},(_,i)=>({...state.lines[0],id:`l${i}`,product_name:`Item ${i}`}));mount(POEdit);await screen.findByDisplayValue('Item 100')
  clients[0].setQueryData(['athel_summary','sentinel'],{value:'before'})
- fireEvent.click(screen.getByRole('button',{name:'Simpan Perubahan'}));await waitFor(()=>expect(state.writes).toHaveLength(1))
+ const save=screen.getByRole('button',{name:'Simpan Perubahan'}) as HTMLButtonElement
+ await waitFor(()=>expect(save.disabled).toBe(false))
+ fireEvent.click(save);await waitFor(()=>expect(state.writes).toHaveLength(1))
  expect(state.writes[0].p_payload.items).toHaveLength(101);expect(state.writes[0].p_payload.items[100].product_name).toBe('Item 100')
  await waitFor(()=>expect(clients[0].getQueryState(['athel_summary','sentinel'])?.isInvalidated).toBe(true))
 })
