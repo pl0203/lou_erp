@@ -69,6 +69,7 @@ export function useUnsavedChanges(isDirty: boolean) {
   }
 }
 
+// Draft-only NaN means no price has been entered; an explicit zero is a real edit.
 export function hasOrderItemChanges(items: { product_id: string | null; product_name: string; sku: string; quantity: number; unit_price: number; is_promo?: boolean; promotion_id?: string | null }[]) {
-  return items.length !== 1 || items.some(item => item.product_id !== null || item.product_name !== '' || item.sku !== '' || item.quantity !== 1 || item.unit_price !== 0 || item.is_promo || item.promotion_id)
+  return items.length !== 1 || items.some(item => item.product_id !== null || item.product_name !== '' || item.sku !== '' || item.quantity !== 1 || !Number.isNaN(item.unit_price) || item.is_promo || item.promotion_id)
 }

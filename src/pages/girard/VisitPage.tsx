@@ -1,3 +1,4 @@
+import { PRICE_TIERS, resolveCatalogPrice, resolvePromotionPrice, formatCatalogPrice, formatLineAmount } from '../../lib/catalogPricing'
 import { fetchSalesOrderPage } from '../../lib/reads/orders'
 import { fetchSalesOrderLines, fetchCompleteRows } from '../../lib/reads/detailReads'
 import { readComplete } from '../../lib/reads/completeReads'
@@ -55,11 +56,11 @@ type Product = {
   name: string
   sku: string
   size: string | null
-  unit_price: number
-  harga_pokok: number
-  luar_kota: number
-  dalam_kota: number
-  depo_bangunan: number
+  unit_price: number | null
+  harga_pokok: number | null
+  luar_kota: number | null
+  dalam_kota: number | null
+  depo_bangunan: number | null
 }
 
 const TIER_LABELS: Record<string, string> = {
@@ -67,6 +68,7 @@ const TIER_LABELS: Record<string, string> = {
   luar_kota:     'Luar Kota',
   dalam_kota:    'Dalam Kota',
   depo_bangunan: 'Depo Bangunan',
+  others: 'Others',
 }
 
 const ORDER_STATUS_STYLES: Record<string, string> = {
@@ -354,8 +356,8 @@ async function fetchActivePromos(signal?: AbortSignal): Promise<ActivePromo[]> {
 function getActivePromoTierPrice(
   promo: ActivePromo,
   tier: 'harga_pokok' | 'luar_kota' | 'dalam_kota' | 'depo_bangunan'
-): number {
-  return promo[tier] ?? promo.products?.[tier] ?? promo.luar_kota ?? promo.products?.luar_kota ?? 0
+): number | null {
+  return resolvePromotionPrice(promo, tier)
 }
 
 function VisitOrderHistory({ customerId, visitId }: { customerId: string; visitId: string }) {
@@ -373,7 +375,7 @@ function VisitOrderHistory({ customerId, visitId }: { customerId: string; visitI
       <div className="flex justify-between text-sm"><button disabled={orders.isPending} className="text-blue-600" onClick={() => setSelectedId(selectedId === order.id ? null : order.id)}>{selectedId === order.id ? 'Tutup barang' : 'Lihat barang'}</button><span>Rp {formatMoney(order.total_value, 'full')}</span></div>
       {selectedId === order.id && (lines.isError ? <p role="alert" className="text-sm text-red-600">Barang pesanan gagal dimuat. <button onClick={() => lines.refetch()}>Coba lagi</button></p>
         : lines.isPending ? <p role="status">Memuat barang…</p> : <table className="w-full mt-3 text-xs"><thead><tr><th className="text-left">Barang</th><th>Jml</th><th>Harga</th><th>Total</th></tr></thead><tbody>
-          {lines.data?.map(item => <tr key={item.id}><td>{item.product_name}</td><td>{item.quantity}</td><td>Rp {item.unit_price.toLocaleString('id-ID')}</td><td>Rp {(item.quantity * item.unit_price).toLocaleString('id-ID')}</td></tr>)}
+          {lines.data?.map(item => <tr key={item.id}><td>{item.product_name}</td><td>{item.quantity}</td><td>Rp {item.unit_price.toLocaleString('id-ID')}</td><td>{formatLineAmount(item.quantity, item.unit_price)}</td></tr>)}
         </tbody></table>)}
     </div>)}
     <PaginationControls page={orders.page} total={orders.data?.total ?? 0} pageSize={10} pending={orders.isPending} onPageChange={page => { setSelectedId(null); orders.setPage(page) }} />
@@ -402,7 +404,7 @@ export default function VisitPage() {
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [showOrderForm, setShowOrderForm] = useState(false)
   const [orderItems, setOrderItems] = useState<OrderItem[]>([
-    { product_id: null, product_name: '', sku: '', quantity: 1, unit_price: 0 }
+    { product_id: null, product_name: '', sku: '', quantity: 1, unit_price: Number.NaN }
   ])
   const unsaved = useUnsavedChanges(showOrderForm && hasOrderItemChanges(orderItems))
 
@@ -438,7 +440,7 @@ export default function VisitPage() {
     onSuccess: () => {
       queryClient.invalidateQueries()
       setShowOrderForm(false)
-      setOrderItems([{ product_id: null, product_name: '', sku: '', quantity: 1, unit_price: 0 }])
+      setOrderItems([{ product_id: null, product_name: '', sku: '', quantity: 1, unit_price: Number.NaN }])
     },
   })
 
@@ -485,8 +487,8 @@ export default function VisitPage() {
   }
 
   const fillFromProduct = (index: number, product: Product) => {
-    const tier = schedule?.customers?.pricing_tier ?? 'luar_kota'
-    const price = (product[tier as keyof Product] as number) || product.unit_price
+    const tier = schedule?.customers?.pricing_tier ?? 'others'
+    const price = resolveCatalogPrice(product, tier) ?? Number.NaN
     setOrderItems(prev => prev.map((item, i) =>
       i === index
         ? { ...item, product_id: product.id, product_name: product.name, sku: product.sku, unit_price: price }
@@ -496,11 +498,12 @@ export default function VisitPage() {
 
   const addPromoItem = (promo: ActivePromo) => {
     if (!promo.products) return
-    const tier = schedule?.customers?.pricing_tier ?? 'luar_kota'
+    const tier = schedule?.customers?.pricing_tier ?? 'others'
     const price = getActivePromoTierPrice(
       promo,
       tier as 'harga_pokok' | 'luar_kota' | 'dalam_kota' | 'depo_bangunan'
     )
+    if (price === null) return alert(PRICE_TIERS.some(known => known === tier) ? 'Harga promosi untuk tier pelanggan belum diisi. Hubungi admin untuk melengkapi harga promosi.' : 'Promosi tidak tersedia untuk kelompok pelanggan ini.')
     setOrderItems(prev => {
       const exists = prev.find(i => i.product_id === promo.product_id && i.is_promo)
       if (exists) return prev
@@ -518,7 +521,7 @@ export default function VisitPage() {
 
   const addOrderItem = () => setOrderItems(prev => [
     ...prev,
-    { product_id: null, product_name: '', sku: '', quantity: 1, unit_price: 0 }
+    { product_id: null, product_name: '', sku: '', quantity: 1, unit_price: Number.NaN }
   ])
 
   const removeOrderItem = (index: number) => {
@@ -546,7 +549,7 @@ export default function VisitPage() {
         {unsaved.dialog}
         <GirardNav />
         <TransactionRecovery send={sendVisit} onCommitted={() => { queryClient.invalidateQueries(); setShowCamera(false); setPhotoPreview(null); setPhotoBlob(null); window.localStorage.removeItem(uploadKey) }} />
-        <TransactionRecovery send={sendTransaction} onCommitted={() => { queryClient.invalidateQueries(); setShowOrderForm(false); setOrderItems([{ product_id: null, product_name: '', sku: '', quantity: 1, unit_price: 0 }]) }} />
+        <TransactionRecovery send={sendTransaction} onCommitted={() => { queryClient.invalidateQueries(); setShowOrderForm(false); setOrderItems([{ product_id: null, product_name: '', sku: '', quantity: 1, unit_price: Number.NaN }]) }} />
         <div className="p-8 text-gray-400 text-sm text-center">Memuat...</div>
       </div>
     )
@@ -558,7 +561,7 @@ export default function VisitPage() {
         {unsaved.dialog}
         <GirardNav />
         <TransactionRecovery send={sendVisit} onCommitted={() => { queryClient.invalidateQueries(); setShowCamera(false); setPhotoPreview(null); setPhotoBlob(null); window.localStorage.removeItem(uploadKey) }} />
-        <TransactionRecovery send={sendTransaction} onCommitted={() => { queryClient.invalidateQueries(); setShowOrderForm(false); setOrderItems([{ product_id: null, product_name: '', sku: '', quantity: 1, unit_price: 0 }]) }} />
+        <TransactionRecovery send={sendTransaction} onCommitted={() => { queryClient.invalidateQueries(); setShowOrderForm(false); setOrderItems([{ product_id: null, product_name: '', sku: '', quantity: 1, unit_price: Number.NaN }]) }} />
         <div className="p-8 text-red-500 text-sm">{scheduleError
           ? scheduleError instanceof ScheduleCustomerUnavailableError ? scheduleError.message : 'Gagal memuat jadwal. Silakan muat ulang halaman untuk mencoba lagi.'
           : !schedule ? 'Jadwal tidak ditemukan atau Anda tidak memiliki akses.' : 'Pelanggan untuk jadwal ini tidak tersedia. Hubungi administrator.'}</div>
@@ -574,7 +577,7 @@ export default function VisitPage() {
       {unsaved.dialog}
       <GirardNav />
         <TransactionRecovery send={sendVisit} onCommitted={() => { queryClient.invalidateQueries(); setShowCamera(false); setPhotoPreview(null); setPhotoBlob(null); window.localStorage.removeItem(uploadKey) }} />
-        <TransactionRecovery send={sendTransaction} onCommitted={() => { queryClient.invalidateQueries(); setShowOrderForm(false); setOrderItems([{ product_id: null, product_name: '', sku: '', quantity: 1, unit_price: 0 }]) }} />
+        <TransactionRecovery send={sendTransaction} onCommitted={() => { queryClient.invalidateQueries(); setShowOrderForm(false); setOrderItems([{ product_id: null, product_name: '', sku: '', quantity: 1, unit_price: Number.NaN }]) }} />
 
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center gap-4">
         <button onClick={() => navigate(-1)} className="text-gray-400 hover:text-gray-600 text-sm">
@@ -772,7 +775,7 @@ export default function VisitPage() {
                 <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
                   <p className="text-xs text-blue-600">
                     Harga yang digunakan: <span className="font-semibold">
-                      {TIER_LABELS[schedule?.customers?.pricing_tier ?? 'luar_kota']}
+                      {TIER_LABELS[schedule?.customers?.pricing_tier ?? 'others']}
                     </span>
                   </p>
                 </div>
@@ -783,11 +786,11 @@ export default function VisitPage() {
                   <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 space-y-2">
                     <p className="text-xs font-semibold text-orange-700">🔥 Product Highlight — Harga Spesial</p>
                     <p className="text-xs text-orange-500">
-                      Harga sudah sesuai tier pelanggan ({TIER_LABELS[schedule?.customers?.pricing_tier ?? 'luar_kota']}) dan tidak dapat diubah.
+                      Harga sudah sesuai tier pelanggan ({TIER_LABELS[schedule?.customers?.pricing_tier ?? 'others']}) dan tidak dapat diubah.
                     </p>
                     <div className="space-y-2">
                       {activePromos.map(promo => {
-                        const tier = schedule?.customers?.pricing_tier ?? 'luar_kota'
+                        const tier = schedule?.customers?.pricing_tier ?? 'others'
                         const price = getActivePromoTierPrice(
                           promo,
                           tier as 'harga_pokok' | 'luar_kota' | 'dalam_kota' | 'depo_bangunan'
@@ -798,19 +801,20 @@ export default function VisitPage() {
                             <div className="flex-1 min-w-0">
                               <p className="text-xs font-semibold text-gray-900 truncate">{promo.products?.name ?? 'Produk tidak tersedia'}</p>
                               <p className="text-xs text-gray-500">
-                                Rp {price.toLocaleString('id-ID')}
+                                {formatCatalogPrice(price)}
                               </p>
+                              {price === null && <p className="text-xs text-orange-700">{PRICE_TIERS.some(known => known === tier) ? 'Hubungi admin untuk melengkapi harga promosi tier ini.' : 'Promosi tidak tersedia untuk kelompok pelanggan ini.'}</p>}
                             </div>
                             <button
                               onClick={() => addPromoItem(promo)}
-                              disabled={alreadyAdded || !promo.products}
+                              disabled={alreadyAdded || !promo.products || price === null}
                               className={`ml-3 text-xs font-medium px-3 py-1.5 rounded-lg shrink-0 transition-colors ${
-                                alreadyAdded || !promo.products
+                                alreadyAdded || !promo.products || price === null
                                   ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                                   : 'bg-orange-500 text-white hover:bg-orange-600'
                               }`}
                             >
-                              {alreadyAdded ? '✓ Ditambah' : '+ Tambah'}
+                              {price === null ? 'Harga belum diisi' : alreadyAdded ? '✓ Ditambah' : '+ Tambah'}
                             </button>
                           </div>
                         )
@@ -868,8 +872,11 @@ export default function VisitPage() {
                             }
                           </label>
                           <input
-                            type="number" min={0}
-                            value={Number.isNaN(item.unit_price) ? '' : item.unit_price}
+                            type="number" min={0} step="0.01"
+                            aria-label="Harga satuan"
+                        required
+                        placeholder="Harga belum diisi"
+                        value={Number.isNaN(item.unit_price) ? '' : item.unit_price}
                             onChange={e => !item.is_promo && updateOrderItem(i, 'unit_price', e.target.valueAsNumber)}
                             readOnly={item.is_promo}
                             className={`w-full border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 ${
@@ -880,9 +887,10 @@ export default function VisitPage() {
                           />
                         </div>
                       </div>
-                      <p className="text-right text-xs text-gray-400">
+                      {Number.isNaN(item.unit_price) && <p className="text-xs text-amber-700">Isi harga satuan sebelum menyimpan. Nol hanya untuk barang gratis.</p>}
+                  <p className="text-right text-xs text-gray-400">
                         Subtotal: <span className="text-gray-700 font-medium">
-                          Rp {(item.quantity * item.unit_price).toLocaleString('id-ID')}
+                          {formatLineAmount(item.quantity, item.unit_price)}
                         </span>
                       </p>
                     </div>
@@ -893,14 +901,14 @@ export default function VisitPage() {
                 </button>
                 <div className="flex items-center justify-between pt-2 border-t border-gray-100">
                   <p className="text-sm text-gray-500">
-                    Total: <span className="font-semibold text-gray-900">Rp {orderTotal.toLocaleString('id-ID')}</span>
+                    Total: <span className="font-semibold text-gray-900">{Number.isFinite(orderTotal) ? `Rp ${orderTotal.toLocaleString('id-ID')}` : 'Harga belum lengkap'}</span>
                   </p>
                   <div className="flex gap-2">
                     <button
                       onClick={() => {
                         unsaved.confirmDiscard(() => {
                           setShowOrderForm(false)
-                          setOrderItems([{ product_id: null, product_name: '', sku: '', quantity: 1, unit_price: 0 }])
+                          setOrderItems([{ product_id: null, product_name: '', sku: '', quantity: 1, unit_price: Number.NaN }])
                         })
                       }}
                       className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"

@@ -71,6 +71,10 @@ jobs:
               node tests/scalability/read-migration-guards.mjs
               psql -X -v ON_ERROR_STOP=1 -f scale-results/read-migration-guards.sql
             fi
+            if [[ "$file" == supabase/migrations/202610010010_nullable_catalog_prices.sql ]]; then
+              node tests/catalog-pricing-guards.mjs
+              psql -X -v ON_ERROR_STOP=1 -f scale-results/catalog-pricing-guards.sql
+            fi
             psql -X -v ON_ERROR_STOP=1 -f "$file"
           done
       - name: SQL invariants, real role permissions and Storage metadata policies
@@ -80,6 +84,7 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f supabase/tests/security/storage_helpers.sql
           psql -X -v ON_ERROR_STOP=1 -f supabase/tests/security/storage_rls.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/order-transactions.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/nullable-catalog-prices.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/visit-transactions.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/scalable-policy-state.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/scalable-index.sql

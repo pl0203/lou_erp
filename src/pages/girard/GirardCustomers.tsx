@@ -64,6 +64,7 @@ const TIER_LABELS: Record<string, string> = {
   luar_kota:     'Luar Kota',
   dalam_kota:    'Dalam Kota',
   depo_bangunan: 'Depo Bangunan',
+  others: 'Others',
 }
 
 function frequencyLabel(days: number): string {
@@ -281,7 +282,7 @@ export default function GirardCustomers() {
       ...EMPTY_FORM,
       visit_frequency_days: c.visit_frequency_days,
       manager_id: assignment?.manager_id ?? '',
-      pricing_tier: c.pricing_tier ?? 'luar_kota',
+      pricing_tier: c.pricing_tier ?? 'others',
     })
     setModalMode('edit')
     setShowModal(true)
@@ -306,6 +307,7 @@ export default function GirardCustomers() {
       <option value="luar_kota">Luar Kota</option>
       <option value="dalam_kota">Dalam Kota</option>
       <option value="depo_bangunan">Depo Bangunan</option>
+      <option value="others">Others</option>
     </select>
   )
 

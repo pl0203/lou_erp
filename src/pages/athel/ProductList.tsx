@@ -1,3 +1,4 @@
+import { parseCatalogPrice, formatCatalogPrice } from '../../lib/catalogPricing'
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
@@ -8,11 +9,11 @@ type Product = {
   name: string
   sku: string
   size: string | null
-  unit_price: number
-  harga_pokok: number
-  luar_kota: number
-  dalam_kota: number
-  depo_bangunan: number
+  unit_price: number | null
+  harga_pokok: number | null
+  luar_kota: number | null
+  dalam_kota: number | null
+  depo_bangunan: number | null
 }
 
 type ProductForm = {
@@ -72,11 +73,11 @@ async function saveProduct(form: ProductForm, editingId: string | null) {
     name: form.name.trim(),
     sku: form.sku.trim().toUpperCase(),
     size: form.size.trim() || null,
-    harga_pokok: parseFloat(form.harga_pokok) || 0,
-    luar_kota: parseFloat(form.luar_kota) || 0,
-    dalam_kota: parseFloat(form.dalam_kota) || 0,
-    depo_bangunan: parseFloat(form.depo_bangunan) || 0,
-    unit_price: parseFloat(form.luar_kota) || 0, // default unit_price = luar_kota
+    harga_pokok: parseCatalogPrice(form.harga_pokok),
+    luar_kota: parseCatalogPrice(form.luar_kota),
+    dalam_kota: parseCatalogPrice(form.dalam_kota),
+    depo_bangunan: parseCatalogPrice(form.depo_bangunan),
+    ...(!editingId ? { unit_price: null } : {}), // Preserve the legacy price when editing.
   }
 
   if (editingId) {
@@ -98,6 +99,7 @@ const TIER_LABELS: Record<string, string> = {
   luar_kota:    'Luar Kota',
   dalam_kota:   'Dalam Kota',
   depo_bangunan: 'Depo Bangunan',
+  others: 'Others',
 }
 
 export default function ProductList() {
@@ -157,10 +159,10 @@ export default function ProductList() {
       name: p.name,
       sku: p.sku,
       size: p.size ?? '',
-      harga_pokok: p.harga_pokok.toString(),
-      luar_kota: p.luar_kota.toString(),
-      dalam_kota: p.dalam_kota.toString(),
-      depo_bangunan: p.depo_bangunan.toString(),
+      harga_pokok: p.harga_pokok?.toString() ?? '',
+      luar_kota: p.luar_kota?.toString() ?? '',
+      dalam_kota: p.dalam_kota?.toString() ?? '',
+      depo_bangunan: p.depo_bangunan?.toString() ?? '',
     })
     setShowForm(true)
   }
@@ -236,16 +238,16 @@ export default function ProductList() {
                       <td className="px-5 py-4 font-medium text-gray-900">{p.name}</td>
                       <td className="px-5 py-4 text-gray-500">{p.size ?? '—'}</td>
                       <td className="px-5 py-4 text-right text-gray-700">
-                        Rp {p.harga_pokok.toLocaleString('id-ID')}
+                        {formatCatalogPrice(p.harga_pokok)}
                       </td>
                       <td className="px-5 py-4 text-right text-gray-700">
-                        Rp {p.luar_kota.toLocaleString('id-ID')}
+                        {formatCatalogPrice(p.luar_kota)}
                       </td>
                       <td className="px-5 py-4 text-right text-gray-700">
-                        Rp {p.dalam_kota.toLocaleString('id-ID')}
+                        {formatCatalogPrice(p.dalam_kota)}
                       </td>
                       <td className="px-5 py-4 text-right text-gray-700">
-                        Rp {p.depo_bangunan.toLocaleString('id-ID')}
+                        {formatCatalogPrice(p.depo_bangunan)}
                       </td>
                       <td className="px-5 py-4 text-right">
                         <button
@@ -306,7 +308,7 @@ export default function ProductList() {
                         <div key={tier} className="bg-gray-50 rounded-lg p-2">
                           <p className="text-gray-400 mb-0.5">{TIER_LABELS[tier]}</p>
                           <p className="font-medium text-gray-900">
-                            Rp {p[tier].toLocaleString('id-ID')}
+                            {formatCatalogPrice(p[tier])}
                           </p>
                         </div>
                       ))}
@@ -404,10 +406,11 @@ export default function ProductList() {
                       <input
                         type="number"
                         min={0}
+                        step="0.01"
                         value={form[field]}
                         onChange={e => setForm(p => ({ ...p, [field]: e.target.value }))}
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="0"
+                        placeholder="Belum diisi"
                       />
                     </div>
                   ))}

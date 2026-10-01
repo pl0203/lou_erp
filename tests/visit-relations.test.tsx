@@ -20,5 +20,5 @@ test('missing promotional product cannot be added to order',()=>{
  state.customer={id:'c',name:'Customer',pricing_tier:'luar_kota'}
  render(<VisitPage/>);fireEvent.click(screen.getByText('+ Pesanan Baru'))
  expect(screen.getByText('Produk tidak tersedia')).toBeTruthy()
- expect((screen.getByRole('button',{name:'+ Tambah'}) as HTMLButtonElement).disabled).toBe(true)
+ expect((screen.getByRole('button',{name:'Harga belum diisi'}) as HTMLButtonElement).disabled).toBe(true)
 })

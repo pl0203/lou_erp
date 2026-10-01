@@ -34,6 +34,7 @@ test.each(['2026-08-31', '2024-02-29'])('manual PO retains selected business dat
   fireEvent.change(screen.getByRole('combobox'), { target: { value: 'dummy-customer' } })
   fireEvent.change(screen.getByPlaceholderText('mis. PO-2024-001'), { target: { value: 'DUMMY-DATED-PO' } })
   fireEvent.change(screen.getByPlaceholderText('Nama produk'), { target: { value: 'Dummy product' } })
+  fireEvent.change(screen.getByLabelText('Harga satuan'), { target: { value: '0' } })
   expect(dateInput.value).toBe(orderDate)
   fireEvent.click(screen.getByRole('button', { name: 'Simpan PO' }))
   await waitFor(() => expect(mocks.rpc).toHaveBeenCalledTimes(1))

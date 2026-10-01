@@ -1,3 +1,4 @@
+import { resolveCatalogPrice, formatLineAmount } from '../../lib/catalogPricing'
 import { fetchCompletePOLines, fetchCompleteRows, priceForEdit } from '../../lib/reads/detailReads'
 import TransactionRecovery from '../../components/TransactionRecovery'
 import { createTransactionSender, useTransactionSender } from '../../lib/orderTransactions'
@@ -21,11 +22,11 @@ type Product = {
   name: string
   sku: string
   size: string | null
-  unit_price: number
-  harga_pokok: number
-  luar_kota: number
-  dalam_kota: number
-  depo_bangunan: number
+  unit_price: number | null
+  harga_pokok: number | null
+  luar_kota: number | null
+  dalam_kota: number | null
+  depo_bangunan: number | null
 }
 
 type LineItemRow = {
@@ -55,6 +56,7 @@ const TIER_LABELS: Record<string, string> = {
   luar_kota:     'Luar Kota',
   dalam_kota:    'Dalam Kota',
   depo_bangunan: 'Depo Bangunan',
+  others: 'Others',
 }
 
 async function fetchPO(id: string): Promise<POData> {
@@ -206,14 +208,14 @@ export default function POEdit() {
 
   // Get selected customer's pricing tier
   const selectedCustomer = customers?.find(c => c.id === customerId)
-  const pricingTier = selectedCustomer?.pricing_tier ?? 'luar_kota'
+  const pricingTier = selectedCustomer?.pricing_tier ?? 'others'
 
   const updateLine = (index: number, field: keyof LineItemRow, value: string | number) => {
     setLineItems(prev => prev.map((item, i) => i === index ? { ...item, [field]: value } : item))
   }
 
   const fillFromProduct = (index: number, product: Product) => {
-    const price = (product[pricingTier as keyof Product] as number) || product.unit_price
+    const price = resolveCatalogPrice(product, pricingTier) ?? Number.NaN
     setLineItems(prev => prev.map((item, i) =>
       i === index
         ? { ...item, product_name: product.name, sku: product.sku, unit_price: price }
@@ -223,7 +225,7 @@ export default function POEdit() {
 
   const addLine = () => setLineItems(prev => [
     ...prev,
-    { id: null, product_name: '', sku: '', quantity: 1, unit_price: 0 }
+    { id: null, product_name: '', sku: '', quantity: 1, unit_price: Number.NaN }
   ])
 
   const removeLine = (index: number) => {
@@ -428,8 +430,11 @@ export default function POEdit() {
                         <span className="text-blue-400 ml-1">{historical ? '— terkunci' : '— dapat diubah'}</span>
                       </label>
                       <input
-                        type="number" min={0}
+                        type="number" min={0} step="0.01"
                         disabled={historical}
+                        aria-label="Harga satuan"
+                        required
+                        placeholder="Harga belum diisi"
                         value={Number.isNaN(item.unit_price) ? '' : item.unit_price}
                         onChange={e => updateLine(realIndex, 'unit_price', e.target.valueAsNumber)}
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -438,9 +443,10 @@ export default function POEdit() {
                   </div>
 
                   {historical && <p className="text-xs text-gray-500">Riwayat pengiriman mengunci produk, SKU, harga, dan penghapusan barang. Jumlah minimal {minimumQuantity} (terkirim aktif: {deliveredByLine[item.id!] ?? 0}).</p>}
+                  {Number.isNaN(item.unit_price) && <p className="text-xs text-amber-700">Isi harga satuan sebelum menyimpan. Nol hanya untuk barang gratis.</p>}
                   <div className="text-right text-xs text-gray-400">
                     Subtotal: <span className="text-gray-700 font-medium">
-                      Rp {(item.quantity * item.unit_price).toLocaleString('id-ID')}
+                      {formatLineAmount(item.quantity, item.unit_price)}
                     </span>
                   </div>
                 </div>
@@ -457,7 +463,7 @@ export default function POEdit() {
             </button>
             <div className="text-sm text-gray-500">
               Total: <span className="text-gray-900 font-semibold text-base ml-1">
-                Rp {total.toLocaleString('id-ID')}
+                {Number.isFinite(total) ? `Rp ${total.toLocaleString('id-ID')}` : 'Harga belum lengkap'}
               </span>
             </div>
           </div>

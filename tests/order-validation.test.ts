@@ -1,3 +1,4 @@
+import { validateOrderLines } from "../src/lib/orderValidation"
 import { expect, test, vi } from 'vitest'
 const state = vi.hoisted(()=>({writes:[] as string[]}))
 vi.mock('../src/lib/supabase',()=>({supabase:{rpc:async()=>{state.writes.push('rpc');return {data:{id:'id'},error:null}},auth:{getUser:async()=>({data:{user:{id:'u'}}})},from:(table:string)=>{
@@ -19,3 +20,9 @@ for(const action of ['create','edit','sales']) {
   expect(state.writes.length).toBeGreaterThan(0)
  })
 }
+
+test('rejects price precision and catalog money overflow before any write', () => {
+  expect(() => validateOrderLines([{ product_name: 'A', quantity: 1, unit_price: 1.001 }])).toThrow()
+  expect(() => validateOrderLines([{ product_name: 'A', quantity: 1, unit_price: 1000000000000 }])).toThrow()
+  expect(() => validateOrderLines([{ product_name: 'A', quantity: 1, unit_price: 0.29 }])).not.toThrow()
+})

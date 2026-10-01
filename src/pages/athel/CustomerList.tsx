@@ -41,6 +41,7 @@ const TIER_LABELS: Record<string, string> = {
   luar_kota:     'Luar Kota',
   dalam_kota:    'Dalam Kota',
   depo_bangunan: 'Depo Bangunan',
+  others: 'Others',
 }
 
 const PAGE_SIZE = 10
@@ -151,7 +152,7 @@ export default function CustomerList() {
       city: c.city ?? '',
       phone: c.phone ?? '',
       email: c.email ?? '',
-      pricing_tier: c.pricing_tier ?? 'luar_kota',
+      pricing_tier: c.pricing_tier ?? 'others',
     })
     setShowForm(true)
   }
@@ -391,6 +392,7 @@ export default function CustomerList() {
                   <option value="luar_kota">Luar Kota</option>
                   <option value="dalam_kota">Dalam Kota</option>
                   <option value="depo_bangunan">Depo Bangunan</option>
+      <option value="others">Others</option>
                 </select>
               </div>
             </div>

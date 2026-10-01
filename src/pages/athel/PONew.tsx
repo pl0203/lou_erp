@@ -1,3 +1,4 @@
+import { resolveCatalogPrice, formatLineAmount } from '../../lib/catalogPricing'
 import ReadFailure from '../../components/ReadFailure'
 import { readCompleteQuery } from '../../lib/reads/completeQuery'
 import TransactionRecovery from '../../components/TransactionRecovery'
@@ -30,11 +31,11 @@ type Product = {
   name: string
   sku: string
   size: string | null
-  unit_price: number
-  harga_pokok: number
-  luar_kota: number
-  dalam_kota: number
-  depo_bangunan: number
+  unit_price: number | null
+  harga_pokok: number | null
+  luar_kota: number | null
+  dalam_kota: number | null
+  depo_bangunan: number | null
 }
 
 const EMPTY_LINE: LineItem = {
@@ -42,7 +43,7 @@ const EMPTY_LINE: LineItem = {
   product_name: '',
   sku: '',
   quantity: 1,
-  unit_price: 0,
+  unit_price: Number.NaN,
 }
 
 const TIER_LABELS: Record<string, string> = {
@@ -50,6 +51,7 @@ const TIER_LABELS: Record<string, string> = {
   luar_kota:     'Luar Kota',
   dalam_kota:    'Dalam Kota',
   depo_bangunan: 'Depo Bangunan',
+  others: 'Others',
 }
 
 async function fetchCustomers(signal?: AbortSignal): Promise<Customer[]> {
@@ -167,14 +169,14 @@ export default function PONew() {
 
   // Get selected customer's pricing tier
   const selectedCustomer = customers?.find(c => c.id === customerId)
-  const pricingTier = selectedCustomer?.pricing_tier ?? 'luar_kota'
+  const pricingTier = selectedCustomer?.pricing_tier ?? 'others'
 
   const updateLine = (index: number, field: keyof LineItem, value: string | number | null) => {
     setLineItems(prev => prev.map((item, i) => i === index ? { ...item, [field]: value } : item))
   }
 
   const fillFromProduct = (index: number, product: Product) => {
-    const price = (product[pricingTier as keyof Product] as number) || product.unit_price
+    const price = resolveCatalogPrice(product, pricingTier) ?? Number.NaN
     setLineItems(prev => prev.map((item, i) =>
       i === index
         ? { ...item, product_id: product.id, product_name: product.name, sku: product.sku, unit_price: price }
@@ -364,7 +366,10 @@ export default function PONew() {
                       )}
                     </label>
                     <input
-                      type="number" min={0}
+                      type="number" min={0} step="0.01"
+                      aria-label="Harga satuan"
+                      required
+                      placeholder="Harga belum diisi"
                       value={Number.isNaN(item.unit_price) ? '' : item.unit_price}
                       onChange={e => updateLine(i, 'unit_price', e.target.valueAsNumber)}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -372,9 +377,10 @@ export default function PONew() {
                   </div>
                 </div>
 
-                <div className="text-right text-xs text-gray-400">
+                {Number.isNaN(item.unit_price) && <p className="text-xs text-amber-700">Isi harga satuan sebelum menyimpan. Nol hanya untuk barang gratis.</p>}
+                  <div className="text-right text-xs text-gray-400">
                   Subtotal: <span className="text-gray-700 font-medium">
-                    Rp {(item.quantity * item.unit_price).toLocaleString('id-ID')}
+                    {formatLineAmount(item.quantity, item.unit_price)}
                   </span>
                 </div>
               </div>
@@ -387,7 +393,7 @@ export default function PONew() {
             </button>
             <div className="text-sm text-gray-500">
               Total: <span className="text-gray-900 font-semibold text-base ml-1">
-                Rp {total.toLocaleString('id-ID')}
+                {Number.isFinite(total) ? `Rp ${total.toLocaleString('id-ID')}` : 'Harga belum lengkap'}
               </span>
             </div>
           </div>

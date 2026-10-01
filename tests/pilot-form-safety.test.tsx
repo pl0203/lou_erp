@@ -44,6 +44,7 @@ function dirtyPO() {
   fireEvent.change(screen.getByRole('combobox'), { target: { value: 'a' } })
   fireEvent.change(screen.getByPlaceholderText('mis. PO-2024-001'), { target: { value: 'PO-KEEP' } })
   fireEvent.change(screen.getByPlaceholderText('Nama produk'), { target: { value: 'Barang A' } })
+  fireEvent.change(screen.getByLabelText('Harga satuan'), { target: { value: '0' } })
 }
 
 test('changing customer keeps original items until explicit discard and can be cancelled', () => {
@@ -149,6 +150,7 @@ test.each(['navigate', 'cancel'])('a visit order committed while a %s dialog is 
   const router = mount('visit')
   fireEvent.click(screen.getByRole('button', { name: '+ Pesanan Baru' }))
   fireEvent.change(screen.getByPlaceholderText('Nama produk'), { target: { value: 'Pending item' } })
+  fireEvent.change(screen.getByLabelText('Harga satuan'), { target: { value: '0' } })
   fireEvent.click(screen.getByRole('button', { name: 'Kirim Pesanan' }))
   await waitFor(() => expect(state.send).toHaveBeenCalledTimes(1))
   fireEvent.click(action === 'navigate' ? screen.getByRole('link', { name: 'Jadwal' }) : screen.getByRole('button', { name: 'Batal' }))
@@ -161,4 +163,18 @@ test.each(['navigate', 'cancel'])('a visit order committed while a %s dialog is 
   fireEvent.change(screen.getByPlaceholderText('Nama produk'), { target: { value: 'Another item' } })
   fireEvent.click(screen.getByRole('link', { name: 'Jadwal' }))
   expect(await screen.findByRole('dialog')).toBeTruthy()
+})
+
+test('pristine missing price stays clean; entering zero is a draft change and clearing restores clean', () => {
+ mount()
+ const price = screen.getByLabelText('Harga satuan')
+ expect((price as HTMLInputElement).value).toBe('')
+ const clean = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(clean)
+ expect(clean.defaultPrevented).toBe(false)
+ fireEvent.change(price, { target: { value: '0' } })
+ const dirty = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(dirty)
+ expect(dirty.defaultPrevented).toBe(true)
+ fireEvent.change(price, { target: { value: '' } })
+ const cleared = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(cleared)
+ expect(cleared.defaultPrevented).toBe(false)
 })

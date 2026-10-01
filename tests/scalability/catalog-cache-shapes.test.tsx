@@ -37,6 +37,6 @@ test('navigating from promotion products to a PO never reuses an incompatible ca
     const lookup = await screen.findByPlaceholderText('Cari SKU atau nama barang...')
     fireEvent.change(lookup, { target: { value: 'Synthetic product' } })
     fireEvent.mouseDown(screen.getByRole('button', { name: /Synthetic product/ }))
-    expect((screen.getAllByRole('spinbutton')[1] as HTMLInputElement).value).toBe('42')
+    expect((screen.getAllByRole('spinbutton')[1] as HTMLInputElement).value).toBe('0')
   } finally { client.clear() }
 })
