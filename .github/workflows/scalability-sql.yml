@@ -1,4 +1,4 @@
-name: Disposable scalability SQL validation
+name: Disposable scalability SQL diagnostics
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -39,6 +39,8 @@ jobs:
       PGUSER: postgres
       PGPASSWORD: synthetic-ci-only
       PGDATABASE: pilot_test
+      # Diagnostic-only candidate. Remove this hold before remedy validation.
+      SCALE_DIAGNOSTIC_ONLY: 'true'
       SCALE_ROWS: '6000'
       SCALE_PERMIT: disposable-pilot-ci
       PGHOSTADDR: ''
@@ -78,7 +80,7 @@ jobs:
           done
           exit "$failed"
       - name: Exact role ground truth and bounded query diagnostics
-        if: ${{ !cancelled() && steps.fixture.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.fixture.outcome == 'success' && env.SCALE_DIAGNOSTIC_ONLY != 'true' }}
         run: |
           node scripts/run-disposable-psql.mjs --file tests/database/scalability-ground-truth.sql 2>&1 | tee scale-results/ground-truth.log
           grep -Eq '^[[:space:]]*SCALABILITY_ROLE_GROUND_TRUTH_VERIFIED[[:space:]]*\|' scale-results/ground-truth.log
@@ -86,6 +88,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: scale-sql-6000-validation-${{ github.run_id }}
+          name: scale-sql-6000-diagnostics-${{ github.run_id }}
           path: scale-results
           retention-days: 7

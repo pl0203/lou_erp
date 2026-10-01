@@ -5,9 +5,8 @@ import { ACTORS } from './measure-reads.mjs'
 export function buildDiagnosticPackets(){
  return [
   {name:'recent-manager',role:'managerA',from:'2026-07-01',planMode:'auto'},
-  {name:'recent-admin',role:'po_admin',from:'2026-07-01',planMode:'auto'},
   {name:'history-admin-auto',role:'po_admin',from:'2021-01-01',planMode:'auto'},
-  {name:'history-admin-custom',role:'po_admin',from:'2021-01-01',planMode:'force_custom_plan'},
+  {name:'history-admin-generic',role:'po_admin',from:'2021-01-01',planMode:'force_generic_plan'},
  ].map(p=>({...p,sql:`-- SQL-only one-shot diagnostic; no API/p95 or concurrency acceptance.
 BEGIN READ ONLY;
 SET LOCAL statement_timeout='60s';
@@ -16,6 +15,13 @@ DO $$ BEGIN
  IF current_database()<>'pilot_test' OR (SELECT count(*) FROM public.pilot_fixture_marker)<>1 OR NOT EXISTS(SELECT 1 FROM public.pilot_fixture_marker WHERE purpose='disposable-pilot-ci') THEN RAISE EXCEPTION 'Disposable marker required'; END IF;
  IF (SELECT count(*) FROM public.pilot_scale_manifest)<>1 OR (SELECT (manifest->'base'->>'purchase_orders')::integer FROM public.pilot_scale_manifest)<>6000 THEN RAISE EXCEPTION 'Fixed6k fixture required'; END IF;
 END $$;
+-- Official bundled diagnostic module; this session only, before role reduction.
+LOAD 'auto_explain';
+SET LOCAL auto_explain.log_min_duration='1s';
+SET LOCAL auto_explain.log_nested_statements=on;
+SET LOCAL auto_explain.log_analyze=off;
+SET LOCAL auto_explain.log_timing=off;
+SET LOCAL auto_explain.log_level='notice';
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub','${ACTORS[p.role]}',true);
 DO $$ BEGIN
