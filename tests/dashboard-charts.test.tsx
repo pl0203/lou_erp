@@ -118,6 +118,37 @@ test('customer names remain literal text and chart tooltips do not use HTML rend
   expect(document.querySelector('img')).toBeNull()
 })
 
+test.each(['Top Customer', 'Outstanding Item Breakdown'].flatMap(title =>
+  ['empty', 'populated'].map(rows => ({ title, rows })),
+))('$title keeps its $rows table inside a shrinkable grid card', async ({ title, rows }) => {
+  const customerName = 'CustomerWithAnUnbrokenNameLongerThanANarrowViewport'
+  const sku = 'SKU-WITH-AN-UNBROKEN-CODE-LONGER-THAN-A-NARROW-VIEWPORT'
+  const productName = 'ProductWithAnUnbrokenNameLongerThanANarrowViewport'
+  if (rows === 'populated') {
+    state.data.topCustomers = [{ rank: 1, name: customerName, poValue: '1000000', deliveredValue: '0', fulfillmentRate: 0 }]
+    state.data.outstandingItems = [{ rank: 1, sku, productName, outstandingQty: 25, outstandingValue: '1000000' }]
+  }
+
+  render(<Dashboard />)
+  await screen.findByRole('region', { name: 'Komposisi Status PO' })
+  const heading = screen.getByRole('heading', { name: title })
+  const card = heading.parentElement!.parentElement!
+  const table = within(card).getByRole('table')
+
+  // jsdom does not measure layout. Guard the CSS contract: a grid item must
+  // shrink below the table's intrinsic width so only the inner table scrolls.
+  expect(card.classList.contains('min-w-0')).toBe(true)
+  expect(table.parentElement!.classList.contains('overflow-x-auto')).toBe(true)
+  expect(within(table).getAllByRole('columnheader')).toHaveLength(5)
+  if (rows === 'populated') {
+    const labels = title === 'Top Customer' ? [customerName] : [sku, productName]
+    for (const label of labels) expect(within(table).getByText(label)).toBeTruthy()
+    expect(within(table).getAllByRole('cell')).toHaveLength(5)
+  } else {
+    expect(within(table).getByRole('cell').getAttribute('colspan')).toBe('5')
+  }
+})
+
 test('loading and query errors remain unavailable instead of showing fabricated zero charts', () => {
   state.data = undefined
   state.loading = true

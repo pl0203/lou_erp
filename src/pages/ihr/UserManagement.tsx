@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import IHRNav from '../../components/IHRNav'
@@ -80,30 +80,37 @@ async function updateUser(payload: {
   if (error) throw error
 }
 
-async function inviteUser(
-  payload: UserForm,
-  accessToken: string
-) {
-  const response = await fetch(
-    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/invite-user`,
-    {
+class InvitationError extends Error {
+  mayHaveSent: boolean
+  constructor(message: string, mayHaveSent = false) { super(message); this.mayHaveSent = mayHaveSent }
+}
+const unknownInvite = 'The invitation outcome is unknown. Do not resend. Ask an administrator to check the account and email delivery.'
+const reviewStorageKey = `invitation-review:${import.meta.env.VITE_SUPABASE_URL}`
+function readInviteReviews(): Record<string, string> {
+  try {
+    const parsed: unknown = JSON.parse(sessionStorage.getItem(reviewStorageKey) ?? '{}')
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    return Object.fromEntries(Object.entries(parsed).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
+  } catch { return {} }
+}
+async function inviteUser(payload: UserForm, accessToken: string) {
+  let response: Response
+  let data: { error?: string; success?: boolean; user_id?: string; may_have_sent?: boolean; code?: string }
+  try {
+    response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/invite-user`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify({
-        email: payload.email,
-        full_name: payload.full_name,
-        role: payload.role,
-        phone: payload.phone || null,
-        birth_date: payload.birth_date || null,
-        manager_id: payload.manager_id || null,
-      }),
-    }
-  )
-  const data = await response.json()
-  if (!response.ok) throw new Error(data.error ?? 'Failed to invite user')
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
+      body: JSON.stringify(payload),
+    })
+    data = await response.json()
+  } catch { throw new InvitationError(unknownInvite, true) }
+  if (!data || typeof data !== 'object') throw new InvitationError(unknownInvite, true)
+  if (!response.ok) {
+    const knownRejections = ['UNAUTHORIZED', 'FORBIDDEN', 'METHOD_NOT_ALLOWED', 'INVITE_NOT_CONFIGURED', 'INVALID_ORIGIN', 'INVALID_PAYLOAD', 'LOOKUP_FAILED', 'PROFILE_EXISTS', 'INVALID_MANAGER', 'INVITE_UNAVAILABLE', 'INVITE_REJECTED']
+    const uncertain = data.may_have_sent === true || !knownRejections.includes(data.code ?? '')
+    throw new InvitationError(uncertain ? (data.may_have_sent ? data.error ?? unknownInvite : unknownInvite) : data.error ?? 'Failed to invite user', uncertain)
+  }
+  if (data.success !== true || typeof data.user_id !== 'string') throw new InvitationError(unknownInvite, true)
   return data
 }
 
@@ -115,8 +122,33 @@ export default function UserManagement() {
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null)
   const [form, setForm] = useState<UserForm>(EMPTY_FORM)
   const [deactivateId, setDeactivateId] = useState<string | null>(null)
+  const formGeneration = useRef(0)
+  const inFlight = useRef(false)
+  const [saving, setSaving] = useState(false)
+  const [formError, setFormError] = useState('')
+  const [inviteReviews, setInviteReviews] = useState<Record<string, string>>(readInviteReviews)
+  const inviteReviewsRef = useRef(inviteReviews)
+  const storeReview = (email: string, message: string | null) => {
+    const next = { ...readInviteReviews(), ...inviteReviewsRef.current }
+    if (message) next[email] = message
+    else delete next[email]
+    const serialized = JSON.stringify(next)
+    sessionStorage.setItem(reviewStorageKey, serialized)
+    if (sessionStorage.getItem(reviewStorageKey) !== serialized) throw new Error('Invitation tracking unavailable')
+    inviteReviewsRef.current = next
+    setInviteReviews(next)
+  }
+  const reviewRequired = !editingUser ? inviteReviews[form.email.trim().toLowerCase()] : undefined
+  const finishSave = () => { inFlight.current = false; setSaving(false) }
+  const closeForm = () => {
+    formGeneration.current++
+    setShowForm(false); setEditingUser(null); setForm(EMPTY_FORM); setFormError('')
+  }
+  const saveError = (error: Error, generation: number) => {
+    if (generation === formGeneration.current) setFormError(error.message)
+  }
 
-  const { data: users, isLoading } = useQuery({
+  const { data: users, isLoading, isError: usersFailed, refetch } = useQuery({
     queryKey: ['users'],
     queryFn: fetchUsers,
   })
@@ -126,26 +158,46 @@ export default function UserManagement() {
   ) ?? []
 
   const updateMutation = useMutation({
-    mutationFn: updateUser,
-    onSuccess: () => {
+    mutationFn: ({ payload }: { payload: Parameters<typeof updateUser>[0]; generation: number }) => updateUser(payload),
+    onSuccess: (_result, variables) => {
       queryClient.invalidateQueries({ queryKey: ['users'] })
-      setShowForm(false)
-      setEditingUser(null)
-      setForm(EMPTY_FORM)
+      if (variables.generation === formGeneration.current) closeForm()
     },
+    onError: (error, variables) => saveError(error, variables.generation),
+    onSettled: finishSave,
   })
 
   const inviteMutation = useMutation({
-    mutationFn: async (payload: UserForm) => {
+    mutationFn: async ({ payload }: { payload: UserForm; generation: number }) => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) throw new Error('Not authenticated')
-      return inviteUser(payload, session.access_token)
+      const email = payload.email.trim().toLowerCase()
+      // Persist before the external action, so reload/unmount cannot erase an
+      // in-flight invitation. If tracking cannot be stored, do not send.
+      try { storeReview(email, unknownInvite) } catch {
+        throw new Error('Unable to safely track the invitation. No invitation was sent. Enable browser session storage and try again.')
+      }
+      try {
+        const result = await inviteUser(payload, session.access_token)
+        try { storeReview(email, null) } catch { /* A stale hold is safer than an untracked resend. */ }
+        return result
+      } catch (error) {
+        if (error instanceof InvitationError && !error.mayHaveSent) {
+          try { storeReview(email, null) } catch { /* Preserve the hold if storage becomes unavailable. */ }
+        } else {
+          try { storeReview(email, error instanceof InvitationError ? error.message : unknownInvite) } catch { /* The pre-send unknown marker remains. */ }
+        }
+        throw error
+      }
     },
-    onSuccess: () => {
+    onSuccess: (_result, variables) => {
       queryClient.invalidateQueries({ queryKey: ['users'] })
-      setShowForm(false)
-      setForm(EMPTY_FORM)
+      if (variables.generation === formGeneration.current) closeForm()
     },
+    onError: (error, variables) => {
+      saveError(error, variables.generation)
+    },
+    onSettled: finishSave,
   })
 
   const deactivateMutation = useMutation({
@@ -170,12 +222,14 @@ export default function UserManagement() {
   })
 
   const openCreate = () => {
+    formGeneration.current++; setFormError('')
     setEditingUser(null)
     setForm(EMPTY_FORM)
     setShowForm(true)
   }
 
   const openEdit = (u: UserProfile) => {
+    formGeneration.current++; setFormError('')
     setEditingUser(u)
     setForm({
       full_name: u.full_name,
@@ -189,11 +243,13 @@ export default function UserManagement() {
   }
 
   const handleSave = () => {
+    if (inFlight.current || reviewRequired) return
     if (!form.full_name.trim()) return alert('Full name is required.')
     if (!form.email.trim()) return alert('Email is required.')
 
+    inFlight.current = true; setSaving(true); setFormError('')
     if (editingUser) {
-      updateMutation.mutate({
+      updateMutation.mutate({ generation: formGeneration.current, payload: {
         id: editingUser.id,
         full_name: form.full_name,
         role: form.role,
@@ -201,9 +257,9 @@ export default function UserManagement() {
         birth_date: form.birth_date || null,
         manager_id: form.manager_id || null,
         is_active: editingUser.is_active,
-      })
+      } })
     } else {
-      inviteMutation.mutate(form)
+      inviteMutation.mutate({ payload: { ...form }, generation: formGeneration.current })
     }
   }
 
@@ -228,7 +284,7 @@ export default function UserManagement() {
           <div>
             <h1 className="text-xl font-semibold text-gray-900">User Management</h1>
             <p className="text-sm text-gray-500 mt-0.5">
-              {users?.filter(u => u.is_active).length ?? 0} active users
+              {usersFailed ? 'User list unavailable' : `${users?.filter(u => u.is_active).length ?? 0} active users`}
             </p>
           </div>
           <button
@@ -264,7 +320,11 @@ export default function UserManagement() {
           <div className="text-gray-400 text-sm py-12 text-center">Loading users...</div>
         )}
 
-        {!isLoading && (
+        {usersFailed && <div role="alert" className="text-red-600 text-sm py-6">
+          Unable to load users. Check the connection before creating or editing accounts.
+          <button onClick={() => void refetch()} className="ml-3 underline">Retry</button>
+        </div>}
+        {!isLoading && !usersFailed && (
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <table className="w-full text-sm">
               <thead>
@@ -457,25 +517,25 @@ export default function UserManagement() {
 
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
               <button
-                onClick={() => { setShowForm(false); setEditingUser(null); setForm(EMPTY_FORM) }}
+                onClick={closeForm}
                 className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSave}
-                disabled={inviteMutation.isPending || updateMutation.isPending}
+                disabled={saving || !!reviewRequired}
                 className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
               >
-                {inviteMutation.isPending || updateMutation.isPending
+                {saving
                   ? 'Saving...'
                   : editingUser ? 'Save Changes' : 'Send Invite'}
               </button>
             </div>
 
-            {(inviteMutation.isError || updateMutation.isError) && (
+            {!saving && (reviewRequired || formError) && (
               <p className="text-red-500 text-xs px-6 pb-4 text-right">
-                {((inviteMutation.error || updateMutation.error) as Error)?.message}
+                {reviewRequired || formError}
               </p>
             )}
           </div>

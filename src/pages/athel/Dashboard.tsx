@@ -55,7 +55,7 @@ function DataTableCard({
   children: React.ReactNode
 }) {
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+    <div className="min-w-0 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
       <div className="mb-4">
         <h3 className="text-base font-semibold text-gray-900">{title}</h3>
         <p className="mt-1 text-sm text-gray-500">{subtitle}</p>
