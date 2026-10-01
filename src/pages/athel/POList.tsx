@@ -202,7 +202,7 @@ export default function POList() {
                     <th className="text-left px-5 py-3 font-medium text-gray-500">Pelanggan</th>
                     <th className="text-left px-5 py-3 font-medium text-gray-500">Status</th>
                     <th className="text-left px-5 py-3 font-medium text-gray-500">Tanggal Pesanan</th>
-                    <th className="text-left px-5 py-3 font-medium text-gray-500">Estimasi Pengiriman</th>
+                    <th className="text-left px-5 py-3 font-medium text-gray-500">Tanggal Kedaluwarsa PO</th>
                     <th className="text-right px-5 py-3 font-medium text-gray-500">Total Nilai</th>
                     <th className="text-right px-5 py-3 font-medium text-gray-500">Aksi</th>
                   </tr>
@@ -229,7 +229,8 @@ export default function POList() {
                         >
                           Lihat
                         </button>
-                        {po.status !== 'complete' && (
+                        {!['confirm', 'in_progress'].includes(po.status) && <span className="text-xs text-gray-400">{po.status === 'cancelled' ? 'PO dibatalkan: tidak dapat diubah' : po.status === 'complete' ? 'PO selesai: tidak dapat diubah' : 'Status PO tidak dapat diubah'}</span>}
+                        {['confirm', 'in_progress'].includes(po.status) && (
                           <button
                             onClick={() => navigate(`/athel/po/${po.id}/edit`)}
                             className="text-gray-500 hover:text-gray-800 text-xs font-medium"
@@ -263,7 +264,7 @@ export default function POList() {
                       <p className="text-gray-700 font-medium">{po.order_date}</p>
                     </div>
                     <div>
-                      <p className="text-gray-400">Estimasi Pengiriman</p>
+                      <p className="text-gray-400">Tanggal Kedaluwarsa PO</p>
                       <p className="text-gray-700 font-medium">{po.expected_delivery_date ?? '—'}</p>
                     </div>
                     <div className="col-span-2">
@@ -278,7 +279,8 @@ export default function POList() {
                     >
                       Lihat
                     </button>
-                    {po.status !== 'complete' && (
+                    {!['confirm', 'in_progress'].includes(po.status) && <span className="text-xs text-gray-400">{po.status === 'cancelled' ? 'PO dibatalkan: tidak dapat diubah' : po.status === 'complete' ? 'PO selesai: tidak dapat diubah' : 'Status PO tidak dapat diubah'}</span>}
+                        {['confirm', 'in_progress'].includes(po.status) && (
                       <button
                         onClick={() => navigate(`/athel/po/${po.id}/edit`)}
                         className="flex-1 text-center text-gray-600 text-xs font-medium py-2 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors"

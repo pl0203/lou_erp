@@ -2,6 +2,7 @@ import TransactionRecovery from '../../components/TransactionRecovery'
 import { createTransactionSender, useTransactionSender } from '../../lib/orderTransactions'
 import type { TransactionSender } from '../../lib/orderTransactions'
 import { validateOrderLines } from '../../lib/orderValidation'
+import { hasOrderItemChanges, useUnsavedChanges } from '../../lib/useUnsavedChanges'
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
@@ -140,17 +141,20 @@ export default function PONew() {
   const sendTransaction = useTransactionSender('new-po')
   const [customerId, setCustomerId] = useState('')
   const [poNumber, setPoNumber] = useState('')
-  const [orderDate, setOrderDate] = useState(new Date().toISOString().split('T')[0])
+  const [initialOrderDate] = useState(() => new Date().toISOString().split('T')[0])
+  const [orderDate, setOrderDate] = useState(initialOrderDate)
   const [expectedDelivery, setExpectedDelivery] = useState('')
   const [notes, setNotes] = useState('')
   const [lineItems, setLineItems] = useState<LineItem[]>([{ ...EMPTY_LINE }])
+  const itemsDirty = hasOrderItemChanges(lineItems)
+  const unsaved = useUnsavedChanges(!!customerId || !!poNumber || !!expectedDelivery || !!notes || orderDate !== initialOrderDate || itemsDirty)
 
   const { data: customers } = useQuery({ queryKey: ['customers'], queryFn: fetchCustomers })
   const { data: products } = useQuery({ queryKey: ['products'], queryFn: fetchProducts })
 
   const mutation = useMutation({
     mutationFn: (payload: Parameters<typeof createPO>[0]) => createPO(payload, sendTransaction),
-    onSuccess: po => navigate(`/athel/po/${po.id}`),
+    onSuccess: po => unsaved.runWithoutPrompt(() => navigate(`/athel/po/${po.id}`)),
   })
 
   // Get selected customer's pricing tier
@@ -194,8 +198,9 @@ export default function PONew() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {unsaved.dialog}
       <AthelNav />
-        <TransactionRecovery send={sendTransaction} onCommitted={result => navigate(`/athel/po/${result.id}`)} />
+        <TransactionRecovery send={sendTransaction} onCommitted={result => unsaved.runWithoutPrompt(() => navigate(`/athel/po/${result.id}`))} />
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center gap-4">
         <button onClick={() => navigate('/athel/po')} className="text-gray-400 hover:text-gray-600 text-sm">
           ← Kembali
@@ -217,9 +222,12 @@ export default function PONew() {
               <select
                 value={customerId}
                 onChange={e => {
-                  setCustomerId(e.target.value)
-                  // Reset line item prices when customer changes
-                  setLineItems([{ ...EMPTY_LINE }])
+                  const nextCustomer = e.target.value
+                  if (nextCustomer === customerId) return
+                  unsaved.confirmDiscard(() => {
+                    setCustomerId(nextCustomer)
+                    setLineItems([{ ...EMPTY_LINE }])
+                  }, { when: itemsDirty, message: 'Mengganti pelanggan akan menghapus daftar barang dan harga yang sudah diisi. Detail PO lainnya tetap dipertahankan. Permintaan yang sudah dikirim tidak dibatalkan.' })
                 }}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
@@ -252,13 +260,15 @@ export default function PONew() {
               />
             </div>
             <div>
-              <label className="block text-sm text-gray-600 mb-1">Tanggal PO Expired</label>
+              <label htmlFor="po-expiry" className="block text-sm text-gray-600 mb-1">Tanggal Kedaluwarsa PO (opsional)</label>
               <input
+                id="po-expiry"
                 type="date"
                 value={expectedDelivery}
                 onChange={e => setExpectedDelivery(e.target.value)}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
+              <p className="mt-1 text-xs text-gray-500">Jika PO pelanggan memiliki tanggal kedaluwarsa. Bukan tanggal pengiriman.</p>
             </div>
             <div className="sm:col-span-2">
               <label className="block text-sm text-gray-600 mb-1">Catatan</label>

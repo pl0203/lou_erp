@@ -4,6 +4,7 @@ import { createTransactionSender, useTransactionSender } from '../../lib/orderTr
 import type { TransactionSender } from '../../lib/orderTransactions'
 import { singleRelation } from '../../lib/relations'
 import { validateOrderLines } from '../../lib/orderValidation'
+import { hasOrderItemChanges, useUnsavedChanges } from '../../lib/useUnsavedChanges'
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -88,35 +89,37 @@ async function compressImage(blob: Blob): Promise<Blob> {
     const img = new Image()
     const url = URL.createObjectURL(blob)
     img.onload = () => {
-      URL.revokeObjectURL(url)
-      const MAX_SIZE = 1280
-      let { width, height } = img
-      if (width > height && width > MAX_SIZE) {
-        height = Math.round((height * MAX_SIZE) / width)
-        width = MAX_SIZE
-      } else if (height > width && height > MAX_SIZE) {
-        width = Math.round((width * MAX_SIZE) / height)
-        height = MAX_SIZE
-      } else if (width > MAX_SIZE) {
-        height = Math.round((height * MAX_SIZE) / width)
-        width = MAX_SIZE
-      }
-      const canvas = document.createElement('canvas')
-      canvas.width = width
-      canvas.height = height
-      const ctx = canvas.getContext('2d')
-      if (!ctx) return reject(new Error('Canvas tidak didukung'))
-      ctx.drawImage(img, 0, 0, width, height)
-      canvas.toBlob(
-        result => {
-          if (result) resolve(result)
-          else reject(new Error('Kompresi gagal'))
-        },
-        'image/webp',
-        0.8
-      )
+      try {
+        URL.revokeObjectURL(url)
+        const MAX_SIZE = 1280
+        let { width, height } = img
+        if (width > height && width > MAX_SIZE) {
+          height = Math.round((height * MAX_SIZE) / width)
+          width = MAX_SIZE
+        } else if (height > width && height > MAX_SIZE) {
+          width = Math.round((width * MAX_SIZE) / height)
+          height = MAX_SIZE
+        } else if (width > MAX_SIZE) {
+          height = Math.round((height * MAX_SIZE) / width)
+          width = MAX_SIZE
+        }
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return reject(new Error('Canvas tidak didukung'))
+        ctx.drawImage(img, 0, 0, width, height)
+        canvas.toBlob(
+          result => {
+            if (result) resolve(result)
+            else reject(new Error('Kompresi gagal'))
+          },
+          'image/webp',
+          0.8
+        )
+      } catch (error) { reject(error) }
     }
-    img.onerror = reject
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Foto gagal diproses')) }
     img.src = url
   })
 }
@@ -223,87 +226,108 @@ function SKULookup({ products, onSelect }: {
 
 function LiveCamera({ onCapture }: { onCapture: (blob: Blob, preview: string) => void }) {
   const videoRef = useRef<HTMLVideoElement>(null)
-  const [stream, setStream] = useState<MediaStream | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const mounted = useRef(false)
+  const generation = useRef(0)
+  const captureBusy = useRef(false)
   const [error, setError] = useState<string | null>(null)
+  const [starting, setStarting] = useState(true)
+  const [ready, setReady] = useState(false)
   const [capturing, setCapturing] = useState(false)
 
-  useEffect(() => {
-    startCamera()
-    return () => stopCamera()
-  }, [])
-
-  const startCamera = async () => {
-    try {
-      const s = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: false,
-      })
-      setStream(s)
-      if (videoRef.current) videoRef.current.srcObject = s
-    } catch {
-      setError('Akses kamera ditolak. Izinkan akses kamera dan coba lagi.')
-    }
-  }
-
   const stopCamera = () => {
-    if (stream) {
-      stream.getTracks().forEach(t => { t.stop(); stream.removeTrack(t) })
-      setStream(null)
-    }
+    streamRef.current?.getTracks().forEach(track => track.stop())
+    streamRef.current = null
     if (videoRef.current) videoRef.current.srcObject = null
   }
 
-  const capturePhoto = async () => {
-    if (!videoRef.current) return
-    setCapturing(true)
+  const startCamera = async () => {
+    const request = ++generation.current
+    setError(null)
+    setStarting(true)
+    setReady(false)
+    stopCamera()
     try {
-      const canvas = document.createElement('canvas')
-      canvas.width = videoRef.current.videoWidth
-      canvas.height = videoRef.current.videoHeight
-      const ctx = canvas.getContext('2d')
-      if (!ctx) throw new Error('Canvas tidak didukung')
-      ctx.drawImage(videoRef.current, 0, 0)
-      canvas.toBlob(async (rawBlob) => {
-        if (!rawBlob) { setCapturing(false); return }
-        const compressed = await compressImage(rawBlob)
-        const preview = URL.createObjectURL(compressed)
-        stopCamera()
-        if (videoRef.current) videoRef.current.srcObject = null
-        onCapture(compressed, preview)
-        setCapturing(false)
-      }, 'image/webp', 0.9)
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      })
+      if (!mounted.current || generation.current !== request) {
+        stream.getTracks().forEach(track => track.stop())
+        return
+      }
+      streamRef.current = stream
+      if (videoRef.current) videoRef.current.srcObject = stream
+      setError(null)
     } catch {
-      setCapturing(false)
+      if (mounted.current && generation.current === request) setError('Akses kamera ditolak. Izinkan akses kamera dan coba lagi.')
+    } finally {
+      if (mounted.current && generation.current === request) setStarting(false)
     }
   }
 
-  if (error) {
-    return (
-      <div className="w-full h-48 bg-gray-100 rounded-xl flex flex-col items-center justify-center gap-2 p-4">
-        <span className="text-3xl">📷</span>
-        <p className="text-sm text-red-500 text-center">{error}</p>
-        <button onClick={startCamera} className="text-xs text-blue-600 font-medium underline mt-1">
-          Coba lagi
-        </button>
-      </div>
-    )
+  useEffect(() => {
+    mounted.current = true
+    void startCamera()
+    return () => {
+      mounted.current = false
+      generation.current++
+      stopCamera()
+    }
+  }, [])
+
+  const capturePhoto = async () => {
+    const video = videoRef.current
+    if (!video || !ready || !video.videoWidth || !video.videoHeight || captureBusy.current) return
+    const request = generation.current
+    captureBusy.current = true
+    setCapturing(true)
+    try {
+      const canvas = document.createElement('canvas')
+      canvas.width = video.videoWidth
+      canvas.height = video.videoHeight
+      const ctx = canvas.getContext('2d')
+      if (!ctx) throw new Error('Canvas tidak didukung')
+      ctx.drawImage(video, 0, 0)
+      const raw = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Foto tidak tersedia')), 'image/webp', 0.9)
+      })
+      const compressed = await compressImage(raw)
+      if (!mounted.current || generation.current !== request) return
+      const preview = URL.createObjectURL(compressed)
+      stopCamera()
+      onCapture(compressed, preview)
+    } catch {
+      if (mounted.current && generation.current === request) {
+        stopCamera()
+        setReady(false)
+        setError('Foto gagal diproses. Coba ambil foto lagi.')
+      }
+    } finally {
+      captureBusy.current = false
+      if (mounted.current && generation.current === request) setCapturing(false)
+    }
   }
 
   return (
     <div className="relative w-full rounded-xl overflow-hidden bg-black">
-      <video ref={videoRef} autoPlay playsInline muted className="w-full h-56 object-cover" />
-      <button
+      <video ref={videoRef} autoPlay playsInline muted onLoadedData={() => setReady(!!streamRef.current && !!videoRef.current?.videoWidth && !!videoRef.current?.videoHeight)} className="w-full h-56 object-cover" />
+      {!error && <button
+        aria-label="Ambil foto"
         onClick={capturePhoto}
-        disabled={capturing}
+        disabled={capturing || starting || !ready}
         className="absolute bottom-4 left-1/2 -translate-x-1/2 w-14 h-14 rounded-full bg-white border-4 border-gray-300 hover:border-green-500 transition-colors disabled:opacity-50 flex items-center justify-center"
       >
         <div className="w-10 h-10 rounded-full bg-green-500" />
-      </button>
-      {capturing && (
-        <div className="absolute inset-0 bg-white/50 flex items-center justify-center">
-          <p className="text-sm text-gray-700 font-medium">Mengambil foto...</p>
-        </div>
-      )}
+      </button>}
+      {(starting || capturing) && <div role="status" className="absolute inset-0 bg-white/70 flex items-center justify-center">
+        <p className="text-sm text-gray-700 font-medium">{starting ? 'Membuka kamera...' : 'Mengambil foto...'}</p>
+      </div>}
+      {error && <div className="absolute inset-0 bg-gray-100 flex flex-col items-center justify-center gap-2 p-4">
+        <span className="text-3xl" aria-hidden="true">📷</span>
+        <p role="alert" className="text-sm text-red-500 text-center">{error}</p>
+        <button onClick={startCamera} disabled={starting} className="text-xs text-blue-600 font-medium underline mt-1">Coba lagi</button>
+      </div>}
     </div>
   )
 }
@@ -374,12 +398,14 @@ export default function VisitPage() {
   const [showCamera, setShowCamera] = useState(false)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const [photoBlob, setPhotoBlob] = useState<Blob | null>(null)
+  useEffect(() => () => { if (photoPreview) URL.revokeObjectURL(photoPreview) }, [photoPreview])
   const [locationStatus, setLocationStatus] = useState<'idle' | 'loading' | 'granted' | 'denied' | 'unavailable'>('idle')
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [showOrderForm, setShowOrderForm] = useState(false)
   const [orderItems, setOrderItems] = useState<OrderItem[]>([
     { product_id: null, product_name: '', sku: '', quantity: 1, unit_price: 0 }
   ])
+  const unsaved = useUnsavedChanges(showOrderForm && hasOrderItemChanges(orderItems))
 
   const { data: schedule, isLoading: scheduleLoading, error: scheduleError } = useQuery({
     queryKey: ['schedule', scheduleId],
@@ -527,6 +553,7 @@ export default function VisitPage() {
   if (scheduleLoading || visitLoading) {
     return (
       <div className="min-h-screen bg-gray-50">
+        {unsaved.dialog}
         <GirardNav />
         <TransactionRecovery send={sendVisit} onCommitted={() => { queryClient.invalidateQueries(); setShowCamera(false); setPhotoPreview(null); setPhotoBlob(null); window.localStorage.removeItem(uploadKey) }} />
         <TransactionRecovery send={sendTransaction} onCommitted={() => { queryClient.invalidateQueries(); setShowOrderForm(false); setOrderItems([{ product_id: null, product_name: '', sku: '', quantity: 1, unit_price: 0 }]) }} />
@@ -538,6 +565,7 @@ export default function VisitPage() {
   if (!schedule || !schedule.customers) {
     return (
       <div className="min-h-screen bg-gray-50">
+        {unsaved.dialog}
         <GirardNav />
         <TransactionRecovery send={sendVisit} onCommitted={() => { queryClient.invalidateQueries(); setShowCamera(false); setPhotoPreview(null); setPhotoBlob(null); window.localStorage.removeItem(uploadKey) }} />
         <TransactionRecovery send={sendTransaction} onCommitted={() => { queryClient.invalidateQueries(); setShowOrderForm(false); setOrderItems([{ product_id: null, product_name: '', sku: '', quantity: 1, unit_price: 0 }]) }} />
@@ -553,6 +581,7 @@ export default function VisitPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {unsaved.dialog}
       <GirardNav />
         <TransactionRecovery send={sendVisit} onCommitted={() => { queryClient.invalidateQueries(); setShowCamera(false); setPhotoPreview(null); setPhotoBlob(null); window.localStorage.removeItem(uploadKey) }} />
         <TransactionRecovery send={sendTransaction} onCommitted={() => { queryClient.invalidateQueries(); setShowOrderForm(false); setOrderItems([{ product_id: null, product_name: '', sku: '', quantity: 1, unit_price: 0 }]) }} />
@@ -879,8 +908,10 @@ export default function VisitPage() {
                   <div className="flex gap-2">
                     <button
                       onClick={() => {
-                        setShowOrderForm(false)
-                        setOrderItems([{ product_id: null, product_name: '', sku: '', quantity: 1, unit_price: 0 }])
+                        unsaved.confirmDiscard(() => {
+                          setShowOrderForm(false)
+                          setOrderItems([{ product_id: null, product_name: '', sku: '', quantity: 1, unit_price: 0 }])
+                        })
                       }}
                       className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
                     >

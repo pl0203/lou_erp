@@ -75,6 +75,15 @@ async function fetchLineItems(poId: string) {
   return data
 }
 
+type DeliveryHistory = { voided_at: string | null; sj_line_items: { po_line_item_id: string; quantity_delivered: number }[] }
+async function fetchDeliveryHistory(poId: string): Promise<DeliveryHistory[]> {
+  const { data, error } = await supabase.from('surat_jalan')
+    .select('voided_at, sj_line_items(po_line_item_id, quantity_delivered)')
+    .eq('purchase_order_id', poId)
+  if (error) throw error
+  return data ?? []
+}
+
 async function fetchCustomers(): Promise<Customer[]> {
   const { data, error } = await supabase
     .from('customers')
@@ -162,16 +171,26 @@ export default function POEdit() {
   const [lineItems, setLineItems] = useState<LineItemRow[]>([])
   const [initialized, setInitialized] = useState(false)
 
-  const { data: po, isLoading: poLoading } = useQuery({
+  const { data: po, isLoading: poLoading, isError: poError, refetch: refetchPO } = useQuery({
     queryKey: ['po', id, 'edit'],
     queryFn: () => fetchPO(id!),
   })
 
-  const { data: existingLines, isLoading: linesLoading } = useQuery({
+  const { data: existingLines, isLoading: linesLoading, isError: linesError, refetch: refetchLines } = useQuery({
     queryKey: ['po_line_items', id, 'edit'],
     queryFn: () => fetchLineItems(id!),
     enabled: !!id,
   })
+
+  const { data: deliveryHistory, isLoading: historyLoading, isError: historyError, refetch: refetchHistory } = useQuery({
+    queryKey: ['po_edit_deliveries', id], queryFn: () => fetchDeliveryHistory(id!), enabled: !!id,
+  })
+  const historicalLineIds = new Set((deliveryHistory ?? []).flatMap(sj => sj.sj_line_items.map(line => line.po_line_item_id)))
+  const deliveredByLine: Record<string, number> = {}
+  for (const sj of deliveryHistory ?? []) if (!sj.voided_at) for (const line of sj.sj_line_items) {
+    deliveredByLine[line.po_line_item_id] = (deliveredByLine[line.po_line_item_id] ?? 0) + line.quantity_delivered
+  }
+  const hasDeliveryHistory = (deliveryHistory?.length ?? 0) > 0
 
   const { data: customers } = useQuery({
     queryKey: ['customers'],
@@ -201,16 +220,20 @@ export default function POEdit() {
   }, [po, existingLines, initialized])
 
   const mutation = useMutation({
-    mutationFn: () => saveEdits(id!, {
+    mutationFn: () => {
+      if (lineItems.some(line => !line._deleted && line.quantity < (deliveredByLine[line.id ?? ''] ?? 0))) throw new Error('Jumlah tidak boleh kurang dari jumlah terkirim aktif.')
+      return saveEdits(id!, {
       customer_id: customerId,
       expected_delivery_date: expectedDelivery || null,
       notes: notes || null,
       lineItems,
       expected_updated_at: initialVersion,
-    }, sendTransaction),
+    }, sendTransaction)
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['po', id] })
       queryClient.invalidateQueries({ queryKey: ['po_line_items', id] })
+      queryClient.invalidateQueries({ queryKey: ['po_edit_deliveries', id] })
       queryClient.invalidateQueries({ queryKey: ['po_audit_log', id] })
       queryClient.invalidateQueries({ queryKey: ['purchase_orders'] })
       navigate(`/athel/po/${id}`)
@@ -256,20 +279,35 @@ export default function POEdit() {
     mutation.mutate()
   }
 
-  if (poLoading || linesLoading) {
+  const recovery = <TransactionRecovery send={sendTransaction} onCommitted={result => { queryClient.invalidateQueries(); navigate(`/athel/po/${result.id}`) }} />
+
+  if (poLoading || linesLoading || historyLoading) {
     return (
       <div className="min-h-screen bg-gray-50">
         <AthelNav />
-        <TransactionRecovery send={sendTransaction} onCommitted={result => { queryClient.invalidateQueries(); navigate(`/athel/po/${result.id}`) }} />
+        {recovery}
         <div className="p-8 text-gray-400 text-sm text-center">Memuat...</div>
       </div>
     )
   }
 
+  if (poError || linesError || historyError || !po || !existingLines || !deliveryHistory) {
+    return <div className="min-h-screen bg-gray-50"><AthelNav />{recovery}<div role="alert" className="p-8 text-red-600">
+      <p>Data PO atau riwayat pengiriman belum dapat dimuat. Pengubahan belum tersedia.</p>
+      <button onClick={() => { refetchPO(); refetchLines(); refetchHistory() }} className="mt-2 underline">Coba lagi</button>
+    </div></div>
+  }
+  if (!['confirm', 'in_progress'].includes(po.status)) {
+    return <div className="min-h-screen bg-gray-50"><AthelNav />{recovery}<div className="p-8">
+      <p>PO {po.status === 'cancelled' ? 'yang dibatalkan' : po.status === 'complete' ? 'yang selesai' : 'dengan status ini'} tidak dapat diubah.</p>
+      <button onClick={() => navigate(`/athel/po/${id}`)} className="mt-2 underline">Kembali ke PO</button>
+    </div></div>
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <AthelNav />
-        <TransactionRecovery send={sendTransaction} onCommitted={result => { queryClient.invalidateQueries(); navigate(`/athel/po/${result.id}`) }} />
+        {recovery}
 
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center gap-4">
         <button
@@ -294,6 +332,7 @@ export default function POEdit() {
               <label className="block text-sm text-gray-600 mb-1">Pelanggan</label>
               <select
                 value={customerId}
+                disabled={hasDeliveryHistory}
                 onChange={e => setCustomerId(e.target.value)}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
@@ -302,6 +341,7 @@ export default function POEdit() {
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
+              {hasDeliveryHistory && <p className="text-xs text-gray-500 mt-1">Pelanggan terkunci karena PO memiliki riwayat pengiriman.</p>}
               {selectedCustomer && (
                 <p className="text-xs text-blue-600 mt-1">
                   Tier harga: <span className="font-medium">{TIER_LABELS[pricingTier]}</span>
@@ -327,10 +367,12 @@ export default function POEdit() {
               />
             </div>
             <div>
-              <label className="block text-sm text-gray-600 mb-1">Tanggal PO Expired</label>
+              <label className="block text-sm text-gray-600 mb-1">Tanggal Kedaluwarsa PO (opsional)</label>
+              <p className="text-xs text-gray-400 mb-1">Jika PO pelanggan memiliki tanggal kedaluwarsa. Bukan tanggal pengiriman.</p>
               <input
                 type="date"
                 value={expectedDelivery}
+                aria-label="Tanggal Kedaluwarsa PO (opsional)"
                 onChange={e => setExpectedDelivery(e.target.value)}
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -352,12 +394,14 @@ export default function POEdit() {
         <div className="bg-white rounded-xl border border-gray-200 p-6">
           <h2 className="text-base font-medium text-gray-900 mb-1">Daftar Barang</h2>
           <p className="text-xs text-gray-400 mb-4">
-            Cari untuk mengganti barang atau ubah langsung. Harga otomatis sesuai tier pelanggan dan dapat diubah. Barang yang dihapus akan dihilangkan saat disimpan.
+            Barang tanpa riwayat pengiriman dapat diganti atau dihapus. Untuk barang yang pernah dikirim, hanya jumlah yang dapat diubah sesuai batas terkirim aktif.
           </p>
 
           <div className="space-y-4">
             {visibleLines.map((item, i) => {
               const realIndex = lineItems.indexOf(item)
+              const historical = !!item.id && historicalLineIds.has(item.id)
+              const minimumQuantity = Math.max(1, deliveredByLine[item.id ?? ''] ?? 0)
               return (
                 <div key={item.id ?? `new-${i}`} className="border border-gray-100 rounded-lg p-4 space-y-3">
                   <div className="grid grid-cols-12 gap-3 items-end">
@@ -365,7 +409,7 @@ export default function POEdit() {
                       <label className="block text-xs text-gray-400 mb-1">
                         Ganti dengan barang lain (opsional)
                       </label>
-                      {products && (
+                      {products && !historical && (
                         <SKULookup
                           products={products}
                           onSelect={p => fillFromProduct(realIndex, p)}
@@ -373,6 +417,8 @@ export default function POEdit() {
                       )}
                     </div>
                     <button
+                      disabled={historical}
+                      title={historical ? 'Barang dengan riwayat pengiriman tidak dapat dihapus.' : undefined}
                       onClick={() => removeLine(realIndex)}
                       className="col-span-1 text-gray-300 hover:text-red-400 text-xl text-center pb-1"
                     >
@@ -385,6 +431,7 @@ export default function POEdit() {
                       <label className="block text-xs text-gray-400 mb-1">SKU</label>
                       <input
                         type="text"
+                        disabled={historical}
                         value={item.sku}
                         onChange={e => updateLine(realIndex, 'sku', e.target.value)}
                         className="w-full border border-gray-200 rounded-lg px-2 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase"
@@ -394,6 +441,7 @@ export default function POEdit() {
                       <label className="block text-xs text-gray-400 mb-1">Nama Produk</label>
                       <input
                         type="text"
+                        disabled={historical}
                         value={item.product_name}
                         onChange={e => updateLine(realIndex, 'product_name', e.target.value)}
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -402,7 +450,7 @@ export default function POEdit() {
                     <div className="col-span-2">
                       <label className="block text-xs text-gray-400 mb-1">Qty</label>
                       <input
-                        type="number" min={1}
+                        type="number" min={minimumQuantity}
                         value={Number.isNaN(item.quantity) ? '' : item.quantity}
                         onChange={e => updateLine(realIndex, 'quantity', e.target.valueAsNumber)}
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -411,10 +459,11 @@ export default function POEdit() {
                     <div className="col-span-4">
                       <label className="block text-xs text-gray-400 mb-1">
                         Harga Satuan (Rp)
-                        <span className="text-blue-400 ml-1">— dapat diubah</span>
+                        <span className="text-blue-400 ml-1">{historical ? '— terkunci' : '— dapat diubah'}</span>
                       </label>
                       <input
                         type="number" min={0}
+                        disabled={historical}
                         value={Number.isNaN(item.unit_price) ? '' : item.unit_price}
                         onChange={e => updateLine(realIndex, 'unit_price', e.target.valueAsNumber)}
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -422,6 +471,7 @@ export default function POEdit() {
                     </div>
                   </div>
 
+                  {historical && <p className="text-xs text-gray-500">Riwayat pengiriman mengunci produk, SKU, harga, dan penghapusan barang. Jumlah minimal {minimumQuantity} (terkirim aktif: {deliveredByLine[item.id!] ?? 0}).</p>}
                   <div className="text-right text-xs text-gray-400">
                     Subtotal: <span className="text-gray-700 font-medium">
                       Rp {(item.quantity * item.unit_price).toLocaleString('id-ID')}

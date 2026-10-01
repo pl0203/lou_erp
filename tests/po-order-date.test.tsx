@@ -12,7 +12,7 @@ vi.mock('../src/lib/supabase', () => ({ supabase: {
 } }))
 vi.mock('../src/lib/AuthContext', () => ({ useAuth: () => ({ user: { id: 'dummy-actor' } }) }))
 vi.mock('../src/components/AthelNav', () => ({ default: () => null }))
-vi.mock('react-router-dom', () => ({ useNavigate: () => mocks.navigate }))
+vi.mock('react-router-dom', () => ({ useNavigate: () => mocks.navigate, useBlocker: () => ({ state: 'unblocked' }), useBeforeUnload: () => {} }))
 import PONew from '../src/pages/athel/PONew'
 
 afterEach(() => { cleanup(); localStorage.clear(); vi.clearAllMocks() })

@@ -57,7 +57,7 @@ export default function MyOrders() {
   const { profile } = useAuth()
   const [statusFilter, setStatusFilter] = useState('all')
 
-  const { data: orders, isLoading } = useQuery({
+  const { data: orders, isLoading, isError, refetch } = useQuery({
     queryKey: ['my_orders', profile?.id, statusFilter],
     queryFn: () => fetchMyOrders(profile!.id, statusFilter),
     enabled: !!profile?.id,
@@ -79,7 +79,7 @@ export default function MyOrders() {
       </div>
 
       {/* Summary pills */}
-      <div className="bg-white border-b border-gray-100 px-4 md:px-8 py-3 flex gap-3 flex-wrap">
+      {!isLoading && !isError && <div className="bg-white border-b border-gray-100 px-4 md:px-8 py-3 flex gap-3 flex-wrap">
         <div className="text-xs bg-yellow-100 text-yellow-700 px-3 py-1.5 rounded-full font-medium">
           {pendingCount} menunggu
         </div>
@@ -89,7 +89,7 @@ export default function MyOrders() {
         <div className="text-xs bg-red-100 text-red-600 px-3 py-1.5 rounded-full font-medium">
           {rejectedCount} ditolak
         </div>
-      </div>
+      </div>}
 
       {/* Filter tabs */}
       <div className="bg-white border-b border-gray-100 px-4 md:px-8">
@@ -121,7 +121,12 @@ export default function MyOrders() {
           <div className="text-center text-gray-400 text-sm py-24">Memuat pesanan...</div>
         )}
 
-        {!isLoading && (!orders || orders.length === 0) && (
+        {isError && <div role="alert" className="text-center text-red-600 text-sm py-8">
+          <p>Gagal memuat pesanan. Data belum dapat ditampilkan.</p>
+          <button onClick={() => refetch()} className="mt-2 underline">Coba lagi</button>
+        </div>}
+
+        {!isLoading && !isError && (!orders || orders.length === 0) && (
           <div className="text-center py-24">
             <p className="text-gray-400 text-sm">Tidak ada pesanan ditemukan.</p>
             <p className="text-gray-300 text-xs mt-1">
@@ -130,7 +135,7 @@ export default function MyOrders() {
           </div>
         )}
 
-        {orders?.map(order => (
+        {!isError && orders?.map(order => (
           <div key={order.id} className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
             {/* Header */}
             <div className="px-5 py-4 border-b border-gray-100">

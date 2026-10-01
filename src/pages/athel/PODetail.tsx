@@ -430,7 +430,7 @@ export default function PODetail() {
               <p className="text-gray-900">{po.order_date}</p>
             </div>
             <div>
-              <p className="text-gray-400 mb-1">Tanggal PO Expired</p>
+              <p className="text-gray-400 mb-1">Tanggal Kedaluwarsa PO</p>
               <p className="text-gray-900">{po.expected_delivery_date ?? '—'}</p>
             </div>
             <div>

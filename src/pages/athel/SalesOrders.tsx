@@ -55,7 +55,7 @@ async function approveOrder(orderId: string, poNumber: string, expectedDelivery:
   return send('approve_sales', { order_id: orderId, po_number: poNumber, expected_delivery_date: expectedDelivery || null })
 }
 async function rejectOrder(orderId: string, note: string, send: TransactionSender) {
-  return send('reject_sales', { order_id: orderId, reason: note })
+  return send('reject_sales', { order_id: orderId, reason: note.trim() })
 }
 
 export default function SalesOrders() {
@@ -69,7 +69,7 @@ export default function SalesOrders() {
   const [expectedDelivery, setExpectedDelivery] = useState('')
   const [rejectionNote, setRejectionNote] = useState('')
 
-  const { data: orders, isLoading } = useQuery({
+  const { data: orders, isLoading, isError, refetch } = useQuery({
     queryKey: ['girard_orders', statusFilter],
     queryFn: () => fetchGirardOrders(statusFilter),
   })
@@ -109,7 +109,7 @@ export default function SalesOrders() {
             Pesanan yang diajukan tim Sales dari lapangan
           </p>
         </div>
-        {pendingCount > 0 && statusFilter !== 'pending' && (
+        {!isLoading && !isError && pendingCount > 0 && statusFilter !== 'pending' && (
           <span className="bg-yellow-100 text-yellow-700 text-xs font-medium px-3 py-1.5 rounded-full">
             {pendingCount} menunggu persetujuan
           </span>
@@ -146,13 +146,18 @@ export default function SalesOrders() {
           <div className="text-center text-gray-400 text-sm py-24">Memuat PO...</div>
         )}
 
-        {!isLoading && orders?.length === 0 && (
+        {isError && <div role="alert" className="text-center text-red-600 text-sm py-8">
+          <p>Gagal memuat pesanan dari sales. Data belum dapat ditampilkan.</p>
+          <button onClick={() => refetch()} className="mt-2 underline">Coba lagi</button>
+        </div>}
+
+        {!isLoading && !isError && orders?.length === 0 && (
           <div className="text-center py-24">
-            <p className="text-gray-400 text-sm">Tidak {statusFilter !== 'all' ? statusFilter : ''} ada PO ditemukan.</p>
+            <p className="text-gray-400 text-sm">Tidak ada pesanan yang sesuai dengan filter ini.</p>
           </div>
         )}
 
-        {orders?.map(order => (
+        {!isError && orders?.map(order => (
           <div key={order.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             {/* Order header */}
             <div className="px-5 py-4 border-b border-gray-100 flex items-start justify-between gap-3 flex-wrap">
@@ -218,7 +223,7 @@ export default function SalesOrders() {
             {order.status === 'pending' && (
               <div className="px-5 py-4 border-t border-gray-100 flex gap-3 justify-end">
                 <button
-                  onClick={() => setRejectingOrder(order)}
+                  onClick={() => { rejectMutation.reset(); setRejectionNote(''); setRejectingOrder(order) }}
                   className="px-4 py-2 text-sm text-red-500 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
                 >
                   Tolak
@@ -262,8 +267,9 @@ export default function SalesOrders() {
               </div>
               <div>
                 <label className="block text-sm text-gray-600 mb-1">
-                  Tanggal PO Expired <span className="text-gray-400">(optional)</span>
+                  Tanggal Kedaluwarsa PO (opsional)
                 </label>
+                <p className="text-xs text-gray-400 mb-1">Jika PO pelanggan memiliki tanggal kedaluwarsa. Bukan tanggal pengiriman.</p>
                 <input
                   type="date"
                   value={expectedDelivery}
@@ -326,7 +332,7 @@ export default function SalesOrders() {
             </div>
             <div className="px-6 py-4">
               <label className="block text-sm text-gray-600 mb-1">
-                Alasan penolakan <span className="text-gray-400">(opsional)</span>
+                Alasan penolakan <span className="text-gray-400">(wajib)</span>
               </label>
               <textarea
                 value={rejectionNote}
@@ -336,6 +342,7 @@ export default function SalesOrders() {
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 resize-none"
               />
             </div>
+            {rejectMutation.isError && <p role="alert" className="px-6 pb-3 text-sm text-red-600">{(rejectMutation.error as Error).message}</p>}
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
               <button
                 onClick={() => { setRejectingOrder(null); setRejectionNote('') }}
@@ -344,8 +351,8 @@ export default function SalesOrders() {
                 Batal
               </button>
               <button
-                onClick={() => rejectMutation.mutate()}
-                disabled={rejectMutation.isPending}
+                onClick={() => { if (rejectionNote.trim()) rejectMutation.mutate() }}
+                disabled={rejectMutation.isPending || !rejectionNote.trim()}
                 className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
               >
                 {rejectMutation.isPending ? 'Menolak...' : 'Tolak Pesanan'}

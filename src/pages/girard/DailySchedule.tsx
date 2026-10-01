@@ -89,7 +89,7 @@ export default function DailySchedule() {
   const dates = getDateRange()
   const [selectedDate, setSelectedDate] = useState(dates[0])
 
-  const { data: allSchedules, isLoading } = useQuery({
+  const { data: allSchedules, isLoading, isError, refetch } = useQuery({
     queryKey: ['schedules', profile?.id, dates],
     queryFn: () => fetchSchedules(profile!.id, dates),
     enabled: !!profile?.id,
@@ -120,7 +120,7 @@ export default function DailySchedule() {
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5">
         <h1 className="text-xl font-semibold text-gray-900">Jadwal Saya</h1>
         <p className="text-sm text-gray-500 mt-0.5">{formatDate(selectedDate)}</p>
-        {selectedDate === dates[0] && total > 0 && (
+        {!isLoading && !isError && selectedDate === dates[0] && total > 0 && (
           <div className="flex items-center gap-2 mt-3">
             <div className="flex-1 bg-gray-100 rounded-full h-1.5">
               <div
@@ -153,7 +153,7 @@ export default function DailySchedule() {
               >
                 <span className="text-xs font-medium">{DAY_LABELS[i]}</span>
                 <span className="text-xs text-gray-400 mt-0.5">
-                  {daySchedules.length} visit{daySchedules.length !== 1 ? 's' : ''}
+                  {isLoading ? 'Memuat…' : isError ? 'Belum tersedia' : `${daySchedules.length} kunjungan`}
                 </span>
               </button>
             )
@@ -170,7 +170,12 @@ export default function DailySchedule() {
           </div>
         )}
 
-        {!isLoading && schedules.length === 0 && (
+        {isError && <div role="alert" className="text-center text-red-600 text-sm py-8">
+          <p>Gagal memuat jadwal. Data belum dapat ditampilkan.</p>
+          <button onClick={() => refetch()} className="mt-2 underline">Coba lagi</button>
+        </div>}
+
+        {!isLoading && !isError && schedules.length === 0 && (
           <div className="text-center py-24">
             <p className="text-gray-400 text-sm">
               Tidak ada kunjungan dijadwalkan untuk {DAY_LABELS[dates.indexOf(selectedDate)].toLowerCase()}.
@@ -179,7 +184,7 @@ export default function DailySchedule() {
           </div>
         )}
 
-        {schedules.map(schedule => {
+        {!isError && schedules.map(schedule => {
           const customer = schedule.customers
           const stats = statsMap[customer?.id]
           const checkedIn = schedule.outlet_visits.length > 0

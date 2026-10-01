@@ -3,7 +3,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 const state = vi.hoisted(() => ({ error: null as null | { message: string; code: string }, customerMissing: false }))
-vi.mock('react-router-dom', () => ({ useNavigate: () => () => {}, useParams: () => ({ scheduleId: 'dummy-schedule' }) }))
+vi.mock('react-router-dom', () => ({ useNavigate: () => () => {}, useParams: () => ({ scheduleId: 'dummy-schedule' }), useBlocker: () => ({ state: 'unblocked' }), useBeforeUnload: () => {} }))
 vi.mock('../src/components/GirardNav', () => ({ default: () => null }))
 vi.mock('../src/lib/AuthContext', () => ({ useAuth: () => ({ profile: { id: 'dummy-user' } }) }))
 vi.mock('../src/lib/supabase', () => ({ supabase: { from: (table: string) => {
