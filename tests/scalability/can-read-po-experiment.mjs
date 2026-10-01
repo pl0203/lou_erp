@@ -178,6 +178,60 @@ RESET ROLE;
  }))
  return {query,packets}
 }
+export function buildDailyPreaggregationExperiment(){
+ const original=read('supabase/migrations/202610010002_scalable_report_reads.sql').match(/CREATE FUNCTION public\.pilot_athel_daily_v1[\s\S]*?END \$\$;/)?.[0]
+ if(!original)throw new Error('Original daily definition missing')
+ const candidate=read('tests/database/experiments/daily-preaggregation.sql').trim()
+ const originalBody=original.split('AS $$')[1].split('$$;')[0],candidateBody=candidate.split('AS $$')[1].split('$$;')[0]
+ const dailyTarget="'public.pilot_athel_daily_v1(date,date,date,text,text,integer,integer)'::regprocedure"
+ const dailyCatalog=normalizedCatalog.replace('ELSE to_jsonb(p) END)',()=>`WHEN p.oid=${dailyTarget} THEN jsonb_set(to_jsonb(p),'{prosrc}',to_jsonb(${literal(originalBody)}::text)) ELSE to_jsonb(p) END)`)
+ const dailySetup=`DO $$ BEGIN IF (SELECT md5(prosrc) FROM pg_proc WHERE oid=${dailyTarget})<>'${md5(originalBody)}' THEN RAISE EXCEPTION 'Original daily body required'; END IF; END $$;
+CREATE TEMP TABLE daily_original_metadata ON COMMIT DROP AS SELECT to_jsonb(p)-'prosrc' AS value FROM pg_proc p WHERE p.oid=${dailyTarget};
+CREATE FUNCTION pg_temp.apply_daily_preaggregation() RETURNS void LANGUAGE plpgsql SECURITY INVOKER AS $daily_apply$
+BEGIN
+ IF current_user<>'postgres' OR current_database()<>'pilot_test' THEN RAISE EXCEPTION 'Disposable daily owner required'; END IF;
+ IF (SELECT md5(prosrc) FROM pg_proc WHERE oid=${dailyTarget})<>'${md5(originalBody)}' THEN RAISE EXCEPTION 'Original daily body required'; END IF;
+ EXECUTE ${literal(candidate)};
+ IF (SELECT to_jsonb(p)-'prosrc' FROM pg_proc p WHERE p.oid=${dailyTarget}) IS DISTINCT FROM (SELECT value FROM pg_temp.daily_original_metadata) OR (SELECT md5(prosrc) FROM pg_proc WHERE oid=${dailyTarget})<>'${md5(candidateBody)}' THEN RAISE EXCEPTION 'Daily attributes or body changed unexpectedly'; END IF;
+END $daily_apply$;
+`
+ function check(variant){return `SELECT 1/CASE WHEN (${dailyCatalog})=:'helper_catalog_before' AND (SELECT md5(prosrc) FROM pg_proc WHERE oid=${target})='${md5(helperCandidate)}' AND (SELECT md5(prosrc) FROM pg_proc WHERE oid=${dailyTarget})='${md5(variant==='candidate'?candidateBody:originalBody)}' THEN 1 ELSE 0 END AS daily_and_helper_only_bodies_changed;\n`}
+ function end(name,variant){return 'RESET ROLE;\n'+check(variant)+'ROLLBACK;\n'+restored(name)}
+ const source=read('tests/database/scalable-pooled-reads.sql'),from=source.indexOf('DO $guard$ DECLARE base_rows integer;'),to=source.indexOf('PREPARE pooled_read(integer,text,boolean)')
+ if(from<0||to<=from)throw new Error('Frozen daily oracle boundaries missing')
+ const oracle=source.slice(from,to)
+ function packet(role,variant,index,phase){
+  const name=`${phase}-${String(index).padStart(2,'0')}-${role}-${variant}`,actor=role==='manager'?2:6
+  const definition=variant==='candidate'?candidate:original,body=definition.split('AS $$')[1].split('$$;')[0]
+  const first=body.indexOf(' WITH pos'),last=body.indexOf('\n RETURN result;'),bindings=['p_from','p_to','p_rolling_from','p_status','p_page','p_page_size','total_days','page_offset']
+  const query=body.slice(first+1,last).replace(' INTO result','').replace(/\b(p_from|p_to|p_rolling_from|p_status|p_page|p_page_size|total_days|page_offset)\b/g,n=>'$'+(bindings.indexOf(n)+1))
+  const plans=phase==='plan'?`SELECT 'DAILY_PREAGG_PLAN ${name}' AS probe;
+PREPARE daily_trial_inner(date,date,date,text,integer,integer,integer,bigint) AS\n${query}
+EXPLAIN (ANALYZE,BUFFERS,VERBOSE,TIMING OFF) EXECUTE daily_trial_inner('2026-09-01','2026-09-30','2025-10-01','all',1,30,30,0);
+DEALLOCATE daily_trial_inner;
+`:''
+  return {name,role,variant,phase,sql:start(30000)+'SELECT pg_temp.apply_can_read_po_trial();\n'+dailySetup+(variant==='candidate'?'SELECT pg_temp.apply_daily_preaggregation();\n':'')+oracle+'\n'+roleSetup(role)+'SET LOCAL plan_cache_mode=auto;\n'+plans+`SELECT pg_temp.pooled_check(${actor},'daily',false);\n`+end(name,variant)}
+ }
+ const baseline=original.replace('public.pilot_athel_daily_v1','pg_temp.daily_baseline')
+ const badDrop=original.replace('public.pilot_athel_daily_v1','pg_temp.daily_bad_drop_line_cohort').replace('FROM public.po_line_items l JOIN pos p ON p.id=l.purchase_order_id','FROM public.po_line_items l')
+ const badEmpty=original.replace('public.pilot_athel_daily_v1','pg_temp.daily_bad_count_empty').replace('JOIN public.sj_line_items d ON d.surat_jalan_id=s.id JOIN lines l ON l.id=d.po_line_item_id','LEFT JOIN public.sj_line_items d ON d.surat_jalan_id=s.id LEFT JOIN lines l ON l.id=d.po_line_item_id')
+ const parity=start()+'SELECT pg_temp.apply_can_read_po_trial();\n'+dailySetup+baseline+'\n'+badDrop+'\n'+badEmpty+'\n'+read('tests/database/experiments/daily-preaggregation-parity.sql')+'\n'+end('daily-parity','candidate')+`DO $$ BEGIN IF EXISTS(SELECT 1 FROM auth.users) OR EXISTS(SELECT 1 FROM public.purchase_orders) THEN RAISE EXCEPTION 'Daily fixture not restored empty'; END IF; END $$;\n`
+ return {original,candidate,parity,
+ warmups:['baseline','candidate'].flatMap((v,i)=>['manager','admin'].map((r,j)=>packet(r,v,i*2+j,'warmup'))),
+ benchmarks:['baseline','candidate','candidate','baseline'].flatMap((v,i)=>['manager','admin'].map((r,j)=>packet(r,v,i*2+j,'pair'))),
+ plans:['baseline','candidate'].flatMap((v,i)=>['manager','admin'].map((r,j)=>packet(r,v,i*2+j,'plan')))}
+}
+export function summarizeDailyPreaggregation(rows){
+ if(rows.length!==8||new Set(rows.map(r=>r.name)).size!==8)throw new Error('All eight paired daily samples required')
+ for(const [i,v] of ['baseline','candidate','candidate','baseline'].entries())for(const [j,role] of ['manager','admin'].entries()){
+  const r=rows.find(r=>r.name===`pair-${String(i*2+j).padStart(2,'0')}-${role}-${v}`)
+  if(!r||r.role!==role||r.variant!==v||!Number.isFinite(r.ms)||r.ms<=0||r.ms>=60000)throw new Error('Wrong or unbounded daily observation')
+ }
+ return Object.fromEntries(['manager','admin'].map(role=>{
+  const b=rows.filter(r=>r.role===role&&r.variant==='baseline').reduce((s,r)=>s+r.ms,0)/2,c=rows.filter(r=>r.role===role&&r.variant==='candidate').reduce((s,r)=>s+r.ms,0)/2
+  return [role,{baselineMedianMs:b,candidateMedianMs:c,improvementPercent:100*(b-c)/b}]
+ }))
+}
 export function buildHelperAcceptancePackets(rows){
  if(![6000,30000].includes(rows))throw new Error('Fixed acceptance sizes only')
  const packets={truth:buildHelperExperiment().truth,policy:buildHelperExperiment().policy.find(p=>p.variant==='candidate').sql}

@@ -184,3 +184,18 @@ broad calls were 9.35–9.80 seconds and narrow cancelled scope was 0.15–0.19 
 Plans will distinguish join/cardinality, RLS and sorting costs before any query
 rewrite is proposed. Both header-PO and line-PO cohort membership, all date/page
 boundaries, nonvoid filtering and distinct shipment counts must be preserved.
+
+The daily diagnostic subsequently passed at084d3e6b545db41b3e5e55d07c9b8388f1c7e54c
+in [run36926471668](https://github.com/pl0203/lou_erp/actions/runs/36926471668).
+Both roles and all three planner modes completed the full oracle and restoration.
+The admin inner plan replayed120,004 materialized visible child rows1,003 times;
+manager replayed60,004 rows503 times. These are repeated scans of an already
+computed relation, not repeated execution of the child RLS scan. The paired
+custom/generic RPC observations were effectively unchanged, while temporary
+reads and rejected join pairs were substantial.
+
+The next proposed test-only preaggregation trial is specified in
+[daily-preaggregation-experiment-plan.md](daily-preaggregation-experiment-plan.md).
+It keeps the accepted helper fixed in both arms, preserves both independent
+parent memberships and proves literal date/page/amount/count edge cases before
+balanced timing. The trial is not a deployed or accepted daily optimization.
