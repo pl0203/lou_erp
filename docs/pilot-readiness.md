@@ -1,3 +1,9 @@
+# Current read-scale staging status
+
+As of 1 October 2026, exact 6k and 30k correctness/session gates are passed, including all 242 pooled successes/33 denials at each recorded checkpoint. Current code `2158b792` / tree `3fb406ec` passed 494 tests and 12 normal-session races. The assembled staging apply/rollback bundle still requires disposable runtime verification and exact hosted approval. Actual JWT/API/UI checks and future-scale latency remain open; 30k customer stats reached 22.942 seconds in mixed-case SQL observations, not p95. See [current verification](scalability-verification.md) and [staging packet](scalability-staging-packet.md).
+
+The earlier readiness notes below remain historical context; they do not authorize new hosted or production changes.
+
 # Pilot readiness
 
 ## Current decision as of 1 October 2026

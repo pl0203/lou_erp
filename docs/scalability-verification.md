@@ -1,33 +1,44 @@
 # Read-scale verification record
 
-As of 1 October 2026, this is a review candidate, not a release certificate. The table separates source/test results from hosted and scale acceptance. Do not transfer a passing result to a different source tree without a fresh run.
+Current tested code: `2158b7926a0711af9a81e09af3f218d3a4448761`, tree `3fb406ecdeaf7eb7871776e179dbe1ad836aae9a`. Evidence below is from 1 October 2026. Documentation updates do not transfer results to changed code or a hosted deployment.
 
-| Gate | Evidence | State |
+| Gate | Verified evidence | State |
 |---|---|---|
-| Baseline source | Deployment `27d988e53d6a333f60b8a38171515f4c1fcb927f`, tree `0eac624305f0e971eb28aba572b971c966de727c`; 192 application tests at baseline | Recorded |
-| Contract and regressions | Frozen v1 DTOs; examples for all 11 RPCs; unsafe-count/money/page decoder failures; current-metric characterizations; simulated missing-data regressions | Independently reviewed |
-| Complete metadata helper | Actual-page-length advancement, exact total, duplicates/early-empty/abort/count-change failures; one full restart | Independently reviewed |
-| Primary client | Owned commit `70cfaf7`: independent 316/316 tests, typecheck and diff check; local with detail lifecycle `fb4bfd0`: 321/321 plus build/type/diff | Passed for those source trees |
-| Calendar populations | UTC, Asia/Jakarta and America/Los_Angeles each passed 27 report/calendar checks before the latest detail lifecycle addition | Recorded; rerun final tree |
-| Supporting reads | `3fd4bd7` + `99cd56d`: reviewer independently passed 39 focused tests, including real query-cache navigation; final supporting build/type/diff passed | Independently reviewed |
-| Supporting-only full suite | 301 pass / 3 deliberately red pre-migration cap tests; primary migration is absent from that branch | Not a combined-suite pass |
-| Normal PostgreSQL SQL/RLS | SQL commit `63b1c199611520658fbd77a3e0f1005e7c0e78a8`, tree `dee3e1a742b303938e32e056116b5049a24dedab`, CI `36832401749`: all three new SQL suites, prior invariants/security suites and 12 concurrent scenarios passed | Passed SQL checkpoint |
-| Final combined tree | Initial local integration `585b7f3` / tree prefix `a56005d`; successful-write invalidation gaps identified and under repair | Pending final SHA, full tests and independent review |
-| 6,000/30,000 growth fixtures | Guarded generator/measurement harness and exact manifests being reviewed; no result recorded here | Pending correctness and timing |
-| Hosted staging migrations / actual JWT/PostgREST | Populated-stage additive packet prepared; fresh drift check and exact apply approval required | Pending |
-| Hosted literal search | Primary PostgreSQL/PostgREST documentation reviewed and SDK serialization tests passed; no local or hosted PostgREST matching run established | Pending |
-| Browser/device UAT | Last transport recheck blocked 06:35 UTC; future state must be reverified | Unrun |
-| API/browser p50/p95 and concurrency | No accepted 100-request/per-case or 1/5/10-user evidence | Unrun |
-| Invitation, role assignment and real-admin journey | Source hardening exists; deployed Edge Function and complete account journey need evidence | Pending launch gate |
-| Historical workbook import | Workbook/population and reviewed dry-run reconciliation outstanding | Separate pending workflow |
-| Production release | Backup/restore, final staging acceptance and specific release approval required | Not approved |
+| Application/source | [Safety run 36877297581](https://github.com/pl0203/lou_erp/actions/runs/36877297581): 494 tests, TypeScript and production build; independent source review | Passed |
+| Normal PostgreSQL security/business checks | Same safety run: real-role/RLS, five migration-drift rejections, 620 policy observations/rollback, order/report/date tests, original/new summary/customer/sales parity, 12 concurrency races | Passed on PostgreSQL 17 CI |
+|6k correctness/session checkpoint | [Run 36871610997](https://github.com/pl0203/lou_erp/actions/runs/36871610997), source 17c0bc61 (through 008): seven-role exact ground truth, 242 pooled successes/33 denials and final rollback marker | Passed checkpoint; 009 subsequently tested at 30k and in normal suites |
+| Final 30k correctness/session | [Run 36877297640](https://github.com/pl0203/lou_erp/actions/runs/36877297640): exact fixed fixture, all seven active roles plus inactive denial, 242 pooled successes/33 denials, all 11 RPCs 22 successful cases each, default/generic identity/filter transitions, final rollback marker, zero SQL errors | Passed |
+| Final 30k sales-plan recovery | Fresh manager auto 2.293 s/forced-generic 2.327 s; formerly the sixth identical call timed out 60 s; exact nullable-label/page/count parity passed | Timeout repaired; latency goal not accepted |
+| Hosted staging apply | Fresh read-only baseline, exact guarded bundle/rollback and specific target approval required | Pending |
+| Actual JWT/PostgREST and hosted search | Real role/cohort checks, punctuation search, decimal protocol and managed schema cache | Pending |
+| Browser/device UAT | Exact deployed source, navigation/report parity, mobile, camera/GPS/Storage proof, role/admin/invitation journeys | Pending or separately recorded; SQL is not browser UAT |
+| API/browser p50/p95 and 1/5/10-user load | No accepted 100-request/per-case study on declared hosted tier/network | Unrun |
+| Production release | Data reconciliation/import, backup/restore and explicit release approval | Not approved |
 
-## Observed SQL diagnostics
+## Measured limits
 
-Earlier individual analyzed CI calls observed approximately 1.94 seconds for a manager dashboard, 3.8–4.2 seconds for child-heavy customer stats and 2.1–2.5 seconds for line reads around the boundary fixtures. Those are isolated SQL observations, not API p95, 6k/30k results or live capacity. Fixture planning changed materially after `ANALYZE`; environment, sample count and plan must accompany any comparison. Baseline fixture indexes are not evidence of the actual hosted index inventory.
+The 30k fixture has 500 POs/month over 60 months, ten lines and two partial shipments per PO, plus seven edge orders; it is a deliberately heavy synthetic workload. Final database size was 225, 654, 451 bytes at the ground-truth checkpoint, not a hosted storage/WAL or capacity guarantee.
 
-## Required final evidence update
+Pooled results mix roles, filters and repeated/default/generic modes. Their maxima are observations, not percentiles:
 
-Record the exact final commit/tree, full test totals and logs, typecheck/build/diff status, database CI run and all suite markers, reviewer disposition, migration hashes and actual staging target. Reconcile the [read inventory](scalability-read-inventory.md) with the source. Preserve failed and unrun results; do not replace them with a single green label.
+| RPC family | Observed maximum database RPC time |
+|---|---:|
+| PO page |4.528 s|
+| Sales page |2.311 s|
+| PO lines |18.042 s|
+| Dashboard summary |14.739 s|
+| Daily report |15.907 s|
+| Customer stats |22.942 s|
+| Customer performance |14.008 s|
+| Revenue |0.064 s|
+| Sales performance |0.113 s|
+| Team activity |0.056 s|
+| Manager customers |0.010 s|
 
-For scale results, save the reviewed manifest, roles, row/byte counts, schema/index inventory, query parameters/plans, environment and warm/cold/concurrency profile. Distinguish SQL execution/planning from local process time, API latency and client loading. Only then compare against the proposed goals in the [staging packet](scalability-staging-packet.md).
+Separate full-history manager summary calls reached 19.047 s. Future-scale latency remains unaccepted despite exact outputs. Owner plans, direct SQL, pooled correctness and API/browser measurements are different evidence. Do not present these results as meeting proposed API p95 goals below 1 s for lists or below 2 s for summaries.
+
+## Checkpoint history and remaining evidence
+
+Earlier failed trials remain documented in [disposable CI history](scalability-disposable-ci-packet.md): false-green shell propagation was repaired; rejected 005/006 are excluded from deployment; parent-set/scalar policies were proven equivalent before packaging; customer preaggregation and bounded sales enrichment repaired measured repeated scans. Passing later tests does not erase those limitations or authorize hosted changes.
+
+Use the current [staging packet](scalability-staging-packet.md) and [recovery plan](scalability-rollback.md). Record fresh private catalog/content fingerprints and exact target before approval. Verify the assembled atomic packet in disposable PostgreSQL, then actual hosted API/UI on existing small synthetic data. No large hosted fixture or production action follows from the CI results.

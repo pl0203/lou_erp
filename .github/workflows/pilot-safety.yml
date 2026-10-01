@@ -91,3 +91,16 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f tests/database/scalable-report-reads.sql
       - name: Concurrent business operations
         run: node tests/database/concurrency.mjs
+
+      - name: Atomic read rollout and guarded rollback on companion disposable database
+        env:
+          SCALE_PERMIT: disposable-pilot-ci
+          SCALE_ROWS: '6000'
+        run: node scripts/test-read-rollout-ci.mjs
+      - name: Preserve synthetic rollout evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: read-rollout-lifecycle-${{ github.run_id }}
+          path: rollout-results
+          retention-days: 7

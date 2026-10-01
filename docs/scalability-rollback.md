@@ -1,28 +1,36 @@
-# Read-scale recovery boundary
+# Read rollout recovery
 
-This packet preserves business records and the existing secure write path. An additive read release must not be recovered by deleting data, resetting the project, restoring broad table grants, or re-enabling capped raw-report queries.
+This staging-only recovery preserves all business data and the existing secure write path. Never reset the project, delete records, disable RLS, restore broad grants or drop audit/request/tombstone/visit evidence to undo these read changes. Production recovery is outside this packet.
 
-## Before an apply
+## Atomic execution and unknown outcomes
 
-Keep a private snapshot of existing function definitions/ACLs, policies, triggers, grants, indexes and business/identity/Storage fingerprints. Verify the exact staging destination and migration hashes. Establish a supported backup/restore route and a short no-write window. The exact approval identifies the target and additive functions; it does not authorize destructive rollback or production changes.
+The reviewed private bundle is one transaction containing exact 001/002/004/007/008/009 bodies. A confirmed SQL error before COMMIT rolls back its metadata/index changes. A timeout, disconnect or lost response is an unknown outcome until a read-only catalog/fingerprint check proves baseline, full post-state or unexpected state. Do not blindly replay the bundle.
 
-## Failure cases
+Before mutation, preserve exact private baseline policy definitions, metadata/ACL fingerprints and safe content fingerprints; after success preserve exact final state and 004 index provenance. Snapshot hashes detect change but are not a full data backup. A short no-write window makes pre/post data comparison meaningful. Provider backups/object-byte recovery must be verified separately before any data restore.
 
-| Failure | Safe immediate action | Required next evidence |
+## Separately committed or partial states
+
+The following is reconciliation guidance, not permission to execute arbitrary recovery SQL:
+
+| Observed committed prefix | Metadata state | Safe immediate action |
 |---|---|---|
-| Target, baseline, hash or schema drift | Stop before mutation; keep the client disabled | Reconcile current project and obtain review of the changed packet |
-| Error inside a migration transaction | Confirm rollback and exact function inventory; preserve error details privately | Determine whether that file committed; never infer from a timeout or lost response |
-| First file committed, second did not | Leave additive functions in place and client disabled | Compare signatures/ACLs/hashes, diagnose second-file failure, review an exact continuation |
-| Unknown apply outcome | Query migration/function state through the authorized read-only surface | Do not blindly replay `CREATE FUNCTION`, drop objects or switch to replacement definitions |
-| New client cannot use RPC or fails strict decoding | Stop enabling the candidate and show explicit temporary read failure | Compare hosted protocol, grants/schema cache and source hashes; preserve write transactions |
-| Incorrect aggregate or visibility | Disable the affected read surface using an approved maintenance action; retain records and evidence | Reproduce under the same role and fixture, review a forward fix and rerun correctness/security checks |
-| Performance misses targets | Keep the candidate gated; inspect plans, selectivity, payloads and actual index overlap | Reviewed minimal tuning with exact totals and write-cost regressions |
-| Post-apply business fingerprint mismatch | Stop client enablement and preserve both snapshots | Reconcile concurrent writes or unexpected changes; no automated deletion or rewind |
+| None | Baseline policies/functions/indexes | Keep candidate disabled; diagnose failed preflight |
+|001 only |3 public RPCs+2 guards | Preserve objects; review exact continuation or guarded removal |
+|001+002 |11 public RPCs+4 guards | Same; no policy change yet |
+|Through 004 | Usable existing or newly created po_id index | Record provenance; do not drop a preexisting/reused index |
+|Through 007 |9 policy predicates changed; summary replaced | Compare exact policy/function state before any restoration |
+|Through 008 | Customer report preaggregation also installed | Preserve its exact body hash and review continuation |
+|Through 009 | Full reviewed candidate | Proceed only to approved post-checks/hosted smoke |
+|Any other mix/drift | Unexpected metadata or dependency | Stop; obtain independent review of the actual state |
 
-A previous compatible client may be retained during backend-first testing only if it does not depend on partially installed functions. After enabling read-scale, do not revert users to known truncated reports as a silent fallback. Use an explicit unavailable state or a separately reviewed compatible release. Revoking function execution, dropping objects or restoring a backup can affect active consumers and requires its own reviewed, authorized action.
+## Exact guarded rollback package
 
-The two read migrations do not change write transactions, request UUID handling, tombstones, delivery voids or audits. Never drop those histories, disable RLS, relax grants or mutate ownership to make rollback easier. A data restore is a last-resort separately approved operation with a verified recovery point and reconciliation of all writes and Storage objects since that point.
+Prepare rollback from the verified baseline and confirmed post-state, not an inferred migration count. The private rollback guard must require the exact staging target and expected schema/function/policy hashes, then capture current data fingerprints inside its own transaction. It restores only the nine prior predicates from the baseline; removes only the 15 functions that were absent before this release, with dependency-restricting drops; and removes 004's index only if the apply record proves it was created by this rollout and its current definition still matches. Reused/existing indexes remain untouched. No CASCADE drops, schema reconstruction or data changes are allowed.
 
-## Close the incident before retry
+Verify restored schema/ACL metadata against baseline (accounting only for an explicitly retained new index, if approved), and require identical before/after rollback data fingerprints. Any mismatch aborts rollback. Commit and API schema-cache refresh occur only within the specifically approved recovery scope. The guard must refuse changed functions/policies, new dependencies or altered index provenance; a forward repair may then be safer.
 
-Record the actual source tree, target, committed objects, preserved fingerprints, user impact and proposed fix. Re-run the affected unit/SQL/real-role checks and full combined checks where interfaces changed. Obtain the required target-specific authorization before the next state-changing step. Resume the client only after the migration inventory, exact results, access boundaries and hosted behavior are verified.
+Do not run rollback while a candidate client is serving users without an approved maintenance/disable plan. Removing RPCs makes that client explicitly unavailable. Do not silently route users back to known truncated reports. If user approval covered only apply, ask before the separate hosted rollback action. A data restore, credential/account change or cleanup requires separate authorization and a verified restore point.
+
+## Closeout
+
+Record source SHA/tree, target identity, exact apply/rollback hashes, confirmed committed state, fingerprints, error and user impact privately. Rerun affected correctness/security/provider checks before enabling a compatible client. Performance target misses remain open even when exact read results and access checks pass.

@@ -4,9 +4,9 @@
 
 **Production is not approved.** Follow [the populated-staging packet](scalability-staging-packet.md), [verification record](scalability-verification.md), and [rollback boundary](scalability-rollback.md) for the additive read migrations. Staging already contains users and business records. Do not run an empty-project bootstrap, synthetic fixture, reset, or cleanup against that project.
 
-The reviewed read migrations add 11 public invoker RPCs and four private validation helpers. Existing transaction functions, RLS policies, business tables, data, and write grants must remain unchanged. Apply the verified backend before enabling its compatible client. Preserve explicit report errors rather than falling back to capped raw reads.
+The exact ordered scalability allowlist is 202610010001, 002, 004, 007, 008, 009, with full names/hashes in the staging packet. It adds 11 public invoker RPCs/four private guards, conditionally adds one nonunique lookup index, changes nine proven-equivalent policy predicates and replaces three newly added read-function bodies. Existing transaction functions, authorization helpers, triggers, business data and table/column grants remain unchanged. Rejected 005/006 experiments are outside deployable migrations.
 
-Normal PostgreSQL CI now verifies real-role/RLS and concurrent transactions. The latest SQL-only checkpoint is commit `63b1c199611520658fbd77a3e0f1005e7c0e78a8`, tree `dee3e1a742b303938e32e056116b5049a24dedab`, run `36832401749`; all three new read SQL suites and 12 concurrency scenarios passed. This does not establish hosted Auth/PostgREST behavior or 6k/30k performance. The final integrated application requires its own fresh evidence.
+Current code `2158b792` / tree `3fb406ec` passed 494 app tests, normal real-role security/SQL suites and 12 races in run 36877297581. Final 30k run 36877297640 passed exact seven-role totals and all 242 pooled successes/33 denials with rollback. Future-scale latency remains unaccepted: observed customer stats reached 22.942 s. Actual hosted JWT/API/UI and separate production approval are still required. See the current verification record for precise limits.
 
 ## Historical transaction candidate notes
 
@@ -31,7 +31,7 @@ This branch is a coordinated database + client change. It is not approved for pr
 - Hosted Auth/PostgREST/Storage upload and signed-URL behavior still require the isolated staging project
 - Dependency audit after in-range fixes: no production vulnerabilities; two moderate development-only Vitest/mocker findings remain, requiring a separate major upgrade. Do not expose the test development server or run untrusted projects through it
 
-## Required deployment order
+## Historical fresh-project deployment order (do not repeat on populated staging)
 1. Review SQL, client diff, synthetic tests and fresh CI results. Keep private observed snapshots outside the public repository
 2. Apply the reviewed fresh-project bootstrap only to isolated staging. Its preflight must reject any existing business tables; preserve provider auth/storage schemas
 3. Exercise all roles through actual Auth JWTs and PostgREST, and test Storage upload → visit → photo metadata → signed URL. Use dummy users/data only
@@ -46,7 +46,7 @@ A failed migration transaction rolls back. After successful rollout and real wri
 ## Remaining explicit gates
 - Check-in now finalizes visit, photo, completion and customer date atomically with server timestamps; private unreadable orphan uploads remain possible and require a separately reviewed retention/cleanup process. Hosted Storage bytes and signed-URL tests remain required.
 - Sales-head customer creation remains a role/workflow mismatch; no broader customer-write authority was silently granted
-- More-than-API-limit reporting pagination and full data reconciliation remain required
+- More-than-API-limit reporting is now covered by source/SQL/6k/30k checks; hosted API parity and full data reconciliation remain required
 - Synthetic provider stubs are not production schemas; real hosted integration is still mandatory
 
 ## Database-branch preview build guard

@@ -4,7 +4,7 @@
 
 The generator and SQL measurement harness target a fresh, disposable local CI PostgreSQL database only. This packet does not approve or perform hosted staging or production writes. A hosted packet must identify its project, existing synthetic records, exact load/cleanup scope, expected storage, approved identities and credentials handoff before execution. Do not remove the local-only guards to reuse these scripts on a hosted database.
 
-The SQL candidate branch has Vercel deployment disabled. Read migrations remain additive; application write RPCs, privileges and policies are unchanged. No new index is proposed without measured plans and an existing-index comparison.
+The SQL candidate branch has Vercel deployment disabled. The current reviewed package adds read functions, one conditional lookup index and nine equivalent policy-predicate changes, with three measured read-query replacements. Existing application write RPCs, helpers, table/column privileges and business data are unchanged. See the current [staging allowlist](scalability-staging-packet.md); the experiment history below is not a hosted execution recipe.
 
 ## Deterministic workloads
 
