@@ -71,11 +71,36 @@ SET LOCAL session_replication_role='origin';
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub','81000000-0000-0000-0000-000000000002',true);
 SELECT pg_temp.assert_true(row_security_active('public.purchase_orders'),'Normal PostgreSQL RLS enforcement required');
+-- Bounded diagnostics for the manager-role timeout. No new indexes or policy changes.
+\timing on
+\echo MANAGER_DELIVERY_PLAN_BEFORE_FIXTURE_ANALYZE
+EXPLAIN (VERBOSE,COSTS) WITH pos AS MATERIALIZED (SELECT p.id FROM public.purchase_orders p WHERE p.order_date BETWEEN '2026-07-01' AND '2026-09-30'),
+lines AS MATERIALIZED (SELECT l.id,l.unit_price FROM public.po_line_items l JOIN pos p ON p.id=l.purchase_order_id),
+headers AS MATERIALIZED (SELECT s.id FROM public.surat_jalan s JOIN pos p ON p.id=s.purchase_order_id WHERE s.voided_at IS NULL)
+SELECT count(*),sum(d.quantity_delivered::numeric*l.unit_price) FROM headers s JOIN public.sj_line_items d ON d.surat_jalan_id=s.id JOIN lines l ON l.id=d.po_line_item_id;
+RESET ROLE;
+ANALYZE public.users,public.customers,public.customer_manager_assignments,public.customer_sales_rep_assignments,
+ public.purchase_orders,public.girard_orders,public.po_line_items,public.surat_jalan,public.sj_line_items,
+ public.sales_schedules,public.outlet_visits,public.customer_targets,public.sales_targets;
+SELECT tablename,indexname,indexdef FROM pg_indexes WHERE schemaname='public' AND tablename IN ('girard_orders','orders','purchase_orders','po_line_items','surat_jalan','sj_line_items') ORDER BY tablename,indexname;
+SET LOCAL ROLE authenticated;
+SELECT pg_temp.assert_true(row_security_active('public.purchase_orders'),'Diagnostics keep manager RLS active');
+\echo MANAGER_DELIVERY_PLAN_AFTER_FIXTURE_ANALYZE
+EXPLAIN (VERBOSE,COSTS) WITH pos AS MATERIALIZED (SELECT p.id FROM public.purchase_orders p WHERE p.order_date BETWEEN '2026-07-01' AND '2026-09-30'),
+lines AS MATERIALIZED (SELECT l.id,l.unit_price FROM public.po_line_items l JOIN pos p ON p.id=l.purchase_order_id),
+headers AS MATERIALIZED (SELECT s.id FROM public.surat_jalan s JOIN pos p ON p.id=s.purchase_order_id WHERE s.voided_at IS NULL)
+SELECT count(*),sum(d.quantity_delivered::numeric*l.unit_price) FROM headers s JOIN public.sj_line_items d ON d.surat_jalan_id=s.id JOIN lines l ON l.id=d.po_line_item_id;
+\echo MANAGER_LINKED_ORDER_LOOKUP_ACTUAL_PLAN
+EXPLAIN (ANALYZE,BUFFERS,TIMING OFF) SELECT o.id FROM public.girard_orders o WHERE o.po_id=md5('report-po-1001')::uuid;
+\echo MANAGER_VISIBLE_PO_COUNT_ACTUAL_PLAN
+EXPLAIN (ANALYZE,BUFFERS,TIMING OFF) SELECT count(*) FROM public.purchase_orders;
 -- These assertions require additive report migration; undefined_function is the pre-migration red state.
-DO $$ DECLARE r jsonb; n integer; expected integer; cutoff date; BEGIN
+DO $$ DECLARE r jsonb; n integer; expected integer; cutoff date; started timestamptz; BEGIN
  FOR n IN 1..3 LOOP
   cutoff:=CASE n WHEN 1 THEN '2026-07-31'::date WHEN 2 THEN '2026-08-31'::date ELSE '2026-09-30'::date END; expected:=998+n;
+  started:=clock_timestamp(); RAISE NOTICE 'MANAGER_DASHBOARD_START rows=% at=%',expected,started;
   r:=public.pilot_athel_summary_v1('2026-07-01',cutoff,'2026-07-01','all','all');
+  RAISE NOTICE 'MANAGER_DASHBOARD_FINISH rows=% elapsed_ms=%',expected,extract(epoch FROM clock_timestamp()-started)*1000;
   PERFORM pg_temp.assert_true((r->'metrics'->>'totalPOCount')::integer=expected,'PO cap boundary exact count '||expected);
   PERFORM pg_temp.assert_true((r->'metrics'->>'totalPOValue')::numeric=expected*100,'PO values unaffected by delivery join fanout');
  END LOOP;
