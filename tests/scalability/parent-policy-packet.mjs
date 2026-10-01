@@ -1,6 +1,7 @@
 import { readFileSync,mkdirSync,writeFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { buildSummaryDPackets } from './summary-ab-packets.mjs'
+import { extractSummaryStatement } from './query-plan-packets.mjs'
 const snapshots={
  columns_before:"SELECT md5(jsonb_agg(jsonb_build_array(a.attrelid,a.attnum,a.attacl) ORDER BY a.attrelid,a.attnum)::text) AS columns_before FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind='r' AND a.attnum>0 AND NOT a.attisdropped",
  policy_before:"SELECT md5(coalesce(jsonb_agg(to_jsonb(x) ORDER BY schemaname,tablename,policyname),'[]'::jsonb)::text) AS policy_before FROM pg_policies x WHERE schemaname IN ('public','storage')",
@@ -16,18 +17,24 @@ export function buildParentPolicyPackets(source,setup,parity){
  const capture=Object.values(snapshots).map(query=>query+'\n\\gset\n').join('')
  // Capture after disposable guard, before any candidate index or policy mutation.
  prefix=prefix.replace('DROP INDEX public.pilot_po_line_items_purchase_order_id_idx;',()=>capture+'DROP INDEX public.pilot_po_line_items_purchase_order_id_idx;')
- function benchmarks(phase){return ['admin','manager'].map(role=>{
+ function benchmark(phase,role){
   const actor=role==='admin'?'84000000-0000-0000-0000-000000000006':'84000000-0000-0000-0000-000000000002'
   const expectedRole=role==='admin'?'po_admin':'sales_manager',from=role==='admin'?'2021-01-01':'2026-07-01'
   const totals=role==='admin'?'6007,6000600,3000180,3000420':'756,750500,375130,375370'
   return `SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub','${actor}',true);
 DO $$ BEGIN IF NOT row_security_active('public.purchase_orders') OR NOT row_security_active('public.po_line_items') OR NOT row_security_active('public.surat_jalan') OR NOT row_security_active('public.sj_line_items') OR public.current_user_role()::text IS DISTINCT FROM '${expectedRole}' THEN RAISE EXCEPTION 'Benchmark role/RLS mismatch'; END IF; END $$;
+SET LOCAL search_path='';
+PREPARE trial_cost(date,date,date,text,text) AS
+${extractSummaryStatement(source)}
+EXPLAIN (VERBOSE,COSTS) EXECUTE trial_cost('${from}','2026-09-30','2025-10-01','all','all');
+DEALLOCATE trial_cost;
 SELECT '${phase}-${role}' AS diagnostic,clock_timestamp() AS started_at;
 EXPLAIN (ANALYZE,BUFFERS,VERBOSE,TIMING OFF) SELECT pg_temp.assert_d_totals(pg_temp.ab_summary('${from}','2026-09-30','2025-10-01','all','all'),${totals});
 RESET ROLE;
+SET LOCAL search_path=public,pg_catalog;
 `
- }).join('')}
+ }
  const restored=base.sql.slice(base.sql.lastIndexOf('ROLLBACK;')+'ROLLBACK;'.length).replace(/SELECT 'SCALE_DIAGNOSTIC_VERIFIED' AS result,[^\n]+\n/g,'')
  const checks=Object.entries(snapshots).map(([name,query])=>`SELECT 1 / CASE WHEN (${query}) = :'${name}' THEN 1 ELSE 0 END AS ${name}_restored;\n`).join('')
  const emptyCheck=`DO $empty$ DECLARE t text; n bigint; BEGIN
@@ -43,8 +50,12 @@ SELECT ('84000000-0000-0000-0000-'||lpad(i::text,12,'0'))::uuid,'Synthetic polic
 SET LOCAL session_replication_role='origin';
 `
  const small="BEGIN;\nSET LOCAL statement_timeout='60s';\nSET LOCAL lock_timeout='5s';\nSET LOCAL pilot.policy_trial_mode='parity';\n"+emptyCheck+capture+seed+setup+'\n'+parity+'\nRESET ROLE;\nROLLBACK;\n'+checks+emptyCheck+"SELECT 'PARITY_ROLLBACK_EMPTY_VERIFIED' AS result;\nSELECT 'SCALE_DIAGNOSTIC_VERIFIED' AS result,'parent-set-parity' AS diagnostic;\n"
- const large=prefix+"SET LOCAL pilot.policy_trial_mode='benchmark';\n"+setup+'\n'+benchmarks('baseline')+'SELECT pg_temp.apply_parent_set_policy();\n'+benchmarks('candidate')+'SELECT pg_temp.assert_trial_preserved();\nROLLBACK;\n'+restored+checks+"SELECT 'SCALE_DIAGNOSTIC_VERIFIED' AS result,'parent-set-policy' AS diagnostic;\n"
- return {parity:small,benchmark:large}
+ const benchmarks=['baseline','candidate'].flatMap(phase=>['admin','manager'].map(role=>{
+  const name=`parent-set-${phase}-${role}`
+  const sql=prefix+"SET LOCAL pilot.policy_trial_mode='benchmark';\n"+setup+'\n'+(phase==='candidate'?'SELECT pg_temp.apply_parent_set_policy();\n':'')+benchmark(phase,role)+'SELECT pg_temp.assert_trial_preserved();\nROLLBACK;\n'+restored+checks+`SELECT 'SCALE_DIAGNOSTIC_VERIFIED' AS result,'${name}' AS diagnostic;\n`
+  return {name,sql}
+ }))
+ return {parity:small,benchmarks}
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  if(process.argv.length!==2)throw new Error('No custom diagnostic arguments accepted')
@@ -54,5 +65,5 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  mkdirSync('scale-results/diagnostics',{recursive:true})
  const packets=buildParentPolicyPackets(source,setup,parity)
  writeFileSync('scale-results/policy-parity.sql',packets.parity,{flag:'wx'})
- writeFileSync('scale-results/diagnostics/parent-set-policy.sql',packets.benchmark,{flag:'wx'})
+ for(const p of packets.benchmarks)writeFileSync(`scale-results/diagnostics/${p.name}.sql`,p.sql,{flag:'wx'})
 }

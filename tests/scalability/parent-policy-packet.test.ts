@@ -6,7 +6,9 @@ const source=readFileSync('supabase/migrations/202610010002_scalable_report_read
 const setup=readFileSync('tests/database/parent-set-policy-setup.sql','utf8')
 test('small parity rolls back empty before separate same-fixture large benchmarks',()=>{
  const packets=buildParentPolicyPackets(source,setup,"SELECT 'PARENT_SET_POLICY_PARITY_VERIFIED'; -- stub only for assembly test")
- const small=packets.parity,large=packets.benchmark
+ const small=packets.parity,large=packets.benchmarks.map(p=>p.sql).join("\n")
+ expect(packets.benchmarks.map(p=>p.name)).toEqual(["parent-set-baseline-admin","parent-set-baseline-manager","parent-set-candidate-admin","parent-set-candidate-manager"])
+ for(const p of packets.benchmarks){expect(p.sql.match(/EXPLAIN \(ANALYZE/g)).toHaveLength(1);expect(p.sql).toContain("EXPLAIN (VERBOSE,COSTS) EXECUTE trial_cost");expect(p.sql).toContain("SET LOCAL search_path='';\nPREPARE trial_cost");expect(p.sql).toContain("RESET ROLE;\nSET LOCAL search_path=public,pg_catalog;")}
  expect(small).toContain("current_database()<>'pilot_test'");expect(small).toContain('Empty synthetic database required');expect(small).toContain("SET LOCAL pilot.policy_trial_mode='parity'")
  expect(small.indexOf('PARENT_SET_DRIFT_GUARD_VERIFIED')).toBeLessThan(small.indexOf('PARENT_SET_POLICY_PARITY_VERIFIED'))
  expect(small).not.toContain('baseline-admin');expect(small).toContain('PARITY_ROLLBACK_EMPTY_VERIFIED')
