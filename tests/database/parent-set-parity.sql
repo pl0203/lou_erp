@@ -235,8 +235,8 @@ BEGIN
   observed:=pg_temp.parent_set_read_probe(format('EXECUTE parent_set_parity_read(%L::uuid[])',ids::text),ids);
   EXECUTE 'RESET ROLE';
   INSERT INTO pg_temp.parent_set_parity_results VALUES(phase_label,state_label,identity.label,'prepared_read',observed);
-  IF observed IS DISTINCT FROM CASE WHEN identity.label='anon' THEN jsonb_build_object('sqlstate','42501')
-   ELSE jsonb_build_object('sqlstate','00000','data',prepared_expected) END THEN
+  IF observed IS DISTINCT FROM (CASE WHEN identity.label='anon' THEN jsonb_build_object('sqlstate','42501')
+   ELSE jsonb_build_object('sqlstate','00000','data',prepared_expected) END) THEN
    RAISE EXCEPTION 'Prepared read leaked or lost identity: phase %, state %, actor %',phase_label,state_label,identity.label; END IF;
   customer_expected:=CASE
    WHEN identity.label IN('executive','po_admin','sales_head') THEN to_jsonb(customer_ids)
@@ -249,8 +249,8 @@ BEGIN
   observed:=pg_temp.parent_set_read_probe('SELECT coalesce(jsonb_agg(id ORDER BY id),''[]''::jsonb) FROM public.customers WHERE id=ANY($1)',customer_ids);
   EXECUTE 'RESET ROLE';
   INSERT INTO pg_temp.parent_set_parity_results VALUES(phase_label,state_label,identity.label,'customers',observed);
-  IF observed IS DISTINCT FROM CASE WHEN identity.label='anon' THEN jsonb_build_object('sqlstate','42501')
-   ELSE jsonb_build_object('sqlstate','00000','data',customer_expected) END THEN
+  IF observed IS DISTINCT FROM (CASE WHEN identity.label='anon' THEN jsonb_build_object('sqlstate','42501')
+   ELSE jsonb_build_object('sqlstate','00000','data',customer_expected) END) THEN
    RAISE EXCEPTION 'Customer visibility mismatch: phase %, state %, actor %',phase_label,state_label,identity.label; END IF;
   IF state_label='initial' THEN
    FOREACH table_name IN ARRAY ARRAY['purchase_orders','po_line_items','surat_jalan','sj_line_items'] LOOP
