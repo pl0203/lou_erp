@@ -19,14 +19,30 @@ volatility and security attributes. The private helper remains definer and the
 public read remains invoker. No RLS policy, index, table, data, auth account,
 credential, assignment, frontend or Edge Function change is included.
 
-The helper-only complete6k/30k role/session and isolated race gates passed.
-The daily trial passed226 literal/parity observations and a bounded paired30k
-screen. Combined full6k/30k242-success/33-denial and15-suite/12-race gates must
-complete before the candidate is proposed for application. Actual timing still
-must be reported separately from correctness; two-sample CI medians are not
-hosted p95 or a production capacity sign-off.
+## Verification and remaining release decision
 
-## Required packet preparation after combined acceptance
+The combined candidate passed complete 6k/30k role and 242-success/33-denial
+same-connection gates, plus the isolated 15-suite/12-race checks with exact
+restoration, at `8ce752b9b0cf8af42b9491d47679709735833682`. See the exact
+[run 36930163790](https://github.com/pl0203/lou_erp/actions/runs/36930163790)
+and evidence inventory in the [experiment plan](daily-preaggregation-experiment-plan.md).
+
+**Do not recommend the daily candidate as uniformly beneficial yet.** Broad
+manager/admin paired screening improved, but the combined 30k pooled run observed
+narrow daily calls of 796.665–2050.845ms. Earlier helper-only runs observed about
+153–187ms for those narrow cases. These are separate-run observations, so they
+do not prove a matched regression; they do identify a material selective-filter
+tradeoff that remains unresolved. Require matched narrow/broad comparisons under
+identical data, roles, cache mode and paired order before an unconditional daily
+rollout recommendation. No further optimization experiment is included in this candidate.
+
+Observed combined 30k maxima also included customer stats 4846.829ms and daily
+2922.950ms. Correctness acceptance is separate from latency acceptance, hosted
+p95 and production capacity. The prepared changes have not been applied to
+staging or production. This proposal remains conditional on the latency review
+and specific hosted approval.
+
+## Required packet preparation after resolving the release decision
 
 1. Freeze exact source hashes and reviewed CI evidence. Capture a fresh read-only
    staging fingerprint of both full function definitions/attributes, relevant
@@ -61,7 +77,7 @@ policy optimization as a separately reviewed scope.
 
 ## Migration-history release gate
 
-The reviewed staging read at2026-10-01T20:27:25Z found the CLI migration-history
+The reviewed staging read at 2026-10-01T20:27:25Z found the CLI migration-history
 relation absent. The deployed schema was separately verified. Neither absence
 of the ledger nor local migration files establishes replay safety. No blind
 `db push`, history repair or replay of earlier guarded migrations is authorized.
