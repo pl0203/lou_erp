@@ -53,15 +53,16 @@ function during(variant) {
 function restored(name) { return `SELECT 1/CASE WHEN (${catalog})=:'helper_catalog_before' THEN 1 ELSE 0 END AS helper_catalog_restored;
 ${guard}SELECT 'HELPER_EXPERIMENT_RESTORED' AS result,${literal(name)} AS packet;
 ` }
-function start(large=false) {
+function start(rows=0) {
+ if(![0,6000,30000].includes(rows))throw new Error('Only fixed reviewed fixture sizes are supported')
  return capture()+`BEGIN;
 SET LOCAL statement_timeout='60s';
 SET LOCAL lock_timeout='5s';
 SET LOCAL TIME ZONE 'UTC';
-`+(large?`DO $$ BEGIN
- IF (SELECT count(*) FROM public.pilot_scale_manifest)<>1 OR (SELECT (manifest->'base'->>'purchase_orders')::integer FROM public.pilot_scale_manifest)<>6000
- OR (SELECT count(*) FROM public.purchase_orders)<>6007 OR (SELECT count(*) FROM public.po_line_items)<>60007
- OR (SELECT count(*) FROM public.surat_jalan)<>12005 OR (SELECT count(*) FROM public.sj_line_items)<>120005 THEN RAISE EXCEPTION 'Exact unchanged 6k fixture required'; END IF;
+`+(rows?`DO $$ BEGIN
+ IF (SELECT count(*) FROM public.pilot_scale_manifest)<>1 OR (SELECT (manifest->'base'->>'purchase_orders')::integer FROM public.pilot_scale_manifest)<>${rows}
+ OR (SELECT count(*) FROM public.purchase_orders)<>${rows+7} OR (SELECT count(*) FROM public.po_line_items)<>${rows*10+7}
+ OR (SELECT count(*) FROM public.surat_jalan)<>${rows*2+5} OR (SELECT count(*) FROM public.sj_line_items)<>${rows*20+5} THEN RAISE EXCEPTION 'Exact unchanged ${rows} fixture required'; END IF;
 END $$;
 `:'')+setup
 }
@@ -76,7 +77,7 @@ const summary = role => `public.pilot_athel_summary_v1('${role==='admin'?'2021-0
 function benchmark(role,variant,index,warmup=false) {
  const name=`${warmup?'warmup':'pair'}-${String(index).padStart(2,'0')}-${role}-${variant}`
  const expected=role==='admin'?['6007','6000600','3000180','3000420']:['756','750500','375130','375370']
- const sql=start(true)+(variant==='candidate'?'SELECT pg_temp.apply_can_read_po_trial();\n':'')+`CREATE TEMP TABLE helper_measurement(response jsonb,rpc_elapsed_ms numeric);
+ const sql=start(6000)+(variant==='candidate'?'SELECT pg_temp.apply_can_read_po_trial();\n':'')+`CREATE TEMP TABLE helper_measurement(response jsonb,rpc_elapsed_ms numeric);
 GRANT INSERT,SELECT ON pg_temp.helper_measurement TO authenticated;
 CREATE FUNCTION pg_temp.measure_helper_summary() RETURNS TABLE(response jsonb,rpc_elapsed_ms numeric) LANGUAGE plpgsql SECURITY INVOKER AS $timed$
 DECLARE started timestamptz;
@@ -101,7 +102,7 @@ export function buildHelperExperiment() {
  const benchmarks=['baseline','candidate','candidate','baseline'].flatMap((variant,i)=>['manager','sales','admin'].map((role,j)=>benchmark(role,variant,i*3+j)))
  const plans=['baseline','candidate'].map(variant=>{
   const name=`plans-manager-${variant}`
-  return {name,role:'manager',variant,sql:start(true)+(variant==='candidate'?'SELECT pg_temp.apply_can_read_po_trial();\n':'')+`LOAD 'auto_explain';
+  return {name,role:'manager',variant,sql:start(6000)+(variant==='candidate'?'SELECT pg_temp.apply_can_read_po_trial();\n':'')+`LOAD 'auto_explain';
 SET LOCAL auto_explain.log_nested_statements=on;
 SET LOCAL auto_explain.log_min_duration='0';
 SET LOCAL auto_explain.log_analyze=on;
@@ -122,6 +123,25 @@ RESET ROLE;
 `+restored(name)}
  })
  return {truth,policy,warmups,benchmarks,plans}
+}
+export function buildHelper30kExperiment() {
+ const source=read('tests/database/scalable-pooled-reads.sql')
+ const from=source.indexOf('DO $guard$ DECLARE base_rows integer;'),to=source.indexOf('PREPARE pooled_read(integer,text,boolean)')
+ if(from<0||to<=from)throw new Error('Frozen acceptance oracle boundaries missing')
+ const oracle=source.slice(from,to)
+ if(/^\s*(BEGIN|COMMIT|ROLLBACK)\s*;/m.test(oracle))throw new Error('Oracle fragment must not control root transaction')
+ function packet(rpc,variant,index,warmup) {
+  const name=`${warmup?'warmup':'pair'}-${String(index).padStart(2,'0')}-${rpc}-${variant}`
+  return {name,rpc,variant,warmup,sql:start(30000)+(variant==='candidate'?'SELECT pg_temp.apply_can_read_po_trial();\n':'')+`SET LOCAL plan_cache_mode=auto;\n`+oracle+'\n'+roleSetup('manager')+`SELECT pg_temp.pooled_check(2,'${rpc}',false);
+RESET ROLE;
+`+during(variant)+`ROLLBACK;
+`+restored(name)}
+ }
+ const rpcs=['summary','stats','lines','daily']
+ return {
+  warmups:rpcs.flatMap((rpc,i)=>['baseline','candidate'].map((variant,j)=>packet(rpc,variant,i*2+j,true))),
+  benchmarks:['baseline','candidate','candidate','baseline'].flatMap((variant,i)=>rpcs.map((rpc,j)=>packet(rpc,variant,i*4+j,false))),
+ }
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  if(process.argv.length!==2)throw new Error('No arbitrary experiment parameters accepted')

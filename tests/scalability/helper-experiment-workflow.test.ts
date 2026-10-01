@@ -25,3 +25,18 @@ test('truth and unchanged matrix gate large fixture; strict pipeline/restoration
  expect(workflow.indexOf('Balanced warmups')).toBeLessThan(workflow.indexOf('Separate bounded helper'))
  expect(workflow).toContain('if: always()')
 })
+
+test('next30k screen stays fixed and gates its large load behind the same small parity',()=>{
+ const large=readFileSync('.github/workflows/helper-read-30k-experiment.yml','utf8')
+ expect(large).toContain("SCALE_ROWS: '30000'")
+ expect(large).toContain('--rows 30000 --emit-sql --target local-ci --permit disposable-pilot-ci')
+ expect(large).toContain("github.event.pull_request.base.ref == 'fix/pilot-database'")
+ expect(large).toContain("github.event.pull_request.head.ref == 'fix/pilot-scale-sql'")
+ expect(large).toContain('github.event.pull_request.head.repo.full_name == github.repository')
+ expect(large).toContain('timeout-minutes: 20')
+ expect(large).toContain('shell: bash')
+ expect(large).not.toMatch(/workflow_dispatch|secrets\.|supabase\.co|^\s*psql /m)
+ expect(large.indexOf('Unchanged installed620')).toBeLessThan(large.indexOf('Load the reviewed fixed30k'))
+ expect(large).toContain('node tests/scalability/helper-30k-results.mjs')
+ expect(large).toContain('exit "$failed"')
+})
