@@ -40,7 +40,7 @@ BEGIN
  PERFORM pg_temp.assert_scale(jsonb_typeof(r->'metrics'->'totalPOValue')='string','Exact decimal wire money');
  RAISE NOTICE 'SCALE_ROLE_SUMMARY_FINISH actor=% elapsed_ms=%',auth.uid(),extract(epoch FROM clock_timestamp()-started)*1000;
 END $$;
-SELECT c.relname AS index_name,pg_relation_size(c.oid) AS index_bytes FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class c ON c.oid=i.indexrelid WHERE i.indrelid='public.girard_orders'::regclass;
+SELECT c.relname AS index_name,pg_relation_size(c.oid) AS index_bytes FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class c ON c.oid=i.indexrelid WHERE i.indrelid IN ('public.girard_orders'::regclass,'public.po_line_items'::regclass,'public.sj_line_items'::regclass);
 SELECT tablename,indexname,indexdef FROM pg_indexes WHERE schemaname='public' AND tablename IN ('purchase_orders','girard_orders','po_line_items','surat_jalan','sj_line_items') ORDER BY tablename,indexname;
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub','84000000-0000-0000-0000-000000000002',true);

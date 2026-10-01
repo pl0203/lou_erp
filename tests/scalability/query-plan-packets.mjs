@@ -2,8 +2,10 @@ import { readFileSync,mkdirSync,writeFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { buildDiagnosticPackets } from './diagnostic-packets.mjs'
 export function extractSummaryStatement(source){
- const block=source.match(/CREATE FUNCTION public\.pilot_athel_summary_v1\([^]*?AS \$\$([^]*?)END \$\$;/)?.[1]
+ const block=source.match(/CREATE(?: OR REPLACE)? FUNCTION public\.pilot_athel_summary_v1\([^]*?AS \$\$([^]*?)END \$\$;/)?.[1]
  if(!block)throw new Error('Expected summary function definition missing')
+ const fixed=block.match(/EXECUTE \$summary_query\$\n([^]*?)\n\$summary_query\$ INTO result USING p_from,p_to,p_rolling_from,p_status,p_fulfillment;/)?.[1]
+ if(fixed)return fixed
  const start=block.indexOf('WITH pos AS MATERIALIZED'),end=block.lastIndexOf('INTO result;')
  if(start<0||end<=start||block.slice(end).trim()!=='INTO result;\n RETURN result;')throw new Error('Unexpected summary statement layout')
  const parameters={p_from:'$1',p_to:'$2',p_rolling_from:'$3',p_status:'$4',p_fulfillment:'$5'}
@@ -34,7 +36,7 @@ export function buildQueryPlanPackets(source){
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  if(process.argv.length!==2)throw new Error('No custom diagnostic arguments accepted')
- const source=readFileSync('supabase/migrations/202610010002_scalable_report_reads.sql','utf8')
+ const source=readFileSync('supabase/migrations/202610010006_scoped_summary_plan.sql','utf8')
  mkdirSync('scale-results/diagnostics',{recursive:true})
  for(const p of buildQueryPlanPackets(source))writeFileSync(`scale-results/diagnostics/${p.name}.sql`,p.sql,{flag:'wx'})
 }
