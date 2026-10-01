@@ -102,10 +102,23 @@ jobs:
           SCALE_PERMIT: disposable-pilot-ci
           SCALE_ROWS: '6000'
         run: node scripts/test-read-rollout-ci.mjs
+      - name: Atomic synthetic import, lost-response recovery and protected baseline
+        env:
+          SCALE_PERMIT: disposable-pilot-ci
+          SCALE_ROWS: '6000'
+        run: node scripts/test-po-import-ci.mjs
       - name: Preserve synthetic rollout evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: read-rollout-lifecycle-${{ github.run_id }}
           path: rollout-results
+          retention-days: 7
+      - name: Preserve synthetic import evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: po-import-lifecycle-${{ github.run_id }}
+          path: import-results
+          if-no-files-found: warn
           retention-days: 7
