@@ -26,12 +26,13 @@ test.each(['2026-08-31', '2024-02-29'])('manual PO retains selected business dat
   mocks.rpc.mockResolvedValue({ data: { id: 'dummy-po' }, error: null })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   const { container } = render(<QueryClientProvider client={client}><PONew /></QueryClientProvider>)
-  await screen.findByRole('option', { name: 'Dummy customer' })
+  await waitFor(() => expect((screen.getByRole('combobox', { name: 'Pelanggan' }) as HTMLInputElement).disabled).toBe(false))
   const dateInput = container.querySelectorAll<HTMLInputElement>('input[type="date"]')[0]
   fireEvent.change(dateInput, { target: { value: orderDate } })
   fireEvent.blur(dateInput)
   // Later changes rerender the controlled form, exposing DOM-only changes that never reached React state.
-  fireEvent.change(screen.getByRole('combobox'), { target: { value: 'dummy-customer' } })
+  fireEvent.change(screen.getByRole('combobox', { name: 'Pelanggan' }), { target: { value: 'Dummy' } })
+  fireEvent.click(screen.getByRole('option', { name: 'Dummy customer' }))
   fireEvent.change(screen.getByPlaceholderText('mis. PO-2024-001'), { target: { value: 'DUMMY-DATED-PO' } })
   fireEvent.change(screen.getByPlaceholderText('Nama produk'), { target: { value: 'Dummy product' } })
   fireEvent.change(screen.getByLabelText('Harga satuan'), { target: { value: '0' } })

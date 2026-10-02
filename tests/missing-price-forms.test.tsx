@@ -30,25 +30,34 @@ afterEach(() => { cleanup(); clients.splice(0).forEach(c => c.clear()) })
 function mount(kind: 'po' | 'visit' | 'edit') {
  const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } }); clients.push(client)
  render(<QueryClientProvider client={client}>{kind === 'po' ? <PONew /> : kind === 'edit' ? <POEdit /> : <VisitPage />}</QueryClientProvider>)
- if (kind === 'po') { fireEvent.change(screen.getByRole('combobox'), { target: { value: 'c' } }); fireEvent.change(screen.getByPlaceholderText('mis. PO-2024-001'), { target: { value: 'TEST-PO' } }) }
+ if (kind === 'po') { selectCustomer('Customer'); fireEvent.change(screen.getByPlaceholderText('mis. PO-2024-001'), { target: { value: 'TEST-PO' } }) }
  if (kind === 'visit') fireEvent.click(screen.getByRole('button', { name: '+ Pesanan Baru' }))
 }
-function selectProduct() { fireEvent.change(screen.getByPlaceholderText('Cari SKU atau nama barang...'), { target: { value: 'Unknown' } }); fireEvent.mouseDown(screen.getByRole('button', { name: /Unknown-price product/ })) }
+function selectCustomer(name: string) {
+ fireEvent.change(screen.getByRole('combobox', { name: 'Pelanggan' }), { target: { value: name } })
+ fireEvent.click(screen.getByRole('option', { name }))
+}
+function selectProduct(kind: 'po' | 'visit', replacement = false) {
+ const input = kind === 'po' ? screen.getByRole('combobox', { name: replacement ? 'Ganti barang berdasarkan SKU atau nama' : 'Cari SKU atau nama barang' }) : screen.getByPlaceholderText('Cari SKU atau nama barang...')
+ fireEvent.change(input, { target: { value: 'Unknown' } })
+ if (kind === 'po') fireEvent.click(screen.getByRole('option', { name: /Unknown-price product/ }))
+ else fireEvent.mouseDown(screen.getByRole('button', { name: /Unknown-price product/ }))
+}
 for (const kind of ['po','visit'] as const) test(`${kind}: missing tier requires an explicit price; zero is valid and reselecting cannot retain an old manual price`, async () => {
- mount(kind); selectProduct()
+ mount(kind); selectProduct(kind)
  const price = screen.getByLabelText('Harga satuan') as HTMLInputElement
  expect(price.value).toBe('')
  const save = screen.getByRole('button', { name: kind === 'po' ? 'Simpan PO' : 'Kirim Pesanan' })
  fireEvent.click(save)
  await screen.findByText(/Harga wajib diisi/); expect(state.send).not.toHaveBeenCalled()
- fireEvent.change(price, { target: { value: '40' } }); selectProduct(); expect(price.value).toBe('')
+ fireEvent.change(price, { target: { value: '40' } }); selectProduct(kind, true); expect(price.value).toBe('')
  fireEvent.change(price, { target: { value: '0' } }); fireEvent.click(save)
  await waitFor(() => expect(state.send).toHaveBeenCalled())
  expect(state.send.mock.calls[0][1].items[0].unit_price).toBe(0)
 })
 test('PO edit preserves historical line price despite Others and null catalog, including customer re-selection', () => {
  mount('edit'); expect((screen.getByLabelText('Harga satuan') as HTMLInputElement).value).toBe('123.45')
- fireEvent.change(screen.getByRole('combobox'), { target: { value: 'd' } })
+ selectCustomer('Different tier customer')
  expect((screen.getByLabelText('Harga satuan') as HTMLInputElement).value).toBe('123.45')
 })
 test('promotion selection is disabled without its explicit matching tier, even when catalog tier exists', () => {

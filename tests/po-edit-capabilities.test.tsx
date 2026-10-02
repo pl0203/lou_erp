@@ -18,7 +18,7 @@ for(const status of ['cancelled','complete'])test(`${status} cannot enter editin
 })
 test('delivery history locks customer and identity while quantity respects active delivered minimum',async()=>{
  render(<POEdit/>);await screen.findByDisplayValue('Delivered product')
- expect((screen.getByRole('combobox') as HTMLSelectElement).disabled).toBe(true)
+ expect((screen.getByRole('combobox', { name: 'Pelanggan' }) as HTMLInputElement).disabled).toBe(true)
  expect((screen.getByDisplayValue('Delivered product') as HTMLInputElement).disabled).toBe(true)
  expect((screen.getByDisplayValue('SKU') as HTMLInputElement).disabled).toBe(true)
  const numbers=screen.getAllByRole('spinbutton') as HTMLInputElement[];expect(numbers[0].min).toBe('2');expect(numbers[0].disabled).toBe(false);expect(numbers[1].disabled).toBe(true)
@@ -35,7 +35,7 @@ test('PO expiry has customer expiry wording in both list layouts',()=>{render(<P
 
 test('no delivery history keeps valid draft fields editable and expiry optional',async()=>{
  const original=state.history;state.history=[]
- try { render(<POEdit/>);await screen.findByDisplayValue('Delivered product');expect((screen.getByRole('combobox') as HTMLSelectElement).disabled).toBe(false);expect((screen.getByDisplayValue('Delivered product') as HTMLInputElement).disabled).toBe(false);expect((screen.getAllByRole('spinbutton')[1] as HTMLInputElement).disabled).toBe(false);expect((screen.getByRole('button',{name:'×'}) as HTMLButtonElement).disabled).toBe(false);expect((screen.getByLabelText('Tanggal Kedaluwarsa PO (opsional)') as HTMLInputElement).required).toBe(false) } finally {state.history=original}
+ try { render(<POEdit/>);await screen.findByDisplayValue('Delivered product');expect((screen.getByRole('combobox', { name: 'Pelanggan' }) as HTMLInputElement).disabled).toBe(false);expect((screen.getByDisplayValue('Delivered product') as HTMLInputElement).disabled).toBe(false);expect((screen.getAllByRole('spinbutton')[1] as HTMLInputElement).disabled).toBe(false);expect((screen.getByRole('button',{name:'×'}) as HTMLButtonElement).disabled).toBe(false);expect((screen.getByLabelText('Tanggal Kedaluwarsa PO (opsional)') as HTMLInputElement).required).toBe(false) } finally {state.history=original}
 })
 
 for(const view of ['complete','error'])test(`uncertain committed edit can still reconcile on ${view} view`,async()=>{

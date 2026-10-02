@@ -29,7 +29,7 @@ beforeEach(()=>{state.failLines=false;state.stale=false;state.failDeliveryLines=
 afterEach(()=>{cleanup();clients.splice(0).forEach(c=>c.clear());localStorage.clear()})
 test('edit locks historical identity and delivered minimum even when displayed delivery history is empty',async()=>{
  mount(POEdit);const name=await screen.findByDisplayValue('Item 0');expect((name as HTMLInputElement).disabled).toBe(true)
- expect((screen.getByRole('combobox') as HTMLSelectElement).disabled).toBe(true)
+ expect((screen.getByRole('combobox', { name: 'Pelanggan' }) as HTMLInputElement).disabled).toBe(true)
  expect((screen.getAllByRole('spinbutton')[0] as HTMLInputElement).min).toBe('4')
 })
 test('edit loads every line beyond a capped old raw read before exposing save',async()=>{

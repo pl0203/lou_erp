@@ -40,8 +40,12 @@ function mount(kind: 'po' | 'visit' = 'po') {
   render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>)
   return router
 }
+function selectCustomer(name: string) {
+  fireEvent.change(screen.getByRole('combobox', { name: 'Pelanggan' }), { target: { value: name } })
+  fireEvent.click(screen.getByRole('option', { name }))
+}
 function dirtyPO() {
-  fireEvent.change(screen.getByRole('combobox'), { target: { value: 'a' } })
+  selectCustomer('Customer A')
   fireEvent.change(screen.getByPlaceholderText('mis. PO-2024-001'), { target: { value: 'PO-KEEP' } })
   fireEvent.change(screen.getByPlaceholderText('Nama produk'), { target: { value: 'Barang A' } })
   fireEvent.change(screen.getByLabelText('Harga satuan'), { target: { value: '0' } })
@@ -49,15 +53,15 @@ function dirtyPO() {
 
 test('changing customer keeps original items until explicit discard and can be cancelled', () => {
   mount(); dirtyPO()
-  fireEvent.change(screen.getByRole('combobox'), { target: { value: 'b' } })
+  selectCustomer('Customer B')
   expect(screen.getByRole('dialog')).toBeTruthy()
-  expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('a')
+  expect((screen.getByRole('combobox', { name: 'Pelanggan' }) as HTMLInputElement).value).toBe('Customer A')
   expect((screen.getByPlaceholderText('Nama produk') as HTMLInputElement).value).toBe('Barang A')
   fireEvent.click(screen.getByRole('button', { name: 'Tetap mengedit' }))
   expect(screen.queryByRole('dialog')).toBeNull()
-  fireEvent.change(screen.getByRole('combobox'), { target: { value: 'b' } })
+  selectCustomer('Customer B')
   fireEvent.click(screen.getByRole('button', { name: 'Buang perubahan' }))
-  expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('b')
+  expect((screen.getByRole('combobox', { name: 'Pelanggan' }) as HTMLInputElement).value).toBe('Customer B')
   expect((screen.getByPlaceholderText('Nama produk') as HTMLInputElement).value).toBe('')
   expect((screen.getByPlaceholderText('mis. PO-2024-001') as HTMLInputElement).value).toBe('PO-KEEP')
 })
