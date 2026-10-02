@@ -44,3 +44,8 @@ test('rejects malformed calendar month keys in summaries', async () => {
   summary.monthlySeries[0].key = '2026-99'
   expect(() => decodeRead('pilot_athel_summary_v1', { p_from: '2026-10-01', p_to: '2026-10-01', p_rolling_from: '2025-11-01', p_status: 'all', p_fulfillment: 'all' }, summary)).toThrow()
 })
+
+test('stale PO line RPC maps PT409 to an actionable conflict while preserving its code', async () => {
+  state.reply = { data: null, error: { code: 'PT409', message: 'PO changed; refresh before continuing' } }
+  await expect(callRead('pilot_po_lines_v1', { p_po_id: 'po', p_page: 1, p_page_size: 100, p_expected_updated_at: '2026-10-01T00:00:00Z' })).rejects.toMatchObject({ code: 'PT409', message: 'PO berubah. Muat ulang sebelum melanjutkan.' })
+})

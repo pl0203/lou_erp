@@ -6,6 +6,7 @@ import PaginationControls from '../../components/PaginationControls'
 import TransactionRecovery from '../../components/TransactionRecovery'
 import { useTransactionSender } from '../../lib/orderTransactions'
 import type { TransactionSender } from '../../lib/orderTransactions'
+import { isPOConflict, retryUnlessPOConflict } from '../../lib/poConflict'
 import { singleRelation } from '../../lib/relations'
 import { useState, useRef, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
@@ -123,15 +124,40 @@ export default function PODetail() {
   const [sjDateReturned, setSjDateReturned] = useState('')
   const [sjLines, setSjLines] = useState<SJFormLine[]>([])
 
-  const { data: po, isLoading, isError: poError, refetch: refetchPO } = useQuery({
+  const [refreshingPO, setRefreshingPO] = useState(false)
+  const activePO = useRef({ id, generation: 0 })
+  if (activePO.current.id !== id) activePO.current = { id, generation: activePO.current.generation + 1 }
+  const refreshSequence = useRef(0)
+  const { data: po, isLoading, isError: poError, isFetching: poFetching, refetch: refetchPO } = useQuery({
     queryKey: ['po', id], queryFn: () => fetchPO(id!),
   })
-  const { data: lineState, isError: linesError, isFetching: linesPending, refetch: refetchLines } = useQuery({
+  const { data: lineState, isError: linesError, error: lineError, isFetching: linesPending } = useQuery({
     queryKey: ['po_line_state', id, 'detail', po?.updated_at],
-    queryFn: ({ signal }) => fetchCompletePOLines(id!, po!.updated_at, signal), enabled: !!id && !!po,
+    queryFn: ({ signal }) => fetchCompletePOLines(id!, po!.updated_at, signal), enabled: query => !!id && !!po && !refreshingPO && !isPOConflict(query.state.error),
+    retry: (count, error) => retryUnlessPOConflict(count, error, queryClient.getDefaultOptions().queries?.retry),
+    refetchOnMount: query => !isPOConflict(query.state.error),
+    refetchOnWindowFocus: query => !isPOConflict(query.state.error),
+    refetchOnReconnect: query => !isPOConflict(query.state.error),
   })
+  const refreshPO = async () => {
+    const target = id!
+    const generation = activePO.current.generation
+    const sequence = ++refreshSequence.current
+    const isCurrent = () => activePO.current.id === target && activePO.current.generation === generation && refreshSequence.current === sequence
+    setRefreshingPO(true); setPreparationError(false)
+    try {
+      await queryClient.cancelQueries({ queryKey: ['po_line_state', target, 'detail'] })
+      const header = await refetchPO()
+      if (header.isError || !header.data || header.data.id !== target || !isCurrent()) return
+      await queryClient.fetchQuery({
+        queryKey: ['po_line_state', target, 'detail', header.data.updated_at],
+        queryFn: ({ signal }) => fetchCompletePOLines(target, header.data!.updated_at, signal), retry: false,
+      })
+    } catch { /* Retain read failure and keep all delivery actions blocked. */ }
+    finally { if (isCurrent()) setRefreshingPO(false) }
+  }
   const lineItems = lineState?.items
-  const lineReady = !!lineState && !linesError && !linesPending && lineState.po_updated_at === po?.updated_at
+  const lineReady = !!lineState && !linesError && !linesPending && !poFetching && !refreshingPO && lineState.po_updated_at === po?.updated_at
   const audits = usePagedRead('po_audit_log', { poId: id! }, (filters, page, signal) => fetchAuditPage(filters.poId, page, signal))
   const deliveries = usePagedRead('surat_jalan', { poId: id! }, (filters, page, signal) => fetchDeliveryPage(filters.poId, page, signal))
   const sjList = deliveries.data?.items
@@ -142,12 +168,14 @@ export default function PODetail() {
   const preparation = useRef<AbortController | null>(null)
   useEffect(() => () => preparation.current?.abort(), [])
   useEffect(() => {
+    refreshSequence.current++; setRefreshingPO(false)
     audits.setFilters({ poId: id! }); deliveries.setFilters({ poId: id! })
     setSelectedSJId(null); preparation.current?.abort()
     setPreparingSJ(false); setPreparationError(false)
     setShowSJModal(false); setEditingSJ(null); setSjLines([])
     setShowDeleteConfirm(false); setDeletingSJId(null); setActionReason('')
   }, [id, audits.setFilters, deliveries.setFilters])
+  useEffect(() => () => { void queryClient.cancelQueries({ queryKey: ['po_line_state', id, 'detail'] }) }, [id, queryClient])
   const selectedLines = useQuery({
     queryKey: ['sj_lines', selectedSJId], queryFn: ({ signal }) => fetchDeliveryLines(selectedSJId!, signal), enabled: !!selectedSJId,
   })
@@ -155,21 +183,25 @@ export default function PODetail() {
   const invalidate = () => { queryClient.invalidateQueries() }
 
   const sjMutation = useMutation({
+    retry: false,
     mutationFn: (payload: Parameters<typeof createSJ>[0]) => createSJ(payload, sendTransaction),
     onSuccess: () => { invalidate(); closeSJModal() },
   })
 
   const updateSJMutation = useMutation({
+    retry: false,
     mutationFn: (payload: Parameters<typeof updateSJ>[0]) => updateSJ(payload, sendTransaction),
     onSuccess: () => { invalidate(); closeSJModal() },
   })
 
   const deleteSJMutation = useMutation({
+    retry: false,
     mutationFn: (sjId: string) => sendTransaction('void_delivery', { sj_id: sjId, expected_updated_at: actionVersion, reason: actionReason }),
     onSuccess: () => { invalidate(); setDeletingSJId(null) },
   })
 
   const deleteMutation = useMutation({
+    retry: false,
     mutationFn: () => sendTransaction('cancel_po', { po_id: id!, expected_updated_at: actionVersion, reason: actionReason }),
     onSuccess: () => { invalidate(); navigate('/athel/po') },
   })
@@ -332,8 +364,8 @@ export default function PODetail() {
       <div className="px-4 md:px-8 py-6 max-w-4xl mx-auto space-y-6">
 
         {(!lineReady || preparationError) && <div role={linesError || preparationError ? 'alert' : 'status'} className="text-sm text-red-600">
-          {linesError || preparationError ? 'Data barang atau pengiriman belum lengkap. Pengiriman belum dapat diubah.' : 'Memuat seluruh barang PO…'}
-          <button className="ml-2 underline" onClick={() => { setPreparationError(false); refetchPO(); refetchLines() }}>Coba lagi</button>
+          {isPOConflict(lineError) ? 'PO berubah. Muat ulang sebelum melanjutkan.' : linesError || preparationError ? 'Data barang atau pengiriman belum lengkap. Pengiriman belum dapat diubah.' : 'Memuat seluruh barang PO…'}
+          <button className="ml-2 underline" onClick={() => void refreshPO()} disabled={refreshingPO}>Coba lagi</button>
         </div>}
         {/* Status card */}
         <div className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 sm:p-6">

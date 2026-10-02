@@ -175,7 +175,7 @@ try {
   const deliveryPayload = { po_id: deliveryPO.id, expected_updated_at: deliveryPO.updated_at, sj_date: '2026-09-30', lines: [{ po_line_item_id: line, quantity_delivered: 1 }] }
   oneWinner(await race(rowLock('purchase_orders', deliveryPO.id), [
     rpc('save_delivery', { ...deliveryPayload, sj_number: 'RACE-A' }), rpc('save_delivery', { ...deliveryPayload, sj_number: 'RACE-B' }),
-  ]), '40001')
+  ]), 'PT409')
   assert.equal(Number(await sql(`SELECT coalesce(sum(l.quantity_delivered),0) FROM public.sj_line_items l JOIN public.surat_jalan h ON h.id=l.surat_jalan_id WHERE h.purchase_order_id=${quote(deliveryPO.id)} AND h.voided_at IS NULL;`)), 1)
   assert.equal(await sql(`SELECT status FROM public.purchase_orders WHERE id=${quote(deliveryPO.id)};`), 'complete')
   console.log('PASS competing last-unit delivery rejects stale version without overdelivery')
@@ -183,7 +183,7 @@ try {
   const editPO = await call('create_po', orderPayload('edit'))
   const editLine = await sql(`SELECT id FROM public.po_line_items WHERE purchase_order_id=${quote(editPO.id)};`)
   const editPayload = { po_id: editPO.id, customer_id: customer, expected_updated_at: editPO.updated_at, items: [{ id: editLine, product_name: 'Synthetic race item', quantity: 1, unit_price: 10 }] }
-  oneWinner(await race(rowLock('purchase_orders', editPO.id), [rpc('edit_po', { ...editPayload, notes: 'writer A' }), rpc('edit_po', { ...editPayload, notes: 'writer B' })]), '40001')
+  oneWinner(await race(rowLock('purchase_orders', editPO.id), [rpc('edit_po', { ...editPayload, notes: 'writer A' }), rpc('edit_po', { ...editPayload, notes: 'writer B' })]), 'PT409')
   assert.ok(['writer A', 'writer B'].includes(await sql(`SELECT notes FROM public.purchase_orders WHERE id=${quote(editPO.id)};`)))
   assert.equal(await sql(`SELECT updated_at>${quote(editPO.updated_at)}::timestamptz FROM public.purchase_orders WHERE id=${quote(editPO.id)};`), 't')
   console.log('PASS competing edits preserve one winner and advance resource version')

@@ -1,4 +1,5 @@
 import { supabase } from '../supabase'
+import { isPOConflict, POConflictError } from '../poConflict'
 import { PO_OUTPUT_STATUSES, READ_RPC_DEFINITIONS } from './contracts'
 import type { ReadRpcName, RpcArgsMap, RpcResultMap } from './contracts'
 
@@ -90,6 +91,6 @@ export async function callRead<N extends ReadRpcName>(name: N, args: RpcArgsMap[
   if (signal) request = request.abortSignal(signal)
   const { data, error } = await request
   signal?.throwIfAborted()
-  if (error) throw error
+  if (error) throw name === 'pilot_po_lines_v1' && isPOConflict(error) ? new POConflictError() : error
   return decodeRead(name, args, data)
 }

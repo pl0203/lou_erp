@@ -66,3 +66,13 @@ test('visit sender uses its finalize and recovery RPCs without order fallback',a
  await send.reconcile()
  expect(mock.rpc).toHaveBeenLastCalledWith('pilot_reconcile_visit',expect.any(Object))
 })
+
+test('PT409 is a definitive conflict, retains its code, and permits a deliberate revised request', async () => {
+ const send=createTransactionSender({storage:()=>localStorage,storageKey:'stale-po-test'}); const calls:any[]=[]
+ mock.rpc.mockImplementation(async(_name,args)=>{calls.push(args);return {data:null,error:{code:'PT409',message:'PO changed; refresh before saving'}}})
+ await expect(send('edit_po',{expected_updated_at:'old'})).rejects.toMatchObject({code:'PT409',message:'PO berubah. Muat ulang dan periksa perubahan sebelum menyimpan kembali.'})
+ expect(send.hasUnresolved()).toBe(false)
+ await expect(send('edit_po',{expected_updated_at:'new'})).rejects.toThrow()
+ expect(calls).toHaveLength(2); expect(calls[1].p_request_id).not.toBe(calls[0].p_request_id)
+ localStorage.removeItem('stale-po-test')
+})

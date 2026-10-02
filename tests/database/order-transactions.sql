@@ -69,7 +69,7 @@ BEGIN
   BEGIN
     PERFORM public.pilot_order_transaction(gen_random_uuid(),'edit_po',jsonb_build_object('po_id',po,'expected_updated_at',stale_version,'customer_id','20000000-0000-0000-0000-000000000001','items',jsonb_build_array(jsonb_build_object('id',line1,'product_name','A','quantity',2,'unit_price',10))));
     RAISE EXCEPTION 'Stale edit incorrectly accepted';
-  EXCEPTION WHEN serialization_failure THEN NULL; END;
+  EXCEPTION WHEN SQLSTATE 'PT409' THEN NULL; END;
   BEGIN
     PERFORM public.pilot_order_transaction(gen_random_uuid(),'save_delivery',payload || jsonb_build_object('sj_id',sj,'sj_number','FAULT-SJ','expected_updated_at',version,'lines',jsonb_build_array(jsonb_build_object('po_line_item_id',line1,'quantity_delivered',1))));
     RAISE EXCEPTION 'Injected delivery failure was not raised';

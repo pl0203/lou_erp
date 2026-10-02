@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useAuth } from './AuthContext'
 import { supabase } from './supabase'
+import { isPOConflict, POConflictError } from './poConflict'
 
 export type TransactionResult = { id: string; po_id?: string; updated_at?: string }
 type Recovery = { state: 'committed' | 'abandoned' | 'unknown'; result?: TransactionResult; operation?: string }
@@ -21,6 +22,7 @@ async function fingerprint(operation: string, payload: unknown): Promise<string>
   return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), byte => byte.toString(16).padStart(2, '0')).join('')
 }
 function compatibilityError(error: { code?: string; message: string }): Error {
+  if (isPOConflict(error)) return new POConflictError(true)
   return new Error(error.code === 'PGRST202' || error.code === '42883'
     ? 'Pembaruan database diperlukan sebelum menyimpan. Hubungi administrator; jangan kirim ulang melalui versi lama.' : error.message)
 }

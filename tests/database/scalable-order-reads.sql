@@ -67,7 +67,7 @@ SELECT pg_temp.assert_true((public.pilot_sales_order_page_v1('rejected',false,1,
 SELECT pg_temp.assert_true((public.pilot_po_lines_v1(md5('scale-read-po-1')::uuid,1,10)->'items'->0->>'delivered_quantity')::integer=5,'Active delivery quantities preaggregated excluding void');
 SELECT pg_temp.assert_true((public.pilot_po_lines_v1(md5('scale-read-po-1')::uuid,1,10)->'items'->0->>'has_delivery_history')::boolean,'Historical line flag retained');
 SELECT pg_temp.assert_true((public.pilot_po_lines_v1(md5('scale-read-po-1')::uuid,1,10)->>'po_has_delivery_history')::boolean,'Header history flag retained');
-SELECT pg_temp.expect_error($q$SELECT public.pilot_po_lines_v1(md5('scale-read-po-1')::uuid,1,10,'2020-01-01T00:00:00Z')$q$,'40001');
+SELECT pg_temp.expect_error($q$SELECT public.pilot_po_lines_v1(md5('scale-read-po-1')::uuid,1,10,'2020-01-01T00:00:00Z')$q$,'PT409');
 SELECT pg_temp.expect_error($q$SELECT public.pilot_po_lines_v1(md5('scale-read-po-1')::uuid,2,10)$q$,'22023');
 SELECT pg_temp.assert_true(jsonb_array_length(public.pilot_po_lines_v1(md5('scale-read-po-1')::uuid,2,10,'2026-09-01T00:00:00Z')->'items')=0,'Later page accepts consistent version');
 -- Real role scope, with hidden customer metadata retained as null on historical actor-visible orders.

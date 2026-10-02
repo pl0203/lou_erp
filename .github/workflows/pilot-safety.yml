@@ -75,6 +75,10 @@ jobs:
               node tests/catalog-pricing-guards.mjs
               psql -X -v ON_ERROR_STOP=1 -f scale-results/catalog-pricing-guards.sql
             fi
+            if [[ "$file" == supabase/migrations/202610020003_stale_po_conflicts.sql ]]; then
+              node tests/stale-po-conflict-guards.mjs
+              psql -X -v ON_ERROR_STOP=1 -f scale-results/stale-po-conflict-guards.sql
+            fi
             psql -X -v ON_ERROR_STOP=1 -f "$file"
           done
       - name: SQL invariants, real role permissions and Storage metadata policies
@@ -84,6 +88,7 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f supabase/tests/security/storage_helpers.sql
           psql -X -v ON_ERROR_STOP=1 -f supabase/tests/security/storage_rls.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/order-transactions.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/stale-po-conflicts.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/nullable-catalog-prices.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/visit-transactions.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/scalable-policy-state.sql

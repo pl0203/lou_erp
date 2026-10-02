@@ -5,6 +5,7 @@ import { fetchCompletePOLines, fetchCompleteRows, priceForEdit } from '../../lib
 import TransactionRecovery from '../../components/TransactionRecovery'
 import { createTransactionSender, useTransactionSender } from '../../lib/orderTransactions'
 import type { TransactionSender } from '../../lib/orderTransactions'
+import { isPOConflict, retryUnlessPOConflict } from '../../lib/poConflict'
 import { singleRelation } from '../../lib/relations'
 import { validateOrderLines } from '../../lib/orderValidation'
 import { useState, useEffect, useRef } from 'react'
@@ -107,21 +108,29 @@ export default function POEdit() {
   const [entryError, setEntryError] = useState<{ key: string; message: string } | null>(null)
   const [initializedFor, setInitializedFor] = useState<string | null>(null)
   const initialized = initializedFor === id
+  const [refreshingPO, setRefreshingPO] = useState(false)
+  const activePO = useRef({ id, generation: 0 })
+  if (activePO.current.id !== id) activePO.current = { id, generation: activePO.current.generation + 1 }
+  const refreshSequence = useRef(0)
 
   const { data: po, isLoading: poLoading, isError: poError, isFetching: poFetching, refetch: refetchPO } = useQuery({
     queryKey: ['po', id, 'edit'],
     queryFn: () => fetchPO(id!),
   })
 
-  const { data: lineState, isLoading: linesLoading, isError: linesError, isFetching: linesFetching, refetch: refetchLines } = useQuery({
+  const { data: lineState, isLoading: linesLoading, isError: linesError, error: lineError, isFetching: linesFetching } = useQuery({
     queryKey: ['po_line_state', id, 'edit', po?.updated_at],
     queryFn: async ({ signal }) => {
       const result = await fetchCompletePOLines(id!, po!.updated_at, signal)
       return { ...result, items: result.items.map(line => ({ ...line, unit_price: priceForEdit(line.unit_price) })) }
     },
-    enabled: !!id && !!po,
+    enabled: query => !!id && !!po && !refreshingPO && !isPOConflict(query.state.error),
+    retry: (count, error) => retryUnlessPOConflict(count, error, queryClient.getDefaultOptions().queries?.retry),
+    refetchOnMount: query => !isPOConflict(query.state.error),
+    refetchOnWindowFocus: query => !isPOConflict(query.state.error),
+    refetchOnReconnect: query => !isPOConflict(query.state.error),
   })
-  const readReady = !!po && po.id === id && !!lineState && lineState.po_updated_at === po.updated_at && !poError && !linesError && !poFetching && !linesFetching
+  const readReady = !!po && po.id === id && !!lineState && lineState.po_updated_at === po.updated_at && !poError && !linesError && !poFetching && !linesFetching && !refreshingPO
   const existingLines = lineState?.items
   const historicalLineIds = new Set((existingLines ?? []).filter(line => line.has_delivery_history).map(line => line.id))
   const deliveredByLine = Object.fromEntries((existingLines ?? []).map(line => [line.id, line.delivered_quantity]))
@@ -152,6 +161,7 @@ export default function POEdit() {
   }, [id, po, lineState, existingLines, initialized, readReady])
 
   const mutation = useMutation({
+    retry: false,
     mutationFn: () => {
       if (!readReady || !initialized || !lineState || lineState.po_updated_at !== initialVersion) throw new Error('Data PO berubah atau belum lengkap. Muat ulang sebelum menyimpan.')
       if (lineItems.some(line => !line._deleted && line.quantity < (deliveredByLine[line.id ?? ''] ?? 0))) throw new Error('Jumlah tidak boleh kurang dari jumlah terkirim aktif.')
@@ -168,6 +178,34 @@ export default function POEdit() {
       navigate(`/athel/po/${id}`)
     },
   })
+
+  useEffect(() => {
+    refreshSequence.current++; setRefreshingPO(false); mutation.reset()
+    return () => { void queryClient.cancelQueries({ queryKey: ['po_line_state', id, 'edit'] }) }
+  }, [id, queryClient, mutation.reset])
+
+  // Read the new header first; never refetch lines with the rejected version.
+  const refreshPO = async () => {
+    const target = id!
+    const generation = activePO.current.generation
+    const sequence = ++refreshSequence.current
+    const isCurrent = () => activePO.current.id === target && activePO.current.generation === generation && refreshSequence.current === sequence
+    setRefreshingPO(true)
+    try {
+      await queryClient.cancelQueries({ queryKey: ['po_line_state', target, 'edit'] })
+      const header = await refetchPO()
+      if (header.isError || !header.data || header.data.id !== target || !isCurrent()) return
+      await queryClient.fetchQuery({
+        queryKey: ['po_line_state', target, 'edit', header.data.updated_at],
+        queryFn: async ({ signal }) => {
+          const result = await fetchCompletePOLines(target, header.data!.updated_at, signal)
+          return { ...result, items: result.items.map(line => ({ ...line, unit_price: priceForEdit(line.unit_price) })) }
+        }, retry: false,
+      })
+      if (isCurrent()) { setInitializedFor(null); mutation.reset() }
+    } catch { /* The authoritative query retains its error; no edit is submitted. */ }
+    finally { if (isCurrent()) setRefreshingPO(false) }
+  }
 
   // Get selected customer's pricing tier
   const selectedCustomer = customers?.find(c => c.id === customerId)
@@ -252,8 +290,8 @@ export default function POEdit() {
 
   if (poError || linesError || !po || !existingLines || !lineState || (initialized && lineState.po_updated_at !== initialVersion)) {
     return <div className="min-h-screen bg-gray-50"><AthelNav />{recovery}<div role="alert" className="p-8 text-red-600">
-      <p>Data PO atau riwayat pengiriman belum dapat dimuat. Pengubahan belum tersedia.</p>
-      <button type="button" onClick={() => { setInitializedFor(null); refetchPO(); refetchLines() }} className="mt-2 underline">Coba lagi</button>
+      <p>{isPOConflict(lineError) ? 'PO berubah. Muat ulang sebelum melanjutkan.' : 'Data PO atau riwayat pengiriman belum dapat dimuat. Pengubahan belum tersedia.'}</p>
+      <button type="button" onClick={() => void refreshPO()} disabled={refreshingPO} className="mt-2 underline">Coba lagi</button>
     </div></div>
   }
   if (!['confirm', 'in_progress'].includes(po.status)) {
@@ -416,7 +454,7 @@ export default function POEdit() {
           <button
             type="button"
             onClick={handleSave}
-            disabled={mutation.isPending || !readReady || !initialized || !customers || !products || customersError || productsError || customersFetching || productsFetching}
+            disabled={mutation.isPending || isPOConflict(mutation.error) || !readReady || !initialized || !customers || !products || customersError || productsError || customersFetching || productsFetching}
             className="px-5 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 transition-colors"
           >
             {mutation.isPending ? 'Menyimpan...' : 'Simpan Perubahan'}
@@ -424,9 +462,10 @@ export default function POEdit() {
         </div>
 
         {mutation.isError && (
-          <p className="text-red-500 text-sm text-right">
+          <div role="alert" className="text-red-500 text-sm text-right">
             {(mutation.error as Error).message}
-          </p>
+            {isPOConflict(mutation.error) && <button type="button" onClick={() => void refreshPO()} disabled={refreshingPO} className="ml-2 underline">Muat ulang PO</button>}
+          </div>
         )}
       </div>
     </div>
