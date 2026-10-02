@@ -1,3 +1,4 @@
+import { compressVisitPhoto } from '../../lib/visitPhoto'
 import { PRICE_TIERS, resolveCatalogPrice, resolvePromotionPrice, formatCatalogPrice, formatLineAmount } from '../../lib/catalogPricing'
 import { fetchSalesOrderPage } from '../../lib/reads/orders'
 import { fetchSalesOrderLines, fetchCompleteRows } from '../../lib/reads/detailReads'
@@ -78,45 +79,6 @@ const ORDER_STATUS_STYLES: Record<string, string> = {
   cancelled: 'bg-gray-100 text-gray-700',
 }
 
-async function compressImage(blob: Blob): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    const url = URL.createObjectURL(blob)
-    img.onload = () => {
-      try {
-        URL.revokeObjectURL(url)
-        const MAX_SIZE = 1280
-        let { width, height } = img
-        if (width > height && width > MAX_SIZE) {
-          height = Math.round((height * MAX_SIZE) / width)
-          width = MAX_SIZE
-        } else if (height > width && height > MAX_SIZE) {
-          width = Math.round((width * MAX_SIZE) / height)
-          height = MAX_SIZE
-        } else if (width > MAX_SIZE) {
-          height = Math.round((height * MAX_SIZE) / width)
-          width = MAX_SIZE
-        }
-        const canvas = document.createElement('canvas')
-        canvas.width = width
-        canvas.height = height
-        const ctx = canvas.getContext('2d')
-        if (!ctx) return reject(new Error('Canvas tidak didukung'))
-        ctx.drawImage(img, 0, 0, width, height)
-        canvas.toBlob(
-          result => {
-            if (result) resolve(result)
-            else reject(new Error('Kompresi gagal'))
-          },
-          'image/webp',
-          0.8
-        )
-      } catch (error) { reject(error) }
-    }
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Foto gagal diproses')) }
-    img.src = url
-  })
-}
 
 class ScheduleCustomerUnavailableError extends Error {}
 
@@ -270,7 +232,7 @@ function LiveCamera({ onCapture }: { onCapture: (blob: Blob, preview: string) =>
       const raw = await new Promise<Blob>((resolve, reject) => {
         canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Foto tidak tersedia')), 'image/webp', 0.9)
       })
-      const compressed = await compressImage(raw)
+      const compressed = await compressVisitPhoto(raw)
       if (!mounted.current || generation.current !== request) return
       const preview = URL.createObjectURL(compressed)
       stopCamera()

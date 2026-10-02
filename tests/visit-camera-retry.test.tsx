@@ -108,3 +108,51 @@ test.each(['drawImage', 'toBlob'])('a thrown compression %s exits busy state and
   fireEvent.click(screen.getByRole('button', { name: 'Ambil foto' }))
   expect(await screen.findByText('Foto berhasil diambil')).toBeTruthy()
 })
+
+
+test('a browser returning PNG for requested WebP captures a JPEG photo for check-in', async () => {
+  vi.mocked(HTMLCanvasElement.prototype.toBlob).mockImplementation((callback, type) => {
+    callback(new Blob(['photo'], { type: type === 'image/jpeg' ? 'image/jpeg' : 'image/png' }))
+  })
+  state.checkIn.mockRejectedValue(new Error('Keep preview for inspection'))
+  mount(); await openCamera()
+  fireEvent.click(screen.getByRole('button', { name: 'Ambil foto' }))
+  await screen.findByText('Foto berhasil diambil')
+  fireEvent.click(screen.getByRole('button', { name: /Konfirmasi Check-in/ }))
+  await waitFor(() => expect(state.checkIn).toHaveBeenCalledTimes(1))
+  expect(state.checkIn.mock.calls[0][0].photo_blob.type).toBe('image/jpeg')
+})
+
+
+test('cancelling while compression is pending never publishes the late photo', async () => {
+  let finishCompression!: BlobCallback
+  vi.mocked(HTMLCanvasElement.prototype.toBlob)
+    .mockImplementationOnce(callback => callback(new Blob(['raw'], { type: 'image/png' })))
+    .mockImplementationOnce(callback => { finishCompression = callback })
+  mount(); await openCamera()
+  fireEvent.click(screen.getByRole('button', { name: 'Ambil foto' }))
+  await waitFor(() => expect(finishCompression).toBeTypeOf('function'))
+  fireEvent.click(screen.getByRole('button', { name: 'Batal' }))
+  await act(async () => finishCompression(new Blob(['photo'], { type: 'image/webp' })))
+  expect(screen.queryByAltText('Foto check-in')).toBeNull()
+  expect(screen.queryByText('Foto berhasil diambil')).toBeNull()
+  expect(stop).toHaveBeenCalledTimes(1)
+  expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:test-photo')
+  expect(state.checkIn).not.toHaveBeenCalled()
+})
+
+test('repeated capture while compression is pending processes only one photo', async () => {
+  let finishCompression!: BlobCallback
+  vi.mocked(HTMLCanvasElement.prototype.toBlob)
+    .mockImplementationOnce(callback => callback(new Blob(['raw'], { type: 'image/png' })))
+    .mockImplementationOnce(callback => { finishCompression = callback })
+  mount(); await openCamera()
+  const capture = screen.getByRole('button', { name: 'Ambil foto' })
+  fireEvent.click(capture)
+  await waitFor(() => expect(finishCompression).toBeTypeOf('function'))
+  fireEvent.click(capture)
+  expect(HTMLCanvasElement.prototype.toBlob).toHaveBeenCalledTimes(2)
+  await act(async () => finishCompression(new Blob(['photo'], { type: 'image/webp' })))
+  expect(await screen.findByText('Foto berhasil diambil')).toBeTruthy()
+  expect(stop).toHaveBeenCalledTimes(1)
+})
