@@ -22,7 +22,7 @@ test('delivery history locks customer and identity while quantity respects activ
  expect((screen.getByDisplayValue('Delivered product') as HTMLInputElement).disabled).toBe(true)
  expect((screen.getByDisplayValue('SKU') as HTMLInputElement).disabled).toBe(true)
  const numbers=screen.getAllByRole('spinbutton') as HTMLInputElement[];expect(numbers[0].min).toBe('2');expect(numbers[0].disabled).toBe(false);expect(numbers[1].disabled).toBe(true)
- expect((screen.getByRole('button',{name:'×'}) as HTMLButtonElement).disabled).toBe(true)
+ expect((screen.getByRole('button',{name:'Hapus Delivered product'}) as HTMLButtonElement).disabled).toBe(true)
  expect(screen.getByText(/Riwayat pengiriman mengunci/)).toBeTruthy()
 })
 test('voided history still protects identities but does not impose active delivered quantity',async()=>{
@@ -35,7 +35,7 @@ test('PO expiry has customer expiry wording in both list layouts',()=>{render(<P
 
 test('no delivery history keeps valid draft fields editable and expiry optional',async()=>{
  const original=state.history;state.history=[]
- try { render(<POEdit/>);await screen.findByDisplayValue('Delivered product');expect((screen.getByRole('combobox', { name: 'Pelanggan' }) as HTMLInputElement).disabled).toBe(false);expect((screen.getByDisplayValue('Delivered product') as HTMLInputElement).disabled).toBe(false);expect((screen.getAllByRole('spinbutton')[1] as HTMLInputElement).disabled).toBe(false);expect((screen.getByRole('button',{name:'×'}) as HTMLButtonElement).disabled).toBe(false);expect((screen.getByLabelText('Tanggal Kedaluwarsa PO (opsional)') as HTMLInputElement).required).toBe(false) } finally {state.history=original}
+ try { render(<POEdit/>);await screen.findByDisplayValue('Delivered product');expect((screen.getByRole('combobox', { name: 'Pelanggan' }) as HTMLInputElement).disabled).toBe(false);expect((screen.getByDisplayValue('Delivered product') as HTMLInputElement).disabled).toBe(false);expect((screen.getAllByRole('spinbutton')[1] as HTMLInputElement).disabled).toBe(false);expect((screen.getByRole('button',{name:'Hapus Delivered product'}) as HTMLButtonElement).disabled).toBe(false);expect((screen.getByLabelText('Tanggal Kedaluwarsa PO (opsional)') as HTMLInputElement).required).toBe(false) } finally {state.history=original}
 })
 
 for(const view of ['complete','error'])test(`uncertain committed edit can still reconcile on ${view} view`,async()=>{
@@ -54,8 +54,7 @@ test('edit line fields stack on phones while preserving the desktop column layou
   const grid = field.parentElement!
   // Layout contracts only: jsdom cannot prove screen geometry.
   expect(grid.classList.contains('grid-cols-1')).toBe(true)
-  expect(grid.classList.contains('sm:grid-cols-12')).toBe(true)
-  expect(field.classList.contains('sm:col-span-2')).toBe(true)
+  expect([...grid.classList].some(name => name.startsWith('sm:grid-cols-['))).toBe(true)
   expect(field.classList.contains('min-w-0')).toBe(true)
   for (const input of grid.querySelectorAll('input')) expect(input.classList.contains('min-w-0')).toBe(true)
 })

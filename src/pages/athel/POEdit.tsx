@@ -1,5 +1,6 @@
 import { POCustomerLookup, POProductLookup } from '../../components/POLookup'
-import { resolveCatalogPrice, formatLineAmount } from '../../lib/catalogPricing'
+import { POLineItemsHeader, POLineRow } from '../../components/POLineItems'
+import { resolveCatalogPrice } from '../../lib/catalogPricing'
 import { fetchCompletePOLines, fetchCompleteRows, priceForEdit } from '../../lib/reads/detailReads'
 import TransactionRecovery from '../../components/TransactionRecovery'
 import { createTransactionSender, useTransactionSender } from '../../lib/orderTransactions'
@@ -101,7 +102,7 @@ export default function POEdit() {
   const quantityInputs = useRef<Record<string, HTMLInputElement | null>>({})
   const nameInputs = useRef<Record<string, HTMLInputElement | null>>({})
   const priceInputs = useRef<Record<string, HTMLInputElement | null>>({})
-  const pendingFocus = useRef<string | null>(null)
+  const pendingFocus = useRef<{ key: string; field: 'quantity' | 'name' } | null>(null)
   const [entryNotice, setEntryNotice] = useState('')
   const [entryError, setEntryError] = useState<{ key: string; message: string } | null>(null)
   const [initializedFor, setInitializedFor] = useState<string | null>(null)
@@ -176,30 +177,15 @@ export default function POEdit() {
     setLineItems(prev => prev.map((item, i) => i === index ? { ...item, [field]: value } : item))
   }
 
-  const fillFromProduct = (index: number, product: Product) => {
-    const sku = product.sku.trim().toLocaleLowerCase()
-    const existing = lineItems.find((line, i) => i !== index && (!line._deleted && (sku && line.sku.trim().toLocaleLowerCase() === sku)))
-    if (existing) {
-      setEntryNotice(`${product.sku} sudah ada. Jumlah dan harga tetap; periksa barang yang difokuskan.`)
-      focusQuantity(existing._key!)
-      return
-    }
+  const addLine = () => {
+    const key = crypto.randomUUID()
+    pendingFocus.current = { key, field: 'name' }
     setEntryError(null); setEntryNotice('')
-    pendingFocus.current = lineItems[index]._key!
-    const price = resolveCatalogPrice(product, pricingTier) ?? Number.NaN
-    setLineItems(prev => prev.map((item, i) =>
-      i === index
-        ? { ...item, product_name: product.name, sku: product.sku, unit_price: price }
-        : item
-    ))
+    setLineItems(prev => [...prev, { _key: key, id: null, product_name: '', sku: '', quantity: 1, unit_price: Number.NaN }])
   }
 
-  const addLine = () => setLineItems(prev => [
-    ...prev,
-    { _key: crypto.randomUUID(), id: null, product_name: '', sku: '', quantity: 1, unit_price: Number.NaN }
-  ])
-
   const removeLine = (index: number) => {
+    if (lineItems[index]?.id && historicalLineIds.has(lineItems[index].id!)) return
     setLineItems(prev => prev.map((item, i) => {
       if (i !== index) return item
       return item.id ? { ...item, _deleted: true } : null
@@ -209,7 +195,7 @@ export default function POEdit() {
   const focusQuantity = (key: string) => {
     const input = quantityInputs.current[key]
     if (input) { input.focus(); input.select(); input.scrollIntoView?.({ block: 'nearest' }) }
-    else pendingFocus.current = key
+    else pendingFocus.current = { key, field: 'quantity' }
   }
   const addProduct = (product: Product) => {
     const sku = product.sku.trim().toLocaleLowerCase()
@@ -220,13 +206,10 @@ export default function POEdit() {
       return
     }
     setEntryNotice(''); setEntryError(null)
-    const pristine = lineItems.find(line => !line._deleted && !line.id && !line.product_name && !line.sku && line.quantity === 1 && Number.isNaN(line.unit_price))
-    const key = pristine?._key ?? crypto.randomUUID()
-    pendingFocus.current = key
-    const next = { id: null, _key: key, product_name: product.name, sku: product.sku, quantity: 1, unit_price: resolveCatalogPrice(product, pricingTier) ?? Number.NaN }
-    setLineItems(prev => pristine ? prev.map(line => line._key === key ? next : line) : [...prev, next])
+    setLineItems(prev => [...prev, { id: null, _key: crypto.randomUUID(), product_name: product.name, sku: product.sku, quantity: 1, unit_price: resolveCatalogPrice(product, pricingTier) ?? Number.NaN }])
+    productSearch.current?.focus()
   }
-  const addAndNext = (item: LineItemRow) => {
+  const validateLine = (item: LineItemRow) => {
     try {
       validateOrderLines([item])
       if (item.quantity < (deliveredByLine[item.id ?? ''] ?? 0)) throw new Error('Jumlah tidak boleh kurang dari jumlah terkirim aktif.')
@@ -235,10 +218,9 @@ export default function POEdit() {
       if (!item.product_name.trim()) nameInputs.current[item._key!]?.focus()
       else if (!Number.isSafeInteger(item.quantity) || item.quantity <= 0 || item.quantity < (deliveredByLine[item.id ?? ''] ?? 0)) quantityInputs.current[item._key!]?.focus()
       else priceInputs.current[item._key!]?.focus()
-      return
+      return false
     }
-    setEntryError(null); setEntryNotice('')
-    productSearch.current?.focus()
+    return true
   }
 
   const visibleLines = lineItems.filter(l => !l._deleted)
@@ -246,8 +228,13 @@ export default function POEdit() {
 
   const handleSave = () => {
     if (!customerId) return alert('Pilih pelanggan terlebih dahulu.')
-    if (visibleLines.some(l => !l.product_name.trim())) return alert('Semua barang harus memiliki nama produk.')
-    if (visibleLines.length === 0) return alert('PO harus memiliki minimal satu barang.')
+    if (visibleLines.length === 0) {
+      alert('PO harus memiliki minimal satu barang.')
+      productSearch.current?.focus()
+      return
+    }
+    if (!visibleLines.every(validateLine)) return
+    setEntryError(null)
     mutation.mutate()
   }
 
@@ -368,112 +355,38 @@ export default function POEdit() {
             <label className="block text-sm font-medium text-gray-700 mb-1">Cari SKU atau nama barang</label>
             <POProductLookup products={products ?? []} inputRef={productSearch} onSelect={addProduct}
               disabled={!readReady || !initialized || !selectedCustomer || !products || !customers || customersError || productsError || customersFetching || productsFetching || mutation.isPending} />
-            <p className="text-xs text-gray-500 mt-1">Ketik SKU tepat lalu Enter, atau gunakan ↑ ↓ dan Enter untuk memilih. Isi Qty dan harga, lalu Tambah & berikutnya.</p>
+            <p className="text-xs text-gray-500 mt-1">Ketik SKU tepat lalu Enter, atau klik hasil pencarian untuk menambahkan barang. Ulangi pencarian untuk barang berikutnya.</p>
             {entryNotice && <p role="status" className="text-xs text-blue-700 mt-2">{entryNotice}</p>}
           </div>
 
-          <div className="space-y-4">
-            {visibleLines.map(item => {
-              const realIndex = lineItems.indexOf(item)
-              const historical = !!item.id && historicalLineIds.has(item.id)
-              const minimumQuantity = Math.max(1, deliveredByLine[item.id ?? ''] ?? 0)
-              return (
-                <div key={item._key} data-po-line={item._key} className="border border-gray-100 rounded-lg p-4 space-y-3">
-                  <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 items-end">
-                    <div className="min-w-0">
-                      <label className="block text-xs text-gray-400 mb-1">
-                        Ganti dengan barang lain (opsional)
-                      </label>
-                      {products && !historical && (
-                        <POProductLookup
-                          products={products}
-                        label="Ganti barang berdasarkan SKU atau nama"
-                          disabled={!readReady || !selectedCustomer || customersFetching || productsFetching || customersError || productsError || mutation.isPending}
-                          onSelect={p => fillFromProduct(realIndex, p)}
-                        />
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      disabled={historical}
-                      title={historical ? 'Barang dengan riwayat pengiriman tidak dapat dihapus.' : undefined}
-                      onClick={() => removeLine(realIndex)}
-                      className="w-8 text-gray-300 hover:text-red-400 text-xl text-center pb-1"
-                    >
-                      ×
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-                    <div className="min-w-0 sm:col-span-2">
-                      <label className="block text-xs text-gray-400 mb-1">SKU</label>
-                      <input
-                        type="text"
-                        disabled={historical}
-                        value={item.sku}
-                        onChange={e => updateLine(realIndex, 'sku', e.target.value)}
-                        className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-2 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase"
-                      />
-                    </div>
-                    <div className="min-w-0 sm:col-span-4">
-                      <label className="block text-xs text-gray-400 mb-1">Nama Produk</label>
-                      <input
-                        type="text"
-                        disabled={historical}
-                        ref={node => { nameInputs.current[item._key!] = node }}
-                        value={item.product_name}
-                        onChange={e => updateLine(realIndex, 'product_name', e.target.value)}
-                        className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div className="min-w-0 sm:col-span-2">
-                      <label className="block text-xs text-gray-400 mb-1">Qty</label>
-                      <input
-                        type="number" min={minimumQuantity} step={1} inputMode="numeric"
-                        aria-label={`Qty ${item.product_name || 'barang baru'}`}
-                        ref={node => {
-                          quantityInputs.current[item._key!] = node
-                          if (node && pendingFocus.current === item._key) { node.focus(); node.select(); pendingFocus.current = null }
-                        }}
-                        value={Number.isNaN(item.quantity) ? '' : item.quantity}
-                        onChange={e => updateLine(realIndex, 'quantity', e.target.valueAsNumber)}
-                        className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div className="min-w-0 sm:col-span-4">
-                      <label className="block text-xs text-gray-400 mb-1">
-                        Harga Satuan (Rp)
-                        <span className="text-blue-400 ml-1">{historical ? '— terkunci' : '— dapat diubah'}</span>
-                      </label>
-                      <input
-                        type="number" min={0} step="0.01"
-                        disabled={historical}
-                        aria-label="Harga satuan"
-                        inputMode="decimal"
-                        ref={node => { priceInputs.current[item._key!] = node }}
-                        required
-                        placeholder="Harga belum diisi"
-                        value={Number.isNaN(item.unit_price) ? '' : item.unit_price}
-                        onChange={e => updateLine(realIndex, 'unit_price', e.target.valueAsNumber)}
-                        className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                  </div>
-
-                  {entryError?.key === item._key && <p role="alert" className="text-xs text-red-700">{entryError.message}</p>}
-                  <button type="button" onClick={() => addAndNext(item)} disabled={!readReady || mutation.isPending || productsFetching || customersFetching || productsError || customersError}
-                    className="w-full sm:w-auto rounded-lg border border-blue-200 px-4 py-2.5 text-sm font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50">Tambah & berikutnya</button>
-                  {historical && <p className="text-xs text-gray-500">Riwayat pengiriman mengunci produk, SKU, harga, dan penghapusan barang. Jumlah minimal {minimumQuantity} (terkirim aktif: {deliveredByLine[item.id!] ?? 0}).</p>}
-                  {Number.isNaN(item.unit_price) && <p className="text-xs text-amber-700">Isi harga satuan sebelum menyimpan. Nol hanya untuk barang gratis.</p>}
-                  <div className="text-right text-xs text-gray-400 [overflow-wrap:anywhere]">
-                    Subtotal: <span className="text-gray-700 font-medium">
-                      {formatLineAmount(item.quantity, item.unit_price)}
-                    </span>
-                  </div>
-                </div>
+          {visibleLines.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-500">Belum ada barang. Cari SKU atau nama untuk menambahkan barang.</p>
+          ) : (
+            <div className="min-w-0 space-y-2">
+              <POLineItemsHeader />
+              {visibleLines.map(item => {
+                const realIndex = lineItems.indexOf(item)
+                const historical = !!item.id && historicalLineIds.has(item.id)
+                const minimumQuantity = Math.max(1, deliveredByLine[item.id ?? ''] ?? 0)
+                return (
+                <POLineRow key={item._key} lineKey={item._key!} item={item}
+                  onChange={(field, value) => updateLine(realIndex, field, value)}
+                  onRemove={() => removeLine(realIndex)}
+                  historical={historical} minimumQuantity={minimumQuantity} deliveredQuantity={deliveredByLine[item.id ?? ''] ?? 0}
+                  nameRef={node => {
+                    nameInputs.current[item._key!] = node
+                    if (node && pendingFocus.current?.key === item._key && pendingFocus.current.field === 'name') { node.focus(); pendingFocus.current = null }
+                  }}
+                  quantityRef={node => {
+                    quantityInputs.current[item._key!] = node
+                    if (node && pendingFocus.current?.key === item._key && pendingFocus.current.field === 'quantity') { node.focus(); node.select(); pendingFocus.current = null }
+                  }}
+                  priceRef={node => { priceInputs.current[item._key!] = node }}
+                  error={entryError?.key === item._key ? entryError.message : undefined} />
               )
-            })}
-          </div>
+              })}
+            </div>
+          )}
 
           <div className="flex flex-wrap items-center justify-between gap-3 mt-4 pt-4 border-t border-gray-100">
             <button
@@ -481,7 +394,7 @@ export default function POEdit() {
               onClick={addLine}
               className="text-blue-600 hover:text-blue-700 text-sm font-medium"
             >
-              + Tambah Barang
+              + Tambah barang manual
             </button>
             <div className="min-w-0 text-sm text-gray-500 [overflow-wrap:anywhere]">
               Total: <span className="text-gray-900 font-semibold text-base ml-1">

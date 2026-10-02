@@ -34,6 +34,7 @@ test.each(['2026-08-31', '2024-02-29'])('manual PO retains selected business dat
   fireEvent.change(screen.getByRole('combobox', { name: 'Pelanggan' }), { target: { value: 'Dummy' } })
   fireEvent.click(screen.getByRole('option', { name: 'Dummy customer' }))
   fireEvent.change(screen.getByPlaceholderText('mis. PO-2024-001'), { target: { value: 'DUMMY-DATED-PO' } })
+  fireEvent.click(screen.getByRole('button', { name: '+ Tambah barang manual' }))
   fireEvent.change(screen.getByPlaceholderText('Nama produk'), { target: { value: 'Dummy product' } })
   fireEvent.change(screen.getByLabelText('Harga satuan'), { target: { value: '0' } })
   expect(dateInput.value).toBe(orderDate)

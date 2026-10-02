@@ -37,20 +37,27 @@ function selectCustomer(name: string) {
  fireEvent.change(screen.getByRole('combobox', { name: 'Pelanggan' }), { target: { value: name } })
  fireEvent.click(screen.getByRole('option', { name }))
 }
-function selectProduct(kind: 'po' | 'visit', replacement = false) {
- const input = kind === 'po' ? screen.getByRole('combobox', { name: replacement ? 'Ganti barang berdasarkan SKU atau nama' : 'Cari SKU atau nama barang' }) : screen.getByPlaceholderText('Cari SKU atau nama barang...')
+function selectProduct(kind: 'po' | 'visit') {
+ const input = kind === 'po' ? screen.getByRole('combobox', { name: 'Cari SKU atau nama barang' }) : screen.getByPlaceholderText('Cari SKU atau nama barang...')
  fireEvent.change(input, { target: { value: 'Unknown' } })
  if (kind === 'po') fireEvent.click(screen.getByRole('option', { name: /Unknown-price product/ }))
  else fireEvent.mouseDown(screen.getByRole('button', { name: /Unknown-price product/ }))
 }
-for (const kind of ['po','visit'] as const) test(`${kind}: missing tier requires an explicit price; zero is valid and reselecting cannot retain an old manual price`, async () => {
+for (const kind of ['po','visit'] as const) test(`${kind}: missing tier requires an explicit price; zero is valid and a newly selected line does not inherit manual price`, async () => {
  mount(kind); selectProduct(kind)
- const price = screen.getByLabelText('Harga satuan') as HTMLInputElement
+ let price = screen.getByLabelText('Harga satuan') as HTMLInputElement
  expect(price.value).toBe('')
  const save = screen.getByRole('button', { name: kind === 'po' ? 'Simpan PO' : 'Kirim Pesanan' })
  fireEvent.click(save)
  await screen.findByText(/Harga wajib diisi/); expect(state.send).not.toHaveBeenCalled()
- fireEvent.change(price, { target: { value: '40' } }); selectProduct(kind, true); expect(price.value).toBe('')
+ fireEvent.change(price, { target: { value: '40' } })
+ if (kind === 'po') {
+  selectProduct(kind); expect(price.value).toBe('40') // Duplicate lookup preserves the existing draft price.
+  fireEvent.click(screen.getByRole('button', { name: 'Hapus Unknown-price product' }))
+ }
+ selectProduct(kind)
+ price = screen.getByLabelText('Harga satuan') as HTMLInputElement
+ expect(price.value).toBe('')
  fireEvent.change(price, { target: { value: '0' } }); fireEvent.click(save)
  await waitFor(() => expect(state.send).toHaveBeenCalled())
  expect(state.send.mock.calls[0][1].items[0].unit_price).toBe(0)
@@ -67,7 +74,8 @@ test('promotion selection is disabled without its explicit matching tier, even w
 })
 
 test('new manual line starts with no implied free price', async () => {
- mount('po'); expect((screen.getByLabelText('Harga satuan') as HTMLInputElement).value).toBe('')
+ mount('po'); fireEvent.click(screen.getByRole('button', { name: '+ Tambah barang manual' }))
+ expect((screen.getByLabelText('Harga satuan') as HTMLInputElement).value).toBe('')
  fireEvent.change(screen.getByPlaceholderText('Nama produk'), { target: { value: 'Manual' } })
  fireEvent.click(screen.getByRole('button', { name: 'Simpan PO' }))
  await screen.findByText(/Harga wajib diisi/); expect(state.send).not.toHaveBeenCalled()

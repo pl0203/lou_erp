@@ -47,6 +47,7 @@ function selectCustomer(name: string) {
 function dirtyPO() {
   selectCustomer('Customer A')
   fireEvent.change(screen.getByPlaceholderText('mis. PO-2024-001'), { target: { value: 'PO-KEEP' } })
+  fireEvent.click(screen.getByRole('button', { name: '+ Tambah barang manual' }))
   fireEvent.change(screen.getByPlaceholderText('Nama produk'), { target: { value: 'Barang A' } })
   fireEvent.change(screen.getByLabelText('Harga satuan'), { target: { value: '0' } })
 }
@@ -62,7 +63,7 @@ test('changing customer keeps original items until explicit discard and can be c
   selectCustomer('Customer B')
   fireEvent.click(screen.getByRole('button', { name: 'Buang perubahan' }))
   expect((screen.getByRole('combobox', { name: 'Pelanggan' }) as HTMLInputElement).value).toBe('Customer B')
-  expect((screen.getByPlaceholderText('Nama produk') as HTMLInputElement).value).toBe('')
+  expect(screen.queryByPlaceholderText('Nama produk')).toBeNull()
   expect((screen.getByPlaceholderText('mis. PO-2024-001') as HTMLInputElement).value).toBe('PO-KEEP')
 })
 
@@ -171,6 +172,7 @@ test.each(['navigate', 'cancel'])('a visit order committed while a %s dialog is 
 
 test('pristine missing price stays clean; entering zero is a draft change and clearing restores clean', () => {
  mount()
+ fireEvent.click(screen.getByRole('button', { name: '+ Tambah barang manual' }))
  const price = screen.getByLabelText('Harga satuan')
  expect((price as HTMLInputElement).value).toBe('')
  const clean = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(clean)
@@ -185,11 +187,11 @@ test('pristine missing price stays clean; entering zero is a draft change and cl
 
 test('new PO line fields stack on phones without narrowing SKU to one desktop column', () => {
   mount()
+  fireEvent.click(screen.getByRole('button', { name: '+ Tambah barang manual' }))
   const sku = screen.getByText('SKU', { selector: 'label' }).parentElement!
   const grid = sku.parentElement!
   expect(grid.classList.contains('grid-cols-1')).toBe(true)
-  expect(grid.classList.contains('sm:grid-cols-12')).toBe(true)
-  expect(sku.classList.contains('sm:col-span-2')).toBe(true)
+  expect([...grid.classList].some(name => name.startsWith('sm:grid-cols-['))).toBe(true)
   expect(sku.classList.contains('min-w-0')).toBe(true)
   for (const input of grid.querySelectorAll('input')) expect(input.classList.contains('min-w-0')).toBe(true)
 })
