@@ -12,7 +12,14 @@ test('Vercel serves the SPA entry point for fresh client-side deep links', () =>
 })
 
 test('SPA routing preserves database preview deployment and backend guard configuration', () => {
-  expect(config.git).toEqual({ deploymentEnabled: { 'fix/pilot-database': true, 'fix/pilot-scale-sql': false } })
+  expect(config.git).toEqual({ deploymentEnabled: { 'fix/pilot-database': true, 'fix/pilot-scale-sql': false, 'ci/customer-categories-postgres': false } })
   const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
   expect(pkg.scripts.build).toBe('node scripts/verify-preview-backend.mjs && vite build')
+})
+
+test('the category checkpoint has an exact disabled flag without an overlapping enabled rule', () => {
+  const flags = config.git.deploymentEnabled
+  expect(flags['ci/customer-categories-postgres']).toBe(false)
+  expect(Object.entries(flags).filter(([, enabled]) => enabled)).toEqual([['fix/pilot-database', true]])
+  expect(Object.keys(flags).some(rule => /[*?\[\]{}]/.test(rule))).toBe(false)
 })

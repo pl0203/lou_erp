@@ -32,12 +32,31 @@ jobs:
       VITE_SUPABASE_ANON_KEY: synthetic-test-key
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Verify immutable source checkpoint
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$EXPECTED_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Expected source SHA must be 40 lowercase hexadecimal characters" >&2
+            exit 1
+          fi
+          actual_sha="$(git rev-parse HEAD)"
+          if [[ "$actual_sha" != "$EXPECTED_SOURCE_SHA" ]]; then
+            echo "::error::Checked-out HEAD does not match the expected source SHA" >&2
+            exit 1
+          fi
+          tree_sha="$(git rev-parse 'HEAD^{tree}')"
+          printf 'PILOT_CI_COMMIT_SHA=%s\n' "$actual_sha"
+          printf 'PILOT_CI_TREE_SHA=%s\n' "$tree_sha"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm test
+      - run: npm test -- --maxWorkers=1
       - run: npm run typecheck
       - run: npm run build
       - name: Install official PostgreSQL client
