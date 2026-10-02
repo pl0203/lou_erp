@@ -37,9 +37,9 @@ function StatCard({
   helper: string
 }) {
   return (
-    <div className="rounded-2xl border border-blue-200 bg-white p-5 shadow-sm">
+    <div className="min-w-0 rounded-2xl border border-blue-200 bg-white p-4 shadow-sm sm:p-5">
       <p className="text-sm text-gray-500">{label}</p>
-      <p className="mt-2 text-3xl font-semibold tracking-tight text-gray-900">{value}</p>
+      <p className="mt-2 text-2xl font-semibold tracking-tight text-gray-900 [overflow-wrap:anywhere] sm:text-3xl">{value}</p>
       <p className="mt-2 text-sm text-gray-500">{helper}</p>
     </div>
   )
@@ -55,11 +55,12 @@ function DataTableCard({
   children: React.ReactNode
 }) {
   return (
-    <div className="min-w-0 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+    <div className="min-w-0 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
       <div className="mb-4">
         <h3 className="text-base font-semibold text-gray-900">{title}</h3>
         <p className="mt-1 text-sm text-gray-500">{subtitle}</p>
       </div>
+      <p className="mb-2 text-xs text-gray-500">Geser tabel untuk melihat semua kolom.</p>
       {children}
     </div>
   )
@@ -88,17 +89,17 @@ export default function AthelDashboard() {
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <label className="rounded-xl border border-blue-200 bg-white px-4 py-3 shadow-sm">
+            <label className="min-w-0 rounded-xl border border-blue-200 bg-white px-4 py-3 shadow-sm">
               <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400">Tanggal awal</span>
               <input
                 type="date"
                 value={startDate}
                 max={endDate}
                 onChange={e => setStartDate(e.target.value)}
-                className="w-full bg-transparent text-sm text-gray-700 outline-none"
+                className="min-w-0 max-w-full w-full bg-transparent text-sm text-gray-700 outline-none"
               />
             </label>
-            <label className="rounded-xl border border-blue-200 bg-white px-4 py-3 shadow-sm">
+            <label className="min-w-0 rounded-xl border border-blue-200 bg-white px-4 py-3 shadow-sm">
               <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400">Tanggal akhir</span>
               <input
                 type="date"
@@ -106,15 +107,15 @@ export default function AthelDashboard() {
                 min={startDate}
                 max={getToday()}
                 onChange={e => setEndDate(e.target.value)}
-                className="w-full bg-transparent text-sm text-gray-700 outline-none"
+                className="min-w-0 max-w-full w-full bg-transparent text-sm text-gray-700 outline-none"
               />
             </label>
-            <label className="rounded-xl border border-blue-200 bg-white px-4 py-3 shadow-sm">
+            <label className="min-w-0 rounded-xl border border-blue-200 bg-white px-4 py-3 shadow-sm">
               <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400">Status PO</span>
               <select
                 value={status}
                 onChange={e => setStatus(e.target.value as FilterStatus)}
-                className="w-full bg-transparent text-sm text-gray-700 outline-none"
+                className="min-w-0 max-w-full w-full bg-transparent text-sm text-gray-700 outline-none"
               >
                 <option value="all">Semua status</option>
                 <option value="confirm">Confirm</option>
@@ -123,12 +124,12 @@ export default function AthelDashboard() {
                 <option value="cancelled">Cancelled</option>
               </select>
             </label>
-            <label className="rounded-xl border border-blue-200 bg-white px-4 py-3 shadow-sm">
+            <label className="min-w-0 rounded-xl border border-blue-200 bg-white px-4 py-3 shadow-sm">
               <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400">Fulfillment</span>
               <select
                 value={fulfillment}
                 onChange={e => setFulfillment(e.target.value as FulfillmentFilter)}
-                className="w-full bg-transparent text-sm text-gray-700 outline-none"
+                className="min-w-0 max-w-full w-full bg-transparent text-sm text-gray-700 outline-none"
               >
                 <option value="all">Semua</option>
                 <option value="undelivered">Belum terkirim</option>
@@ -187,8 +188,8 @@ export default function AthelDashboard() {
                 title="Top Customer"
                 subtitle="Customer dengan kontribusi nilai PO terbesar pada filter ini."
               >
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                <div className="max-w-full overflow-x-auto" role="region" aria-label="Tabel Top Customer" tabIndex={0}>
+                  <table className="w-full min-w-[32rem] text-sm">
                     <thead>
                       <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
                         <th className="px-4 py-3">#</th>
@@ -207,7 +208,7 @@ export default function AthelDashboard() {
                       {data.topCustomers.map(item => (
                         <tr key={item.rank} className="border-b border-gray-50">
                           <td className="px-4 py-3 text-gray-500">{item.rank}</td>
-                          <td className="px-4 py-3 font-medium text-gray-900">{item.name}</td>
+                          <td className="max-w-[20rem] px-4 py-3 font-medium text-gray-900 [overflow-wrap:anywhere]">{item.name}</td>
                           <td className="px-4 py-3 text-right text-gray-700">{formatCompactCurrency(item.poValue)}</td>
                           <td className="px-4 py-3 text-right text-gray-700">{formatCompactCurrency(item.deliveredValue)}</td>
                           <td className="px-4 py-3 text-right">
@@ -226,8 +227,8 @@ export default function AthelDashboard() {
                 title="Outstanding Item Breakdown"
                 subtitle="Item dengan nilai outstanding terbesar dari PO pada periode ini."
               >
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                <div className="max-w-full overflow-x-auto" role="region" aria-label="Tabel Outstanding Item Breakdown" tabIndex={0}>
+                  <table className="w-full min-w-[36rem] text-sm">
                     <thead>
                       <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
                         <th className="px-4 py-3">#</th>
@@ -246,8 +247,8 @@ export default function AthelDashboard() {
                       {data.outstandingItems.map(item => (
                         <tr key={`${item.sku}-${item.rank}`} className="border-b border-gray-50">
                           <td className="px-4 py-3 text-gray-500">{item.rank}</td>
-                          <td className="px-4 py-3 font-mono text-xs text-gray-500">{item.sku}</td>
-                          <td className="px-4 py-3 font-medium text-gray-900">{item.productName}</td>
+                          <td className="max-w-[12rem] px-4 py-3 font-mono text-xs text-gray-500 [overflow-wrap:anywhere]">{item.sku}</td>
+                          <td className="max-w-[20rem] px-4 py-3 font-medium text-gray-900 [overflow-wrap:anywhere]">{item.productName}</td>
                           <td className="px-4 py-3 text-right text-gray-700">{item.outstandingQty.toLocaleString('id-ID')}</td>
                           <td className="px-4 py-3 text-right text-gray-700">{formatCompactCurrency(item.outstandingValue)}</td>
                         </tr>

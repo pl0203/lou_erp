@@ -81,7 +81,7 @@ function CustomerChart({ items, total }: { items: DashboardData['customerShare']
   const option = useMemo(() => customerOptions(items, total), [items, total])
   return <ChartCard title="Kontribusi Customer" subtitle="Proporsi nilai PO · 5 customer teratas dan lainnya">
     {items.length === 0 ? <p className="grid h-80 place-items-center text-sm text-slate-400">Belum ada data pada filter ini.</p> : <>
-      <div className="mt-4 flex flex-wrap items-baseline gap-x-2"><span className="text-xl font-semibold tracking-tight text-slate-900">{currency(total)}</span><span className="text-xs text-slate-500">total nilai PO</span></div>
+      <div className="mt-4 flex flex-wrap items-baseline gap-x-2"><span className="min-w-0 max-w-full text-xl font-semibold tracking-tight text-slate-900 [overflow-wrap:anywhere]">{currency(total)}</span><span className="text-xs text-slate-500">total nilai PO</span></div>
       <EChart label="Kontribusi Customer" option={option} height={300} />
       <ChartData caption="Kontribusi Customer" headers={['Customer', 'Total PO', 'Proporsi']} rows={items.map(item => [item.label, currency(item.value), `${moneyPercentage(item.value, total, 1)}%`])} />
     </>}

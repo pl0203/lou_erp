@@ -37,7 +37,7 @@ export default function POList() {
     <div className="min-h-screen bg-gray-50">
       <AthelNav />
 
-      <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center justify-between">
+      <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Pesanan Pembelian</h1>
           <p className="text-sm text-gray-500 mt-0.5">{isError ? 'Data tidak tersedia' : totalItems === undefined ? 'Memuat pesanan…' : `${totalItems} pesanan`}</p>
@@ -85,8 +85,8 @@ export default function POList() {
         {!isLoading && !isError && pos.length > 0 && (
           <>
             {/* Desktop table */}
-            <div className="hidden md:block bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <table className="w-full text-sm">
+            <div className="hidden md:block bg-white rounded-xl border border-gray-200 overflow-x-auto" role="region" aria-label="Daftar pesanan pembelian" tabIndex={0}>
+              <table className="w-full min-w-[56rem] text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50">
                     <th className="text-left px-5 py-3 font-medium text-gray-500">Nomor PO</th>
@@ -141,7 +141,7 @@ export default function POList() {
               {pos.map(po => (
                 <div key={po.id} className="bg-white rounded-xl border border-gray-200 p-4">
                   <div className="flex items-start justify-between gap-2 mb-3">
-                    <div>
+                    <div className="min-w-0 [overflow-wrap:anywhere]">
                       <p className="font-semibold text-gray-900 text-sm">{po.po_number}</p>
                       <p className="text-xs text-gray-500 mt-0.5">{po.customers?.name ?? '—'}</p>
                     </div>
@@ -160,7 +160,7 @@ export default function POList() {
                     </div>
                     <div className="col-span-2">
                       <p className="text-gray-400">Total Nilai</p>
-                      <p className="text-gray-900 font-semibold">Rp {formatMoney(po.total_value, 'full')}</p>
+                      <p className="text-gray-900 font-semibold [overflow-wrap:anywhere]">Rp {formatMoney(po.total_value, 'full')}</p>
                     </div>
                   </div>
                   <div className="flex gap-2 pt-3 border-t border-gray-100">

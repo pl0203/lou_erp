@@ -178,3 +178,14 @@ test('pristine missing price stays clean; entering zero is a draft change and cl
  const cleared = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(cleared)
  expect(cleared.defaultPrevented).toBe(false)
 })
+
+test('new PO line fields stack on phones without narrowing SKU to one desktop column', () => {
+  mount()
+  const sku = screen.getByText('SKU', { selector: 'label' }).parentElement!
+  const grid = sku.parentElement!
+  expect(grid.classList.contains('grid-cols-1')).toBe(true)
+  expect(grid.classList.contains('sm:grid-cols-12')).toBe(true)
+  expect(sku.classList.contains('sm:col-span-2')).toBe(true)
+  expect(sku.classList.contains('min-w-0')).toBe(true)
+  for (const input of grid.querySelectorAll('input')) expect(input.classList.contains('min-w-0')).toBe(true)
+})

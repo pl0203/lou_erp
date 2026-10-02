@@ -85,3 +85,38 @@ test('a later line refresh failure retains the delivery draft but blocks its sav
  state.failLines=true;await act(()=>clients[0].invalidateQueries({queryKey:['po_line_state']}));await screen.findByRole('alert')
  expect(screen.getByDisplayValue('KEEP-SJ')).toBeTruthy();expect((screen.getByRole('button',{name:'Create SJ'}) as HTMLButtonElement).disabled).toBe(true)
 })
+
+test('PO detail stacks order fields on phones and exposes the entire items table through local scrolling', async () => {
+  mount(PODetail)
+  await screen.findByText('Item 0')
+  const info = screen.getByText('Toko/Customer').parentElement!.parentElement!
+  expect(info.classList.contains('grid-cols-1')).toBe(true)
+  expect(info.classList.contains('sm:grid-cols-3')).toBe(true)
+  const scroll = screen.getByRole('region', { name: 'Daftar barang PO' })
+  expect(scroll.tabIndex).toBe(0)
+  expect(scroll.classList.contains('overflow-x-auto')).toBe(true)
+  expect(within(scroll).getByRole('table').className).toMatch(/min-w-\[/)
+  expect(within(scroll).getByText('Item 0')).toBeTruthy()
+})
+
+test('delivery item history remains locally scrollable when expanded', async () => {
+  state.history=[{id:'sj',sj_number:'SJ-WIDE',sj_date:'2026-10-01',voided_at:null}]
+  mount(PODetail)
+  fireEvent.click(await screen.findByRole('button', { name: 'Lihat barang' }))
+  const scroll = await screen.findByRole('region', { name: 'Barang SJ-WIDE' })
+  expect(scroll.classList.contains('overflow-x-auto')).toBe(true)
+  expect(scroll.tabIndex).toBe(0)
+})
+
+test('delivery modal stacks phone date fields and scrolls the full quantity editor', async () => {
+  mount(PODetail)
+  const add = await screen.findByRole('button', { name: '+ Surat Jalan' })
+  await waitFor(() => expect((add as HTMLButtonElement).disabled).toBe(false))
+  fireEvent.click(add)
+  const number = screen.getByPlaceholderText('e.g. SJ-2024-001')
+  expect(number.parentElement!.parentElement!.classList.contains('grid-cols-1')).toBe(true)
+  const items = screen.getByRole('region', { name: 'Jumlah barang surat jalan' })
+  expect(items.classList.contains('overflow-x-auto')).toBe(true)
+  expect(items.tabIndex).toBe(0)
+  expect(within(items).getByRole('spinbutton', { name: 'Jumlah dikirim Item 0' })).toBeTruthy()
+})

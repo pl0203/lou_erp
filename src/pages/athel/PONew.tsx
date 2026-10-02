@@ -115,7 +115,7 @@ function SKULookup({
         onChange={e => { setQuery(e.target.value); setOpen(true) }}
         onFocus={() => setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
-        className="w-full border border-blue-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-blue-50"
+        className="min-w-0 max-w-full w-full border border-blue-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-blue-50"
       />
       {open && results.length > 0 && (
         <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
@@ -225,7 +225,7 @@ export default function PONew() {
       <div className="px-4 md:px-8 py-6 max-w-4xl mx-auto space-y-6">
 
         {/* Detail Pesanan */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
           <h2 className="text-base font-medium text-gray-900 mb-4">Detail Pesanan</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -240,7 +240,7 @@ export default function PONew() {
                     setLineItems([{ ...EMPTY_LINE }])
                   }, { when: itemsDirty, message: 'Mengganti pelanggan akan menghapus daftar barang dan harga yang sudah diisi. Detail PO lainnya tetap dipertahankan. Permintaan yang sudah dikirim tidak dibatalkan.' })
                 }}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">Pilih pelanggan...</option>
                 {customers?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -258,7 +258,7 @@ export default function PONew() {
                 value={poNumber}
                 onChange={e => setPoNumber(e.target.value)}
                 placeholder="mis. PO-2024-001"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div>
@@ -267,7 +267,7 @@ export default function PONew() {
                 type="date"
                 value={orderDate}
                 onChange={e => setOrderDate(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div>
@@ -277,7 +277,7 @@ export default function PONew() {
                 type="date"
                 value={expectedDelivery}
                 onChange={e => setExpectedDelivery(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <p className="mt-1 text-xs text-gray-500">Jika PO pelanggan memiliki tanggal kedaluwarsa. Bukan tanggal pengiriman.</p>
             </div>
@@ -288,14 +288,14 @@ export default function PONew() {
                 onChange={e => setNotes(e.target.value)}
                 rows={2}
                 placeholder="Catatan (opsional)..."
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
               />
             </div>
           </div>
         </div>
 
         {/* Daftar Barang */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
           <h2 className="text-base font-medium text-gray-900 mb-1">Daftar Barang</h2>
           <p className="text-xs text-gray-400 mb-4">
             Cari berdasarkan SKU atau nama untuk mengisi otomatis. Harga otomatis sesuai tier pelanggan dan dapat diubah per pesanan.
@@ -310,8 +310,8 @@ export default function PONew() {
           <div className="space-y-4">
             {lineItems.map((item, i) => (
               <div key={i} className="border border-gray-100 rounded-lg p-4 space-y-3 relative">
-                <div className="grid grid-cols-12 gap-3 items-end">
-                  <div className="col-span-11">
+                <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 items-end">
+                  <div className="min-w-0">
                     <label className="block text-xs text-gray-400 mb-1">Cari barang berdasarkan SKU atau nama</label>
                     {products && (
                       <SKULookup
@@ -323,42 +323,42 @@ export default function PONew() {
                   <button
                     onClick={() => removeLine(i)}
                     disabled={lineItems.length === 1}
-                    className="col-span-1 text-gray-300 hover:text-red-400 disabled:opacity-20 text-xl text-center pb-1"
+                    className="w-8 text-gray-300 hover:text-red-400 disabled:opacity-20 text-xl text-center pb-1"
                   >
                     ×
                   </button>
                 </div>
 
-                <div className="grid grid-cols-12 gap-3">
-                  <div className="col-span-1">
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                  <div className="min-w-0 sm:col-span-2">
                     <label className="block text-xs text-gray-400 mb-1">SKU</label>
                     <input
                       type="text"
                       value={item.sku}
                       onChange={e => updateLine(i, 'sku', e.target.value)}
-                      className="w-full border border-gray-200 rounded-lg px-2 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase"
+                      className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-2 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase"
                     />
                   </div>
-                  <div className="col-span-5">
+                  <div className="min-w-0 sm:col-span-4">
                     <label className="block text-xs text-gray-400 mb-1">Nama Produk</label>
                     <input
                       type="text"
                       value={item.product_name}
                       onChange={e => updateLine(i, 'product_name', e.target.value)}
                       placeholder="Nama produk"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
-                  <div className="col-span-2">
+                  <div className="min-w-0 sm:col-span-2">
                     <label className="block text-xs text-gray-400 mb-1">Qty</label>
                     <input
                       type="number" min={1}
                       value={Number.isNaN(item.quantity) ? '' : item.quantity}
                       onChange={e => updateLine(i, 'quantity', e.target.valueAsNumber)}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
-                  <div className="col-span-4">
+                  <div className="min-w-0 sm:col-span-4">
                     <label className="block text-xs text-gray-400 mb-1">
                       Harga Satuan (Rp)
                       {item.product_id && (
@@ -372,13 +372,13 @@ export default function PONew() {
                       placeholder="Harga belum diisi"
                       value={Number.isNaN(item.unit_price) ? '' : item.unit_price}
                       onChange={e => updateLine(i, 'unit_price', e.target.valueAsNumber)}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                 </div>
 
                 {Number.isNaN(item.unit_price) && <p className="text-xs text-amber-700">Isi harga satuan sebelum menyimpan. Nol hanya untuk barang gratis.</p>}
-                  <div className="text-right text-xs text-gray-400">
+                  <div className="text-right text-xs text-gray-400 [overflow-wrap:anywhere]">
                   Subtotal: <span className="text-gray-700 font-medium">
                     {formatLineAmount(item.quantity, item.unit_price)}
                   </span>
@@ -387,11 +387,11 @@ export default function PONew() {
             ))}
           </div>
 
-          <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
+          <div className="flex flex-wrap items-center justify-between gap-3 mt-4 pt-4 border-t border-gray-100">
             <button onClick={addLine} className="text-blue-600 hover:text-blue-700 text-sm font-medium">
               + Tambah Produk
             </button>
-            <div className="text-sm text-gray-500">
+            <div className="min-w-0 text-sm text-gray-500 [overflow-wrap:anywhere]">
               Total: <span className="text-gray-900 font-semibold text-base ml-1">
                 {Number.isFinite(total) ? `Rp ${total.toLocaleString('id-ID')}` : 'Harga belum lengkap'}
               </span>
@@ -400,7 +400,7 @@ export default function PONew() {
         </div>
 
         {/* Actions */}
-        <div className="flex justify-end gap-3 pb-8">
+        <div className="flex flex-wrap justify-end gap-3 pb-8">
           <button
             onClick={() => navigate('/athel/po')}
             className="px-5 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-200 rounded-lg"

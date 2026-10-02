@@ -142,7 +142,10 @@ test.each(['Top Customer', 'Outstanding Item Breakdown'].flatMap(title =>
   expect(within(table).getAllByRole('columnheader')).toHaveLength(5)
   if (rows === 'populated') {
     const labels = title === 'Top Customer' ? [customerName] : [sku, productName]
-    for (const label of labels) expect(within(table).getByText(label)).toBeTruthy()
+    for (const label of labels) {
+      const cell = within(table).getByText(label)
+      expect(cell.classList.contains('[overflow-wrap:anywhere]')).toBe(true)
+    }
     expect(within(table).getAllByRole('cell')).toHaveLength(5)
   } else {
     expect(within(table).getByRole('cell').getAttribute('colspan')).toBe('5')
@@ -160,4 +163,26 @@ test('loading and query errors remain unavailable instead of showing fabricated 
   view.rerender(<Dashboard />)
   expect(screen.getByText(/Gagal memuat dashboard/)).toBeTruthy()
   expect(screen.queryByRole('img')).toBeNull()
+})
+
+test('large KPI and customer totals retain exact values in shrinkable wrapping containers', async () => {
+  state.data.metrics.totalPOValue = '999999999999999.99'
+  render(<Dashboard />)
+  await screen.findByRole('img', { name: 'Kontribusi Customer' })
+  const kpi = screen.getByText('Total PO', { selector: 'p' }).parentElement!
+  expect(kpi.classList.contains('min-w-0')).toBe(true)
+  expect(kpi.children[1].classList.contains('[overflow-wrap:anywhere]')).toBe(true)
+  expect(kpi.children[1].textContent).toBe('Rp999.999.999.999.999,99')
+  const customer = screen.getByRole('region', { name: 'Kontribusi Customer' })
+  expect(within(customer).getByText('Rp999.999.999.999.999,99').classList.contains('[overflow-wrap:anywhere]')).toBe(true)
+})
+
+test.each(['Top Customer', 'Outstanding Item Breakdown'])('%s exposes a keyboard-accessible contained table without squeezing its columns', async title => {
+  render(<Dashboard />)
+  await screen.findByRole('img', { name: 'Kontribusi Customer' })
+  const scroll = screen.getByRole('region', { name: `Tabel ${title}` })
+  expect(scroll.tabIndex).toBe(0)
+  expect(scroll.parentElement!.textContent).toContain('Geser tabel untuk melihat semua kolom.')
+  expect(scroll.classList.contains('overflow-x-auto')).toBe(true)
+  expect(within(scroll).getByRole('table').className).toMatch(/min-w-\[/)
 })

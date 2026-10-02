@@ -46,3 +46,27 @@ for(const view of ['complete','error'])test(`uncertain committed edit can still 
  await waitFor(()=>expect(localStorage.getItem('pilot-request:dummy:edit-po:po')).toBeNull())
  expect(state.navigate).toHaveBeenCalledWith('/athel/po/po')
 })
+
+test('edit line fields stack on phones while preserving the desktop column layout', async () => {
+  render(<POEdit />)
+  const sku = await screen.findByDisplayValue('SKU')
+  const field = sku.parentElement!
+  const grid = field.parentElement!
+  // Layout contracts only: jsdom cannot prove screen geometry.
+  expect(grid.classList.contains('grid-cols-1')).toBe(true)
+  expect(grid.classList.contains('sm:grid-cols-12')).toBe(true)
+  expect(field.classList.contains('sm:col-span-2')).toBe(true)
+  expect(field.classList.contains('min-w-0')).toBe(true)
+  for (const input of grid.querySelectorAll('input')) expect(input.classList.contains('min-w-0')).toBe(true)
+})
+
+test('PO list lets long mobile identities wrap and tablet tables scroll instead of clipping', () => {
+  render(<POList />)
+  const names = screen.getAllByText('DUMMY')
+  const mobile = names.find(node => node.tagName === 'P')!
+  expect(mobile.parentElement!.classList.contains('min-w-0')).toBe(true)
+  expect(mobile.parentElement!.classList.contains('[overflow-wrap:anywhere]')).toBe(true)
+  const table = screen.getByRole('table')
+  expect(table.parentElement!.classList.contains('overflow-x-auto')).toBe(true)
+  expect(table.parentElement!.getAttribute('tabindex')).toBe('0')
+})

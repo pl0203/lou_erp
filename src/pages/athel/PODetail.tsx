@@ -292,16 +292,16 @@ export default function PODetail() {
         <TransactionRecovery send={sendTransaction} onCommitted={() => { invalidate(); closeSJModal(); setDeletingSJId(null); setShowDeleteConfirm(false) }} />
 
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex flex-col items-stretch gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-center gap-4">
           <button
             onClick={() => navigate('/athel/po')}
-            className="text-gray-400 hover:text-gray-600 text-sm"
+            className="shrink-0 text-gray-400 hover:text-gray-600 text-sm"
           >
             ← Kembali
           </button>
-          <div>
-            <div className="flex items-center gap-3">
+          <div className="min-w-0 [overflow-wrap:anywhere]">
+            <div className="flex flex-wrap items-center gap-3">
               <h1 className="text-xl font-semibold text-gray-900">{po.po_number}</h1>
               <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLES[po.status] ?? 'bg-gray-100 text-gray-600'}`}>
                 {STATUS_LABELS[po.status] ?? po.status}
@@ -310,7 +310,7 @@ export default function PODetail() {
             <p className="text-sm text-gray-500 mt-0.5">{po.customers?.name}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 flex-wrap justify-end">
+        <div className="flex shrink-0 items-center gap-2 flex-wrap justify-end">
           {!isComplete && !isCancelled && (
             <button
               onClick={() => navigate(`/athel/po/${po.id}/edit`)}
@@ -336,7 +336,7 @@ export default function PODetail() {
           <button className="ml-2 underline" onClick={() => { setPreparationError(false); refetchPO(); refetchLines() }}>Coba lagi</button>
         </div>}
         {/* Status card */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
           <h2 className="text-base font-medium text-gray-900 mb-4">Status</h2>
           <div className="flex items-center gap-3 flex-wrap">
             {['confirm', 'in_progress', 'complete'].map((s, i, arr) => (
@@ -375,9 +375,9 @@ export default function PODetail() {
         </div>
 
         {/* Order Details */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
           <h2 className="text-base font-medium text-gray-900 mb-4">Order Details</h2>
-          <div className="grid grid-cols-3 gap-4 text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm [overflow-wrap:anywhere]">
             <div>
               <p className="text-gray-400 mb-1">Toko/Customer</p>
               <p className="text-gray-900">{po.customers?.name}</p>
@@ -397,7 +397,7 @@ export default function PODetail() {
               </p>
             </div>
             {po.notes && (
-              <div className="col-span-3">
+              <div className="sm:col-span-3">
                 <p className="text-gray-400 mb-1">Catatan</p>
                 <p className="text-gray-900">{po.notes}</p>
               </div>
@@ -409,8 +409,10 @@ export default function PODetail() {
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100">
             <h2 className="text-base font-medium text-gray-900">Daftar Barang</h2>
+            <p className="mt-1 text-xs text-gray-500 md:hidden">Geser tabel untuk melihat semua kolom.</p>
           </div>
-          <table className="w-full text-sm">
+          <div className="max-w-full overflow-x-auto" role="region" aria-label="Daftar barang PO" tabIndex={0}>
+          <table className="w-full min-w-[40rem] text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100">
                 <th className="text-left px-6 py-3 text-gray-500 font-medium">Produk</th>
@@ -462,21 +464,22 @@ export default function PODetail() {
               </tr>
             </tfoot>
           </table>
+          </div>
         </div>
 
         {/* Delivery headers are presentation only; quantities come from lineState. */}
-        <div role="region" aria-label="Riwayat pengiriman" className="bg-white rounded-xl border border-gray-200 overflow-hidden p-6">
+        <div role="region" aria-label="Riwayat pengiriman" className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
           <h2 className="text-base font-medium text-gray-900">Pengiriman (Daftar Surat Jalan)</h2>
           {deliveries.isError ? <p role="alert">Riwayat pengiriman gagal dimuat. <button onClick={() => deliveries.refetch()}>Coba lagi</button></p>
             : <div aria-busy={deliveries.isPending}>
               {(sjList ?? []).map(sj => <div key={sj.id} className="py-4 border-b border-gray-100">
-                <div className="flex justify-between gap-3"><div>
+                <div className="flex flex-wrap justify-between gap-3"><div className="min-w-0 [overflow-wrap:anywhere]">
                   <span className="font-medium text-sm">{sj.sj_number}</span>
                   {sj.voided_at && <p className="text-xs text-red-600">Dibatalkan: {sj.void_reason} · {new Date(sj.voided_at).toLocaleString('id-ID')}</p>}
                   <p className="text-xs text-gray-400">Created: {sj.sj_date}</p>
                   {sj.sj_date_received && <p className="text-xs text-gray-400">Diterima Toko: {sj.sj_date_received}</p>}
                   {sj.sj_date_returned && <p className="text-xs text-gray-400">SJ Kembali: {sj.sj_date_returned}</p>}
-                </div><div className="flex gap-3">
+                </div><div className="flex flex-wrap gap-3">
                   <button disabled={deliveries.isPending} onClick={() => setSelectedSJId(selectedSJId === sj.id ? null : sj.id)} className="text-blue-600 text-xs">{selectedSJId === sj.id ? 'Tutup barang' : 'Lihat barang'}</button>
                   {canAddSJ && !sj.voided_at && <>
                     <button disabled={!lineReady || preparingSJ || deliveries.isPending} onClick={() => openEditSJModal(sj)} className="text-blue-600 text-xs">Ubah</button>
@@ -484,9 +487,9 @@ export default function PODetail() {
                   </>}
                 </div></div>
                 {selectedSJId === sj.id && (selectedLines.isError ? <p role="alert">Barang pengiriman gagal dimuat. <button onClick={() => selectedLines.refetch()}>Coba lagi</button></p>
-                  : selectedLines.isPending ? <p role="status">Memuat barang…</p> : <table className="w-full mt-3 text-xs"><thead><tr><th className="text-left">Item</th><th>SKU</th><th>Qty Terkirim</th></tr></thead><tbody>
+                  : selectedLines.isPending ? <p role="status">Memuat barang…</p> : <div className="mt-3 max-w-full overflow-x-auto" role="region" aria-label={`Barang ${sj.sj_number}`} tabIndex={0}><table className="w-full min-w-[24rem] text-xs"><thead><tr><th className="text-left">Item</th><th>SKU</th><th>Qty Terkirim</th></tr></thead><tbody>
                     {selectedLines.data?.map(sli => { const li = lineItems?.find(line => line.id === sli.po_line_item_id); return <tr key={sli.id}><td>{li?.product_name ?? '—'}</td><td>{li?.sku ?? '—'}</td><td>{sli.quantity_delivered}</td></tr> })}
-                  </tbody></table>)}
+                  </tbody></table></div>)}
               </div>)}
               {!deliveries.isPending && sjList?.length === 0 && <p className="text-sm text-gray-400">Belum ada pengiriman.</p>}
               <PaginationControls page={deliveries.page} total={deliveries.data?.total ?? 0} pageSize={20} pending={deliveries.isPending} onPageChange={deliveries.setPage} />
@@ -494,7 +497,7 @@ export default function PODetail() {
         </div>
 
         {/* Audit Log */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
           <h2 className="text-base font-medium text-gray-900 mb-4">Riwayat Perubahan</h2>
           {audits.isError ? <p role="alert">Riwayat perubahan gagal dimuat. <button onClick={() => audits.refetch()}>Coba lagi</button></p> : !audits.isPending && auditLog?.length === 0 ? (
             <p className="text-sm text-gray-400">Belum ada perubahan tercatat.</p>
@@ -503,7 +506,7 @@ export default function PODetail() {
               {auditLog?.map(entry => (
                 <div key={entry.id} className="flex gap-4 text-sm">
                   <div className="w-1 rounded-full bg-blue-200 shrink-0" />
-                  <div>
+                  <div className="min-w-0 [overflow-wrap:anywhere]">
                     <p className="text-gray-900">
                       <span className="font-medium">
                         {entry.users?.full_name ?? 'Someone'}
@@ -543,7 +546,7 @@ export default function PODetail() {
               </p>
             </div>
             <div className="px-6 py-4 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">Nomor SJ *</label>
                   <input
@@ -551,7 +554,7 @@ export default function PODetail() {
                     value={sjNumber}
                     onChange={e => setSjNumber(e.target.value)}
                     placeholder="e.g. SJ-2024-001"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div>
@@ -560,7 +563,7 @@ export default function PODetail() {
                     type="date"
                     value={sjDate}
                     onChange={e => setSjDate(e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div>
@@ -571,7 +574,7 @@ export default function PODetail() {
                     type="date"
                     value={sjDateReceived}
                     onChange={e => setSjDateReceived(e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div>
@@ -582,53 +585,58 @@ export default function PODetail() {
                     type="date"
                     value={sjDateReturned}
                     onChange={e => setSjDateReturned(e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
 
               <div>
-                <div className="grid grid-cols-12 gap-2 text-xs text-gray-400 font-medium px-1 mb-2">
-                  <div className="col-span-5">Item</div>
-                  <div className="col-span-2 text-right">Dipesan</div>
-                  <div className="col-span-2 text-right">Outstanding</div>
-                  <div className="col-span-3 text-right">Dikirim</div>
-                </div>
-                <div className="space-y-2">
-                  {sjLines.map((line, i) => (
-                    <div key={line.po_line_item_id} className="grid grid-cols-12 gap-2 items-center">
-                      <div className="col-span-5">
-                        <p className="text-sm text-gray-900 truncate">{line.product_name}</p>
-                        {line.sku && (
-                          <p className="text-xs text-gray-400 font-mono uppercase">{line.sku}</p>
-                        )}
-                      </div>
-                      <div className="col-span-2 text-right text-sm text-gray-500">
-                        {line.quantity_ordered}
-                      </div>
-                      <div className="col-span-2 text-right text-sm font-medium">
-                        <span className={line.quantity_outstanding === 0 ? 'text-green-500' : 'text-orange-500'}>
-                          {line.quantity_outstanding}
-                        </span>
-                      </div>
-                      <div className="col-span-3">
-                        <input
-                          type="number"
-                          min={0}
-                          max={line.quantity_outstanding}
-                          value={line.quantity_to_deliver}
-                          onChange={e => updateSJLine(i, parseInt(e.target.value) || 0)}
-                          disabled={line.quantity_outstanding === 0}
-                          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-300"
-                        />
-                      </div>
+                <p className="mb-2 text-xs text-gray-500 sm:hidden">Geser untuk melihat dan mengisi jumlah barang.</p>
+                <div className="max-w-full overflow-x-auto" role="region" aria-label="Jumlah barang surat jalan" tabIndex={0}>
+                  <div className="min-w-[26rem]">
+                    <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_5.5rem_5rem] gap-2 text-xs text-gray-400 font-medium px-1 mb-2">
+                      <div className="min-w-0">Item</div>
+                      <div className="min-w-0 [overflow-wrap:anywhere] text-right">Dipesan</div>
+                      <div className="min-w-0 [overflow-wrap:anywhere] text-right">Outstanding</div>
+                      <div className="min-w-0 text-right">Dikirim</div>
                     </div>
-                  ))}
+                    <div className="space-y-2">
+                      {sjLines.map((line, i) => (
+                        <div key={line.po_line_item_id} className="grid grid-cols-[minmax(0,1fr)_4.5rem_5.5rem_5rem] gap-2 items-center">
+                          <div className="min-w-0 [overflow-wrap:anywhere]">
+                            <p className="text-sm text-gray-900">{line.product_name}</p>
+                            {line.sku && (
+                              <p className="text-xs text-gray-400 font-mono uppercase">{line.sku}</p>
+                            )}
+                          </div>
+                          <div className="min-w-0 [overflow-wrap:anywhere] text-right text-sm text-gray-500">
+                            {line.quantity_ordered}
+                          </div>
+                          <div className="min-w-0 [overflow-wrap:anywhere] text-right text-sm font-medium">
+                            <span className={line.quantity_outstanding === 0 ? 'text-green-500' : 'text-orange-500'}>
+                              {line.quantity_outstanding}
+                            </span>
+                          </div>
+                          <div className="min-w-0">
+                            <input
+                              type="number"
+                              aria-label={`Jumlah dikirim ${line.product_name}`}
+                              min={0}
+                              max={line.quantity_outstanding}
+                              value={line.quantity_to_deliver}
+                              onChange={e => updateSJLine(i, parseInt(e.target.value) || 0)}
+                              disabled={line.quantity_outstanding === 0}
+                              className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-300"
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
-
-            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+            <div className="px-6 py-4 border-t border-gray-100 flex flex-wrap justify-end gap-3">
               <button
                 onClick={closeSJModal}
                 className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
@@ -664,7 +672,7 @@ export default function PODetail() {
               Apakah Anda yakin ingin membatalkan <strong>{deletingSJ?.sj_number}</strong>?
               Jumlah tidak lagi dihitung sebagai pengiriman aktif. Riwayat tetap disimpan.
             </p>
-            <textarea aria-label="Alasan pembatalan" value={actionReason} onChange={e => setActionReason(e.target.value)} placeholder="Alasan pembatalan (wajib)" className="w-full border rounded-lg p-2 mb-3 text-sm" />
+            <textarea aria-label="Alasan pembatalan" value={actionReason} onChange={e => setActionReason(e.target.value)} placeholder="Alasan pembatalan (wajib)" className="min-w-0 max-w-full w-full border rounded-lg p-2 mb-3 text-sm" />
             {(deleteSJMutation.isError || deleteMutation.isError) && <p className="text-red-600 text-xs mb-3">{((deleteSJMutation.error || deleteMutation.error) as Error).message}</p>}
             <div className="flex gap-3 justify-end">
               <button
@@ -695,7 +703,7 @@ export default function PODetail() {
             <p className="text-sm text-gray-500 mb-5">
              PO <strong>{po.po_number}</strong> dibatalkan tanpa menghapus riwayat. Pengiriman aktif harus diselesaikan melalui koreksi terlebih dahulu.
             </p>
-            <textarea aria-label="Alasan pembatalan" value={actionReason} onChange={e => setActionReason(e.target.value)} placeholder="Alasan pembatalan (wajib)" className="w-full border rounded-lg p-2 mb-3 text-sm" />
+            <textarea aria-label="Alasan pembatalan" value={actionReason} onChange={e => setActionReason(e.target.value)} placeholder="Alasan pembatalan (wajib)" className="min-w-0 max-w-full w-full border rounded-lg p-2 mb-3 text-sm" />
             {(deleteSJMutation.isError || deleteMutation.isError) && <p className="text-red-600 text-xs mb-3">{((deleteSJMutation.error || deleteMutation.error) as Error).message}</p>}
             <div className="flex gap-3 justify-end">
               <button
