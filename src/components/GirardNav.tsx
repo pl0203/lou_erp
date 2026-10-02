@@ -42,7 +42,7 @@ export default function GirardNav() {
   const switcherRef = useRef<HTMLDivElement>(null)
   const userRef = useRef<HTMLDivElement>(null)
 
-  const links = profile ? (ROLE_LINKS[profile.role] ?? []) : []
+  const links = profile ? [...(ROLE_LINKS[profile.role] ?? []), { to: '/ihr/leave', label: 'Cuti' }] : []
   const canAccessAthel  = profile && ATHEL_ROLES.includes(profile.role)
   const canAccessGirard = profile && GIRARD_ROLES.includes(profile.role)
   const showSwitcherBtn = canAccessAthel && canAccessGirard

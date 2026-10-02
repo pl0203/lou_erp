@@ -1,19 +1,16 @@
 import IHRNav from '../../components/IHRNav'
-
+import { useLeaveContext } from '../../lib/leave/useLeaveContext'
+import LeaveSetupStatus from './leave/LeaveSetupStatus'
+import LeaveTabs from './leave/LeaveTabs'
 export default function LeaveManagement() {
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <IHRNav />
-      <div className="flex flex-col items-center justify-center py-32 px-4">
-        <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
-          style={{ backgroundColor: '#fdf0eb' }}>
-          <span className="text-2xl">📅</span>
-        </div>
-        <h2 className="text-lg font-semibold text-gray-900 mb-2">Manajemen Cuti</h2>
-        <p className="text-sm text-gray-400 text-center max-w-xs">
-          Fitur manajemen cuti akan segera hadir. Anda akan dapat mengelola permohonan dan saldo cuti karyawan di sini.
-        </p>
-      </div>
-    </div>
-  )
+  const context = useLeaveContext()
+  return <div className="min-h-screen bg-gray-50">
+    <IHRNav />
+    <main className="mx-auto max-w-5xl space-y-5 px-4 py-8 md:px-8">
+      <h1 className="text-xl font-semibold text-gray-900">Manajemen Cuti</h1>
+      {context.isPending ? <p role="status">Memuat akses cuti...</p> : context.isError ?
+        <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900"><p>{context.error.message}</p><button type="button" onClick={() => void context.refetch()} className="mt-2 underline">Coba lagi</button></div> :
+        <><LeaveSetupStatus context={context.data} /><LeaveTabs key={context.data.scopeVersion} context={context.data} /></>}
+    </main>
+  </div>
 }
