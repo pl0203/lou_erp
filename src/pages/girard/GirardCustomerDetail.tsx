@@ -1,37 +1,13 @@
 import { formatMoney, moneyToChartNumber } from '../../lib/reads/money'
-import { singleRelation } from '../../lib/relations'
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../lib/AuthContext'
+import { parseCalendarDate } from '../../lib/calendarDate'
+import { fetchCustomerDetail } from '../../lib/reads/customerDetailReads'
+import { CustomerVisitHistory, CustomerOrderHistory, NextScheduledVisit } from '../../components/CustomerHistory'
 import GirardNav from '../../components/GirardNav'
 import { fetchCustomerStatsDetail } from '../../lib/CustomerStats'
-
-type Customer = {
-  id: string
-  name: string
-  address: string | null
-  city: string | null
-  phone: string | null
-  email: string | null
-  last_visit_date: string | null
-  visit_frequency_days: number
-}
-
-type VisitHistory = {
-  id: string
-  checked_in_at: string
-  users: { full_name: string }
-}
-
-type OrderHistory = {
-  id: string
-  po_number: string
-  status: string
-  total_value: number
-  order_date: string
-  expected_delivery_date: string | null
-}
 
 const FREQUENCY_OPTIONS = [
   { days: 3,  label: '2x per week' },
@@ -47,74 +23,35 @@ function frequencyLabel(days: number): string {
 
 function isOverdue(lastVisit: string | null, frequencyDays: number): boolean {
   if (!lastVisit) return true
-  const diff = (Date.now() - new Date(lastVisit).getTime()) / (1000 * 60 * 60 * 24)
+  const diff = (Date.now() - parseCalendarDate(lastVisit).getTime()) / (1000 * 60 * 60 * 24)
   return diff > frequencyDays
-}
-
-async function fetchCustomer(id: string): Promise<Customer> {
-  const { data, error } = await supabase
-    .from('customers')
-    .select('id, name, address, city, phone, email, last_visit_date, visit_frequency_days')
-    .eq('id', id)
-    .single()
-  if (error) throw error
-  return data
-}
-
-async function fetchVisitHistory(customerId: string): Promise<VisitHistory[]> {
-  const { data, error } = await supabase
-    .from('outlet_visits')
-    .select('id, checked_in_at, users!outlet_visits_sales_person_id_fkey(full_name)')
-    .eq('outlet_id', customerId)
-    .order('checked_in_at', { ascending: false })
-    .order('id', { ascending: false })
-    .limit(10)
-  if (error) throw error
-  return (data ?? []).map(row => ({ ...row, users: singleRelation(row.users) }))
-}
-
-async function fetchOrderHistory(customerId: string): Promise<OrderHistory[]> {
-  const { data, error } = await supabase
-    .from('purchase_orders')
-    .select('id, po_number, status, total_value, order_date, expected_delivery_date')
-    .eq('customer_id', customerId)
-    .order('order_date', { ascending: false })
-    .order('id', { ascending: false })
-    .limit(20)
-  if (error) throw error
-  return data as OrderHistory[]
 }
 
 export default function GirardCustomerDetail() {
   const { id } = useParams<{ id: string }>()
+  const { profile } = useAuth()
+  // Remount view state on customer or identity changes; old expanded evidence never crosses scopes.
+  const identity = `${profile?.id ?? ''}:${profile?.role ?? ''}`
+  return <CustomerDetailView key={`${identity}:${id}`} id={id} identity={identity} enabled={!!id && !!profile?.id} />
+}
+
+function CustomerDetailView({ id, identity, enabled }: { id?: string; identity: string; enabled: boolean }) {
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<'overview' | 'visits' | 'orders'>('overview')
-
-  const { data: customer, isLoading } = useQuery({
-    queryKey: ['girard_customer', id],
-    queryFn: () => fetchCustomer(id!),
-    enabled: !!id,
+  const customerQuery = useQuery({
+    queryKey: ['girard_customer', identity, id],
+    queryFn: ({ signal }) => fetchCustomerDetail(id!, signal),
+    enabled,
   })
-
-  const { data: visitHistory } = useQuery({
-    queryKey: ['visit_history', id],
-    queryFn: () => fetchVisitHistory(id!),
-    enabled: !!id,
-  })
-
-  const { data: orderHistory } = useQuery({
-    queryKey: ['order_history', id],
-    queryFn: () => fetchOrderHistory(id!),
-    enabled: !!id,
-  })
+  const { data: customer, isLoading } = customerQuery
 
   const { data: stats, isError: statsError, isLoading: statsLoading } = useQuery({
-    queryKey: ['customer_stats_detail', id],
-    queryFn: () => fetchCustomerStatsDetail(id!),
-    enabled: !!id,
+    queryKey: ['customer_stats_detail', identity, id],
+    queryFn: ({ signal }) => fetchCustomerStatsDetail(id!, signal),
+    enabled: enabled && !!customer,
   })
 
-  if (isLoading) {
+  if (isLoading || (!enabled && id)) {
     return (
       <div className="min-h-screen bg-gray-50">
         <GirardNav />
@@ -123,11 +60,19 @@ export default function GirardCustomerDetail() {
     )
   }
 
+  if (customerQuery.isError) {
+    return <div className="min-h-screen bg-gray-50"><GirardNav />
+      <div role="alert" className="p-6 text-sm text-red-600"><p>Gagal memuat pelanggan.</p>
+        <button type="button" onClick={() => customerQuery.refetch()} className="mt-2 min-h-10 underline">Coba lagi</button>
+      </div>
+    </div>
+  }
+
   if (!customer) {
     return (
       <div className="min-h-screen bg-gray-50">
         <GirardNav />
-        <div className="p-8 text-red-500 text-sm">Customer not found.</div>
+        <div className="p-8 text-red-500 text-sm">Pelanggan tidak ditemukan atau Anda tidak memiliki akses.</div>
       </div>
     )
   }
@@ -139,16 +84,16 @@ export default function GirardCustomerDetail() {
       <GirardNav />
 
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center gap-4">
+      <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex flex-wrap items-center gap-3">
         <button
           onClick={() => navigate(-1)}
           className="text-gray-400 hover:text-gray-600 text-sm shrink-0"
         >
           ← Kembali
         </button>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-xl font-semibold text-gray-900 truncate">{customer.name}</h1>
-          <p className="text-sm text-gray-500 mt-0.5 truncate">
+        <div className="flex-1 min-w-0 basis-48">
+          <h1 className="text-xl font-semibold text-gray-900 break-words [overflow-wrap:anywhere]">{customer.name}</h1>
+          <p className="text-sm text-gray-500 mt-0.5 break-words [overflow-wrap:anywhere]">
             {[customer.address, customer.city].filter(Boolean).join(', ') || 'No address'}
           </p>
         </div>
@@ -161,7 +106,7 @@ export default function GirardCustomerDetail() {
 
       {/* Tabs */}
       <div className="bg-white border-b border-gray-100 px-4 md:px-8">
-        <div className="flex gap-1">
+        <div className="flex gap-1 overflow-x-auto" aria-label="Bagian pelanggan">
           {[
             { key: 'overview', label: 'Overview' },
             { key: 'visits',   label: 'Riwayat Kunjungan' },
@@ -169,8 +114,9 @@ export default function GirardCustomerDetail() {
           ].map(tab => (
             <button
               key={tab.key}
-              onClick={() => setActiveTab(tab.key as any)}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              aria-pressed={activeTab === tab.key}
+              onClick={() => setActiveTab(tab.key as typeof activeTab)}
+              className={`shrink-0 px-3 py-3 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === tab.key
                   ? 'border-green-600 text-green-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -182,14 +128,15 @@ export default function GirardCustomerDetail() {
         </div>
       </div>
 
-      <div className="px-4 md:px-8 py-6 space-y-4">
+      <div className="mx-auto max-w-5xl min-w-0 px-4 md:px-8 py-6 space-y-4">
 
         {/* OVERVIEW TAB */}
         {activeTab === 'overview' && (
           <>
+            <NextScheduledVisit customerId={customer.id} />
             <div className="bg-white rounded-xl border border-gray-200 p-5">
               <h2 className="text-base font-medium text-gray-900 mb-4">Contact</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm break-words [overflow-wrap:anywhere]">
                 <div>
                   <p className="text-gray-400 text-xs mb-1">Nomor Telepon</p>
                   <p className="text-gray-900">{customer.phone ?? '—'}</p>
@@ -212,27 +159,27 @@ export default function GirardCustomerDetail() {
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+              <div className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 text-center break-words [overflow-wrap:anywhere]">
                 <p className="text-xs text-gray-400 mb-1">Last Visit</p>
                 <p className={`text-sm font-semibold ${overdue ? 'text-red-500' : 'text-gray-900'}`}>
                   {customer.last_visit_date
-                    ? new Date(customer.last_visit_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
+                    ? parseCalendarDate(customer.last_visit_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
                     : 'Never'}
                 </p>
               </div>
-              <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+              <div className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 text-center break-words [overflow-wrap:anywhere]">
                 <p className="text-xs text-gray-400 mb-1">Pelanggan Sejak</p>
                 <p className="text-sm font-semibold text-gray-900">
                   {statsError || (!statsLoading && !stats) ? 'Tidak tersedia' : statsLoading || !stats ? 'Memuat...' : stats.first_order_date
-                    ? new Date(stats.first_order_date).toLocaleDateString('id-ID', { month: 'short', year: 'numeric' })
+                    ? parseCalendarDate(stats.first_order_date).toLocaleDateString('id-ID', { month: 'short', year: 'numeric' })
                     : '—'}
                 </p>
               </div>
-              <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+              <div className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 text-center break-words [overflow-wrap:anywhere]">
                 <p className="text-xs text-gray-400 mb-1">Pesanan (3bl)</p>
                 <p className="text-sm font-semibold text-gray-900">{statsError || (!statsLoading && !stats) ? 'Tidak tersedia' : statsLoading || !stats ? 'Memuat...' : stats.order_count_3mo}</p>
               </div>
-              <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+              <div className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 text-center break-words [overflow-wrap:anywhere]">
                 <p className="text-xs text-gray-400 mb-1">Penjualan (3bl)</p>
                 <p className="text-sm font-semibold text-gray-900">
                   {statsError || (!statsLoading && !stats) ? 'Tidak tersedia' : statsLoading || !stats ? 'Memuat...' : !/^0(?:\.0+)?$/.test(String(stats.total_sales_3mo))
@@ -250,9 +197,9 @@ export default function GirardCustomerDetail() {
                     <div key={item.name} className="flex items-center gap-3">
                       <span className="text-xs text-gray-300 font-medium w-4">#{i + 1}</span>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between mb-1">
+                        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between mb-1">
                           <p className="text-sm text-gray-900 truncate">{item.name}</p>
-                          <p className="text-xs text-gray-500 ml-2 shrink-0">
+                          <p className="min-w-0 text-xs text-gray-500 break-words [overflow-wrap:anywhere]">
                             Rp {formatMoney(String(item.revenue), 'full')}
                           </p>
                         </div>
@@ -275,94 +222,8 @@ export default function GirardCustomerDetail() {
           </>
         )}
 
-        {/* VISIT HISTORY TAB */}
-        {activeTab === 'visits' && (
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-100">
-              <h2 className="text-base font-medium text-gray-900">Riwayat Kunjungan</h2>
-              <p className="text-xs text-gray-400 mt-0.5">10 kunjungan terakhir</p>
-            </div>
-            {!visitHistory || visitHistory.length === 0 ? (
-              <div className="px-5 py-12 text-center text-gray-400 text-sm">
-                Belum ada kunjungan tercatat.
-              </div>
-            ) : (
-              <div className="divide-y divide-gray-100">
-                {visitHistory.map(visit => (
-                  <div key={visit.id} className="px-5 py-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">
-                          {new Date(visit.checked_in_at).toLocaleDateString('id-ID', {
-                            weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
-                          })}
-                        </p>
-                        <p className="text-xs text-gray-400 mt-0.5">
-                          {new Date(visit.checked_in_at).toLocaleTimeString('id-ID', {
-                            hour: '2-digit', minute: '2-digit'
-                          })} · {(visit.users as any)?.full_name ?? '—'}
-                        </p>
-                      </div>
-                      <span className="text-xs bg-green-100 text-green-700 px-2.5 py-0.5 rounded-full font-medium">
-                        Dikunjungi
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ORDERS TAB */}
-        {activeTab === 'orders' && (
-          <div className="space-y-3">
-            {!orderHistory || orderHistory.length === 0 ? (
-              <div className="bg-white rounded-xl border border-gray-200 px-5 py-12 text-center text-gray-400 text-sm">
-                Belum ada PO tercatat.
-              </div>
-            ) : (
-              <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gray-50 border-b border-gray-100">
-                      <th className="text-left px-5 py-3 font-medium text-gray-500">Nomor PO</th>
-                      <th className="text-left px-5 py-3 font-medium text-gray-500 hidden sm:table-cell">Order Date</th>
-                      <th className="text-left px-5 py-3 font-medium text-gray-500">Status</th>
-                      <th className="text-right px-5 py-3 font-medium text-gray-500">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {orderHistory.map(po => (
-                      <tr key={po.id} className="border-b border-gray-50 hover:bg-gray-50">
-                        <td className="px-5 py-3 font-medium text-gray-900">{po.po_number}</td>
-                        <td className="px-5 py-3 text-gray-500 text-xs hidden sm:table-cell">
-                          {new Date(po.order_date).toLocaleDateString('id-ID', {
-                            day: 'numeric', month: 'short', year: 'numeric'
-                          })}
-                        </td>
-                        <td className="px-5 py-3">
-                          <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium capitalize ${
-                            po.status === 'complete'     ? 'bg-green-100 text-green-700'
-                            : po.status === 'in_progress' ? 'bg-yellow-100 text-yellow-700'
-                            : po.status === 'confirm'     ? 'bg-blue-100 text-blue-700'
-                            : 'bg-gray-100 text-gray-500'
-                          }`}>
-                            {po.status.replace('_', ' ')}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3 text-right font-medium text-gray-900">
-                          Rp {po.total_value.toLocaleString('id-ID')}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
-
+        {activeTab === 'visits' && <CustomerVisitHistory customerId={customer.id} />}
+        {activeTab === 'orders' && <CustomerOrderHistory customerId={customer.id} />}
       </div>
     </div>
   )

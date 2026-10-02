@@ -10,6 +10,7 @@ vi.mock('../../src/lib/AuthContext', () => ({ useAuth: () => ({ profile: { id: '
 vi.mock('@tanstack/react-query', () => ({ useQuery: ({ queryKey }: any) => {
   const customer = { id: 'c', name: 'Synthetic customer', visit_frequency_days: 7, address: null, city: null, last_visit_date: null }
   if (queryKey[0] === 'girard_customer') return { data: customer }
+  if (queryKey[0] === 'next_customer_schedule') return { data: null }
   if (queryKey[0] === 'customer_stats_detail') return { data: state.missing ? undefined : { first_order_date: null, order_count_3mo: 0, total_sales_3mo: state.total, top_items: state.top } }
   if (queryKey[0] === 'customer_stats') return { data: state.missing ? [] : [{ customer_id: 'c', order_count: 0, total_sales: state.total, top_items: [] }] }
   if (['schedules', 'my_visits'].includes(queryKey[0])) return { data: [{ id: 's', outlet_id: 'c', scheduled_date: '2026-10-01', status: 'pending', notes: null, customers: customer, outlet_visits: [] }] }
@@ -37,4 +38,12 @@ test('customer item revenue preserves exact decimal labels beyond safe integer c
   state.top = [{ name: 'Synthetic item', revenue: '90071992547409.91' }]
   render(<CustomerDetail />)
   expect(screen.getByText('Rp 90.071.992.547.409,91')).toBeTruthy()
+})
+
+test('customer summary keeps full large amounts wrappable and stacks item revenue on phones', () => {
+  state.top = [{ name: 'Synthetic item with a long label', revenue: '90071992547409.91' }]
+  render(<CustomerDetail />)
+  const amount = screen.getByText('Rp 90.071.992.547.409,91')
+  expect(amount.classList.contains('[overflow-wrap:anywhere]')).toBe(true)
+  expect(amount.parentElement?.classList.contains('flex-col')).toBe(true)
 })

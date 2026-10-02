@@ -23,3 +23,10 @@ test('zero and final pages expose only valid navigation', () => {
   fireEvent.click(screen.getByRole('button', { name: 'Sebelumnya' }))
   expect(change).toHaveBeenCalledWith(10)
 })
+
+test('pagination navigation can wrap inside narrow history cards', () => {
+  render(<PaginationControls page={1} total={21} pageSize={20} pending={false} onPageChange={() => {}} />)
+  const nav = screen.getByRole('navigation', { name: 'Halaman hasil' })
+  expect(nav.classList.contains('flex-wrap')).toBe(true)
+  expect(nav.classList.contains('min-w-0')).toBe(true)
+})
