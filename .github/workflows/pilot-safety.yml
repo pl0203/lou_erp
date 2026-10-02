@@ -63,6 +63,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
       - name: Load only synthetic test contract and candidate migrations
         run: |
+          set -euo pipefail
           psql -X -v ON_ERROR_STOP=1 -f tests/database/fixture.sql
           for file in supabase/migrations/*.sql; do
             if [[ "$file" < supabase/migrations/202610010001_scalable_order_reads.sql ]]; then psql -X -v ON_ERROR_STOP=1 -f "$file"; fi
@@ -94,6 +95,11 @@ jobs:
               node tests/catalog-pricing-guards.mjs
               psql -X -v ON_ERROR_STOP=1 -f scale-results/catalog-pricing-guards.sql
             fi
+            if [[ "$file" == supabase/migrations/202610020001_customer_categories.sql ]]; then
+              node scripts/customer-category-ci.mjs build-guards
+              psql -X -qAt -v ON_ERROR_STOP=1 -f scale-results/customer-category-guards.sql 2>&1 | tee scale-results/customer-category-guards.log
+              node scripts/customer-category-ci.mjs verify-guards
+            fi
             if [[ "$file" == supabase/migrations/202610020003_stale_po_conflicts.sql ]]; then
               node tests/stale-po-conflict-guards.mjs
               psql -X -v ON_ERROR_STOP=1 -f scale-results/stale-po-conflict-guards.sql
@@ -102,6 +108,7 @@ jobs:
           done
       - name: SQL invariants, real role permissions and Storage metadata policies
         run: |
+          set -euo pipefail
           psql -X -v ON_ERROR_STOP=1 -f supabase/tests/security/explicit_guards.sql
           psql -X -v ON_ERROR_STOP=1 -f supabase/tests/security/pilot_security.sql
           psql -X -v ON_ERROR_STOP=1 -f supabase/tests/security/storage_helpers.sql
@@ -109,6 +116,8 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f tests/database/order-transactions.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/stale-po-conflicts.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/nullable-catalog-prices.sql
+          psql -X -qAt -v ON_ERROR_STOP=1 -f tests/database/customer-categories.sql 2>&1 | tee scale-results/customer-category-invariants.log
+          node scripts/customer-category-ci.mjs verify-invariants
           psql -X -v ON_ERROR_STOP=1 -f tests/database/visit-transactions.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/scalable-policy-state.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/scalable-index.sql
@@ -144,5 +153,13 @@ jobs:
         with:
           name: po-import-lifecycle-${{ github.run_id }}
           path: import-results
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Preserve category SQL evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: customer-category-sql-${{ github.run_id }}
+          path: scale-results/customer-category-*
           if-no-files-found: warn
           retention-days: 7

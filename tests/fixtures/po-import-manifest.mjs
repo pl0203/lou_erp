@@ -30,3 +30,14 @@ export function syntheticImportSizeManifest() {
  });
  return {version:1,customers,products,purchaseOrders};
 }
+
+// Separately reviewed future-only category fixture, never a v1 resume/remapping.
+export function syntheticCategoryImportManifest() {
+ const source=syntheticImportManifest();
+ const categories=['supermarket_besar','supermarket_sedang','supermarket_kecil','tradisional_market','perorangan',null];
+ const customers=categories.map((customer_category,i)=>({...source.customers[0],key:`future-customer-${i}`,name:`Future synthetic customer ${i}`,customer_category}));
+ const products=source.products.map(p=>({...p,key:`future-${p.key}`,sku:`FUTURE-${p.sku}`,name:`Future ${p.name}`}));
+ const orders=[...source.purchaseOrders,structuredClone(source.purchaseOrders[1]),structuredClone(source.purchaseOrders[3])];
+ const purchaseOrders=orders.map((p,i)=>({...p,key:`future-${i}`,customerKey:customers[i].key,poNumber:`SYNTH-FUTURE-${i}`,lines:p.lines.map(l=>({...l,productKey:`future-${l.productKey}`})),shipments:p.shipments.map(s=>({...s,key:`future-${i}-${s.key}`,number:`FUTURE-${i}-${s.number}`}))}));
+ return {version:2,customers,products,purchaseOrders};
+}

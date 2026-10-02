@@ -1,3 +1,7 @@
+import { hasInvalidCustomerCategories } from '../../lib/customerCategoryRows'
+import CustomerCategorySelect from '../../components/CustomerCategorySelect'
+import { parseCustomerCategory, formatCustomerCategory, type CustomerCategory } from '../../lib/customerCategory'
+import { confirmCustomerWrite, refreshCustomerCaches } from '../../lib/customerWrites'
 import ReadFailure from '../../components/ReadFailure'
 import { readCompleteQuery } from '../../lib/reads/completeQuery'
 import { singleRelation } from '../../lib/relations'
@@ -17,6 +21,7 @@ type Customer = {
   last_visit_date: string | null
   visit_frequency_days: number
   pricing_tier: string
+  customer_category: CustomerCategory | null
 }
 
 type Manager = {
@@ -39,6 +44,7 @@ type CustomerForm = {
   visit_frequency_days: number
   manager_id: string
   pricing_tier: string
+  customer_category: CustomerCategory | null | ''
 }
 
 const EMPTY_FORM: CustomerForm = {
@@ -50,6 +56,7 @@ const EMPTY_FORM: CustomerForm = {
   visit_frequency_days: 7,
   manager_id: '',
   pricing_tier: 'luar_kota',
+  customer_category: '',
 }
 
 const FREQUENCY_OPTIONS = [
@@ -82,10 +89,10 @@ function isOverdue(lastVisit: string | null, frequencyDays: number): boolean {
 async function fetchAllCustomers(signal?: AbortSignal): Promise<Customer[]> {
   const data = await readCompleteQuery((offset, limit) => supabase
     .from('customers')
-    .select('id, name, address, city, phone, email, last_visit_date, visit_frequency_days, pricing_tier', { count: 'exact' })
+    .select('id, name, address, city, phone, email, last_visit_date, visit_frequency_days, pricing_tier, customer_category', { count: 'exact' })
     .order('id')
     .range(offset, offset + limit - 1), row => row.id, signal)
-  return data.sort((a, b) => a.name.localeCompare(b.name))
+  return data.map(row => ({ ...row, customer_category: parseCustomerCategory(row.customer_category, { allowUnclassified: true }) })).sort((a, b) => a.name.localeCompare(b.name))
 }
 
 async function fetchManagers(signal?: AbortSignal): Promise<Manager[]> {
@@ -106,88 +113,44 @@ async function fetchAssignments(signal?: AbortSignal): Promise<Assignment[]> {
   return data.map(row => ({ ...row, managers: singleRelation(row.managers) }))
 }
 
-async function createCustomer(form: CustomerForm, assignedBy: string) {
-  const { data: customer, error: customerError } = await supabase
-    .from('customers')
-    .insert({
-      name: form.name,
-      address: form.address || null,
-      city: form.city || null,
-      phone: form.phone || null,
-      email: form.email || null,
-      visit_frequency_days: form.visit_frequency_days,
-      pricing_tier: form.pricing_tier,
-    })
-    .select()
-    .single()
-  if (customerError) throw customerError
-
-  if (form.manager_id) {
-    const { error: assignError } = await supabase
-      .from('customer_manager_assignments')
-      .insert({
-        customer_id: customer.id,
-        manager_id: form.manager_id,
-        assigned_by: assignedBy,
-      })
-    if (assignError) throw assignError
-  }
-}
-
-async function assignExistingCustomer(
-  customerId: string,
-  managerId: string,
-  frequencyDays: number,
-  pricingTier: string,
-  assignedBy: string
-) {
-  const { error: customerError } = await supabase
-    .from('customers')
-    .update({ visit_frequency_days: frequencyDays, pricing_tier: pricingTier })
-    .eq('id', customerId)
-  if (customerError) throw customerError
-
-  const { error } = await supabase
-    .from('customer_manager_assignments')
-    .upsert({
-      customer_id: customerId,
-      manager_id: managerId,
-      assigned_by: assignedBy,
-      assigned_at: new Date().toISOString(),
-    }, { onConflict: 'customer_id' })
-  if (error) throw error
-}
-
-async function updateAssignment(
-  customerId: string,
-  managerId: string,
-  frequencyDays: number,
-  pricingTier: string,
-  assignedBy: string
-) {
-  const { error: customerError } = await supabase
-    .from('customers')
-    .update({ visit_frequency_days: frequencyDays, pricing_tier: pricingTier })
-    .eq('id', customerId)
-  if (customerError) throw customerError
-
+async function saveAssignment(customerId: string, managerId: string, assignedBy: string, previousManagerId: string, create: boolean) {
+  if (managerId === previousManagerId) return
   if (managerId) {
-    const { error } = await supabase
-      .from('customer_manager_assignments')
-      .upsert({
-        customer_id: customerId,
-        manager_id: managerId,
-        assigned_by: assignedBy,
-        assigned_at: new Date().toISOString(),
-      }, { onConflict: 'customer_id' })
-    if (error) throw error
+    const payload = { customer_id: customerId, manager_id: managerId, assigned_by: assignedBy, assigned_at: new Date().toISOString() }
+    await confirmCustomerWrite(() => (create
+      ? supabase.from('customer_manager_assignments').insert(payload)
+      : supabase.from('customer_manager_assignments').upsert(payload, { onConflict: 'customer_id' })
+    ).select('customer_id, manager_id'), { customer_id: customerId, manager_id: managerId }, 'Penugasan')
   } else {
-    const { error } = await supabase
-      .from('customer_manager_assignments')
-      .delete()
-      .eq('customer_id', customerId)
-    if (error) throw error
+    await confirmCustomerWrite(() => supabase.from('customer_manager_assignments').delete().eq('customer_id', customerId).select('customer_id'), { customer_id: customerId }, 'Penghapusan penugasan')
   }
+}
+
+async function saveCustomerAndAssignment(
+  customerId: string, payload: Record<string, unknown>, create: boolean,
+  managerId: string, previousManagerId: string, assignedBy: string,
+) {
+  const customerChanged = create || Object.keys(payload).length > 0
+  if (customerChanged) {
+    await confirmCustomerWrite(() => create
+      ? supabase.from('customers').insert({ id: customerId, ...payload }).select('id')
+      : supabase.from('customers').update(payload).eq('id', customerId).select('id'), { id: customerId })
+  }
+  try {
+    await saveAssignment(customerId, managerId, assignedBy, previousManagerId, create)
+  } catch (error) {
+    if (!customerChanged) throw error
+    throw new Error(`Data pelanggan tersimpan (ID: ${customerId}). ${error instanceof Error ? error.message : 'Penugasan belum terkonfirmasi.'}`)
+  }
+}
+
+function customerChanges(form: CustomerForm, original: Customer) {
+  const category = parseCustomerCategory(form.customer_category, { allowUnclassified: true })
+  const payload: Record<string, unknown> = {}
+  if (category !== original.customer_category) payload.customer_category = category
+  if (form.visit_frequency_days !== original.visit_frequency_days) payload.visit_frequency_days = form.visit_frequency_days
+  if (form.pricing_tier !== original.pricing_tier) payload.pricing_tier = form.pricing_tier
+  return payload
 }
 
 export default function GirardCustomers() {
@@ -197,6 +160,8 @@ export default function GirardCustomers() {
   const [modalMode, setModalMode] = useState<'create' | 'assign-existing' | 'edit'>('create')
   const [form, setForm] = useState<CustomerForm>(EMPTY_FORM)
   const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null)
+  const [originalCustomer, setOriginalCustomer] = useState<Customer | null>(null)
+  const [originalManagerId, setOriginalManagerId] = useState('')
 
   const [selectedExistingId, setSelectedExistingId] = useState('')
   const [existingFrequency, setExistingFrequency] = useState(7)
@@ -228,10 +193,15 @@ export default function GirardCustomers() {
     mutationFn: async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Tidak terautentikasi')
-      await createCustomer(form, user.id)
+      const category = parseCustomerCategory(form.customer_category)
+      await saveCustomerAndAssignment(crypto.randomUUID(), {
+        name: form.name, address: form.address || null, city: form.city || null,
+        phone: form.phone || null, email: form.email || null, visit_frequency_days: form.visit_frequency_days,
+        pricing_tier: form.pricing_tier, customer_category: category,
+      }, true, form.manager_id, '', user.id)
     },
+    onSettled: () => refreshCustomerCaches(queryClient, true),
     onSuccess: () => {
-      queryClient.invalidateQueries()
       closeModal()
     },
   })
@@ -240,13 +210,15 @@ export default function GirardCustomers() {
     mutationFn: async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Tidak terautentikasi')
-      await assignExistingCustomer(
-        selectedExistingId, existingManagerId,
-        existingFrequency, existingPricingTier, user.id
-      )
+      const original = customers?.find(c => c.id === selectedExistingId)
+      if (!original) throw new Error('Pelanggan tidak tersedia. Muat ulang sebelum melanjutkan.')
+      const payload: Record<string, unknown> = {}
+      if (existingFrequency !== original.visit_frequency_days) payload.visit_frequency_days = existingFrequency
+      if (existingPricingTier !== original.pricing_tier) payload.pricing_tier = existingPricingTier
+      await saveCustomerAndAssignment(selectedExistingId, payload, false, existingManagerId, '', user.id)
     },
+    onSettled: () => refreshCustomerCaches(queryClient, true),
     onSuccess: () => {
-      queryClient.invalidateQueries()
       closeModal()
     },
   })
@@ -255,19 +227,21 @@ export default function GirardCustomers() {
     mutationFn: async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Tidak terautentikasi')
-      await updateAssignment(
-        editingCustomerId!, form.manager_id,
-        form.visit_frequency_days, form.pricing_tier, user.id
-      )
+      if (!originalCustomer) throw new Error('Pelanggan tidak tersedia. Muat ulang sebelum melanjutkan.')
+      await saveCustomerAndAssignment(editingCustomerId!, customerChanges(form, originalCustomer), false,
+        form.manager_id, originalManagerId, user.id)
     },
+    onSettled: () => refreshCustomerCaches(queryClient, true),
     onSuccess: () => {
-      queryClient.invalidateQueries()
       closeModal()
     },
   })
 
   const closeModal = () => {
     setShowModal(false)
+    createMutation.reset(); assignExistingMutation.reset(); updateMutation.reset()
+    setOriginalCustomer(null)
+    setOriginalManagerId('')
     setForm(EMPTY_FORM)
     setEditingCustomerId(null)
     setSelectedExistingId('')
@@ -278,12 +252,16 @@ export default function GirardCustomers() {
 
   const openEdit = (c: Customer) => {
     const assignment = assignmentMap[c.id]
+    createMutation.reset(); assignExistingMutation.reset(); updateMutation.reset()
+    setOriginalCustomer(c)
+    setOriginalManagerId(assignment?.manager_id ?? '')
     setEditingCustomerId(c.id)
     setForm({
       ...EMPTY_FORM,
       visit_frequency_days: c.visit_frequency_days,
       manager_id: assignment?.manager_id ?? '',
       pricing_tier: c.pricing_tier ?? 'others',
+      customer_category: c.customer_category,
     })
     setModalMode('edit')
     setShowModal(true)
@@ -300,6 +278,7 @@ export default function GirardCustomers() {
 
   const tierSelect = (value: string, onChange: (v: string) => void) => (
     <select
+      aria-label="Tier Harga"
       value={value}
       onChange={e => onChange(e.target.value)}
       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
@@ -312,11 +291,12 @@ export default function GirardCustomers() {
     </select>
   )
 
-  if (customerReadError || managerReadError || assignmentReadError) return <div className="min-h-screen bg-gray-50"><GirardNav /><ReadFailure onRetry={() => { void retryCustomers(); void retryManagers(); void retryAssignments() }} /></div>
+  const readError = customerReadError || managerReadError || assignmentReadError || hasInvalidCustomerCategories(customers ?? [])
 
   return (
     <div className="min-h-screen bg-gray-50">
       <GirardNav />
+      {readError && <ReadFailure onRetry={() => { void retryCustomers(); void retryManagers(); void retryAssignments() }} />}
 
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center justify-between flex-wrap gap-3">
         <div>
@@ -324,7 +304,7 @@ export default function GirardCustomers() {
           <p className="text-sm text-gray-500 mt-0.5">{customers?.length ?? 0} total pelanggan</p>
         </div>
         <div className="flex gap-2">
-          {unassignedCustomers.length > 0 && (
+          {!readError && unassignedCustomers.length > 0 && (
             <button
               onClick={() => { setModalMode('assign-existing'); setShowModal(true) }}
               className="border border-green-600 text-green-600 hover:bg-green-50 text-sm font-medium px-4 py-2 rounded-lg transition-colors"
@@ -333,7 +313,8 @@ export default function GirardCustomers() {
             </button>
           )}
           <button
-            onClick={() => { setModalMode('create'); setShowModal(true) }}
+            onClick={() => { closeModal(); setModalMode('create'); setShowModal(true) }}
+            disabled={readError}
             className="bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
           >
             + Pelanggan Baru
@@ -355,7 +336,7 @@ export default function GirardCustomers() {
         )}
 
         {/* Desktop table */}
-        {!isLoading && (
+        {!isLoading && !readError && (
           <div className="hidden md:block bg-white rounded-xl border border-gray-200 overflow-hidden">
             <table className="w-full text-sm">
               <thead>
@@ -364,6 +345,7 @@ export default function GirardCustomers() {
                   <th className="text-left px-5 py-3 font-medium text-gray-500">Lokasi</th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500">Manajer</th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500">Tier Harga</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">Kategori Pelanggan</th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500">Frekuensi Kunjungan</th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500">Kunjungan Terakhir</th>
                   <th className="text-right px-5 py-3 font-medium text-gray-500">Aksi</th>
@@ -372,7 +354,7 @@ export default function GirardCustomers() {
               <tbody>
                 {filtered?.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="text-center text-gray-400 py-12">
+                    <td colSpan={8} className="text-center text-gray-400 py-12">
                       Tidak ada pelanggan ditemukan.
                     </td>
                   </tr>
@@ -400,6 +382,7 @@ export default function GirardCustomers() {
                           {TIER_LABELS[c.pricing_tier] ?? c.pricing_tier}
                         </span>
                       </td>
+                      <td className="px-5 py-4">{formatCustomerCategory(c.customer_category)}</td>
                       <td className="px-5 py-4 text-gray-600 text-xs">
                         {frequencyLabel(c.visit_frequency_days)}
                       </td>
@@ -428,7 +411,7 @@ export default function GirardCustomers() {
         )}
 
         {/* Mobile cards */}
-        {!isLoading && (
+        {!isLoading && !readError && (
           <div className="md:hidden space-y-3">
             {filtered?.map(c => {
               const assignment = assignmentMap[c.id]
@@ -448,6 +431,7 @@ export default function GirardCustomers() {
                     </button>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div><p className="text-gray-400">Kategori Pelanggan</p><p className="text-gray-700 mt-0.5">{formatCustomerCategory(c.customer_category)}</p></div>
                     <div>
                       <p className="text-gray-400">Manajer</p>
                       <p className="text-gray-700 mt-0.5">{assignment?.managers?.full_name ?? '—'}</p>
@@ -492,6 +476,9 @@ export default function GirardCustomers() {
             </div>
 
             <div className="px-6 py-4 space-y-4">
+              {modalMode !== 'assign-existing' && <CustomerCategorySelect value={form.customer_category}
+                allowUnclassified={modalMode === 'edit' && originalCustomer?.customer_category === null}
+                onChange={value => setForm(p => ({ ...p, customer_category: value }))} />}
 
               {/* CREATE */}
               {modalMode === 'create' && (
@@ -517,6 +504,7 @@ export default function GirardCustomers() {
                   <div>
                     <label className="block text-sm text-gray-600 mb-1">Frekuensi Kunjungan *</label>
                     <select
+                      aria-label="Frekuensi Kunjungan"
                       value={form.visit_frequency_days}
                       onChange={e => setForm(p => ({ ...p, visit_frequency_days: parseInt(e.target.value) }))}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
@@ -535,6 +523,7 @@ export default function GirardCustomers() {
                       Tugaskan ke Manajer <span className="text-gray-400">(opsional)</span>
                     </label>
                     <select
+                      aria-label="Manajer"
                       value={form.manager_id}
                       onChange={e => setForm(p => ({ ...p, manager_id: e.target.value }))}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
@@ -554,12 +543,17 @@ export default function GirardCustomers() {
                   <div>
                     <label className="block text-sm text-gray-600 mb-1">Pilih Pelanggan *</label>
                     <select
+                      aria-label="Pilih Pelanggan"
                       value={selectedExistingId}
-                      onChange={e => setSelectedExistingId(e.target.value)}
+                      onChange={e => {
+                        setSelectedExistingId(e.target.value)
+                        const customer = customers?.find(c => c.id === e.target.value)
+                        if (customer) { setExistingFrequency(customer.visit_frequency_days); setExistingPricingTier(customer.pricing_tier) }
+                      }}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
                     >
                       <option value="">Pilih pelanggan...</option>
-                      {unassignedCustomers.map(c => (
+                      {(customers ?? []).filter(c => !assignmentMap[c.id] || c.id === selectedExistingId).map(c => (
                         <option key={c.id} value={c.id}>{c.name}</option>
                       ))}
                     </select>
@@ -570,6 +564,7 @@ export default function GirardCustomers() {
                   <div>
                     <label className="block text-sm text-gray-600 mb-1">Frekuensi Kunjungan *</label>
                     <select
+                      aria-label="Frekuensi Kunjungan"
                       value={existingFrequency}
                       onChange={e => setExistingFrequency(parseInt(e.target.value))}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
@@ -586,6 +581,7 @@ export default function GirardCustomers() {
                   <div>
                     <label className="block text-sm text-gray-600 mb-1">Tugaskan ke Manajer *</label>
                     <select
+                      aria-label="Manajer"
                       value={existingManagerId}
                       onChange={e => setExistingManagerId(e.target.value)}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
@@ -605,6 +601,7 @@ export default function GirardCustomers() {
                   <div>
                     <label className="block text-sm text-gray-600 mb-1">Frekuensi Kunjungan</label>
                     <select
+                      aria-label="Frekuensi Kunjungan"
                       value={form.visit_frequency_days}
                       onChange={e => setForm(p => ({ ...p, visit_frequency_days: parseInt(e.target.value) }))}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
@@ -621,6 +618,7 @@ export default function GirardCustomers() {
                   <div>
                     <label className="block text-sm text-gray-600 mb-1">Manajer</label>
                     <select
+                      aria-label="Manajer"
                       value={form.manager_id}
                       onChange={e => setForm(p => ({ ...p, manager_id: e.target.value }))}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
@@ -655,7 +653,7 @@ export default function GirardCustomers() {
                     updateMutation.mutate()
                   }
                 }}
-                disabled={isPending}
+                disabled={isPending || readError}
                 className="px-4 py-2 text-sm font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
               >
                 {isPending ? 'Menyimpan...'
@@ -666,7 +664,7 @@ export default function GirardCustomers() {
             </div>
 
             {isError && (
-              <p className="text-red-500 text-xs px-6 pb-4 text-right">{errorMessage}</p>
+              <p role="alert" className="text-red-500 text-xs px-6 pb-4 text-right">{errorMessage}</p>
             )}
           </div>
         </div>

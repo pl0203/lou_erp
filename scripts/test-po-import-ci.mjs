@@ -5,10 +5,17 @@ import { isDeepStrictEqual } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { rolloutCiConnection } from './test-read-rollout-ci.mjs';
 import { buildPoImportBaselineSql,buildPoImportPackets,hashImportManifest,assertPoImportPacketSet } from './build-po-import-packets.mjs';
-import { syntheticImportManifest,syntheticImportSizeManifest } from '../tests/fixtures/po-import-manifest.mjs';
-export function isExpectedImportRefusal(stderr,message) {
- const escaped=message.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
- return new RegExp('(?:^|\\n)(?:psql:[^\\n]*?:\\s*)?ERROR:\\s+P0001: '+escaped+'(?:\\r?\\n|$)').test(String(stderr));
+import { syntheticImportManifest,syntheticImportSizeManifest,syntheticCategoryImportManifest } from '../tests/fixtures/po-import-manifest.mjs';
+export const CATEGORY_MIGRATION='202610020001_customer_categories.sql';
+export function isExpectedImportRefusal(stderr,message,sqlstate='P0001') {
+ const errors=String(stderr).split(/\r?\n/).filter(line=>/^(?:psql:(?:[^\n]*?:)?\s*)?(?:ERROR|FATAL|PANIC):/i.test(line));
+ if(errors.length!==1||!/^\w{5}$/.test(sqlstate))return false;
+ return errors[0].replace(/^(?:psql:[^\n]*?:\s*)?ERROR:\s+/,'')===`${sqlstate}: ${message}`;
+}
+export function assertCategoryTransitionPreserved(before,after) {
+ if(before.schema_md5===after.schema_md5||before.customers!==after.customers||!isDeepStrictEqual(before.access,after.access))throw new Error('Category migration changed protected customer state/access');
+ const omitCustomers=baseline=>Object.fromEntries(Object.entries(baseline).filter(([relation])=>relation!=='public.customers'));
+ if(!isDeepStrictEqual(omitCustomers(before.baselineData),omitCustomers(after.baselineData))||before.baselineData['public.customers'].rows!==after.baselineData['public.customers'].rows)throw new Error('Category migration changed protected baseline/history');
 }
 export async function runPoImportCi({env=process.env,execute=execFileSync,repoRoot=process.cwd()}={}) {
  const connection=rolloutCiConnection(env);
@@ -24,7 +31,7 @@ export async function runPoImportCi({env=process.env,execute=execFileSync,repoRo
  const topology=readFileSync(`${repoRoot}/tests/database/hosted-read-policy-fixture.sql`,'utf8');
  if(topology.split("current_database()<>'pilot_test'").length!==2)throw new Error('Unexpected disposable topology guard');
  run(topology.replace("current_database()<>'pilot_test'","current_database()<>'pilot_import_test'"));
- for(const file of files.filter(f=>f>='202610010001_scalable_order_reads.sql'))run(readFileSync(`${repoRoot}/supabase/migrations/${file}`,'utf8'));
+ for(const file of files.filter(f=>f>='202610010001_scalable_order_reads.sql'&&f!==CATEGORY_MIGRATION))run(readFileSync(`${repoRoot}/supabase/migrations/${file}`,'utf8'));
  // Explicit provider/schema approximations and insertion-only audit semantics.
  // These are synthetic test definitions, never a hosted bootstrap.
  run(`ALTER TABLE auth.users ADD COLUMN email text,ADD COLUMN role text,ADD COLUMN aud text,ADD COLUMN created_at timestamptz DEFAULT now();
@@ -38,7 +45,7 @@ CREATE OR REPLACE FUNCTION public.log_sj_changes() RETURNS trigger LANGUAGE plpg
  RETURN coalesce(NEW,OLD); END $$;
 CREATE FUNCTION public.synthetic_import_fault() RETURNS trigger LANGUAGE plpgsql SET search_path='' AS $$ BEGIN
  IF current_setting('pilot.import_fault',true)='on' AND NEW.sku='HISTORIC-A' THEN RAISE EXCEPTION 'Synthetic import fault'; END IF;
- IF current_setting('pilot.import_fault',true)='later' AND EXISTS(SELECT 1 FROM public.purchase_orders WHERE id=NEW.purchase_order_id AND po_number='SYNTH-IMPORT-partial') THEN RAISE EXCEPTION 'Synthetic later-batch import fault'; END IF; RETURN NEW; END $$;
+ IF current_setting('pilot.import_fault',true)='later' AND EXISTS(SELECT 1 FROM public.purchase_orders WHERE id=NEW.purchase_order_id AND po_number IN('SYNTH-IMPORT-partial','SYNTH-FUTURE-2')) THEN RAISE EXCEPTION 'Synthetic later-batch import fault'; END IF; RETURN NEW; END $$;
 CREATE TRIGGER synthetic_import_fault BEFORE INSERT ON public.po_line_items FOR EACH ROW EXECUTE FUNCTION public.synthetic_import_fault();
 INSERT INTO auth.users(id,email,role,aud) VALUES('98000000-0000-0000-0000-000000000001','synthetic-import@example.invalid','authenticated','authenticated');
 INSERT INTO public.users(id,email,full_name,role,is_active) VALUES('98000000-0000-0000-0000-000000000001','synthetic-import@example.invalid','Synthetic import actor','executive',true);
@@ -46,13 +53,13 @@ INSERT INTO public.customers(id,name) VALUES('98000000-0000-0000-0000-0000000000
 INSERT INTO public.products(id,name,sku,unit_price,harga_pokok,luar_kota,dalam_kota,depo_bangunan) VALUES('98000000-0000-0000-0000-000000000003','Original synthetic product','ORIGINAL-SYNTHETIC',10,8,10,11,9);
 BEGIN; SELECT set_config('request.jwt.claim.sub','98000000-0000-0000-0000-000000000001',true);
 SELECT public.pilot_order_transaction('98000000-0000-0000-0000-000000000004','create_po','{"customer_id":"98000000-0000-0000-0000-000000000002","po_number":"ORIGINAL-SYNTHETIC-PO","order_date":"2026-01-01","items":[{"product_name":"Original synthetic line","sku":"ORIGINAL-SYNTHETIC","quantity":5,"unit_price":10}]}'::jsonb); COMMIT;`);
- const snapshot=()=>oneJson(run("BEGIN READ ONLY; SET LOCAL TIME ZONE 'UTC'; SET LOCAL search_path='';\n"+buildPoImportBaselineSql()+'\nROLLBACK;'));
+ const snapshot=(modelVersion='po-import-v1')=>oneJson(run("BEGIN READ ONLY; SET LOCAL TIME ZONE 'UTC'; SET LOCAL search_path='';\n"+buildPoImportBaselineSql({modelVersion})+'\nROLLBACK;'));
  const before=snapshot(),manifest=syntheticImportManifest();
  const config={expectedManifestSha256:hashImportManifest(manifest),expectedProjectRef:'a'.repeat(20),expectedDatabase:'pilot_import_test',disposableFixture:'disposable-pilot-ci',actorId:'98000000-0000-0000-0000-000000000001',actorEmail:'synthetic-import@example.invalid',actorRole:'executive',schemaMd5:before.schema_md5,baselineData:before.baselineData,expectedFunctionHashes:before.expectedFunctionHashes,expectedAuditFields:['status','line_item_added','sj_created','sj_lines_revised'],batchSize:2};
  const built=buildPoImportPackets({manifest,config});assertPoImportPacketSet({manifest,config,packets:built.packets});
  mkdirSync(`${repoRoot}/import-results`,{recursive:true});
  for(const p of built.packets)writeFileSync(`${repoRoot}/import-results/packet-${p.index}.sql`,p.sql);
- const reject=(sql,expected)=>{try{run(sql)}catch(error){if(isExpectedImportRefusal(error.stderr,expected))return;throw error;}throw new Error('Expected import rejection did not occur');};
+ const reject=(sql,expected,sqlstate='P0001')=>{try{run(sql)}catch(error){if(isExpectedImportRefusal(error.stderr,expected,sqlstate))return;throw error;}throw new Error('Expected import rejection did not occur');};
  const unchanged=baseline=>{const current=snapshot();if(JSON.stringify(current.baselineData)!==JSON.stringify(baseline.baselineData)||current.schema_md5!==baseline.schema_md5)throw new Error('Rejected import changed state');};
  reject(buildPoImportPackets({manifest,config:{...config,schemaMd5:'0'.repeat(32)}}).packets[0].sql,'Schema fingerprint changed');unchanged(before);console.log('PO_IMPORT_SCHEMA_DRIFT_REJECTED');
  reject(buildPoImportPackets({manifest,config:{...config,actorEmail:'different-actor@example.invalid'}}).packets[0].sql,'Reviewed active actor changed');unchanged(before);console.log('PO_IMPORT_ACTOR_DRIFT_REJECTED');
@@ -116,5 +123,92 @@ SELECT public.pilot_order_transaction('98000000-0000-0000-0000-000000000004','cr
  if(sizeTotals.customers!==302||sizeTotals.products!==2103||sizeTotals.orders!==1505||sizeTotals.lines!==3543||sizeTotals.shipments!==1453||sizeTotals.shipmentLines!==3578||sizeTotals.value!=='155646.25'||sizeTotals.delivered!=='115671.25')throw new Error('Independent synthetic size controls failed');
  sizeEvidence.verifiedTotals=sizeTotals;writeFileSync(`${repoRoot}/import-results/size-timings.json`,JSON.stringify(sizeEvidence,null,2));
  console.log('PO_IMPORT_SIZE_AND_LATE_REPLAY_VERIFIED');
+ // Forward-only boundary: all genuinely unchanged v1/size packets ran before this.
+ // Pending Task 4 gate: separate read-only legacy audit runtime coverage. No stub.
+ const transitionSnapshot=()=>({...snapshot(),...oneJson(run(`SELECT jsonb_build_object(
+ 'customers',(SELECT md5(coalesce(jsonb_agg(to_jsonb(c)-'customer_category' ORDER BY c.id),'[]')::text) FROM public.customers c),
+ 'access',jsonb_build_object('relation',(SELECT jsonb_build_object('owner',relowner,'acl',relacl::text,'rls',relrowsecurity,'force',relforcerowsecurity) FROM pg_class WHERE oid='public.customers'::regclass),
+ 'columns',(SELECT jsonb_agg(jsonb_build_object('name',attname,'acl',attacl::text) ORDER BY attnum) FROM pg_attribute WHERE attrelid='public.customers'::regclass AND attnum>0 AND NOT attisdropped AND attname<>'customer_category'),
+ 'policies',(SELECT jsonb_agg(to_jsonb(p) ORDER BY policyname) FROM pg_policies p WHERE schemaname='public' AND tablename='customers')));`))});
+ const beforeCategory=transitionSnapshot();
+ const categoryMigration=readFileSync(`${repoRoot}/supabase/migrations/${CATEGORY_MIGRATION}`,'utf8');
+ run(categoryMigration);
+ const afterCategory=transitionSnapshot();assertCategoryTransitionPreserved(beforeCategory,afterCategory);
+ if(run('SELECT count(*) FROM public.customers WHERE customer_category IS NOT NULL;').trim()!=='0')throw new Error('Legacy categories were inferred');
+ console.log('PO_IMPORT_CATEGORY_ADDITIVE_HISTORY_ACCESS_VERIFIED');
+ for(const p of [...built.packets,...sizeBuilt.packets]){reject(p.sql,'Schema fingerprint changed');unchanged(afterCategory);}
+ console.log('PO_IMPORT_V1_POST_CATEGORY_SCHEMA_REJECTED');
+ writeFileSync(`${repoRoot}/import-results/category-transition.json`,JSON.stringify({before:beforeCategory,after:afterCategory,oldPacketSha256:[...built.packets,...sizeBuilt.packets].map(p=>p.sha256),legacyAudit:'Pending Task 4 read-only legacy audit runtime gate'},null,2));
+ phaseDeadline=Date.now()+10*60*1000;
+ const futureManifest=syntheticCategoryImportManifest(),futureBefore=snapshot('po-import-v2');
+ if(futureBefore.model!=='po-import-v2')throw new Error('Future baseline model mismatch');
+ const futureConfig={...config,expectedManifestSha256:hashImportManifest(futureManifest),schemaMd5:futureBefore.schema_md5,baselineData:futureBefore.baselineData,expectedFunctionHashes:futureBefore.expectedFunctionHashes};
+ const futureInput={manifest:futureManifest,config:futureConfig,modelVersion:'po-import-v2'};
+ const future=buildPoImportPackets(futureInput);assertPoImportPacketSet({...futureInput,packets:future.packets});
+ if(!isDeepStrictEqual(future,buildPoImportPackets(structuredClone(futureInput))))throw new Error('Future import is nondeterministic');
+ for(const p of future.packets)writeFileSync(`${repoRoot}/import-results/v2-packet-${p.index}.sql`,p.sql);
+ for(const invalid of ['missing','invalid']) {
+  const m=structuredClone(futureManifest);
+  if(invalid==='missing')delete m.customers[0].customer_category;else m.customers[0].customer_category='Other';
+  let refused=false;
+  try{buildPoImportPackets({...futureInput,manifest:m,config:{...futureConfig,expectedManifestSha256:hashImportManifest(m)}})}catch(error){if(error.message===(invalid==='missing'?'Explicit customer category mapping required':'Invalid explicit customer category mapping'))refused=true;else throw error;}
+  if(!refused)throw new Error('Invalid future category generated SQL');
+ }
+ console.log('PO_IMPORT_V2_COMPILER_CATEGORY_REFUSALS_VERIFIED');
+ const futurePacket=p=>{
+  const lines=run(p.sql).trim().split('\n').filter(x=>x.startsWith('PO_IMPORT_PACKET_COMMITTED|'));
+  if(lines.length!==1)throw new Error('Future receipt marker missing');
+  const receipt=JSON.parse(lines[0].slice('PO_IMPORT_PACKET_COMMITTED|'.length));
+  if(receipt.model!=='po-import-v2'||receipt.packet_index!==p.index||receipt.manifest_sha256!==future.manifestSha256||receipt.plan_sha256!==future.planSha256||receipt.verified_through<p.index)throw new Error('Future receipt mismatch');
+  return receipt;
+ };
+ reject(buildPoImportPackets({...futureInput,config:{...futureConfig,schemaMd5:'0'.repeat(32)}}).packets[0].sql,'Schema fingerprint changed');unchanged(futureBefore);console.log('PO_IMPORT_V2_SCHEMA_DRIFT_REJECTED');
+ reject(buildPoImportPackets({...futureInput,config:{...futureConfig,actorEmail:'wrong@example.invalid'}}).packets[0].sql,'Reviewed active actor changed');unchanged(futureBefore);console.log('PO_IMPORT_V2_ACTOR_DRIFT_REJECTED');
+ reject(future.packets[1].sql,'Prior packet must commit and verify before this packet');unchanged(futureBefore);console.log('PO_IMPORT_V2_OUT_OF_ORDER_REJECTED');
+ const categoryValue=",x->>'customer_category'\nFROM pg_temp.import_master_input";
+ if(future.packets[0].sql.split(categoryValue).length!==2)throw new Error('Future category insert injection boundary changed');
+ reject(future.packets[0].sql.replace(categoryValue,",'invalid-synthetic-category'\nFROM pg_temp.import_master_input"),'new row for relation "customers" violates check constraint "customers_customer_category_check"','23514');unchanged(futureBefore);console.log('PO_IMPORT_V2_INVALID_CATEGORY_ATOMIC_FAILURE_VERIFIED');
+ reject("SET pilot.import_fault='on';\n"+future.packets[0].sql,'Synthetic import fault');unchanged(futureBefore);console.log('PO_IMPORT_V2_ATOMIC_FAILURE_VERIFIED');
+ run(future.packets[0].sql);const futureFirst=snapshot();
+ if(!futurePacket(future.packets[0]).skipped)throw new Error('Future lost-response retry inserted again');unchanged(futureFirst);console.log('PO_IMPORT_V2_LOST_RESPONSE_REPLAY_VERIFIED');
+ const futureSession=run(future.packets[0].sql+'\n'+future.packets[0].sql).trim().split('\n').filter(x=>x.startsWith('PO_IMPORT_PACKET_COMMITTED|')).map(x=>JSON.parse(x.slice('PO_IMPORT_PACKET_COMMITTED|'.length)));
+ if(futureSession.length!==2||futureSession.some(r=>!r.skipped||r.packet_index!==0||r.model!=='po-import-v2'||r.manifest_sha256!==future.manifestSha256||r.plan_sha256!==future.planSha256))throw new Error('Future same-session receipt mismatch');unchanged(futureFirst);console.log('PO_IMPORT_V2_SAME_SESSION_REPLAY_VERIFIED');
+ reject("SET pilot.import_fault='later';\n"+future.packets[1].sql,'Synthetic later-batch import fault');unchanged(futureFirst);console.log('PO_IMPORT_V2_LATER_BATCH_ATOMIC_FAILURE_VERIFIED');
+ reject(future.packets[2].sql,'Prior packet must commit and verify before this packet');unchanged(futureFirst);
+ for(const p of future.packets.slice(1))if(futurePacket(p).skipped)throw new Error('New future packet was skipped');
+ const futureComplete=snapshot();for(const p of future.packets)if(!futurePacket(p).skipped)throw new Error('Future complete retry inserted again');unchanged(futureComplete);console.log('PO_IMPORT_V2_COMPLETE_REPLAY_VERIFIED');
+ if(!futurePacket(future.packets.at(-1)).skipped)throw new Error('Future late retry inserted again');unchanged(futureComplete);console.log('PO_IMPORT_V2_LATE_REPLAY_VERIFIED');
+ const futureMasters=oneJson(run(`SELECT jsonb_build_object('customers',(SELECT jsonb_agg(to_jsonb(c)-'created_at' ORDER BY c.id) FROM public.customers c WHERE c.name LIKE 'Future synthetic customer %'),'products',(SELECT jsonb_agg(to_jsonb(p)-'created_at' ORDER BY p.id) FROM public.products p WHERE p.sku LIKE 'FUTURE-%'));`));
+ const expectedFutureMasters={customers:future.resolved.customers.map(({key,sourceTier,...row})=>row).sort((a,b)=>a.id.localeCompare(b.id)),products:future.resolved.products.map(({key,...row})=>row).sort((a,b)=>a.id.localeCompare(b.id))};
+ if(!isDeepStrictEqual(futureMasters,expectedFutureMasters))throw new Error('Future explicit categories/pricing/master values changed');
+ const futureTotals=oneJson(run(`SELECT jsonb_build_object('orders',count(*),'value',sum(total_value)::text,'lines',(SELECT count(*) FROM public.po_line_items l JOIN public.purchase_orders p ON p.id=l.purchase_order_id WHERE p.po_number LIKE 'SYNTH-FUTURE-%'),'ordered',(SELECT sum(l.quantity)::text FROM public.po_line_items l JOIN public.purchase_orders p ON p.id=l.purchase_order_id WHERE p.po_number LIKE 'SYNTH-FUTURE-%'),'shipments',(SELECT count(*) FROM public.surat_jalan s JOIN public.purchase_orders p ON p.id=s.purchase_order_id WHERE p.po_number LIKE 'SYNTH-FUTURE-%'),'shipmentLines',(SELECT count(*) FROM public.sj_line_items s JOIN public.po_line_items l ON l.id=s.po_line_item_id JOIN public.purchase_orders p ON p.id=l.purchase_order_id WHERE p.po_number LIKE 'SYNTH-FUTURE-%'),'delivered',(SELECT sum(s.quantity_delivered)::text FROM public.sj_line_items s JOIN public.po_line_items l ON l.id=s.po_line_item_id JOIN public.purchase_orders p ON p.id=l.purchase_order_id WHERE p.po_number LIKE 'SYNTH-FUTURE-%'),'deliveredValue',(SELECT sum(s.quantity_delivered*l.unit_price)::text FROM public.sj_line_items s JOIN public.po_line_items l ON l.id=s.po_line_item_id JOIN public.purchase_orders p ON p.id=l.purchase_order_id WHERE p.po_number LIKE 'SYNTH-FUTURE-%')) FROM public.purchase_orders WHERE po_number LIKE 'SYNTH-FUTURE-%';`));
+ if(!isDeepStrictEqual(futureTotals,{orders:6,value:'87.89',lines:7,ordered:'19',shipments:3,shipmentLines:4,delivered:'8',deliveredValue:'53.75'}))throw new Error('Independent future quantity/value controls failed');
+ console.log('PO_IMPORT_V2_CATEGORIES_PRICING_HISTORY_VERIFIED');
+ const futureCustomer=future.resolved.customers[0];
+ run(`UPDATE public.customers SET customer_category='perorangan' WHERE id='${futureCustomer.id}';`);
+ const categoryChanged=snapshot();reject(future.packets[0].sql,'Source-owned master rows changed');unchanged(categoryChanged);
+ for(const [relation,state] of Object.entries(futureComplete.baselineData))if(relation!=='public.customers'&&!isDeepStrictEqual(state,categoryChanged.baselineData[relation]))throw new Error('Category edit changed pricing/history');
+ run(`UPDATE public.customers SET customer_category='supermarket_besar' WHERE id='${futureCustomer.id}';`);console.log('PO_IMPORT_V2_CATEGORY_DRIFT_REJECTED');
+ run(`UPDATE public.customers SET name='Changed future synthetic source' WHERE id='${futureCustomer.id}';`);
+ const futureSourceChanged=snapshot();reject(future.packets[0].sql,'Source-owned master rows changed');unchanged(futureSourceChanged);
+ run(`UPDATE public.customers SET name='Future synthetic customer 0' WHERE id='${futureCustomer.id}';`);console.log('PO_IMPORT_V2_SOURCE_DRIFT_REJECTED');
+ run("UPDATE public.products SET name='Changed synthetic baseline' WHERE id='98000000-0000-0000-0000-000000000003';");
+ const futureBaselineChanged=snapshot();reject(future.packets[0].sql,'Original baseline changed');unchanged(futureBaselineChanged);
+ run("UPDATE public.products SET name='Original synthetic product' WHERE id='98000000-0000-0000-0000-000000000003';");console.log('PO_IMPORT_V2_BASELINE_DRIFT_REJECTED');
+ const futureRequestId=future.resolved.purchaseOrders[0].requestId;
+ const futurePayload=oneJson(run(`SELECT payload FROM private.pilot_order_requests WHERE actor_id='${futureConfig.actorId}' AND request_id='${futureRequestId}';`));
+ const futurePayloadHex=Buffer.from(JSON.stringify(futurePayload),'utf8').toString('hex');
+ for(const field of ['master_model','po_model']) {
+  run(`UPDATE private.pilot_order_requests SET payload=jsonb_set(payload,ARRAY['import_provenance','${field}'],to_jsonb('tampered future canonical text'::text)) WHERE actor_id='${futureConfig.actorId}' AND request_id='${futureRequestId}';`);
+  const changed=snapshot();reject(future.packets.at(-1).sql,'Stored source model changed');unchanged(changed);
+  run(`UPDATE private.pilot_order_requests SET payload=convert_from(decode('${futurePayloadHex}','hex'),'UTF8')::jsonb WHERE actor_id='${futureConfig.actorId}' AND request_id='${futureRequestId}';`);
+ }
+ console.log('PO_IMPORT_V2_STORED_MODEL_TAMPER_REJECTED');
+ const futureEdit=oneJson(run(`SELECT jsonb_build_object('po_id',p.id,'customer_id',p.customer_id,'expected_updated_at',p.updated_at,'notes','Synthetic authorized future correction','items',(SELECT jsonb_agg(jsonb_build_object('id',l.id,'product_name',l.product_name,'sku',l.sku,'quantity',l.quantity,'unit_price',l.unit_price) ORDER BY l.id) FROM public.po_line_items l WHERE l.purchase_order_id=p.id)) FROM public.purchase_orders p WHERE p.po_number='SYNTH-FUTURE-1';`));
+ const futureEditHex=Buffer.from(JSON.stringify(futureEdit),'utf8').toString('hex');
+ run(`BEGIN; SELECT set_config('request.jwt.claim.sub','${futureConfig.actorId}',true); SET LOCAL ROLE authenticated; SELECT public.pilot_order_transaction('98000000-0000-0000-0000-000000000010','edit_po',convert_from(decode('${futureEditHex}','hex'),'UTF8')::jsonb); COMMIT;`);
+ const futureEdited=snapshot();reject(future.packets[0].sql,'PO source fields or workflow version changed');unchanged(futureEdited);console.log('PO_IMPORT_V2_PO_EDIT_PRESERVED');
+ writeFileSync(`${repoRoot}/import-results/v2-verified-controls.json`,JSON.stringify({model:'po-import-v2',manifestSha256:future.manifestSha256,planSha256:future.planSha256,packetSha256:future.packets.map(p=>p.sha256),counts:future.counts,totals:futureTotals,categories:futureMasters.customers.map(c=>({id:c.id,customer_category:c.customer_category,pricing_tier:c.pricing_tier})),legacyAudit:'Pending Task 4 read-only legacy audit runtime gate'},null,2));
+ console.log('PO_IMPORT_V2_LIFECYCLE_VERIFIED');
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){if(process.argv.length!==2)throw new Error('No custom import CI runner arguments');await runPoImportCi();}

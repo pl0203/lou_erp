@@ -12,3 +12,16 @@ test('only exact expected SQLSTATE and full refusal message count as a negative-
  expect(isExpectedImportRefusal('ERROR:  P0001: Schema fingerprint changed unexpectedly\n','Schema fingerprint changed')).toBe(false)
  expect(isExpectedImportRefusal("ERROR:  42501: unrelated\nDETAIL: 'ERROR: P0001: Schema fingerprint changed\n'",'Schema fingerprint changed')).toBe(false)
 })
+
+test('unrelated additional SQL errors cannot satisfy an expected refusal',()=>{
+ expect(isExpectedImportRefusal('ERROR:  42501: permission denied\nERROR:  P0001: Schema fingerprint changed\n','Schema fingerprint changed')).toBe(false)
+})
+test('category constraint failures require their exact SQLSTATE and constraint message',()=>{
+ const message='new row for relation "customers" violates check constraint "customers_customer_category_check"'
+ expect((isExpectedImportRefusal as any)(`ERROR:  23514: ${message}\n`,message,'23514')).toBe(true)
+ expect((isExpectedImportRefusal as any)(`ERROR:  42501: ${message}\n`,message,'23514')).toBe(false)
+})
+
+test('psql connection errors cannot be hidden alongside an expected SQL refusal',()=>{
+ expect(isExpectedImportRefusal('psql: error: connection refused\nERROR:  P0001: Schema fingerprint changed\n','Schema fingerprint changed')).toBe(false)
+})

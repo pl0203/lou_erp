@@ -9,7 +9,7 @@ const clients: QueryClient[] = []
 function DetailDestination() { const { id } = useParams(); return <h1>Customer detail {id}</h1> }
 function mount() {
   const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } }); clients.push(client)
-  client.setQueryData(['all_customers'], [{ id: 'customer-a', name: 'Example Customer', address: null, city: 'Example City', phone: null, email: null, visit_frequency_days: 7, last_visit_date: null, pricing_tier: 'luar_kota' }])
+  client.setQueryData(['all_customers'], [{ id: 'customer-a', name: 'Example Customer', address: null, city: 'Example City', phone: null, email: null, visit_frequency_days: 7, last_visit_date: null, pricing_tier: 'luar_kota', customer_category: null }])
   client.setQueryData(['managers_list'], [])
   client.setQueryData(['assignments'], [])
   render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/girard/customers']}><Routes>
