@@ -1,13 +1,14 @@
 import React from 'react'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { cacheProbe } from './cache-probe'
 
 const state = vi.hoisted(() => ({ data: {} as Record<string, unknown>, write: vi.fn(), navigate: vi.fn() }))
 vi.mock('../../src/components/GirardNav', () => ({ default: () => null }))
 vi.mock('../../src/lib/AuthContext', () => ({ useAuth: () => ({ profile: { id: 'actor', role: 'executive' } }) }))
-vi.mock('react-router-dom', () => ({ useNavigate: () => state.navigate }))
+vi.mock('react-router-dom', async original => ({ ...await original<any>(), useNavigate: () => state.navigate }))
 vi.mock('@tanstack/react-query', async original => ({ ...await original<any>(), useQuery: ({ queryKey }: any) => ({ data: state.data[queryKey[0]], isLoading: false }) }))
 vi.mock('../../src/lib/supabase', () => ({ supabase: {
   auth: { getUser: async () => ({ data: { user: { id: 'actor' } } }) },
@@ -42,7 +43,7 @@ function mount(component: React.ReactNode) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity }, mutations: { retry: false } } })
   clients.push(client)
   const probe = cacheProbe(client); stops.push(probe.stop)
-  render(<QueryClientProvider client={client}>{component}</QueryClientProvider>)
+  render(<QueryClientProvider client={client}><MemoryRouter>{component}</MemoryRouter></QueryClientProvider>)
   return probe
 }
 function choose(option: string, value: string) {

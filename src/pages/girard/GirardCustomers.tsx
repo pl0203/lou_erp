@@ -2,6 +2,7 @@ import ReadFailure from '../../components/ReadFailure'
 import { readCompleteQuery } from '../../lib/reads/completeQuery'
 import { singleRelation } from '../../lib/relations'
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import GirardNav from '../../components/GirardNav'
@@ -382,7 +383,7 @@ export default function GirardCustomers() {
                   return (
                     <tr key={c.id} className="border-b border-gray-50 hover:bg-gray-50">
                       <td className="px-5 py-4">
-                        <p className="font-medium text-gray-900">{c.name}</p>
+                        <Link to={`/girard/customer/${c.id}`} className="font-medium text-green-700 underline decoration-green-300 underline-offset-2 hover:text-green-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600">{c.name}</Link>
                         {c.phone && <p className="text-xs text-gray-400 mt-0.5">{c.phone}</p>}
                       </td>
                       <td className="px-5 py-4 text-gray-600 text-xs">
@@ -436,7 +437,7 @@ export default function GirardCustomers() {
                 <div key={c.id} className="bg-white rounded-xl border border-gray-200 p-4">
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-gray-900 text-sm">{c.name}</p>
+                      <Link to={`/girard/customer/${c.id}`} className="font-semibold text-green-700 text-sm underline decoration-green-300 underline-offset-2 hover:text-green-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600 break-words [overflow-wrap:anywhere]">{c.name}</Link>
                       {c.city && <p className="text-xs text-gray-400 mt-0.5">{c.city}</p>}
                     </div>
                     <button
