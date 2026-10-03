@@ -63,6 +63,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
       - name: Load only synthetic test contract and candidate migrations
         run: |
+          set -euo pipefail
           psql -X -v ON_ERROR_STOP=1 -f tests/database/fixture.sql
           for file in supabase/migrations/*.sql; do
             if [[ "$file" < supabase/migrations/202610010001_scalable_order_reads.sql ]]; then psql -X -v ON_ERROR_STOP=1 -f "$file"; fi
@@ -86,6 +87,7 @@ jobs:
           SQL
           for file in supabase/migrations/*.sql; do
             if [[ "$file" < supabase/migrations/202610010001_scalable_order_reads.sql ]]; then continue; fi
+            if [[ "$file" > supabase/migrations/202610021001_ihr_leave_foundation.sql || "$file" == supabase/migrations/202610021001_ihr_leave_foundation.sql ]]; then continue; fi
             if [[ "$file" == supabase/migrations/202610010007_read_policy_plans.sql ]]; then
               node tests/scalability/read-migration-guards.mjs
               psql -X -v ON_ERROR_STOP=1 -f scale-results/read-migration-guards.sql
@@ -94,14 +96,72 @@ jobs:
               node tests/catalog-pricing-guards.mjs
               psql -X -v ON_ERROR_STOP=1 -f scale-results/catalog-pricing-guards.sql
             fi
+            if [[ "$file" == supabase/migrations/202610020001_customer_categories.sql ]]; then
+              node scripts/customer-category-ci.mjs build-preapply
+              psql -X -qAt -v ON_ERROR_STOP=1 -f scale-results/customer-category-preapply.sql 2>&1 | tee scale-results/customer-category-preapply-canonical.log
+              node scripts/customer-category-ci.mjs verify-preapply-canonical
+              psql -X -v ON_ERROR_STOP=1 -d postgres -c 'CREATE DATABASE pilot_category_legacy_test;'
+              psql -X -v ON_ERROR_STOP=1 -d pilot_category_legacy_test -f tests/database/customer-category-legacy-fixture.sql
+              psql -X -qAt -v ON_ERROR_STOP=1 -d pilot_category_legacy_test -f scale-results/customer-category-preapply.sql 2>&1 | tee scale-results/customer-category-preapply-legacy.log
+              node scripts/customer-category-ci.mjs verify-preapply-legacy
+              node scripts/customer-category-ci.mjs build-legacy-guards
+              psql -X -qAt -v ON_ERROR_STOP=1 -d pilot_category_legacy_test -f scale-results/customer-category-legacy-guards.sql 2>&1 | tee scale-results/customer-category-legacy-guards.log
+              node scripts/customer-category-ci.mjs verify-legacy-guards
+              node scripts/customer-category-ci.mjs build-guards
+              psql -X -qAt -v ON_ERROR_STOP=1 -f scale-results/customer-category-guards.sql 2>&1 | tee scale-results/customer-category-guards.log
+              node scripts/customer-category-ci.mjs verify-guards
+            fi
             if [[ "$file" == supabase/migrations/202610020003_stale_po_conflicts.sql ]]; then
               node tests/stale-po-conflict-guards.mjs
               psql -X -v ON_ERROR_STOP=1 -f scale-results/stale-po-conflict-guards.sql
             fi
             psql -X -v ON_ERROR_STOP=1 -f "$file"
           done
+      - name: Guarded iHR foundation SQL suite
+        run: |
+          set -euo pipefail
+          sha256sum --strict --check tests/database/ihr/ci-source-manifest.sha256
+          foundation_log="$(mktemp)"
+          trap 'rm -f "$foundation_log"' EXIT
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/202610021001_ihr_leave_foundation.sql
+          node scripts/test-ihr-db.mjs --suite foundation | tee "$foundation_log"
+          grep -Fxq 'IHR_FOUNDATION_PERMISSIONS_AND_COMMAND_ENVELOPE_PASSED' "$foundation_log"
+      - name: Guarded iHR calendar and accounts SQL suites
+        run: |
+          set -euo pipefail
+          calendar_log="$(mktemp)"
+          accounts_log="$(mktemp)"
+          trap 'rm -f "$calendar_log" "$accounts_log"' EXIT
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/202610021002_ihr_leave_calendar.sql
+          node scripts/test-ihr-db.mjs --suite calendar | tee "$calendar_log"
+          grep -Fxq 'IHR_CALENDAR_PERMISSIONS_AND_SETUP_PASSED' "$calendar_log"
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/202610021003_ihr_leave_accounts.sql
+          node scripts/test-ihr-db.mjs --suite accounts | tee "$accounts_log"
+          grep -Fxq 'IHR_ACCOUNTS_PERMISSIONS_AND_RECONCILIATION_PASSED' "$accounts_log"
+      - name: Guarded iHR quote SQL suite
+        run: |
+          set -euo pipefail
+          quote_log="$(mktemp)"
+          trap 'rm -f "$quote_log"' EXIT
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/202610021004_ihr_leave_quote.sql
+          node scripts/test-ihr-db.mjs --suite quote | tee "$quote_log"
+          grep -Fxq 'IHR_QUOTE_PERMISSIONS_AND_CALCULATION_PASSED' "$quote_log"
+      - name: Guarded iHR requests SQL suite
+        run: |
+          set -euo pipefail
+          requests_log="$(mktemp)"
+          trap 'rm -f "$requests_log"' EXIT
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/202610021005_ihr_leave_requests.sql
+          node scripts/test-ihr-db.mjs --suite requests | tee "$requests_log"
+          grep -Fxq 'IHR_REQUESTS_ATOMIC_SUBMISSION_PASSED' "$requests_log"
+      - name: Load final iHR reads and administration migrations
+        run: |
+          set -euo pipefail
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/202610021006_ihr_leave_reads.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/202610021007_ihr_leave_admin.sql
       - name: SQL invariants, real role permissions and Storage metadata policies
         run: |
+          set -euo pipefail
           psql -X -v ON_ERROR_STOP=1 -f supabase/tests/security/explicit_guards.sql
           psql -X -v ON_ERROR_STOP=1 -f supabase/tests/security/pilot_security.sql
           psql -X -v ON_ERROR_STOP=1 -f supabase/tests/security/storage_helpers.sql
@@ -109,6 +169,8 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f tests/database/order-transactions.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/stale-po-conflicts.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/nullable-catalog-prices.sql
+          psql -X -qAt -v ON_ERROR_STOP=1 -f tests/database/customer-categories.sql 2>&1 | tee scale-results/customer-category-invariants.log
+          node scripts/customer-category-ci.mjs verify-invariants
           psql -X -v ON_ERROR_STOP=1 -f tests/database/visit-transactions.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/scalable-policy-state.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/scalable-index.sql
@@ -118,24 +180,19 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f tests/database/scalable-order-reads.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/scalable-report-boundaries.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/scalable-report-reads.sql
-          node scripts/test-ihr-db.mjs --suite foundation
-      - name: Guarded iHR calendar and accounts SQL suites
+      - name: Guarded final composed iHR SQL suite
         run: |
           set -euo pipefail
-          calendar_log="$(mktemp)"
-          accounts_log="$(mktemp)"
-          trap 'rm -f "$calendar_log" "$accounts_log"' EXIT
-          node scripts/test-ihr-db.mjs --suite calendar | tee "$calendar_log"
-          grep -Fxq 'IHR_CALENDAR_PERMISSIONS_AND_SETUP_PASSED' "$calendar_log"
-          node scripts/test-ihr-db.mjs --suite accounts | tee "$accounts_log"
-          grep -Fxq 'IHR_ACCOUNTS_PERMISSIONS_AND_RECONCILIATION_PASSED' "$accounts_log"
-      - name: Guarded iHR quote SQL suite
-        run: |
-          set -euo pipefail
-          quote_log="$(mktemp)"
-          trap 'rm -f "$quote_log"' EXIT
-          node scripts/test-ihr-db.mjs --suite quote | tee "$quote_log"
-          grep -Fxq 'IHR_QUOTE_PERMISSIONS_AND_CALCULATION_PASSED' "$quote_log"
+          composed_log="$(mktemp)"
+          trap 'rm -f "$composed_log"' EXIT
+          node scripts/test-ihr-db.mjs --suite composed | tee "$composed_log"
+          [[ "$(grep -Fxc 'IHR_QUOTE_PERMISSIONS_AND_CALCULATION_PASSED' "$composed_log")" == 1 ]]
+          [[ "$(grep -Fxc 'IHR_REQUESTS_ATOMIC_SUBMISSION_PASSED' "$composed_log")" == 1 ]]
+          [[ "$(grep -Fxc 'IHR_REQUEST_DECISIONS_CANCELLATIONS_PASSED' "$composed_log")" == 1 ]]
+          [[ "$(grep -Fxc 'IHR_LEAVE_READS_PRIVACY_AND_COUNTS_PASSED' "$composed_log")" == 1 ]]
+          [[ "$(grep -Fxc 'IHR_ADMIN_SCOPED_SETTINGS_PASSED' "$composed_log")" == 1 ]]
+          [[ "$(grep -Fxc 'IHR_FINAL_SCHEMA_PREPARATION_APPROVALS_PASSED' "$composed_log")" == 1 ]]
+          [[ "$(grep -Fxc 'IHR_COMPOSED_BACKEND_PLAIN_PASSED' "$composed_log")" == 1 ]]
       - name: Concurrent business operations
         run: node tests/database/concurrency.mjs
 
@@ -162,5 +219,13 @@ jobs:
         with:
           name: po-import-lifecycle-${{ github.run_id }}
           path: import-results
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Preserve category SQL evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: customer-category-sql-${{ github.run_id }}
+          path: scale-results/customer-category-*
           if-no-files-found: warn
           retention-days: 7

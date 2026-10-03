@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 export const IHR_DB_SUITES = Object.freeze([
   'foundation', 'calendar', 'accounts', 'quote', 'requests', 'decisions',
-  'cancellation', 'calendar-read', 'counts', 'admin',
+  'reads', 'admin', 'composed',
 ])
 const defaultRoot = dirname(dirname(fileURLToPath(import.meta.url)))
 

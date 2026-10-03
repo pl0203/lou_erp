@@ -7,7 +7,7 @@ import { IHR_DB_SUITES, parseIhrDbArgs, runIhrDb, validateIhrDbTarget } from '..
 
 const target = { PGHOST: '127.0.0.1', PGDATABASE: 'pilot_test', PGUSER: 'postgres' }
 const expectedSuites = ['foundation', 'calendar', 'accounts', 'quote', 'requests', 'decisions',
-  'cancellation', 'calendar-read', 'counts', 'admin']
+  'reads', 'admin', 'composed']
 const roots: string[] = []
 function syntheticRoot() {
   const root = mkdtempSync(join(tmpdir(), 'ihr-guard-'))
@@ -117,7 +117,7 @@ describe('disposable iHR runner guard', () => {
     expect(parseIhrDbArgs(['--suite', 'foundation'])).toEqual({ suite: 'foundation', race: false })
     expect(parseIhrDbArgs(['--suite', 'all', '--race'])).toEqual({ suite: 'all', race: true })
     expect(parseIhrDbArgs(['--race', '--suite', 'quote'])).toEqual({ suite: 'quote', race: true })
-    for (const args of [[], ['--suite', 'remote'], ['--file', 'custom.sql'], ['--suite', 'all', '--race', '--race'],
+    for (const args of [[], ['--suite', 'remote'], ['--suite', 'cancellation'], ['--suite', 'calendar-read'], ['--suite', 'counts'], ['--file', 'custom.sql'], ['--suite', 'all', '--race', '--race'],
       ['--suite', 'all', '--suite', 'foundation'], ['--suite', 'all', '--reset']]) expect(() => parseIhrDbArgs(args)).toThrow()
   })
   it('rejects unknown programmatic suites without probing or executing', () => {

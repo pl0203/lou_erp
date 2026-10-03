@@ -9,7 +9,7 @@ const allLinks = [
   { to: '/ihr/leave', label: 'Manajemen Cuti' },
 ]
 
-export default function IHRNav() {
+export default function IHRNav({ beforeSignOut }: { beforeSignOut?: () => boolean } = {}) {
   const { profile, signOut } = useAuth()
   const navigate = useNavigate()
   const roleHome: Record<string, string> = { po_admin: '/athel/po', sales_person: '/girard/schedule', sales_manager: '/girard/schedule', sales_head: '/girard/schedule', executive: '/landing' }
@@ -29,6 +29,7 @@ export default function IHRNav() {
   }, [])
 
   const handleSignOut = async () => {
+    if (beforeSignOut && !beforeSignOut()) return
     await signOut()
     navigate('/login', { replace: true })
   }

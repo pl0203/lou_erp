@@ -28,7 +28,7 @@ test('single duration form focuses the date and shows authoritative 675-minute p
  expect(within(screen.getByLabelText('Durasi setiap tanggal')).getAllByRole('option')).toHaveLength(8)
  fill();await preview();const result=screen.getByRole('region',{name:'Pratinjau cuti'})
  expect(within(result).getByText('11j 15m')).toBeTruthy();expect(within(result).getByText('Fictional Manager')).toBeTruthy();expect(within(result).getByText('Fictional Amber')).toBeTruthy()
- expect(within(result).getByText('70j 15m')).toBeTruthy();expect(screen.queryByRole('button',{name:/Ajukan|Kirim/})).toBeNull()
+ expect(within(result).getByText('70j 15m')).toBeTruthy();expect(screen.getByRole('button',{name:'Ajukan cuti'})).toBeTruthy();expect(mocks.rpc.mock.calls.filter(([name])=>name==='leave_transaction_v1')).toHaveLength(0)
  expect(quotes()[0][1]).toEqual({p_input:{start_date:quoteInput.startDate,end_date:quoteInput.endDate,duration:{mode:'full_scheduled_day'},reason:quoteInput.reason}})
 })
 test('read failure preserves private draft, focuses safe error and never stores it in query cache or browser storage',async()=>{
@@ -67,8 +67,8 @@ test('reload is guarded only while draft is dirty and listener is removed on clo
 })
 test('tab navigation asks before discarding and returning starts a fresh form',async()=>{
  render(<QueryClientProvider client={client()}><LeaveTabs context={context}/></QueryClientProvider>);await open();fill()
- fireEvent.click(screen.getByRole('tab',{name:'Persetujuan'}));expect(screen.getByDisplayValue(quoteInput.reason)).toBeTruthy()
- vi.mocked(window.confirm).mockReturnValue(true);fireEvent.click(screen.getByRole('tab',{name:'Persetujuan'}));expect(screen.queryByLabelText('Alasan pribadi')).toBeNull()
+ fireEvent.click(screen.getByRole('tab',{name:'Kalender'}));expect(screen.getByDisplayValue(quoteInput.reason)).toBeTruthy()
+ vi.mocked(window.confirm).mockReturnValue(true);fireEvent.click(screen.getByRole('tab',{name:'Kalender'}));expect(screen.queryByLabelText('Alasan pribadi')).toBeNull()
  fireEvent.click(screen.getByRole('tab',{name:'Cuti Saya'}));await open();expect((screen.getByLabelText('Alasan pribadi') as HTMLTextAreaElement).value).toBe('')
 })
 test('router push, Back and Forward remain blocked until discard is confirmed',async()=>{

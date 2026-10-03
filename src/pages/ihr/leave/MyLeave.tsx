@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { LeaveContext } from '../../../lib/leave/contracts'
 import type { BalanceEntryKind } from '../../../lib/leave/accountContracts'
@@ -7,7 +7,8 @@ import { formatLeaveMinutes } from '../../../lib/leave/formatMinutes'
 import { leaveKeys } from '../../../lib/leave/queryKeys'
 import { prepareCurrentLeaveAccount } from '../../../lib/leave/prepareAccount'
 import { runLeaveInteraction } from '../../../lib/leave/useLeaveContext'
-import LeaveRequestForm from './LeaveRequestForm'
+import OwnLeaveHistory from './OwnLeaveHistory'
+import LeaveRequestForm,{discardLeaveDraftMessage} from './LeaveRequestForm'
 import type { LeaveReadState } from './LeaveRequestForm'
 const labels:Record<BalanceEntryKind,string>={annual_grant:'Jatah tahunan',opening:'Saldo awal diverifikasi',adjustment:'Penyesuaian',reservation:'Reservasi',approval:'Persetujuan',rejection:'Penolakan',withdrawal:'Penarikan',cancellation:'Pembatalan'}
 type Props={actorId:string;context:LeaveContext;onDirtyChange?:(dirty:boolean)=>void;readState?:LeaveReadState}
@@ -15,8 +16,11 @@ export default function MyLeave(props:Props){return <MyLeavePanel key={`${props.
 function MyLeavePanel({actorId,context,onDirtyChange,readState='ready'}:Props){
  const client=useQueryClient(),[selected,setSelected]=useState(''),[open,setOpen]=useState(false)
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),submitting=useRef(false)
+ const [historyOpen,setHistoryOpen]=useState(false),historyDirty=useRef(false),dirtyReporter=useRef(onDirtyChange);dirtyReporter.current=onDirtyChange
+ const reportHistoryDirty=useCallback((value:boolean)=>{historyDirty.current=value;dirtyReporter.current?.(value)},[])
+ function toggleHistory(){if(!historyOpen||!historyDirty.current||window.confirm(discardLeaveDraftMessage))setHistoryOpen(!historyOpen)}
  const [requestOpen,setRequestOpen]=useState(false),requestOpener=useRef<HTMLButtonElement>(null)
- const allowed=context.capabilities.request&&context.memberKind!=='director'
+ const allowed=context.capabilities.request&&(context.memberKind==='employee'||context.memberKind==='manager')
  const account=context.balances.find(b=>b.accountId===selected)??context.balances.find(b=>b.year===context.currentPeriod?.year)??context.balances[0]
 
  if(!allowed)return null
@@ -29,7 +33,9 @@ function MyLeavePanel({actorId,context,onDirtyChange,readState='ready'}:Props){
   finally{submitting.current=false;setBusy(false);void client.invalidateQueries({queryKey:leaveKeys.context(actorId,'current')})}
  }
  return <section className="space-y-4" aria-label="Cuti saya">
-  {readState==='ready'&&<button ref={requestOpener} type="button" disabled={requestOpen} onClick={()=>setRequestOpen(true)} className="rounded bg-orange-600 px-4 py-2 text-white disabled:opacity-50">Buat pratinjau cuti</button>}
+  {readState==='ready'&&<button type="button" className="underline" disabled={requestOpen} onClick={toggleHistory}>{historyOpen?'Tutup riwayat pengajuan':'Riwayat pengajuan'}</button>}
+  {historyOpen&&<OwnLeaveHistory actorId={actorId} scopeVersion={context.scopeVersion} readState={readState} onDirtyChange={reportHistoryDirty}/>}
+  {readState==='ready'&&<button ref={requestOpener} type="button" disabled={requestOpen||historyOpen} onClick={()=>setRequestOpen(true)} className="rounded bg-orange-600 px-4 py-2 text-white disabled:opacity-50">Buat pratinjau cuti</button>}
   {requestOpen&&<LeaveRequestForm actorId={actorId} context={context} onDirtyChange={onDirtyChange} readState={readState} onClose={()=>{setRequestOpen(false);queueMicrotask(()=>requestOpener.current?.focus())}}/>}
   {readState==='ready'&&<>
   {!context.currentPeriod&&<p>Periode tahunan belum dikonfirmasi. Hubungi administrator HR.</p>}

@@ -94,7 +94,7 @@ export function fixtureClient(getFixture: () => Fixture) {
 
 export function supportingReadFixture(): Fixture {
   const u = fixtureId(2)
-  const customers = Array.from({ length: 1001 }, (_, i) => ({ id: fixtureId(10000 + i), name: `Customer ${String(i).padStart(4, '0')}`, address: null, city: null, phone: null, email: null, pricing_tier: 'luar_kota', visit_frequency_days: 7, last_visit_date: null }))
+  const customers = Array.from({ length: 1001 }, (_, i) => ({ id: fixtureId(10000 + i), name: `Customer ${String(i).padStart(4, '0')}`, address: null, city: null, phone: null, email: null, pricing_tier: 'luar_kota', customer_category: null, visit_frequency_days: 7, last_visit_date: null }))
   const products = customers.map((_, i) => ({ id: fixtureId(30000 + i), name: `Product ${String(i).padStart(4, '0')}`, sku: `SYN-${i}`, size: null, unit_price: 1, harga_pokok: 1, luar_kota: 1, dalam_kota: 1, depo_bangunan: 1 }))
   return { tables: {
     customers, products,

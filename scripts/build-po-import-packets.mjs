@@ -11,7 +11,19 @@ export const IMPORT_FUNCTION_SIGNATURES = Object.freeze([
   'public.current_user_role()', 'auth.uid()', 'public.log_po_changes()',
   'public.log_line_item_changes()', 'public.log_sj_changes()', 'public.recalculate_po_total()', 'public.check_po_completion()',
 ])
+// Default v1 bytes/identities are frozen. v2 is a separately reviewed new plan,
+// never a schema-refresh or recovery path for any unfinished v1 import.
 export const IMPORT_MODEL_VERSION = 'po-import-v1'
+export const IMPORT_MODEL_VERSION_V2 = 'po-import-v2'
+// Node-only mirror of the frozen frontend/migration contract, equality-tested.
+export const IMPORT_CUSTOMER_CATEGORIES = Object.freeze([
+  'supermarket_besar','supermarket_sedang','supermarket_kecil','tradisional_market','perorangan',
+])
+function manifestVersion(modelVersion) {
+  if (modelVersion===IMPORT_MODEL_VERSION) return 1
+  if (modelVersion===IMPORT_MODEL_VERSION_V2) return 2
+  throw new Error('Unsupported import model')
+}
 // Reviewed deny fingerprint; the production reference itself is never published.
 const PRODUCTION_REF_SHA256 = 'b9232010a9ecb6badf98b27953f21c8544219cf264441d09bcc4bbc6f41e8627'
 const sha = value => createHash('sha256').update(value).digest('hex')
@@ -90,15 +102,19 @@ function validateConfig(config, manifestSha256) {
   if (!config.expectedAuditFields.includes('status') || !config.expectedAuditFields.includes('sj_lines_revised') || config.expectedAuditFields.some(x=>!/^\w{1,64}$/.test(x))) fail('Explicit reviewed audit fields required')
   integer(config.batchSize,100,'batch size')
 }
-function resolveManifest(manifest, manifestSha256, planSha256, batchSize) {
+function resolveManifest(manifest, manifestSha256, planSha256, batchSize, modelVersion) {
   fields(manifest,['version','customers','products','purchaseOrders'],'manifest')
-  if (manifest.version !== 1) fail('Unsupported manifest version')
+  if (manifest.version !== manifestVersion(modelVersion)) fail('Unsupported manifest version for import model')
+  const v2=modelVersion===IMPORT_MODEL_VERSION_V2
   const id = (kind,key) => uuid(`${manifestSha256}:${kind}:${key}`)
   const customers = list(manifest.customers,'customers',1).map(c => {
-    fields(c,['key','name','address','city','phone','email','sourceTier','pricingTier'],'customer')
+    fields(c,['key','name','address','city','phone','email','sourceTier','pricingTier',...(v2?['customer_category']:[])],'customer')
+    const category=v2?Object.getOwnPropertyDescriptor(c,'customer_category'):null
+    if (v2 && (!category?.enumerable || !Object.hasOwn(category,'value'))) fail('Explicit customer category mapping required')
+    if (v2 && c.customer_category!==null && !IMPORT_CUSTOMER_CATEGORIES.includes(c.customer_category)) fail('Invalid explicit customer category mapping')
     text(c.key,'customer key'); provenance(c.sourceTier,'source tier')
     if (!tiers.includes(c.pricingTier)) fail('Unsupported customer pricing tier; use others')
-    return { key:c.key,id:id('customer',c.key),name:text(c.name,'customer name'),address:text(c.address,'address',true),city:text(c.city,'city',true),phone:text(c.phone,'phone',true),email:text(c.email,'email',true),pricing_tier:c.pricingTier,visit_frequency_days:7,last_visit_date:null,sourceTier:c.sourceTier }
+    return { key:c.key,id:id('customer',c.key),name:text(c.name,'customer name'),address:text(c.address,'address',true),city:text(c.city,'city',true),phone:text(c.phone,'phone',true),email:text(c.email,'email',true),pricing_tier:c.pricingTier,visit_frequency_days:7,last_visit_date:null,sourceTier:c.sourceTier,...(v2?{customer_category:c.customer_category}:{}) }
   })
   unique(customers,c=>c.key,'customer key'); unique(customers,c=>c.name.toLowerCase(),'customer name')
   const products = list(manifest.products,'products',1).map(p => {
@@ -139,12 +155,13 @@ function resolveManifest(manifest, manifestSha256, planSha256, batchSize) {
   unique(purchaseOrders,p=>p.key,'PO key'); unique(purchaseOrders,p=>p.poNumber,'PO number')
   return {customers,products,purchaseOrders}
 }
-export function buildPoImportPackets({manifest,config}) {
+export function buildPoImportPackets({manifest,config,modelVersion=IMPORT_MODEL_VERSION}) {
+  manifestVersion(modelVersion)
   const manifestSha256=hashImportManifest(manifest); validateConfig(config,manifestSha256)
-  const planSha256=sha(canonical({model:IMPORT_MODEL_VERSION,manifestSha256,config}))
-  const resolved=resolveManifest(manifest,manifestSha256,planSha256,config.batchSize)
+  const planSha256=sha(canonical({model:modelVersion,manifestSha256,config}))
+  const resolved=resolveManifest(manifest,manifestSha256,planSha256,config.batchSize,modelVersion)
   const counts=controls(resolved.customers.length,resolved.products.length,resolved.purchaseOrders)
-  const runtime={model:IMPORT_MODEL_VERSION,manifestSha256,planSha256,config,resolved,counts}
+  const runtime={model:modelVersion,manifestSha256,planSha256,config,resolved,counts}
   const packetCount=Math.max(...resolved.purchaseOrders.map(p=>p.packetIndex))+1
   runtime.prefixControls=Array.from({length:packetCount},(_,index)=>controls(resolved.customers.length,resolved.products.length,resolved.purchaseOrders.filter(p=>p.packetIndex<=index)))
   const packets=Array.from({length:packetCount},(_,index)=>{
@@ -172,7 +189,7 @@ function sourceModel(value) {
 function compactPacket(runtime,index) {
   // Fixed transport columns, versioned independently of business row timestamps.
   // Null catalog prices and the customer visit defaults are model invariants.
-  const master=sourceModel({v:1,c:runtime.resolved.customers.map(c=>[c.key,c.id,c.name,c.address,c.city,c.phone,c.email,c.pricing_tier,c.sourceTier]),p:runtime.resolved.products.map(p=>[p.key,p.id,p.name,p.sku,p.size])})
+  const master=sourceModel({v:manifestVersion(runtime.model),c:runtime.resolved.customers.map(c=>[c.key,c.id,c.name,c.address,c.city,c.phone,c.email,c.pricing_tier,c.sourceTier,...(runtime.model===IMPORT_MODEL_VERSION_V2?[c.customer_category]:[])]),p:runtime.resolved.products.map(p=>[p.key,p.id,p.name,p.sku,p.size])})
   const currentModels=[],descriptors=runtime.resolved.purchaseOrders.map(p=>{
     const model=sourceModel(p)
     if(p.packetIndex===index) currentModels.push({key:p.key,...model})
@@ -219,15 +236,18 @@ function dataStateSql(excludeOwned) {
 }
 // The caller captures this read-only query under UTC and an empty search_path,
 // exactly as the packet does. It contains no credentials or workbook records.
-export function buildPoImportBaselineSql() {
+export function buildPoImportBaselineSql({modelVersion=IMPORT_MODEL_VERSION}={}) {
+  manifestVersion(modelVersion)
   return `WITH schema_state AS (${SCHEMA_STATE_SQL}),data_state AS (${dataStateSql(false)})
-SELECT jsonb_build_object('model',${literal(IMPORT_MODEL_VERSION)},'database',current_database(),'current_user',current_user,'session_user',session_user,'schema_md5',md5(s.value::text),
+SELECT jsonb_build_object('model',${literal(modelVersion)},'database',current_database(),'current_user',current_user,'session_user',session_user,'schema_md5',md5(s.value::text),
  'baselineData',(SELECT jsonb_object_agg(relation,jsonb_build_object('rows',rows,'content_md5',content_md5) ORDER BY relation) FROM data_state),
  'expectedFunctionHashes',(SELECT jsonb_object_agg(signature,md5(p.prosrc)) FROM unnest(ARRAY[${IMPORT_FUNCTION_SIGNATURES.map(literal).join(',')}]) signature JOIN pg_proc p ON p.oid=to_regprocedure(signature))) AS import_preflight
 FROM schema_state s;\n`
 }
 
-const LOAD_MODELS_SQL = `
+function loadModelsSql(modelVersion) {
+  const v2=modelVersion===IMPORT_MODEL_VERSION_V2
+  return `
 CREATE FUNCTION pg_temp.import_decode_model(model_text text,expected_sha text,expected_bytes integer) RETURNS jsonb LANGUAGE plpgsql IMMUTABLE SET search_path='' AS $fn$
 BEGIN
  IF model_text IS NULL OR expected_sha IS NULL OR expected_bytes IS NULL OR octet_length(convert_to(model_text,'UTF8'))<>expected_bytes
@@ -241,7 +261,7 @@ DO $load_models$
 DECLARE doc jsonb; d jsonb; m jsonb; p jsonb; masters jsonb; prov jsonb; actor uuid; anchor_id uuid; model_text text;
  anchor private.pilot_order_requests%ROWTYPE; request private.pilot_order_requests%ROWTYPE; keyset text[]; expected_keys text[]; ord integer:=0;
 BEGIN
- SELECT value INTO STRICT doc FROM pg_temp.import_packet_input;
+ SELECT value INTO STRICT doc FROM pg_temp.import_packet_input;${v2?"\n IF doc->>'model' IS DISTINCT FROM 'po-import-v2' THEN RAISE EXCEPTION 'Import model changed'; END IF;":""}
  IF jsonb_typeof(doc->'descriptors') IS DISTINCT FROM 'array' OR EXISTS(SELECT 1 FROM jsonb_array_elements(doc->'descriptors') x WHERE jsonb_typeof(x) IS DISTINCT FROM 'array' OR jsonb_array_length(x)<>7 OR jsonb_typeof(x->4) IS DISTINCT FROM 'array')
  OR EXISTS(SELECT 1 FROM jsonb_array_elements(doc->'descriptors') x CROSS JOIN LATERAL jsonb_array_elements(x->4) s WHERE jsonb_typeof(s) IS DISTINCT FROM 'array' OR jsonb_array_length(s)<>2) THEN RAISE EXCEPTION 'Source model descriptor shape changed'; END IF;
  SELECT jsonb_agg(jsonb_build_object('key',x->0,'poNumber',x->1,'requestId',x->2,'packetIndex',x->3,
@@ -261,11 +281,13 @@ BEGIN
  masters:=pg_temp.import_decode_model(model_text,doc->'masterModel'->>'sha256',(doc->'masterModel'->>'bytes')::integer);
  IF doc->'masterModel' ? 'text' AND doc->'masterModel'->>'text' IS DISTINCT FROM model_text THEN RAISE EXCEPTION 'Stored source model changed'; END IF;
  INSERT INTO pg_temp.import_master_model VALUES(model_text,doc->'masterModel'->>'sha256',(doc->'masterModel'->>'bytes')::integer);
- IF (SELECT array_agg(k ORDER BY k) FROM jsonb_object_keys(masters) k) IS DISTINCT FROM ARRAY['c','p','v']::text[] OR masters->'v' IS DISTINCT FROM '1'::jsonb
+ IF (SELECT array_agg(k ORDER BY k) FROM jsonb_object_keys(masters) k) IS DISTINCT FROM ARRAY['c','p','v']::text[] OR masters->'v' IS DISTINCT FROM '${v2?2:1}'::jsonb
  OR jsonb_typeof(masters->'c') IS DISTINCT FROM 'array' OR jsonb_typeof(masters->'p') IS DISTINCT FROM 'array'
- OR EXISTS(SELECT 1 FROM jsonb_array_elements(masters->'c') x WHERE jsonb_typeof(x) IS DISTINCT FROM 'array' OR jsonb_array_length(x)<>9)
- OR EXISTS(SELECT 1 FROM jsonb_array_elements(masters->'p') x WHERE jsonb_typeof(x) IS DISTINCT FROM 'array' OR jsonb_array_length(x)<>5) THEN RAISE EXCEPTION 'Master source model shape changed'; END IF;
- SELECT jsonb_build_object('customers',(SELECT jsonb_agg(jsonb_build_object('key',x->0,'id',x->1,'name',x->2,'address',x->3,'city',x->4,'phone',x->5,'email',x->6,'pricing_tier',x->7,'sourceTier',x->8,'visit_frequency_days',7,'last_visit_date',NULL) ORDER BY n) FROM jsonb_array_elements(masters->'c') WITH ORDINALITY a(x,n)),
+ OR EXISTS(SELECT 1 FROM jsonb_array_elements(masters->'c') x WHERE jsonb_typeof(x) IS DISTINCT FROM 'array' OR jsonb_array_length(x)<>${v2?10:9})
+ OR EXISTS(SELECT 1 FROM jsonb_array_elements(masters->'p') x WHERE jsonb_typeof(x) IS DISTINCT FROM 'array' OR jsonb_array_length(x)<>5) THEN RAISE EXCEPTION 'Master source model shape changed'; END IF;${v2?`
+ IF EXISTS(SELECT 1 FROM jsonb_array_elements(masters->'c') x WHERE x->9 IS DISTINCT FROM 'null'::jsonb
+  AND (jsonb_typeof(x->9) IS DISTINCT FROM 'string' OR NOT (x->>9=ANY(ARRAY[${IMPORT_CUSTOMER_CATEGORIES.map(literal).join(',')}])))) THEN RAISE EXCEPTION 'Invalid explicit customer category model'; END IF;`:''}
+ SELECT jsonb_build_object('customers',(SELECT jsonb_agg(jsonb_build_object('key',x->0,'id',x->1,'name',x->2,'address',x->3,'city',x->4,'phone',x->5,'email',x->6,'pricing_tier',x->7,'sourceTier',x->8${v2?",'customer_category',x->9":''},'visit_frequency_days',7,'last_visit_date',NULL) ORDER BY n) FROM jsonb_array_elements(masters->'c') WITH ORDINALITY a(x,n)),
   'products',(SELECT jsonb_agg(jsonb_build_object('key',x->0,'id',x->1,'name',x->2,'sku',x->3,'size',x->4,'unit_price',NULL,'harga_pokok',NULL,'luar_kota',NULL,'dalam_kota',NULL,'depo_bangunan',NULL) ORDER BY n) FROM jsonb_array_elements(masters->'p') WITH ORDINALITY a(x,n))) INTO masters;
  FOR m IN SELECT value FROM jsonb_array_elements(doc->'currentModels') LOOP
   SELECT value INTO STRICT d FROM jsonb_array_elements(doc->'descriptors') WHERE value->>'key'=m->>'key';
@@ -304,6 +326,7 @@ BEGIN
 END $load_models$;
 CREATE TEMP TABLE import_metadata ON COMMIT DROP AS SELECT (value-'resolved'-'prefixControls')||jsonb_build_object('anchor_request_id',value->'resolved'->'purchaseOrders'->0->>'requestId') AS value FROM pg_temp.import_context;
 `
+}
 
 const HELPERS_SQL = `
 CREATE FUNCTION pg_temp.import_master_hash() RETURNS text LANGUAGE sql STABLE SET search_path='' AS $fn$
@@ -460,8 +483,8 @@ WHERE NOT (SELECT skip FROM pg_temp.import_state);
 ${executeAction}`)
     })
   }
-  const masters=index===0?`${authenticated}INSERT INTO public.customers(id,name,address,city,phone,email,pricing_tier,visit_frequency_days,last_visit_date)
-SELECT (x->>'id')::uuid,x->>'name',x->>'address',x->>'city',x->>'phone',x->>'email',(x->>'pricing_tier')::public.pricing_tier,7,NULL
+  const masters=index===0?`${authenticated}INSERT INTO public.customers(id,name,address,city,phone,email,pricing_tier,visit_frequency_days,last_visit_date${runtime.model===IMPORT_MODEL_VERSION_V2?',customer_category':''})
+SELECT (x->>'id')::uuid,x->>'name',x->>'address',x->>'city',x->>'phone',x->>'email',(x->>'pricing_tier')::public.pricing_tier,7,NULL${runtime.model===IMPORT_MODEL_VERSION_V2?",x->>'customer_category'":''}
 FROM pg_temp.import_master_input,jsonb_array_elements(value->'customers') x WHERE NOT skip;
 INSERT INTO public.products(id,name,sku,size,unit_price,harga_pokok,luar_kota,dalam_kota,depo_bangunan)
 SELECT (x->>'id')::uuid,x->>'name',x->>'sku',x->>'size',NULL,NULL,NULL,NULL,NULL
@@ -500,7 +523,7 @@ LOCK TABLE ${IMPORT_RELATIONS.filter(t=>t.startsWith('public.')||t==='private.pi
 CREATE TEMP TABLE import_context(value jsonb NOT NULL) ON COMMIT DROP;
 CREATE TEMP TABLE import_packet_input(value jsonb NOT NULL) ON COMMIT DROP;
 INSERT INTO pg_temp.import_packet_input VALUES(${jsonSql(packetInput)});
-${LOAD_MODELS_SQL}
+${loadModelsSql(runtime.model)}
 CREATE TEMP TABLE import_owned(relation text NOT NULL,id uuid NOT NULL,PRIMARY KEY(relation,id)) ON COMMIT DROP;
 CREATE TEMP TABLE import_master_state(master_rows_md5 text NOT NULL) ON COMMIT DROP;
 CREATE TEMP TABLE import_actions(request_id uuid PRIMARY KEY,operation text NOT NULL,payload jsonb NOT NULL) ON COMMIT DROP;

@@ -1,6 +1,6 @@
 import React from 'react'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, QueryObserver } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { cacheProbe } from './cache-probe'
@@ -26,9 +26,9 @@ import GirardCustomers from '../../src/pages/girard/GirardCustomers'
 const clients: QueryClient[] = []
 const stops: (() => void)[] = []
 beforeEach(() => {
-  state.write.mockReset().mockResolvedValue({ data: { id: 'new-customer' }, error: null })
+  state.write.mockReset().mockImplementation(async (table, _operation, payload) => ({ data: [table === 'customers' ? { id: payload?.id ?? 'customer' } : { customer_id: payload?.customer_id ?? 'customer', manager_id: payload?.manager_id }], error: null }))
   state.navigate.mockReset()
-  const customers = [{ id: 'customer', name: 'Customer A', city: null, address: null, last_visit_date: null, visit_frequency_days: 7, pricing_tier: 'luar_kota' }]
+  const customers = [{ id: 'customer', name: 'Customer A', city: null, address: null, last_visit_date: null, visit_frequency_days: 7, pricing_tier: 'luar_kota', customer_category: null }]
   state.data = {
     manager_customers: customers, all_customers: customers,
     manager_team: [{ id: 'sales', full_name: 'Sales A' }],
@@ -39,12 +39,28 @@ beforeEach(() => {
 })
 afterEach(() => { cleanup(); stops.splice(0).forEach(stop => stop()); clients.splice(0).forEach(client => client.clear()) })
 
-function mount(component: React.ReactNode) {
+function mount(component: React.ReactNode, customer = false) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity }, mutations: { retry: false } } })
   clients.push(client)
-  const probe = cacheProbe(client); stops.push(probe.stop)
+  const probe = customer ? customerCacheProbe(client) : cacheProbe(client); stops.push(probe.stop)
   render(<QueryClientProvider client={client}><MemoryRouter>{component}</MemoryRouter></QueryClientProvider>)
   return probe
+}
+function customerCacheProbe(client: QueryClient) {
+  const keys = ['customers', 'athel_customers', 'all_customers', 'assignments', 'my_customers'].map(key => [key, 'probe'])
+  const unrelated = ['purchase_orders', 'po_line_state', 'products', 'performance', 'revenue', 'today_activity', 'athel_dashboard'].map(key => [key, 'probe'])
+  ;[...keys, ...unrelated].forEach(key => client.setQueryData(key, { before: true }))
+  const activeKey = ['girard_customer', 'actor', 'customer']
+  client.setQueryData(activeKey, { before: true })
+  const refetch = vi.fn(async () => ({ before: false }))
+  const observer = new QueryObserver(client, { queryKey: activeKey, queryFn: refetch, staleTime: Infinity })
+  const stop = observer.subscribe(() => {})
+  const untouched = () => unrelated.forEach(key => expect(client.getQueryState(key)?.isInvalidated).toBe(false))
+  return {
+    stop,
+    unchanged() { keys.forEach(key => expect(client.getQueryState(key)?.isInvalidated).toBe(false)); expect(refetch).not.toHaveBeenCalled(); untouched() },
+    refreshed() { keys.forEach(key => expect(client.getQueryState(key)?.isInvalidated).toBe(true)); expect(refetch).toHaveBeenCalledTimes(1); expect(client.getQueryData(activeKey)).toEqual({ before: false }); untouched() },
+  }
 }
 function choose(option: string, value: string) {
   const select = screen.getByRole('option', { name: option }).closest('select')!
@@ -100,34 +116,38 @@ function submitCustomer(mode: CustomerMode) {
   if (mode === 'create') {
     fireEvent.click(screen.getByRole('button', { name: '+ Pelanggan Baru' }))
     fireEvent.change(screen.getByPlaceholderText('mis. Toko Bangunan Maju'), { target: { value: 'Keep customer name' } })
+    choose('Pilih kategori...', 'perorangan')
     choose('Belum ada manajer', 'manager-b')
     fireEvent.click(screen.getByRole('button', { name: 'Buat' }))
   } else if (mode === 'assign') {
     fireEvent.click(screen.getByRole('button', { name: 'Tugaskan yang Ada' }))
     choose('Pilih pelanggan...', 'customer')
     choose('Pilih manajer...', 'manager-b')
+    choose('1x per bulan', '30')
     fireEvent.click(screen.getByRole('button', { name: 'Tugaskan' }))
   } else {
     fireEvent.click(screen.getAllByRole('button', { name: 'Ubah' })[0])
     choose('Belum ditugaskan', mode === 'reassign' ? 'manager-b' : '')
+    choose('1x per bulan', '30')
     fireEvent.click(screen.getByRole('button', { name: 'Simpan' }))
   }
 }
 function customerProbe(mode: CustomerMode) {
   if (mode === 'reassign' || mode === 'unassign') state.data.assignments = [{ customer_id: 'customer', manager_id: 'manager-a', managers: { id: 'manager-a', full_name: 'Manager A' } }]
-  return mount(<GirardCustomers />)
+  return mount(<GirardCustomers />, true)
 }
 
-test.each(['create', 'assign', 'reassign', 'unassign'] as const)('customer %s refreshes summaries and cohorts only after the final write succeeds', async mode => {
+test.each(['create', 'assign', 'reassign', 'unassign'] as const)('customer %s refreshes only customer caches after explicit final acknowledgement', async mode => {
   let commit!: (value: unknown) => void
-  state.write.mockResolvedValueOnce({ data: { id: 'new-customer' }, error: null })
+  state.write.mockImplementationOnce(async (_table, _operation, payload) => ({ data: [{ id: payload?.id ?? 'customer' }], error: null }))
     .mockReturnValueOnce(new Promise(resolve => { commit = resolve }))
   const probe = customerProbe(mode)
   submitCustomer(mode)
   await waitFor(() => expect(state.write).toHaveBeenCalledTimes(2))
   probe.unchanged()
   expect(screen.getByRole('button', { name: 'Menyimpan...' })).toBeTruthy()
-  await act(async () => commit({ data: null, error: null }))
+  const customerId = mode === 'create' ? state.write.mock.calls[0][2].id : 'customer'
+  await act(async () => commit({ data: [{ customer_id: customerId, manager_id: 'manager-b' }], error: null }))
   await waitFor(() => probe.refreshed())
   expect(screen.queryByRole('button', { name: 'Batal' })).toBeNull()
   expect(state.write.mock.calls[1][1]).toBe(mode === 'create' ? 'insert' : mode === 'unassign' ? 'delete' : 'upsert')
@@ -137,13 +157,17 @@ test.each(['create', 'assign', 'reassign', 'unassign'] as const)('customer %s re
 test.each([
   ['create', 1], ['create', 2], ['assign', 1], ['assign', 2],
   ['reassign', 1], ['reassign', 2], ['unassign', 2],
-] as const)('failed customer %s write %i keeps input and does not invalidate as a success', async (mode, failureAt) => {
-  if (failureAt === 2) state.write.mockResolvedValueOnce({ data: { id: 'new-customer' }, error: null })
+] as const)('unconfirmed customer %s write %i keeps input and refreshes only affected caches', async (mode, failureAt) => {
+  if (failureAt === 2) state.write.mockImplementationOnce(async (_table, _operation, payload) => ({ data: [{ id: payload?.id ?? 'customer' }], error: null }))
   state.write.mockResolvedValueOnce({ data: null, error: new Error('Customer write failed') })
   const probe = customerProbe(mode)
   submitCustomer(mode)
-  await screen.findByText('Customer write failed')
-  probe.unchanged()
+  await screen.findByText(/Customer write failed/)
+  await waitFor(() => probe.refreshed())
+  const alert = screen.getByRole('alert').textContent
+  expect(alert).toMatch(/belum terkonfirmasi/)
+  if (failureAt === 2) expect(alert).toMatch(/Data pelanggan tersimpan/)
+  else expect(alert).not.toMatch(/Data pelanggan tersimpan/)
   expect(state.write).toHaveBeenCalledTimes(failureAt)
   expect(screen.getByRole('button', { name: 'Batal' })).toBeTruthy()
   if (mode === 'create') expect((screen.getByPlaceholderText('mis. Toko Bangunan Maju') as HTMLInputElement).value).toBe('Keep customer name')

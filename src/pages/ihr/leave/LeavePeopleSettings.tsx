@@ -1,10 +1,10 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { LeaveApproverOption, LeaveMemberSetup, LeaveSetupCommand, LeaveSetupSend, SetupImpacts } from '../../../lib/leave/setupContracts'
 import LeaveSetupImpacts from './LeaveSetupImpacts'
 import { useSetupUnsaved } from './useSetupUnsaved'
-type Props={actorId:string;member:LeaveMemberSetup;approvers:LeaveApproverOption[];calendars:{id:string;name:string}[];groups?:{id:string;name:string}[];impacts:SetupImpacts;send:LeaveSetupSend;onSaved?:(state:{hasUnsavedChanges:boolean})=>void}
+type Props={authorityReady?:boolean;onDirtyChange?:(dirty:boolean)=>void;actorId:string;member:LeaveMemberSetup;approvers:LeaveApproverOption[];calendars:{id:string;name:string}[];groups?:{id:string;name:string}[];impacts:SetupImpacts;send:LeaveSetupSend;onSaved?:(state:{hasUnsavedChanges:boolean})=>void}
 /** Parent keys by identity/scope/selection; preserve this editor when onSaved reports remaining drafts. */
-export default function LeavePeopleSettings({actorId,member,approvers,calendars,groups=[],impacts,send,onSaved}:Props){
+export default function LeavePeopleSettings({actorId,member,approvers,calendars,groups=[],impacts,send,onSaved,onDirtyChange,authorityReady=true}:Props){
  const [kind,setKind]=useState<NonNullable<LeaveMemberSetup['memberKind']>|''>(member.memberKind??''),[active,setActive]=useState(member.active)
  const [start,setStart]=useState(member.employmentStart??''),[eligible,setEligible]=useState(member.eligibilityDate??''),[calendar,setCalendar]=useState(member.calendarId??'')
  const [approver,setApprover]=useState(''),[from,setFrom]=useState(''),[to,setTo]=useState(''),[replacement,setReplacement]=useState('')
@@ -15,9 +15,10 @@ export default function LeavePeopleSettings({actorId,member,approvers,calendars,
  const [baselines,setBaselines]=useState(drafts)
  const hasUnsaved=(saved=baselines)=>Object.keys(drafts).some(key=>drafts[key as keyof typeof drafts]!==saved[key as keyof typeof drafts])
  useSetupUnsaved(hasUnsaved())
+ const dirty=hasUnsaved();useEffect(()=>{onDirtyChange?.(dirty);return()=>onDirtyChange?.(false)},[dirty,onDirtyChange])
  const own=actorId===member.id, base={employeeId:member.id,expectedVersion:version,reason}
  const edit=(action:()=>void)=>{action();setSaved(false)}
- async function save(command:LeaveSetupCommand){if(submitting.current||own)return;submitting.current=true;setBusy(true);setError('');setSaved(false)
+ async function save(command:LeaveSetupCommand){if(submitting.current||own||!authorityReady)return;submitting.current=true;setBusy(true);setError('');setSaved(false)
   try{const result=await send(command);setVersion(result.version)
    const next={...baselines,reason}
    if(command.operation==='set_member')next.member=drafts.member
@@ -27,6 +28,7 @@ export default function LeavePeopleSettings({actorId,member,approvers,calendars,
     else{next.approver=drafts.approver;next.dates=drafts.dates}
    }
    setBaselines(next);setSaved(true);onSaved?.({hasUnsavedChanges:hasUnsaved(next)})}catch{setError('Pengaturan belum dapat disimpan. Isian tetap ada. Pulihkan hasil bila status pengiriman belum pasti.')}finally{submitting.current=false;setBusy(false)}}
+ if(!authorityReady)return <p role="status">Memeriksa akses pengaturan anggota...</p>
  return <section className="space-y-4 rounded-xl border bg-white p-4" aria-label="Pengaturan anggota">
   <h2 className="font-semibold">{member.name}</h2><LeaveSetupImpacts impacts={impacts}/>
   {own&&<p>Administrator lain harus mengatur keanggotaan dan penugasan Anda.</p>}

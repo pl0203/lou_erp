@@ -38,7 +38,7 @@ test('real page accepts the complete actor token and a failed foreground read ne
 test.each(['scope','capability','director'] as const)('retry with confirmed %s loss clears the hidden draft and dirty guard',async loss=>{
  mount();await openFill();await failPreflight();expect(unloadGuarded()).toBe(true)
  const changed:LeaveContext=loss==='scope'?{...context,scopeVersion:changedQuoteScope}:loss==='director'?{...context,scopeVersion:changedQuoteScope,memberKind:'director',currentPeriod:null,balances:[],capabilities:{...context.capabilities,request:false}}:{...context,capabilities:{...context.capabilities,request:false}}
- serve(changed);fireEvent.click(screen.getByRole('button',{name:'Coba lagi'}));await screen.findByRole('tab',{name:'Persetujuan'});await waitFor(()=>expect(unloadGuarded()).toBe(false));expect(screen.queryByDisplayValue(quoteInput.reason)).toBeNull()
+ serve(changed);fireEvent.click(screen.getByRole('button',{name:'Coba lagi'}));await screen.findByRole('tab',{name:loss==='director'?'Persetujuan':'Kalender'});await waitFor(()=>expect(unloadGuarded()).toBe(false));expect(screen.queryByDisplayValue(quoteInput.reason)).toBeNull()
  if(loss==='scope'){fireEvent.click(screen.getByRole('button',{name:'Buat pratinjau cuti'}));expect((await screen.findByLabelText('Alasan pribadi') as HTMLTextAreaElement).value).toBe('')}
 })
 test.each(['identity','inactive'] as const)('a current %s change clears retained state immediately, before a new read completes',async change=>{

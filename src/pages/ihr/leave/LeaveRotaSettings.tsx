@@ -1,9 +1,9 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { LeaveCalendarSetup, LeaveSetupCommand, LeaveSetupSend, RosterPreview, RosterPreviewInput } from '../../../lib/leave/setupContracts'
 import LeaveSetupImpacts from './LeaveSetupImpacts'
 import { useSetupUnsaved } from './useSetupUnsaved'
-type Props={calendar:LeaveCalendarSetup;send:LeaveSetupSend;preview:(input:RosterPreviewInput)=>Promise<RosterPreview>;onSaved?:(state:{hasUnsavedChanges:boolean})=>void}
-export default function LeaveRotaSettings({calendar,send,preview,onSaved}:Props){
+type Props={authorityReady?:boolean;onDirtyChange?:(dirty:boolean)=>void;calendar:LeaveCalendarSetup;send:LeaveSetupSend;preview:(input:RosterPreviewInput)=>Promise<RosterPreview>;onSaved?:(state:{hasUnsavedChanges:boolean})=>void}
+export default function LeaveRotaSettings({calendar,send,preview,onSaved,onDirtyChange,authorityReady=true}:Props){
  const [name,setName]=useState(calendar.name),[zone,setZone]=useState(calendar.timezone??''),[start,setStart]=useState(calendar.effectiveFrom),[end,setEnd]=useState(calendar.effectiveUntil??'')
  const [holidays,setHolidays]=useState(calendar.holidays.join('\n')),[confirmed,setConfirmed]=useState(calendar.holidaysConfirmed),[sunday,setSunday]=useState(calendar.sundayMinutes===null?'':'0'),[groups,setGroups]=useState(calendar.groups)
  const [anchor,setAnchor]=useState(''),[from,setFrom]=useState(''),[to,setTo]=useState(''),[reason,setReason]=useState(''),[version,setVersion]=useState(calendar.version)
@@ -12,12 +12,14 @@ export default function LeaveRotaSettings({calendar,send,preview,onSaved}:Props)
  const [baselines,setBaselines]=useState(drafts),configDirty=drafts.config!==baselines.config
  const hasUnsaved=(saved=baselines)=>Object.keys(drafts).some(key=>drafts[key as keyof typeof drafts]!==saved[key as keyof typeof drafts])
  const generation=useRef(0),submitting=useRef(false),saving=useRef(false);useSetupUnsaved(hasUnsaved())
+ const dirty=hasUnsaved();useEffect(()=>{onDirtyChange?.(dirty);return()=>onDirtyChange?.(false)},[dirty,onDirtyChange])
  function edit(action:()=>void){action();generation.current++;setResult(null);setSaved(false)}
  function input():RosterPreviewInput{if(!anchor||!from||!to||!groups.length||groups.some(g=>g.onAnchor===null))throw new Error();return {calendarId:calendar.id,anchor,from,to,groups:groups.map(g=>({id:g.id,onAnchor:g.onAnchor!}))}}
- async function showPreview(){if(submitting.current||configDirty)return;submitting.current=true;setBusy(true);setError('');setResult(null);const current=++generation.current
+ async function showPreview(){if(submitting.current||configDirty||!authorityReady)return;submitting.current=true;setBusy(true);setError('');setResult(null);const current=++generation.current
   try{const response=await preview(input());if(generation.current===current)setResult(response)}catch{if(generation.current===current)setError('Pratinjau belum tersedia. Periksa acuan, kelompok, cakupan dan zona waktu.')}finally{submitting.current=false;setBusy(false)}}
- async function save(command:LeaveSetupCommand){if(submitting.current)return;submitting.current=true;saving.current=true;setBusy(true);setError('');setSaved(false);generation.current++;setResult(null)
+ async function save(command:LeaveSetupCommand){if(submitting.current||!authorityReady)return;submitting.current=true;saving.current=true;setBusy(true);setError('');setSaved(false);generation.current++;setResult(null)
   try{const response=await send(command);setVersion(response.version);const next={...baselines,reason,[command.operation==='save_calendar_version'?'config':'roster']:command.operation==='save_calendar_version'?drafts.config:drafts.roster};setBaselines(next);setSaved(true);onSaved?.({hasUnsavedChanges:hasUnsaved(next)})}catch{setError('Pengaturan belum dapat disimpan. Isian tetap ada. Pulihkan hasil bila status belum pasti.')}finally{submitting.current=false;saving.current=false;setBusy(false)}}
+ if(!authorityReady)return <p role="status">Memeriksa akses kalender dan roster...</p>
  return <section className="space-y-4 rounded-xl border bg-white p-4" aria-label="Pengaturan kalender dan roster"><h2 className="font-semibold">Kalender dan roster Sabtu</h2>
   <p>Versi baru berlaku ke depan. Kelompok, zona waktu, hari Minggu dan hari libur tidak diasumsikan.</p>
   <LeaveSetupImpacts impacts={result?.impacts??calendar.impacts??{available:false,pendingCount:null,approvedCount:null}}/>

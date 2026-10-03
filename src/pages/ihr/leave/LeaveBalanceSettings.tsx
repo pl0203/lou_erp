@@ -1,24 +1,26 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { AnnualPeriod, Balance, DurationSelection } from '../../../lib/leave/contracts'
 import type { BalanceCommand, BalanceSend, OpeningSourceLine } from '../../../lib/leave/accountContracts'
 import { toBalancePayload } from '../../../lib/leave/accountRpc'
 import { useSetupUnsaved } from './useSetupUnsaved'
-type Props={actorId:string;employeeId:string;currentPeriod:AnnualPeriod|null;balance?:Balance;canConfigure:boolean;canAdjust:boolean;send:BalanceSend;onSaved?:(state:{hasUnsavedChanges:boolean})=>void}
+type WriteAccount=Pick<Balance,'accountId'|'year'|'version'|'reconciled'>
+type Props={authorityReady?:boolean;onDirtyChange?:(dirty:boolean)=>void;accountMetadata?:WriteAccount;actorId:string;employeeId:string;currentPeriod:AnnualPeriod|null;balance?:Balance;canConfigure:boolean;canAdjust:boolean;send:BalanceSend;onSaved?:(state:{hasUnsavedChanges:boolean})=>void}
 type DraftLine={sourceId:string;startDate:string;endDate:string;mode:string;totalMinutes:string}
 type AccountState={accountId:string|null;version:number;reconciled:boolean}
-const readback=(balance?:Balance):AccountState=>({accountId:balance?.accountId??null,version:balance?.version??0,reconciled:balance?.reconciled===true})
+const readback=(balance?:WriteAccount):AccountState=>({accountId:balance?.accountId??null,version:balance?.version??0,reconciled:balance?.reconciled===true})
 const emptyDraft=JSON.stringify({allowance:'',past:'',asOf:'',lines:[],complete:false,delta:'',source:'',reason:''})
 /** Parent supplies independently authorized target/balances and a live-authority transport. Task11 owns routing. */
 export default function LeaveBalanceSettings(props:Props){return <BalanceEditor key={`${props.actorId}:${props.employeeId}:${props.currentPeriod?.year??'blocked'}:${props.canConfigure}:${props.canAdjust}`} {...props}/>}
-function BalanceEditor({actorId,employeeId,currentPeriod,balance,canConfigure,canAdjust,send,onSaved}:Props){
+function BalanceEditor({actorId,employeeId,currentPeriod,balance,accountMetadata,canConfigure,canAdjust,send,onSaved,onDirtyChange,authorityReady=true}:Props){
  const [allowance,setAllowance]=useState(''),[past,setPast]=useState(''),[asOf,setAsOf]=useState(''),[lines,setLines]=useState<DraftLine[]>([]),[complete,setComplete]=useState(false)
  const [delta,setDelta]=useState(''),[source,setSource]=useState(''),[reason,setReason]=useState('')
- const incoming=readback(balance),incomingKey=JSON.stringify(incoming)
+ const incoming=readback(accountMetadata??balance),incomingKey=JSON.stringify(incoming)
  const [account,setAccount]=useState(incoming),[observed,setObserved]=useState(incomingKey)
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[saved,setSaved]=useState(false),submitting=useRef(false)
  const draft=JSON.stringify({allowance,past,asOf,lines,complete,delta,source,reason}),[baseline,setBaseline]=useState(draft)
  const dirty=draft!==baseline
  useSetupUnsaved(dirty)
+ useEffect(()=>{onDirtyChange?.(dirty);return()=>onDirtyChange?.(false)},[dirty,onDirtyChange])
  // Clean readback can advance immediately. A receipt is retained until genuinely new props arrive;
  // repeated old props must not undo our successful version or verification state.
  const older=incoming.accountId===account.accountId&&incoming.version<account.version
@@ -30,7 +32,7 @@ function BalanceEditor({actorId,employeeId,currentPeriod,balance,canConfigure,ca
  const {version,reconciled}=account
  if(!canConfigure&&!canAdjust)return <p>Akses pengaturan saldo tidak tersedia.</p>
  if(balance&&currentPeriod&&balance.year!==currentPeriod.year)return <p role="alert">Periode saldo tidak cocok. Muat ulang saldo tahun berjalan.</p>
- const own=actorId===employeeId,blocked=busy||own||!currentPeriod||needsReview
+ const own=actorId===employeeId,blocked=busy||own||!currentPeriod||needsReview||!authorityReady
  function adoptReadback(discard:boolean){
   if(busy||own)return
   setAccount(incoming);setObserved(incomingKey);setError('');setSaved(false)
@@ -58,6 +60,7 @@ function BalanceEditor({actorId,employeeId,currentPeriod,balance,canConfigure,ca
   }catch{setError('Saldo belum dapat disimpan. Periksa akses, versi dan isian. Isian tetap ada; pulihkan hasil bila status belum pasti.')}
   finally{submitting.current=false;setBusy(false)}
  }
+ if(!authorityReady)return <p role="status">Memeriksa akses perubahan saldo...</p>
  return <section className="space-y-4 rounded-xl border bg-white p-4" aria-label="Pengaturan saldo">
   <h2 className="font-semibold">Saldo tahunan {currentPeriod?.year??'belum dikonfirmasi'}</h2>
   {own&&<p>Administrator lain harus mengubah saldo Anda.</p>}
@@ -75,7 +78,7 @@ function BalanceEditor({actorId,employeeId,currentPeriod,balance,canConfigure,ca
    <label className="block">Jatah tahunan diverifikasi (menit)<input aria-label="Jatah tahunan diverifikasi (menit)" inputMode="numeric" value={allowance} onChange={e=>setAllowance(e.target.value)} className="block rounded border p-2"/></label>
    <label className="block">Pemakaian sampai tanggal pembukaan (menit)<input aria-label="Pemakaian sampai tanggal pembukaan (menit)" inputMode="numeric" value={past} onChange={e=>setPast(e.target.value)} className="block rounded border p-2"/></label>
    <label className="block">Tanggal pembukaan<input aria-label="Tanggal pembukaan" type="date" value={asOf} onChange={e=>setAsOf(e.target.value)} className="block rounded border p-2"/></label>
-   <p>Impor cuti disetujui di masa depan belum tersedia. Jika daftar berisi cuti tersebut, seluruh penyimpanan akan ditolak tanpa perubahan saldo.</p>
+   <p>Cantumkan setiap cuti disetujui setelah tanggal pembukaan. Server memverifikasi setiap tanggal dan total menit sebelum seluruh saldo awal disimpan.</p>
    {lines.map((line,i)=><fieldset key={i} className="space-y-2 rounded border p-3"><legend>Cuti disetujui {i+1}</legend>
     {([['sourceId','ID sumber cuti'],['startDate','Mulai cuti'],['endDate','Akhir cuti'],['totalMinutes','Total menit diverifikasi']] as const).map(([key,label])=><label className="block" key={key}>{label}<input aria-label={`${label} ${i+1}`} value={line[key]} type={key==='startDate'||key==='endDate'?'date':'text'} onChange={e=>updateLine(i,key,e.target.value)} className="block rounded border p-2"/></label>)}
     <label className="block">Durasi per tanggal<select aria-label={`Durasi per tanggal ${i+1}`} value={line.mode} onChange={e=>updateLine(i,'mode',e.target.value)}><option value="">Pilih durasi</option>{[60,120,180,225,240,300,360].map(n=><option key={n} value={n}>{n} menit</option>)}<option value="full_scheduled_day">Sehari sesuai jadwal</option></select></label>

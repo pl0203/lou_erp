@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import type { LeaveContext } from '../../src/lib/leave/contracts'
-const mocks = vi.hoisted(() => ({ auth: { user: { id: 'a' }, profile: { id: 'a', role: 'sales_person', full_name: 'Fictional Person', is_active: true }, loading: false, signOut: vi.fn() } }))
+const mocks = vi.hoisted(() => ({ auth: { user: { id: '71000000-0000-0000-0000-000000000001' }, profile: { id: '71000000-0000-0000-0000-000000000001', role: 'sales_person', full_name: 'Fictional Person', is_active: true }, loading: false, signOut: vi.fn() } }))
 vi.mock('../../src/lib/AuthContext', () => ({ useAuth: () => mocks.auth }))
 vi.mock('../../src/lib/supabase', () => ({ supabase: { from: () => ({ select: () => ({ eq: () => Promise.resolve({ count: 0, error: null }) }) }), rpc: vi.fn() } }))
 vi.mock('../../src/pages/Login', () => ({ default: () => <p>Login route</p> }))
