@@ -25,10 +25,15 @@ export type SetupInput = {
   singleDateRuleAccepted: boolean
 }
 export type Balance = {
-  accountId: UUID; year: number; allowanceMinutes: number; approvedMinutes: number
-  pendingMinutes: number; availableMinutes: number; expiredMinutes: number; version: number
+  accountId: UUID; year: number; allowanceMinutes: number; approvedMinutes: number | null
+  pendingMinutes: number | null; availableMinutes: number | null; expiredMinutes: number | null; version: number
+  /** Missing legacy verification is never a verified opening. */
+  reconciled?: boolean
 }
+export type AnnualPeriod = { year: number; startDate: DateKey; endDate: DateKey }
 export type LeaveContext = {
+  /** Server-derived only. Older omitted responses keep preparation blocked. */
+  currentPeriod?: AnnualPeriod | null
   scopeVersion: string
   memberKind: 'employee' | 'manager' | 'director' | null
   capabilities: { request: boolean; approve: boolean; configure: boolean; adjust: boolean; readPrivate: boolean; manageAccess: boolean }

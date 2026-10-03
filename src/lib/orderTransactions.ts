@@ -10,7 +10,7 @@ export type TransactionSender = ((operation: string, payload: unknown) => Promis
   reconcile: () => Promise<Recovery>
   acknowledgeRecovered: () => void
 }
-type Options = { storage?: () => Storage; storageKey?: string; rpcName?: 'pilot_order_transaction' | 'pilot_finalize_visit'; recoveryRpcName?: 'pilot_reconcile_request' | 'pilot_reconcile_visit' }
+type Options = { validateResult?: (result: TransactionResult, expectedOperation?: string) => boolean; storage?: () => Storage; storageKey?: string; rpcName?: 'pilot_order_transaction' | 'pilot_finalize_visit' | 'leave_transaction_v1'; recoveryRpcName?: 'pilot_reconcile_request' | 'pilot_reconcile_visit' | 'leave_reconcile_request_v1' }
 type Pending = { key: string; id: string; uncertain: boolean; committed?: TransactionResult }
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical)
@@ -48,10 +48,20 @@ export function createTransactionSender(options: Options = {}): TransactionSende
     }
     pending = value
   }
+  // Opt-in semantic receipt checks must run before any confirmation consumes recovery identity.
+  function validateReceipt(value: TransactionResult, request: Pending, operation?: string) {
+    if (!options.validateResult) return
+    try {
+      if (!options.validateResult(value, operation)) throw new Error('Respons penyimpanan tidak valid. Pulihkan hasil sebelum mencoba kembali.')
+    } catch (error) {
+      if (read()?.id === request.id) save({ key: request.key, id: request.id, uncertain: true })
+      throw error
+    }
+  }
   const send = async (operation: string, payload: unknown) => {
     const key = await fingerprint(operation, payload)
     const current = read()
-    if (current?.committed && current.key === key) { save(null); return current.committed }
+    if (current?.committed && current.key === key) { validateReceipt(current.committed, current, operation); save(null); return current.committed }
     if ((current?.uncertain || current?.committed) && current.key !== key) throw new Error('Hasil penyimpanan sebelumnya belum terkonfirmasi. Pulihkan hasilnya sebelum mengubah pesanan.')
     const request = current?.key === key ? current : { key, id: crypto.randomUUID(), uncertain: true }
     save({ ...request, uncertain: true }) // before the request: survives reload while HTTP is in flight
@@ -62,6 +72,7 @@ export function createTransactionSender(options: Options = {}): TransactionSende
       throw compatibilityError(error)
     }
     if (!data || typeof data.id !== 'string') throw new Error('Respons penyimpanan tidak valid. Pulihkan hasil sebelum mencoba kembali.')
+    validateReceipt(data as TransactionResult, request, operation)
     if (read()?.id === request.id) save(null)
     return data as TransactionResult
   }
@@ -75,6 +86,7 @@ export function createTransactionSender(options: Options = {}): TransactionSende
       if (error) throw compatibilityError(error)
       if (!data || !['committed', 'abandoned'].includes(data.state)) throw new Error('Hasil belum dapat dipastikan. Jangan buat permintaan baru.')
       if (data.state === 'committed' && typeof data.result?.id !== 'string') throw new Error('Hasil pemulihan tidak valid. Jangan buat permintaan baru.')
+      if (data.state === 'committed') validateReceipt(data.result as TransactionResult, request)
       // The server either found the committed result or recorded a terminal cancellation tombstone.
       if (read()?.id === request.id) save(data.state === 'committed' ? { ...request, uncertain: false, committed: data.result } : null)
       return data as Recovery

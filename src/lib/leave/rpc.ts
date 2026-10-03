@@ -1,6 +1,7 @@
 import { supabase } from '../supabase'
 import { parseUUID } from './contracts'
-import type { Balance, LeaveContext, Page, SetupBlocker, UUID } from './contracts'
+import { parseAccountBalances, parseCurrentPeriod } from './accountRpc'
+import type { LeaveContext, Page, SetupBlocker, UUID } from './contracts'
 export type LeavePerson = { id: UUID; name: string; applicationRole: string; active: boolean }
 
 /** Backend messages/details can contain private values. Never expose or log them. */
@@ -14,14 +15,6 @@ export function leaveErrorMessage(error: unknown): string {
 function invalid(): never { throw new Error('Respons layanan cuti tidak valid. Silakan muat ulang.') }
 function object(value: unknown): value is Record<string, unknown> { return !!value && typeof value === 'object' && !Array.isArray(value) }
 function integer(value: unknown): value is number { return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 }
-function parseBalance(value: unknown): Balance {
-  if (!object(value)) invalid()
-  let accountId: UUID
-  try { accountId = parseUUID(value.accountId) } catch { return invalid() }
-  const keys = ['year', 'allowanceMinutes', 'approvedMinutes', 'pendingMinutes', 'availableMinutes', 'expiredMinutes', 'version'] as const
-  if (!keys.every(key => integer(value[key]))) invalid()
-  return { accountId, ...Object.fromEntries(keys.map(key => [key, value[key]])) } as Balance
-}
 function parseContext(value: unknown): LeaveContext {
   if (!object(value) || typeof value.scopeVersion !== 'string' || !value.scopeVersion ||
       ![null, 'employee', 'manager', 'director'].includes(value.memberKind as string | null) ||
@@ -37,10 +30,12 @@ function parseContext(value: unknown): LeaveContext {
     return { code: row.code, message: row.message, ...(row.field === undefined ? {} : { field: row.field as string }) }
   })
   if (value.setup.ready && blockers.length) invalid()
-  const balances = value.balances.map(parseBalance)
+  const balances = parseAccountBalances(value.balances)
+  const currentPeriod = value.currentPeriod === undefined ? undefined : parseCurrentPeriod(value.currentPeriod)
+  if (value.memberKind === 'director' && currentPeriod) invalid()
   if (value.memberKind === 'director' && (capNames.some(key => key !== 'approve' && capabilities[key]) || balances.length)) invalid()
   if (value.memberKind === null && (capabilities.request || balances.length)) invalid()
-  return { scopeVersion: value.scopeVersion, memberKind: value.memberKind as LeaveContext['memberKind'], capabilities,
+  return { ...(currentPeriod === undefined ? {} : { currentPeriod }), scopeVersion: value.scopeVersion, memberKind: value.memberKind as LeaveContext['memberKind'], capabilities,
     setup: { ready: value.setup.ready, blockers }, balances, timezone: value.timezone as string | null }
 }
 export async function fetchLeaveContext(signal: AbortSignal): Promise<LeaveContext> {

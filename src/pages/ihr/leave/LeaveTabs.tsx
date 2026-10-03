@@ -1,8 +1,11 @@
 import { useState } from 'react'
+import { useAuth } from '../../../lib/AuthContext'
+import MyLeave from './MyLeave'
 import type { LeaveContext } from '../../../lib/leave/contracts'
 /** Capability-only shell. Later owning tasks add their private panels and actions. */
 export default function LeaveTabs({ context }: { context: LeaveContext }) {
   const [selected, setSelected] = useState(''), caps = context.capabilities
+  const { user } = useAuth()
   const tabs = [
     ...(caps.request ? [{ id: 'mine', label: 'Cuti Saya' }] : []),
     ...(caps.approve ? [{ id: 'approvals', label: 'Persetujuan' }] : []),
@@ -16,6 +19,6 @@ export default function LeaveTabs({ context }: { context: LeaveContext }) {
         aria-controls={`leave-panel-${tab.id}`} onClick={() => setSelected(tab.id)}
         className={`px-4 py-3 text-sm font-medium border-b-2 ${tab.id === active ? 'border-orange-600 text-orange-700' : 'border-transparent text-gray-600'}`}>{tab.label}</button>)}
     </div>
-    <div id={`leave-panel-${active}`} role="tabpanel" aria-labelledby={`leave-tab-${active}`} className="py-4 text-sm text-gray-600">Layanan ini sedang disiapkan. Tidak ada tindakan cuti yang tersedia saat ini.</div>
+    <div id={`leave-panel-${active}`} role="tabpanel" aria-labelledby={`leave-tab-${active}`} className="py-4 text-sm text-gray-600">{active === 'mine' && user ? <MyLeave actorId={user.id} context={context} /> : 'Layanan ini sedang disiapkan. Tidak ada tindakan cuti yang tersedia saat ini.'}</div>
   </section>
 }

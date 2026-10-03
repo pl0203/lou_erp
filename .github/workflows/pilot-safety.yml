@@ -119,6 +119,16 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f tests/database/scalable-report-boundaries.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/scalable-report-reads.sql
           node scripts/test-ihr-db.mjs --suite foundation
+      - name: Guarded iHR calendar and accounts SQL suites
+        run: |
+          set -euo pipefail
+          calendar_log="$(mktemp)"
+          accounts_log="$(mktemp)"
+          trap 'rm -f "$calendar_log" "$accounts_log"' EXIT
+          node scripts/test-ihr-db.mjs --suite calendar | tee "$calendar_log"
+          grep -Fxq 'IHR_CALENDAR_PERMISSIONS_AND_SETUP_PASSED' "$calendar_log"
+          node scripts/test-ihr-db.mjs --suite accounts | tee "$accounts_log"
+          grep -Fxq 'IHR_ACCOUNTS_PERMISSIONS_AND_RECONCILIATION_PASSED' "$accounts_log"
       - name: Concurrent business operations
         run: node tests/database/concurrency.mjs
 

@@ -14,7 +14,7 @@ test('negative guard tests execute exact preflight only, never migration COMMIT 
 })
 test('rejected experiments are absent from automatic deployable migration discovery',()=>{
  const files=readdirSync('supabase/migrations')
- expect(files.filter(f=>f.startsWith('202610'))).toEqual(['202610010001_scalable_order_reads.sql','202610010002_scalable_report_reads.sql','202610010004_scalable_order_lookup_index.sql','202610010007_read_policy_plans.sql','202610010008_customer_delivery_aggregation.sql','202610010009_sales_page_enrichment.sql','202610010010_nullable_catalog_prices.sql','202610020003_stale_po_conflicts.sql','202610021001_ihr_leave_foundation.sql'])
+ expect(files.filter(f=>f.startsWith('202610'))).toEqual(['202610010001_scalable_order_reads.sql','202610010002_scalable_report_reads.sql','202610010004_scalable_order_lookup_index.sql','202610010007_read_policy_plans.sql','202610010008_customer_delivery_aggregation.sql','202610010009_sales_page_enrichment.sql','202610010010_nullable_catalog_prices.sql','202610020003_stale_po_conflicts.sql','202610021001_ihr_leave_foundation.sql','202610021002_ihr_leave_calendar.sql','202610021003_ihr_leave_accounts.sql'])
  expect(source).not.toContain('DROP INDEX')
  expect(source).toContain('Rejected experimental child-index state requires separate review')
 })
