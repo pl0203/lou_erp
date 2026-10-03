@@ -30,6 +30,11 @@ test('timezone is single-confirmed per lineage and Sunday cannot enable working 
   expect(fn('private.ihr_leave_set_member')).toContain('private.ihr_leave_calendar_timezone(')
   expect(fn('private.ihr_leave_set_approver')).toContain('private.ihr_leave_calendar_timezone(')
 })
+test.each(['private.ihr_leave_calendar_guard', 'private.ihr_leave_save_calendar'])('timezone lookup in %s binds the canonical catalog relation despite caller temporary objects', name => {
+  const body = fn(name)
+  expect(body).toMatch(/FROM pg_catalog\.pg_timezone_names WHERE name=/)
+  expect(body).not.toMatch(/FROM pg_timezone_names\b/)
+})
 test('preview is STABLE/read-only and mutations reauthorize after the last setup lock', () => {
   const preview = fn('public.leave_roster_preview_v1')
   expect(preview).toContain('STABLE SECURITY DEFINER')
@@ -70,11 +75,27 @@ test('roster guard parenthesizes SQL CASE inside the PL/pgSQL IF expression',()=
  expect(fn('private.ihr_leave_roster_guard')).toContain('IF NEW.capacity_minutes<>(CASE WHEN (mod((NEW.day-NEW.anchor)/7,2)=0)=NEW.on_anchor THEN 225 ELSE 0 END) THEN')
 })
 test('calendar fixtures qualify public RPCs even inside dynamic denial assertions',()=>{
- for(const file of ['calendar.sql','calendar-commands.sql']){
+ for(const file of ['calendar.sql','calendar-commands.sql','calendar-timezone-shadow.sql']){
   const fixture=readFileSync(`tests/database/ihr/${file}`,'utf8')
   expect(fixture.match(/(?<![\w.])leave_[a-z0-9_]+\s*\(/g),file).toBeNull()
   expect(fixture).toContain('public.leave_')
  }
+})
+test('timezone-shadow fixture uses the actual application role and public command path in staged and composed entries', () => {
+ const fixture=readFileSync('tests/database/ihr/calendar-timezone-shadow.sql','utf8')
+ for(const entry of ['calendar.sql','composed.sql']) expect(readFileSync(`tests/database/ihr/${entry}`,'utf8')).toContain('\\ir calendar-timezone-shadow.sql')
+ expect(fixture).toContain("current_user='authenticated' AND session_user='postgres'")
+ expect(fixture.indexOf('CREATE TEMP TABLE pg_timezone_names')).toBeGreaterThan(fixture.indexOf('SET LOCAL ROLE authenticated;'))
+ expect(fixture).toContain("r.rolname='authenticated'")
+ expect(fixture).toContain("SET LOCAL search_path='';")
+ expect(fixture).toContain("pg_catalog.to_regclass('pg_timezone_names')='pg_temp.pg_timezone_names'::regclass")
+ expect(fixture).toContain("NOT EXISTS(SELECT 1 FROM pg_timezone_names WHERE name='Etc/UTC')")
+ expect(fixture).toContain("EXISTS(SELECT 1 FROM pg_catalog.pg_timezone_names WHERE name='Etc/UTC')")
+ expect(fixture).toContain("v_state='22023' AND v_detail='{\"code\":\"INVALID_TIMEZONE\"}'")
+ expect(fixture).toContain('both save lookup and calendar INSERT trigger under caller temp')
+ expect(fixture).toContain('all private leave helpers remain revoked')
+ expect(fixture).not.toMatch(/\bGRANT\s|CREATE (?:OR REPLACE )?FUNCTION/i)
+ expect(fixture.trimEnd()).toMatch(/ROLLBACK;\s+\\echo IHR_CALENDAR_TIMEZONE_SHADOW_PASSED$/)
 })
 
 test.each([
@@ -90,8 +111,8 @@ test.each([
 })
 test('calendar fixture closure has no accidental malformed UUID literals', () => {
  // Deliberate unknown-key injection, not an intended employee/actor identity. Keep it invalid.
- const deliberateInvalidInputs = [{ file: 'calendar-commands.sql', line: 39, value: 'forged', reason: 'Unknown actor_id must be rejected with 22023' }]
- for (const name of ['calendar.sql', 'calendar-commands.sql', 'seed.sql']) {
+ const deliberateInvalidInputs = [{ file: 'calendar-commands.sql', line: 40, value: 'forged', reason: 'Unknown actor_id must be rejected with 22023' }]
+ for (const name of ['calendar.sql', 'calendar-commands.sql', 'calendar-timezone-shadow.sql', 'seed.sql']) {
   const fixture = readFileSync(`tests/database/ihr/${name}`, 'utf8')
   const deliberate = deliberateInvalidInputs.filter(input => input.file === name)
   for (const input of deliberate) {

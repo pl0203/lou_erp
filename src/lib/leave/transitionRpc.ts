@@ -49,7 +49,7 @@ export async function fetchAssignedInbox(before:number|null,limit:number,signal:
 export async function fetchAssignedRequest(id:UUID,signal:AbortSignal):Promise<AssignedDetail>{
  parseUUID(id);const raw=await read('leave_assigned_request_v1',{p_request_id:id},signal)
  try{
-  const v=exact(raw,[...summaryKeys,'reason','approverName','days','allocations','cancellation']),s=assignedSummary(Object.fromEntries(summaryKeys.map(k=>[k,v[k]])))
+  const v=exact(raw,[...summaryKeys,'reason','approverName','days','allocations','cancellation','balanceContext']),s=assignedSummary(Object.fromEntries(summaryKeys.map(k=>[k,v[k]])))
   if(s.id!==id||!Array.isArray(v.days)||!v.days.length||v.days.length>366||!Array.isArray(v.allocations)||!v.allocations.length||v.allocations.length>2)invalid()
   const days=v.days.map(value=>{
    const d=exact(value,['date','scheduledMinutes','chargedMinutes','exclusion','groupName']),date=parseDateKey(d.date),scheduledMinutes=integer(d.scheduledMinutes,0,450),chargedMinutes=integer(d.chargedMinutes,0,450)
@@ -66,7 +66,14 @@ export async function fetchAssignedRequest(id:UUID,signal:AbortSignal):Promise<A
   let cancellation:AssignedDetail['cancellation']=null
   if(v.cancellation!==null){const c=exact(v.cancellation,['id','requestedAt','reason','approverName']);cancellation={id:parseUUID(c.id),requestedAt:timestamp(c.requestedAt),reason:text(c.reason,1000,true),approverName:text(c.approverName,500)}}
   if((s.status==='cancellation_pending')!==(cancellation!==null)||cancellation?.id!==(s.cancellationAttemptId??undefined)||cancellation?.requestedAt!==(s.cancellationRequestedAt??undefined))invalid()
-  return {...s,reason:text(v.reason,1000,true),approverName:text(v.approverName,500),days,allocations,cancellation}
+  const balance=exact(v.balanceContext,['basis','asOf','periods']);if(balance.basis!=='current'||!Array.isArray(balance.periods)||balance.periods.length!==allocations.length)invalid()
+  const periods=balance.periods.map((value,index)=>{
+   const b=exact(value,['year','reservedMinutes','usedMinutes','availableMinutes','expiredMinutes','reconciled']),year=integer(b.year,1,9998)
+   if(year!==allocations[index].year||typeof b.reconciled!=='boolean')invalid()
+   const amount=(key:string)=>{if(b.reconciled)return integer(b[key]);if(b[key]!==null)invalid();return null}
+   return {year,reconciled:b.reconciled,reservedMinutes:amount('reservedMinutes'),usedMinutes:amount('usedMinutes'),availableMinutes:amount('availableMinutes'),expiredMinutes:amount('expiredMinutes')}
+  })
+  return {...s,reason:text(v.reason,1000,true),approverName:text(v.approverName,500),days,allocations,cancellation,balanceContext:{basis:'current',asOf:timestamp(balance.asOf),periods}}
  }catch{return invalid()}
 }
 export async function fetchOwnTransitionState(id:UUID,signal:AbortSignal):Promise<OwnTransitionState>{

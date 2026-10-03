@@ -77,3 +77,9 @@ EXPLAIN (ANALYZE, BUFFERS, SETTINGS, FORMAT JSON) runs on the restored sealed st
     ./node_modules/.bin/vitest run tests/ihr/capacity-fixture.test.ts tests/ihr/capacity-workloads.test.ts tests/ihr/capacity-hr-workloads.test.ts tests/ihr/capacity-review-fixes.test.ts tests/ihr/capacity-fingerprint-sql.test.ts tests/ihr/capacity-logical-boundary.test.ts --maxWorkers=1
 
 Run node --check for all capacity-*.mjs files. Unit transport/EXPLAIN doubles are explicitly orchestration and rejection tests, never PostgreSQL authority, timing or plan evidence. SQL compile/materialization, actual-role assertions, runtime latency/EXPLAIN/index results, sealed artifact creation/restore, aggregate frontend/typecheck/build and hosted/browser/release checks remain NOT_RUN in this lane.
+
+### Final review correction source scope
+
+The final correction retains all 104 named workloads, five warmups, at least 30 raw measured samples, the same thresholds and six analyzed underlying plans. `assigned-detail-days` now asserts the exact fresh balance context for only the request's allocated periods, in addition to all original detail assertions. The five RPC definition pins are rebound to the correction SQL source. The private HR history endpoint delegates its unchanged bounded tuple paging to `private.ihr_leave_request_history_page`; its source dependency is pinned too, and the history plan includes the current cancellation-route joins.
+
+The new owner event-history endpoint shares that indexed projection but is not part of the 104 timed endpoint inventory. Its owner/director/guessed-ID, decline/repeat/acceptance and multi-page coverage is in the composed normal SQL suite. Sharing a projection does not establish owner-endpoint latency evidence. All new source/configuration pins require exact-source runtime verification; no previous benchmark result is restamped.

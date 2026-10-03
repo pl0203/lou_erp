@@ -16,14 +16,14 @@ export type LeaveAdminSettingsData={employeeId:UUID;authorityKey:string;memberVe
 export type AccessGrant={id:UUID;actorId:UUID;capability:AdminCapability;employeeId:UUID;effectiveFrom:string;effectiveUntil:string|null;version:number;revoked:boolean}
 export type AccessManifest=Omit<AccessGrant,'id'|'version'|'revoked'>&{id:UUID;grantId:UUID;approvedBy:UUID;approvedAt:string;approvalReference:string}
 export type LeaveAdminAccessData={employeeId:UUID;authorityKey:string;grants:AccessGrant[];manifests:AccessManifest[]}
-export type LeaveAdminRequest={id:UUID;sequence:number;version:number;startDate:DateKey;endDate:DateKey;approverName:string;currentAssignmentId:UUID}
+export type LeaveAdminRequest={id:UUID;sequence:number;version:number;startDate:DateKey;endDate:DateKey;approverName:string;currentAssignmentId:UUID;status:'submitted'|'cancellation_pending';cancellationAttemptId:UUID|null}
 export type LeaveAdminCommand={expectedVersion:number;reason:string}&(
  |{operation:'save_policy_version';employeeId:UUID;policy:LeavePolicyDraft}
  |{operation:'activate_member_policy';employeeId:UUID;policyId:UUID;establishedEligibilityConfirmed:boolean}
  |{operation:'set_governance_reference';employeeId:UUID;kind:GovernanceKind;approvalId:UUID}
  |{operation:'grant_leave_access';manifestId:UUID}
  |{operation:'revoke_leave_access';grantId:UUID}
- |{operation:'reassign_request';employeeId:UUID;requestId:UUID;assignmentId:UUID}
+ |{operation:'reassign_request';employeeId:UUID;requestId:UUID;assignmentId:UUID;attemptId?:UUID}
 )
 export type AdminReceipt=LeaveResult&{operation:AdminOperation}
 export type LeaveAdminSend=(command:LeaveAdminCommand)=>Promise<AdminReceipt>

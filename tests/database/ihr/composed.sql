@@ -3,6 +3,7 @@
 -- This entry then verifies the complete final schema. Every synthetic suite rolls back.
 \set ON_ERROR_STOP on
 \ir helpers.sql
+\ir calendar-timezone-shadow.sql
 \ir composed/helpers.sql
 \ir composed/quote.sql
 \ir composed/requests.sql
@@ -10,4 +11,5 @@
 \ir reads.sql
 \ir admin.sql
 \ir composed/preparation.sql
+\ir final-review.sql
 \echo IHR_COMPOSED_BACKEND_PLAIN_PASSED

@@ -31,7 +31,7 @@ describe('transition boundary',()=>{
   const c=new AbortController();c.abort();respond({rows:[],nextBefore:null});await expect(fetchAssignedInbox(null,25,c.signal)).rejects.toThrow()
  })
  it('validates full frozen assigned detail and totals',async()=>{
-  const detail={...row,reason:'Fictional reason',approverName:'Fictional manager',days:[{date:'2026-10-09',scheduledMinutes:450,chargedMinutes:450,exclusion:null,groupName:null}],allocations:[{year:2026,startDate:'2026-01-01',endDate:'2027-01-01',chargedMinutes:450}],cancellation:null}
+  const detail={...row,reason:'Fictional reason',approverName:'Fictional manager',days:[{date:'2026-10-09',scheduledMinutes:450,chargedMinutes:450,exclusion:null,groupName:null}],allocations:[{year:2026,startDate:'2026-01-01',endDate:'2027-01-01',chargedMinutes:450}],cancellation:null,balanceContext:{basis:'current',asOf:'2026-10-03T01:00:00Z',periods:[{year:2026,reservedMinutes:450,usedMinutes:900,availableMinutes:4050,expiredMinutes:0,reconciled:true}]}}
   respond(detail);expect((await fetchAssignedRequest(id,signal())).totalMinutes).toBe(450)
   respond({...detail,totalMinutes:225});await expect(fetchAssignedRequest(id,signal())).rejects.toThrow()
  })
@@ -40,4 +40,9 @@ describe('transition boundary',()=>{
   respond(state);expect(await fetchOwnTransitionState(id,signal())).toEqual(state)
   respond({...state,canRequestCancellation:true});await expect(fetchOwnTransitionState(id,signal())).rejects.toThrow()
  })
+})
+it('assigned balance rejects unrelated periods, extra account handles and missing verification',async()=>{
+ const detail={...row,reason:'',approverName:'Manager',days:[{date:row.startDate,scheduledMinutes:450,chargedMinutes:450,exclusion:null,groupName:null}],allocations:[{year:2026,startDate:'2026-01-01',endDate:'2027-01-01',chargedMinutes:450}],cancellation:null,balanceContext:{basis:'current',asOf:'2026-10-03T12:00:00Z',periods:[{year:2026,reservedMinutes:450,usedMinutes:0,availableMinutes:4950,expiredMinutes:0,reconciled:true}]}}
+ respond(detail);expect((await fetchAssignedRequest(id,signal())).balanceContext.periods[0].availableMinutes).toBe(4950)
+ for(const balanceContext of [{...detail.balanceContext,periods:[]},{...detail.balanceContext,basis:'submission'},{...detail.balanceContext,periods:[{...detail.balanceContext.periods[0],year:2025}]},{...detail.balanceContext,periods:[{...detail.balanceContext.periods[0],accountId:id}]},{...detail.balanceContext,periods:[{...detail.balanceContext.periods[0],reconciled:false}]}]){respond({...detail,balanceContext});await expect(fetchAssignedRequest(id,signal())).rejects.toThrow()}
 })

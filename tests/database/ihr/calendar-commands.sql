@@ -33,6 +33,7 @@ SELECT set_config('request.jwt.claim.sub','71000000-0000-0000-0000-000000000006'
 DO $$ DECLARE p jsonb;v_result jsonb;v_preview jsonb;v_before jsonb;v_after jsonb;v_membership uuid;v_assignment uuid;v_new_assignment uuid;v_variant jsonb;v_claim text;
  v_calendar uuid:='73000000-0000-0000-0000-000000000090';BEGIN
  p:='{"calendar_id":"73000000-0000-0000-0000-000000000090","name":"Fictional public calendar","effective_from":"2099-10-01","effective_until":null,"timezone":null,"holidays_confirmed":true,"sunday_minutes":null,"holidays":["2099-10-06"],"groups":[{"id":"74000000-0000-0000-0000-000000000091","name":"Fictional C"},{"id":"74000000-0000-0000-0000-000000000092","name":"Fictional D"}],"expected_version":0,"reason":"Fictional draft"}';
+ p:=p||jsonb_build_object('preview_fingerprint',public.leave_calendar_preview_v1(p-'reason'-'preview_fingerprint')->>'fingerprint');
  PERFORM pg_temp.assert_true(public.leave_transaction_v1('78000000-0000-0000-0000-000000000002','save_calendar_version',p)->>'version'='1','explicit draft created');
  PERFORM pg_temp.assert_true(public.leave_transaction_v1('78000000-0000-0000-0000-000000000002','save_calendar_version',p)->>'version'='1','calendar command replay idempotent');
  PERFORM pg_temp.assert_denied(format('SELECT public.leave_transaction_v1(%L,''save_calendar_version'',%L)','78000000-0000-0000-0000-000000000002',(p||'{"reason":"Changed"}'::jsonb)::text),'55000');
@@ -40,6 +41,7 @@ DO $$ DECLARE p jsonb;v_result jsonb;v_preview jsonb;v_before jsonb;v_after json
  PERFORM pg_temp.assert_true(public.leave_transaction_v1('78000000-0000-0000-0000-000000000003','set_member','{"employee_id":"71000000-0000-0000-0000-000000000002","member_kind":"employee","active":true,"employment_start":null,"eligibility_date":null,"calendar_id":"73000000-0000-0000-0000-000000000090","expected_version":1,"reason":"Fictional independent enrollment"}')->>'version'='2','member may select unconfirmed draft without inference');
  PERFORM pg_temp.assert_denied($s$SELECT public.leave_roster_preview_v1('73000000-0000-0000-0000-000000000090','2099-10-03','[{"id":"74000000-0000-0000-0000-000000000091","on_anchor":true}]','2099-10-03','2099-11-01')$s$,'22023');
  p:=p||'{"timezone":"Asia/Jakarta","sunday_minutes":0,"expected_version":1,"reason":"Fictional same-start confirmation"}'::jsonb;
+ p:=p||jsonb_build_object('preview_fingerprint',public.leave_calendar_preview_v1(p-'reason'-'preview_fingerprint')->>'fingerprint');
  PERFORM pg_temp.assert_true(public.leave_transaction_v1('78000000-0000-0000-0000-000000000004','save_calendar_version',p)->>'version'='2','same-start higher source confirms timezone');
  PERFORM set_config('request.jwt.claim.sub','71000000-0000-0000-0000-000000000002',true);
  PERFORM pg_temp.assert_true(public.leave_context_v1()->>'timezone'='Asia/Jakarta','confirmed source resolves stale null member snapshot');
@@ -106,8 +108,10 @@ DO $$ DECLARE p jsonb;v_result jsonb;v_preview jsonb;v_before jsonb;v_after json
  PERFORM set_config('request.jwt.claim.sub','71000000-0000-0000-0000-000000000006',true);
  -- Later null source keeps fixed lineage timezone, but its selected dates will block calculation.
  p:='{"calendar_id":"73000000-0000-0000-0000-000000000090","name":"Fictional later unconfirmed source","effective_from":"2099-12-01","effective_until":null,"timezone":null,"holidays_confirmed":true,"sunday_minutes":null,"holidays":[],"groups":[],"expected_version":3,"reason":"Fictional null overlay"}';
+ p:=p||jsonb_build_object('preview_fingerprint',public.leave_calendar_preview_v1(p-'reason'-'preview_fingerprint')->>'fingerprint');
  PERFORM pg_temp.assert_true(public.leave_transaction_v1('78000000-0000-0000-0000-000000000012','save_calendar_version',p)->>'version'='4','null draft preserves lineage confirmation');
  p:=p||'{"effective_from":"2100-01-01","timezone":"Asia/Jakarta","expected_version":4}'::jsonb;
+ p:=p||jsonb_build_object('preview_fingerprint',public.leave_calendar_preview_v1(p-'reason'-'preview_fingerprint')->>'fingerprint');
  PERFORM pg_temp.assert_true(public.leave_transaction_v1('78000000-0000-0000-0000-000000000013','save_calendar_version',p)->>'version'='5','new confirmed source still leaves Sunday unset');
  PERFORM set_config('request.jwt.claim.sub','71000000-0000-0000-0000-000000000002',true);
  PERFORM pg_temp.assert_true(public.leave_context_v1()->>'timezone'='Asia/Jakarta','unrelated future source cannot change lineage zone');

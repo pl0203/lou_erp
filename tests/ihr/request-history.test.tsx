@@ -71,3 +71,23 @@ test('real shared page completes history/detail gates and hides frozen reason du
  serve();fireEvent.click(await screen.findByRole('button',{name:'Coba lagi'}));await screen.findByRole('button',{name:'Buat pratinjau cuti'})
  expect(screen.queryByText(detail.reason)).toBeNull();fireEvent.click(screen.getByRole('button',{name:'Coba lagi riwayat pengajuan'}));await screen.findByText('Menunggu persetujuan');fireEvent.click(screen.getByRole('button',{name:'Coba lagi rincian'}));expect(await screen.findByText(detail.reason)).toBeTruthy()
 })
+
+test('owner detail presents immutable declined cancellation reason and tuple history pages',async()=>{
+ const first={id:employeeB,event:'cancellation_declined',atTime:'2026-10-03T11:00:00.000001Z',actor:{id:employeeB,name:'Decision manager'},reason:'Please retain these dates',approverName:'Decision manager'}
+ mocks.rpc.mockImplementation((name:string,args:Record<string,unknown>)=>({abortSignal:()=>Promise.resolve({data:name==='leave_own_request_history_v1'?{requestId:employeeA,requestVersion:1,scopeVersion:quoteScope,rows:args.p_before_id?[{...first,id:employeeA,event:'submitted',atTime:'2026-10-01T12:00:00Z',reason:null}]:[first],nextBefore:args.p_before_id?null:{atTime:first.atTime,id:first.id}}:response(name,args),error:null})}))
+ mount();await history();await details();expect(await screen.findByText('Please retain these dates')).toBeTruthy()
+ fireEvent.click(screen.getByRole('button',{name:'Peristiwa lebih lama'}));await screen.findByText('Pengajuan dikirim')
+ expect(mocks.rpc.mock.calls.filter(([n])=>n==='leave_own_request_history_v1').at(-1)?.[1]).toMatchObject({p_before_at:first.atTime,p_before_id:first.id,p_limit:25})
+})
+test('cancelled owner event refetch cannot restore a cached private decision reason',async()=>{
+ const event={id:employeeB,event:'cancellation_declined',atTime:'2026-10-03T11:00:00Z',actor:{id:employeeB,name:'Decision manager'},reason:'Private event cancellation note',approverName:'Decision manager'}
+ const data={requestId:employeeA,requestVersion:1,scopeVersion:quoteScope,rows:[event],nextBefore:null}
+ const normal=(name:string,args:Record<string,unknown>)=>({abortSignal:()=>Promise.resolve({data:name==='leave_own_request_history_v1'?data:response(name,args),error:null})})
+ mocks.rpc.mockImplementation(normal);const {client}=mount();await history();await details();await screen.findByText(event.reason)
+ let signal!:AbortSignal,finish!:(value:unknown)=>void
+ mocks.rpc.mockImplementation((name:string,args:Record<string,unknown>)=>name==='leave_own_request_history_v1'?{abortSignal:(s:AbortSignal)=>{signal=s;return new Promise(resolve=>finish=resolve)}}:normal(name,args))
+ fireEvent(window,new Event('focus'));await waitFor(()=>expect(signal).toBeDefined());expect(screen.queryByText(event.reason)).toBeNull()
+ await act(async()=>client.cancelQueries({predicate:q=>q.queryKey.includes('own-request-events')}));expect(signal.aborted).toBe(true)
+ await act(async()=>finish({data,error:null}));expect(screen.queryByText(event.reason)).toBeNull()
+ mocks.rpc.mockImplementation(normal);fireEvent.click(await screen.findByRole('button',{name:'Muat ulang peristiwa'}));expect(await screen.findByText(event.reason)).toBeTruthy();expect(localStorage.length).toBe(0)
+})

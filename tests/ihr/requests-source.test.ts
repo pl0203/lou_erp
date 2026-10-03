@@ -36,7 +36,7 @@ test('import verifies charges and freezes originals without a second usage ledge
 test('own history/details use current personal authority, minimized summaries and bounded keyset pages',()=>{
  for(const fn of ['public.leave_own_history_v1','public.leave_own_request_v1']){
   const b=body(fn);expect(b).toContain('private.ihr_leave_require_personal_actor()');expect(b).toContain('employee_id=actor')
-  expect(b).toContain("STABLE SECURITY DEFINER SET search_path=''")
+  expect(b).toContain("STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp")
  }
  expect(body('public.leave_own_history_v1')).toContain('p_before')
  expect(body('public.leave_own_history_v1')).not.toContain("'reason'")

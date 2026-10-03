@@ -1,5 +1,6 @@
 -- Unpublished annual accounts candidate. No staff, grants, policy or opening positions are seeded.
 BEGIN;
+SET LOCAL search_path = pg_catalog, pg_temp;
 CREATE TABLE public.ihr_leave_accounts (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),employee_id uuid NOT NULL REFERENCES public.ihr_leave_members(user_id),
  leave_type text NOT NULL DEFAULT 'annual' CHECK(leave_type='annual'),year integer NOT NULL CHECK(year BETWEEN 1 AND 9998),
@@ -39,7 +40,7 @@ REVOKE ALL ON SEQUENCE public.ihr_leave_ledger_sequence_seq FROM PUBLIC,anon,aut
 -- Trusted time argument is supplied only by private callers or deterministic OWNER tests.
 -- Member.timezone is a snapshot, never the authority for a period boundary.
 CREATE FUNCTION private.ihr_leave_annual_eligibility(p_employee uuid,p_at timestamptz) RETURNS jsonb
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE m public.ihr_leave_members%ROWTYPE;p public.ihr_leave_policies%ROWTYPE;c public.ihr_leave_calendars%ROWTYPE;
  zone text;today date;yr integer;starts date;ends date;
 BEGIN
@@ -65,7 +66,7 @@ BEGIN
 END;
 $$;
 CREATE FUNCTION private.ihr_leave_account_guard() RETURNS trigger
-LANGUAGE plpgsql SET search_path='' AS $$
+LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
  IF TG_OP='INSERT' THEN
   IF NOT EXISTS(SELECT 1 FROM public.ihr_leave_members m JOIN public.users u ON u.id=m.user_id AND u.is_active WHERE m.user_id=NEW.employee_id AND m.active AND m.member_kind IN('employee','manager')) THEN
@@ -83,7 +84,7 @@ $$;
 CREATE TRIGGER ihr_account_guard BEFORE INSERT OR UPDATE OR DELETE ON public.ihr_leave_accounts FOR EACH ROW EXECUTE FUNCTION private.ihr_leave_account_guard();
 CREATE TRIGGER ihr_account_no_truncate BEFORE TRUNCATE ON public.ihr_leave_accounts FOR EACH STATEMENT EXECUTE FUNCTION private.ihr_leave_immutable_audit();
 CREATE FUNCTION private.ihr_leave_apply_ledger() RETURNS trigger
-LANGUAGE plpgsql SET search_path='' AS $$
+LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
 DECLARE a public.ihr_leave_accounts%ROWTYPE;allowance bigint;used bigint;reserved bigint;
 BEGIN
  SELECT * INTO STRICT a FROM public.ihr_leave_accounts WHERE id=NEW.account_id FOR UPDATE;
@@ -104,7 +105,7 @@ CREATE TRIGGER ihr_ledger_no_truncate BEFORE TRUNCATE ON public.ihr_leave_ledger
 -- All callers take setup/assignment/scope/occupancy (if applicable), then this account advisory lock.
 -- Do not use ON CONFLICT on ledger INSERT: BEFORE triggers must never apply a skipped event.
 CREATE FUNCTION private.ihr_leave_prepare_account(p_employee uuid,p_at timestamptz) RETURNS public.ihr_leave_accounts
-LANGUAGE plpgsql VOLATILE SET search_path='' AS $$
+LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$
 DECLARE e jsonb;a public.ihr_leave_accounts%ROWTYPE;
 BEGIN
  e:=private.ihr_leave_annual_eligibility(p_employee,p_at);
@@ -119,7 +120,7 @@ BEGIN
 END;
 $$;
 CREATE FUNCTION public.leave_prepare_self_v1() RETURNS jsonb
-LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path='' AS $$
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE actor uuid:=private.ihr_leave_require_actor();at_time timestamptz;e jsonb;a public.ihr_leave_accounts%ROWTYPE;
 BEGIN
  PERFORM private.ihr_leave_require_command_isolation();
@@ -136,7 +137,7 @@ BEGIN
 END;
 $$;
 CREATE FUNCTION private.ihr_leave_balance_json(a public.ihr_leave_accounts,p_at timestamptz) RETURNS jsonb
-LANGUAGE sql STABLE SET search_path='' AS $$
+LANGUAGE sql STABLE SET search_path = pg_catalog, pg_temp AS $$
  SELECT jsonb_build_object('accountId',a.id,'year',a.year,'allowanceMinutes',a.allowance_minutes,'reconciled',a.opening_reconciled,
  'approvedMinutes',CASE WHEN a.opening_reconciled THEN a.used_minutes END,'pendingMinutes',CASE WHEN a.opening_reconciled THEN a.reserved_minutes END,
  'availableMinutes',CASE WHEN a.opening_reconciled THEN CASE WHEN (p_at AT TIME ZONE a.timezone)::date>=a.period_end THEN 0 ELSE a.allowance_minutes-a.used_minutes-a.reserved_minutes END END,
@@ -147,7 +148,7 @@ ALTER FUNCTION public.leave_context_v1() RENAME TO ihr_leave_calendar_context_v1
 ALTER FUNCTION public.ihr_leave_calendar_context_v1() SET SCHEMA private;
 REVOKE ALL ON FUNCTION private.ihr_leave_calendar_context_v1() FROM PUBLIC,anon,authenticated;
 CREATE FUNCTION public.leave_context_v1() RETURNS jsonb
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE actor uuid:=private.ihr_leave_require_actor();v jsonb;period jsonb;balances jsonb:='[]';e jsonb;current_verified boolean:=false;
 BEGIN
  v:=private.ihr_leave_calendar_context_v1();
@@ -166,7 +167,7 @@ BEGIN
 END;
 $$;
 CREATE FUNCTION public.leave_balance_history_v1(p_account_id uuid,p_before bigint DEFAULT NULL,p_limit integer DEFAULT 25) RETURNS jsonb
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE actor uuid:=private.ihr_leave_require_actor();a public.ihr_leave_accounts%ROWTYPE;rows jsonb;next_before bigint;
 BEGIN
  SELECT * INTO a FROM public.ihr_leave_accounts WHERE id=p_account_id;
@@ -185,7 +186,7 @@ END;
 $$;
 -- Explicit private HR read only: configure, adjustment and approval do not imply this audience.
 CREATE FUNCTION public.leave_balance_accounts_v1(p_employee_id uuid) RETURNS jsonb
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE actor uuid:=private.ihr_leave_require_actor();rows jsonb;e jsonb;period jsonb;
 BEGIN
  IF NOT private.ihr_leave_has_grant(actor,'read_private',p_employee_id) THEN RAISE EXCEPTION 'Balance access denied' USING ERRCODE='42501',DETAIL='{"code":"BALANCE_ACCESS_DENIED"}'; END IF;
@@ -199,7 +200,7 @@ $$;
 -- Task6 replaces this private seam only after requests/day occupancy can be imported immutably.
 -- Caller holds the employee occupancy lock before any account lock. No exception is swallowed.
 CREATE FUNCTION private.ihr_import_opening_absences_v1(p_employee uuid,p_account uuid,p_source uuid,p_as_of date,p_lines jsonb,p_actor uuid,p_at timestamptz) RETURNS void
-LANGUAGE plpgsql VOLATILE SET search_path='' AS $$
+LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
  IF jsonb_typeof(p_lines) IS DISTINCT FROM 'array' OR jsonb_array_length(p_lines)>0 THEN
   RAISE EXCEPTION 'Opening request import unavailable' USING ERRCODE='55000',DETAIL='{"code":"OPENING_REQUEST_IMPORT_UNAVAILABLE"}'; END IF;
@@ -208,7 +209,7 @@ $$;
 -- Retain stable calendar commands and extend only these two exact account operations.
 ALTER FUNCTION private.ihr_leave_authorize_command(uuid,text,jsonb,timestamptz) RENAME TO ihr_leave_authorize_calendar_command;
 CREATE FUNCTION private.ihr_leave_authorize_command(p_actor uuid,p_operation text,p_payload jsonb,p_authorized_at timestamptz) RETURNS void
-LANGUAGE plpgsql STABLE SET search_path='' AS $$
+LANGUAGE plpgsql STABLE SET search_path = pg_catalog, pg_temp AS $$
 DECLARE keys text[];target uuid;field text;line jsonb;
 BEGIN
  IF p_operation NOT IN('reconcile_opening','adjust_balance') THEN PERFORM private.ihr_leave_authorize_calendar_command(p_actor,p_operation,p_payload,p_authorized_at);RETURN; END IF;
@@ -243,7 +244,7 @@ EXCEPTION WHEN invalid_text_representation OR numeric_value_out_of_range OR inva
 END;
 $$;
 CREATE FUNCTION private.ihr_leave_reconcile_opening(p_actor uuid,p jsonb,p_at timestamptz) RETURNS jsonb
-LANGUAGE plpgsql VOLATILE SET search_path='' AS $$
+LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$
 DECLARE target uuid:=(p->>'employee_id')::uuid;a public.ihr_leave_accounts%ROWTYPE;prior_version bigint;total bigint;as_of date:=(p->>'as_of')::date;e jsonb;
 BEGIN
  e:=private.ihr_leave_annual_eligibility(target,p_at);
@@ -264,7 +265,7 @@ BEGIN
 END;
 $$;
 CREATE FUNCTION private.ihr_leave_adjust_balance(p_actor uuid,p jsonb,p_at timestamptz) RETURNS jsonb
-LANGUAGE plpgsql VOLATILE SET search_path='' AS $$
+LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$
 DECLARE a public.ihr_leave_accounts%ROWTYPE;target uuid:=(p->>'employee_id')::uuid;e jsonb;
 BEGIN
  e:=private.ihr_leave_annual_eligibility(target,p_at);
@@ -281,7 +282,7 @@ END;
 $$;
 ALTER FUNCTION private.ihr_leave_dispatch_command(uuid,text,jsonb,timestamptz) RENAME TO ihr_leave_dispatch_calendar_command;
 CREATE FUNCTION private.ihr_leave_dispatch_command(p_actor uuid,p_operation text,p_payload jsonb,p_authorized_at timestamptz) RETURNS jsonb
-LANGUAGE plpgsql VOLATILE SET search_path='' AS $$
+LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$
 DECLARE actor uuid;at_time timestamptz;target uuid;
 BEGIN
  IF p_operation NOT IN('reconcile_opening','adjust_balance') THEN RETURN private.ihr_leave_dispatch_calendar_command(p_actor,p_operation,p_payload,p_authorized_at); END IF;

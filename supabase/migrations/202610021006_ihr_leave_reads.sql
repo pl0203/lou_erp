@@ -1,8 +1,9 @@
 -- Unpublished minimized read candidate. No real staff, settings or access grants.
 -- Counts depend on the Task7/8 canonical predicate composed into unpublished 1005.
 BEGIN;
+SET LOCAL search_path = pg_catalog, pg_temp;
 CREATE FUNCTION private.ihr_leave_calendar_can_read(p_actor uuid,p_employee uuid,p_audience text,p_at timestamptz DEFAULT statement_timestamp()) RETURNS boolean
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path='' AS $$
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM public.users u WHERE u.id=p_actor AND u.is_active)
  AND EXISTS(SELECT 1 FROM public.ihr_leave_members m JOIN public.users u ON u.id=m.user_id AND u.is_active
   WHERE m.user_id=p_employee AND m.active AND m.member_kind IN('employee','manager'))
@@ -14,7 +15,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path='' AS $$
 $$;
 -- An approver's default month is derived from the exact authorized audience, never a personal entitlement.
 CREATE FUNCTION private.ihr_leave_calendar_default_range(p_actor uuid,p_audience text,p_at timestamptz) RETURNS jsonb
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE zone_count bigint;zone_name text;complete boolean;starts date;ends date;
 BEGIN
  SELECT count(DISTINCT zone),min(zone),bool_and(zone IS NOT NULL) INTO zone_count,zone_name,complete FROM (
@@ -30,7 +31,7 @@ BEGIN
 END;
 $$;
 CREATE FUNCTION public.leave_reads_context_v1(p_audience text DEFAULT NULL) RETURNS jsonb
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE actor uuid:=private.ihr_leave_require_actor();authorized_at timestamptz:=statement_timestamp();audiences jsonb:='[]';audience text;selected_audience text;defaults jsonb;
 BEGIN
  IF p_audience IS NOT NULL AND p_audience NOT IN('own','assigned_team','granted') THEN
@@ -48,7 +49,7 @@ BEGIN
 END;
 $$;
 CREATE FUNCTION public.leave_calendar_v1(p_from date,p_to date,p_audience text DEFAULT 'own') RETURNS jsonb
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE actor uuid:=private.ihr_leave_require_actor();authorized_at timestamptz:=statement_timestamp();rows jsonb;
 BEGIN
  IF p_from IS NULL OR p_to IS NULL OR NOT isfinite(p_from) OR NOT isfinite(p_to)
@@ -73,7 +74,7 @@ BEGIN
 END;
 $$;
 CREATE FUNCTION public.leave_approval_counts_v1() RETURNS jsonb
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE actor uuid:=private.ihr_leave_require_actor();authorized_at timestamptz:=statement_timestamp();pending_leave bigint;pending_cancellation bigint;
 BEGIN
  SELECT count(*) FILTER (WHERE r.status='submitted'),count(*) FILTER (WHERE r.status='cancellation_pending')

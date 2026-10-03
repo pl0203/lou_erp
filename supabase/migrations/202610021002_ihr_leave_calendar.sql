@@ -1,5 +1,6 @@
 -- Unpublished candidate; no people, grants, policy rows, dates, timezone or groups are seeded.
 BEGIN;
+SET LOCAL search_path = pg_catalog, pg_temp;
 CREATE TABLE public.ihr_leave_policies (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),version bigint NOT NULL CHECK(version>0),
  effective_from date NOT NULL,effective_until date,
@@ -66,21 +67,21 @@ REVOKE ALL ON public.ihr_saturday_roster FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON private.ihr_leave_calendar_registry FROM PUBLIC,anon,authenticated;
 
 CREATE FUNCTION private.ihr_leave_global_config(p_actor uuid,p_at timestamptz DEFAULT statement_timestamp()) RETURNS boolean
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path='' AS $$
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
  SELECT private.ihr_leave_has_grant(p_actor,'configure',NULL,p_at) AND EXISTS(
   SELECT 1 FROM public.ihr_leave_access_grants g WHERE g.actor_id=p_actor AND g.capability='configure' AND g.scope_kind='all_policy_members'
    AND g.revoked_at IS NULL AND g.effective_from<=p_at AND (g.effective_until IS NULL OR g.effective_until>p_at));
 $$;
 CREATE FUNCTION private.ihr_leave_calendar_timezone(p_calendar_id uuid) RETURNS text
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path='' AS $$
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
  SELECT timezone FROM public.ihr_leave_calendars WHERE calendar_id=p_calendar_id AND timezone IS NOT NULL ORDER BY version DESC LIMIT 1;
 $$;
 CREATE FUNCTION private.ihr_leave_calendar_guard() RETURNS trigger
-LANGUAGE plpgsql SET search_path='' AS $$
+LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
  PERFORM pg_advisory_xact_lock(hashtextextended('ihr-setup',0));
  IF TG_OP='UPDATE' THEN RAISE EXCEPTION 'Source version is immutable' USING ERRCODE='55000',DETAIL='{"code":"PAST_VERSION_IMMUTABLE"}'; END IF;
- IF NEW.timezone IS NOT NULL AND NOT EXISTS(SELECT 1 FROM pg_timezone_names WHERE name=NEW.timezone) THEN
+ IF NEW.timezone IS NOT NULL AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_timezone_names WHERE name=NEW.timezone) THEN
   RAISE EXCEPTION 'Invalid timezone' USING ERRCODE='22023',DETAIL='{"code":"INVALID_TIMEZONE"}';
  END IF;
  IF NEW.timezone IS NOT NULL AND EXISTS(SELECT 1 FROM public.ihr_leave_calendars c WHERE c.calendar_id=NEW.calendar_id AND c.timezone IS NOT NULL AND c.timezone<>NEW.timezone) THEN
@@ -91,7 +92,7 @@ END;
 $$;
 CREATE TRIGGER ihr_calendar_guard BEFORE INSERT OR UPDATE ON public.ihr_leave_calendars FOR EACH ROW EXECUTE FUNCTION private.ihr_leave_calendar_guard();
 CREATE FUNCTION private.ihr_leave_membership_guard() RETURNS trigger
-LANGUAGE plpgsql SET search_path='' AS $$
+LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
  PERFORM pg_advisory_xact_lock(hashtextextended('ihr-setup',0));
  IF EXISTS(SELECT 1 FROM public.ihr_saturday_memberships m WHERE m.employee_id=NEW.employee_id AND m.id<>NEW.id
@@ -103,7 +104,7 @@ END;
 $$;
 CREATE TRIGGER ihr_membership_guard BEFORE INSERT OR UPDATE ON public.ihr_saturday_memberships FOR EACH ROW EXECUTE FUNCTION private.ihr_leave_membership_guard();
 CREATE FUNCTION private.ihr_leave_roster_guard() RETURNS trigger
-LANGUAGE plpgsql SET search_path='' AS $$
+LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
  IF NOT EXISTS(SELECT 1 FROM public.ihr_leave_calendars c JOIN public.ihr_saturday_groups g ON g.calendar_id=c.calendar_id
   WHERE c.id=NEW.calendar_version_id AND g.id=NEW.group_id AND NEW.effective_from>=c.effective_from
@@ -130,7 +131,7 @@ CREATE TRIGGER ihr_roster_scope AFTER INSERT OR UPDATE OR DELETE ON public.ihr_s
 
 -- Target is EMPLOYEE ID only. Task 6 supplies real minimized counts, never private request IDs.
 CREATE FUNCTION private.ihr_leave_setup_impacts_v1(target uuid,"from" date,"to" date) RETURNS jsonb
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
  IF target IS NULL OR NOT private.ihr_leave_has_grant(private.ihr_leave_require_actor(),'configure',target) THEN
   RAISE EXCEPTION 'Leave access denied' USING ERRCODE='42501',DETAIL='{"code":"ACCESS_DENIED"}';
@@ -139,7 +140,7 @@ BEGIN
 END;
 $$;
 CREATE FUNCTION private.ihr_working_day_v1(employee uuid,day date) RETURNS jsonb
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE v_member public.ihr_leave_members%ROWTYPE;v_calendar public.ihr_leave_calendars%ROWTYPE;
  v_membership public.ihr_saturday_memberships%ROWTYPE;v_roster public.ihr_saturday_roster%ROWTYPE;v_minutes integer;v_exclusion text;
 BEGIN
@@ -176,9 +177,17 @@ BEGIN
   'roster_id',v_roster.id,'roster_version',v_roster.version,'membership_id',v_membership.id,'membership_version',v_membership.version);
 END;
 $$;
+-- Before requests are installed the affected set is empty. The requests migration replaces this body.
+CREATE FUNCTION private.ihr_leave_calendar_impacts(p_calendar_id uuid,p_from date,p_to date,p_roster_groups uuid[] DEFAULT NULL,p_changed_groups uuid[] DEFAULT '{}') RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+ IF NOT private.ihr_leave_global_config(private.ihr_leave_require_actor()) THEN RAISE EXCEPTION 'Global configure required' USING ERRCODE='42501';END IF;
+ RETURN jsonb_build_object('available',true,'pendingCount',0,'approvedCount',0,'sourceFingerprint',md5('[]'));
+END;
+$$;
 CREATE FUNCTION private.ihr_leave_roster_preview(p_calendar_id uuid,p_anchor date,p_groups jsonb,p_from date,p_to date) RETURNS jsonb
-LANGUAGE plpgsql STABLE SET search_path='' AS $$
-DECLARE v_calendar public.ihr_leave_calendars%ROWTYPE;v_revision bigint;v_groups jsonb;v_rows jsonb;v_group jsonb;
+LANGUAGE plpgsql STABLE SET search_path = pg_catalog, pg_temp AS $$
+DECLARE v_calendar public.ihr_leave_calendars%ROWTYPE;v_revision bigint;v_groups jsonb;v_rows jsonb;v_group jsonb;v_impacts jsonb;
 BEGIN
  IF p_anchor IS NULL OR extract(isodow FROM p_anchor)<>6 THEN RAISE EXCEPTION 'Invalid Saturday anchor' USING ERRCODE='22023',DETAIL='{"code":"INVALID_SATURDAY_ANCHOR"}'; END IF;
  IF p_from IS NULL OR p_to IS NULL OR p_to<=p_from OR p_to-p_from>366 OR jsonb_typeof(p_groups) IS DISTINCT FROM 'array' THEN
@@ -208,13 +217,14 @@ BEGIN
   CASE WHEN (mod((d.day-p_anchor)/7,2)=0)=(grp.value->>'on_anchor')::boolean THEN 225 ELSE 0 END) ORDER BY d.day,grp.value->>'id'),'[]'::jsonb)
  INTO v_rows FROM (SELECT p_from+n AS day FROM generate_series(0,p_to-p_from-1) n WHERE extract(isodow FROM p_from+n)=6) d CROSS JOIN jsonb_array_elements(v_groups) grp;
  IF jsonb_array_length(v_rows)=0 THEN RAISE EXCEPTION 'No Saturdays in range' USING ERRCODE='22023',DETAIL='{"code":"INVALID_ROSTER_RANGE"}'; END IF;
+ v_impacts:=private.ihr_leave_calendar_impacts(p_calendar_id,p_from,p_to,ARRAY(SELECT (value->>'id')::uuid FROM jsonb_array_elements(v_groups)));
  RETURN jsonb_build_object('calendarId',p_calendar_id,'calendarVersion',v_revision,'rows',v_rows,
-  'fingerprint',md5(jsonb_build_array(p_calendar_id,v_revision,v_calendar.id,p_anchor,v_groups,p_from,p_to)::text),
-  'impacts',jsonb_build_object('available',false,'pendingCount',NULL,'approvedCount',NULL));
+  'fingerprint',md5(jsonb_build_array(p_calendar_id,v_revision,v_calendar.id,p_anchor,v_groups,p_from,p_to,v_impacts->>'sourceFingerprint',private.ihr_leave_scope_version(private.ihr_leave_require_actor()))::text),
+  'impacts',v_impacts-'sourceFingerprint');
 END;
 $$;
 CREATE FUNCTION public.leave_roster_preview_v1(p_calendar_id uuid,p_anchor date,p_groups jsonb,p_from date,p_to date) RETURNS jsonb
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
  IF NOT private.ihr_leave_global_config(private.ihr_leave_require_actor()) THEN RAISE EXCEPTION 'Leave access denied' USING ERRCODE='42501',DETAIL='{"code":"GLOBAL_CONFIG_REQUIRED"}'; END IF;
  RETURN private.ihr_leave_roster_preview(p_calendar_id,p_anchor,p_groups,p_from,p_to);
@@ -224,14 +234,14 @@ END;
 $$;
 
 CREATE OR REPLACE FUNCTION private.ihr_leave_authorize_command(p_actor uuid,p_operation text,p_payload jsonb,p_authorized_at timestamptz) RETURNS void
-LANGUAGE plpgsql STABLE SET search_path='' AS $$
+LANGUAGE plpgsql STABLE SET search_path = pg_catalog, pg_temp AS $$
 DECLARE v_keys text[];v_target uuid;v_field text;v_null_revoke boolean;
 BEGIN
  IF p_authorized_at IS NULL OR p_actor IS DISTINCT FROM private.ihr_leave_require_actor() THEN RAISE EXCEPTION 'Invalid authority' USING ERRCODE='42501',DETAIL='{"code":"COMMAND_AUTHORITY_REQUIRED"}'; END IF;
  CASE p_operation
  WHEN 'set_member' THEN v_keys:=ARRAY['employee_id','member_kind','active','employment_start','eligibility_date','calendar_id','expected_version','reason'];
  WHEN 'set_approver' THEN v_keys:=ARRAY['employee_id','approver_id','effective_from','effective_until','replace_assignment_id','expected_version','reason'];
- WHEN 'save_calendar_version' THEN v_keys:=ARRAY['calendar_id','name','effective_from','effective_until','timezone','holidays_confirmed','sunday_minutes','holidays','groups','expected_version','reason'];
+ WHEN 'save_calendar_version' THEN v_keys:=ARRAY['calendar_id','name','effective_from','effective_until','timezone','holidays_confirmed','sunday_minutes','holidays','groups','expected_version','reason','preview_fingerprint'];
  WHEN 'set_group_membership' THEN v_keys:=ARRAY['employee_id','group_id','effective_from','effective_until','replace_membership_id','expected_version','reason'];
  WHEN 'publish_roster' THEN v_keys:=ARRAY['calendar_id','anchor','groups','effective_from','effective_until','preview_fingerprint','expected_version','reason'];
  ELSE RAISE EXCEPTION 'Unsupported operation' USING ERRCODE='22023',DETAIL='{"code":"UNSUPPORTED_OPERATION"}';
@@ -270,7 +280,7 @@ EXCEPTION WHEN invalid_text_representation OR numeric_value_out_of_range OR inva
 END;
 $$;
 CREATE FUNCTION private.ihr_leave_set_member(p_actor uuid,p jsonb,p_at timestamptz) RETURNS jsonb
-LANGUAGE plpgsql SET search_path='' AS $$
+LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
 DECLARE v_target uuid:=(p->>'employee_id')::uuid;v_old public.ihr_leave_members%ROWTYPE;v_version bigint;v_zone text;
 BEGIN
  IF p_actor=v_target THEN RAISE EXCEPTION 'Independent setup required' USING ERRCODE='42501',DETAIL='{"code":"SELF_MEMBER_SETUP_DENIED"}'; END IF;
@@ -300,7 +310,7 @@ BEGIN
 END;
 $$;
 CREATE FUNCTION private.ihr_leave_set_approver(p_actor uuid,p jsonb,p_at timestamptz) RETURNS jsonb
-LANGUAGE plpgsql SET search_path='' AS $$
+LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
 DECLARE v_member public.ihr_leave_members%ROWTYPE;v_approver public.ihr_leave_members%ROWTYPE;v_old public.ihr_leave_approvers%ROWTYPE;
  v_from timestamptz;v_to timestamptz;v_zone text;v_id uuid;v_version bigint;
 BEGIN
@@ -341,14 +351,36 @@ BEGIN
  RETURN jsonb_build_object('id',v_id,'version',v_version,'operation','set_approver');
 END;
 $$;
+CREATE FUNCTION private.ihr_leave_calendar_preview(p jsonb) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE v_key uuid:=(p->>'calendar_id')::uuid;v_version bigint;v_impacts jsonb;changed uuid[];
+BEGIN
+ PERFORM private.ihr_leave_authorize_command(private.ihr_leave_require_actor(),'save_calendar_version',p||jsonb_build_object('reason','Impact preview','preview_fingerprint','preview'),statement_timestamp());
+ SELECT version INTO v_version FROM private.ihr_leave_calendar_registry WHERE id=v_key;
+ IF coalesce(v_version,0)<>(p->>'expected_version')::bigint THEN RAISE EXCEPTION 'Stale calendar' USING ERRCODE='55000';END IF;
+ IF jsonb_typeof(p->'groups') IS DISTINCT FROM 'array' OR jsonb_typeof(p->'holidays') IS DISTINCT FROM 'array' OR (p->>'effective_until' IS NOT NULL AND (p->>'effective_until')::date<=(p->>'effective_from')::date) THEN RAISE EXCEPTION 'Invalid calendar' USING ERRCODE='22023';END IF;
+ SELECT coalesce(array_agg(g.id),'{}') INTO changed FROM public.ihr_saturday_groups g JOIN jsonb_array_elements(p->'groups') proposed ON g.id=(proposed->>'id')::uuid
+ WHERE g.calendar_id=v_key AND g.name IS DISTINCT FROM proposed->>'name';
+ v_impacts:=private.ihr_leave_calendar_impacts(v_key,(p->>'effective_from')::date,(p->>'effective_until')::date,NULL,changed);
+ RETURN jsonb_build_object('calendarId',v_key,'calendarVersion',coalesce(v_version,0),'impacts',v_impacts-'sourceFingerprint',
+  'fingerprint',md5(jsonb_build_array(p,v_version,v_impacts->>'sourceFingerprint',private.ihr_leave_scope_version(private.ihr_leave_require_actor()))::text));
+END;
+$$;
+CREATE FUNCTION public.leave_calendar_preview_v1(p_proposal jsonb) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+ RETURN private.ihr_leave_calendar_preview(p_proposal);
+EXCEPTION WHEN invalid_text_representation OR invalid_datetime_format OR datetime_field_overflow OR numeric_value_out_of_range THEN RAISE EXCEPTION 'Invalid calendar input' USING ERRCODE='22023';
+END;
+$$;
 CREATE FUNCTION private.ihr_leave_save_calendar(p_actor uuid,p jsonb,p_at timestamptz) RETURNS jsonb
-LANGUAGE plpgsql SET search_path='' AS $$
+LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
 DECLARE v_key uuid:=(p->>'calendar_id')::uuid;v_version bigint;v_from date:=(p->>'effective_from')::date;v_to date:=(p->>'effective_until')::date;
- v_zone text:=p->>'timezone';v_confirmed_zone text;v_today date;v_id uuid;v_group jsonb;v_holiday jsonb;
+ v_zone text:=p->>'timezone';v_confirmed_zone text;v_today date;v_id uuid;v_group jsonb;v_holiday jsonb;v_preview jsonb;
 BEGIN
  SELECT version INTO v_version FROM private.ihr_leave_calendar_registry WHERE id=v_key;
  IF coalesce(v_version,0)<>(p->>'expected_version')::bigint THEN RAISE EXCEPTION 'Stale calendar' USING ERRCODE='55000',DETAIL='{"code":"STALE_VERSION"}'; END IF;
- IF v_zone IS NOT NULL AND NOT EXISTS(SELECT 1 FROM pg_timezone_names WHERE name=v_zone) THEN RAISE EXCEPTION 'Invalid timezone' USING ERRCODE='22023',DETAIL='{"code":"INVALID_TIMEZONE"}'; END IF;
+ IF v_zone IS NOT NULL AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_timezone_names WHERE name=v_zone) THEN RAISE EXCEPTION 'Invalid timezone' USING ERRCODE='22023',DETAIL='{"code":"INVALID_TIMEZONE"}'; END IF;
  v_confirmed_zone:=private.ihr_leave_calendar_timezone(v_key);
  IF v_confirmed_zone IS NOT NULL AND v_zone IS NOT NULL AND v_confirmed_zone<>v_zone THEN RAISE EXCEPTION 'Confirmed timezone cannot change' USING ERRCODE='22023',DETAIL='{"code":"TIMEZONE_CHANGE_UNSUPPORTED"}'; END IF;
  -- Known lineage timezone governs even null drafts. An entirely unknown draft uses a conservative
@@ -362,6 +394,8 @@ BEGIN
   RAISE EXCEPTION 'Invalid calendar' USING ERRCODE='22023',DETAIL='{"code":"INVALID_CALENDAR"}';
  END IF;
  IF (SELECT count(DISTINCT value->>'id') FROM jsonb_array_elements(p->'groups'))<>jsonb_array_length(p->'groups') THEN RAISE EXCEPTION 'Duplicate group' USING ERRCODE='22023',DETAIL='{"code":"DUPLICATE_GROUP"}'; END IF;
+ v_preview:=private.ihr_leave_calendar_preview(p-'reason'-'preview_fingerprint');
+ IF v_preview->'impacts'->>'available' IS DISTINCT FROM 'true' OR v_preview->>'fingerprint' IS DISTINCT FROM p->>'preview_fingerprint' THEN RAISE EXCEPTION 'Preview changed' USING ERRCODE='55000',DETAIL='{"code":"PREVIEW_STALE"}';END IF;
  v_version:=coalesce(v_version,0)+1;
  INSERT INTO private.ihr_leave_calendar_registry(id,version) VALUES(v_key,v_version) ON CONFLICT(id) DO UPDATE SET version=excluded.version;
  INSERT INTO public.ihr_leave_calendars(calendar_id,version,name,effective_from,effective_until,timezone,holidays_confirmed,sunday_minutes,created_by)
@@ -375,14 +409,14 @@ BEGIN
   IF jsonb_typeof(v_group->'id') IS DISTINCT FROM 'string' OR jsonb_typeof(v_group->'name') IS DISTINCT FROM 'string'
    OR EXISTS(SELECT 1 FROM public.ihr_saturday_groups g WHERE g.id=(v_group->>'id')::uuid AND g.calendar_id<>v_key) THEN RAISE EXCEPTION 'Invalid group' USING ERRCODE='22023',DETAIL='{"code":"INVALID_GROUP"}'; END IF;
   INSERT INTO public.ihr_saturday_groups(id,calendar_id,name) VALUES((v_group->>'id')::uuid,v_key,v_group->>'name')
-   ON CONFLICT(id) DO UPDATE SET name=excluded.name,version=public.ihr_saturday_groups.version+1;
+   ON CONFLICT(id) DO UPDATE SET name=excluded.name,version=public.ihr_saturday_groups.version+1 WHERE public.ihr_saturday_groups.name IS DISTINCT FROM excluded.name;
  END LOOP;
  INSERT INTO public.ihr_leave_admin_events(actor_id,operation,after_data,reason) VALUES(p_actor,'save_calendar_version',p,p->>'reason');
  RETURN jsonb_build_object('id',v_key,'version',v_version,'operation','save_calendar_version');
 END;
 $$;
 CREATE FUNCTION private.ihr_leave_set_membership(p_actor uuid,p jsonb,p_at timestamptz) RETURNS jsonb
-LANGUAGE plpgsql SET search_path='' AS $$
+LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
 DECLARE v_member public.ihr_leave_members%ROWTYPE;v_old public.ihr_saturday_memberships%ROWTYPE;v_zone text;
  v_from date:=(p->>'effective_from')::date;v_to date:=(p->>'effective_until')::date;v_id uuid;v_version bigint;
 BEGIN
@@ -406,13 +440,13 @@ BEGIN
 END;
 $$;
 CREATE FUNCTION private.ihr_leave_publish_roster(p_actor uuid,p jsonb,p_at timestamptz) RETURNS jsonb
-LANGUAGE plpgsql SET search_path='' AS $$
+LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
 DECLARE v_key uuid:=(p->>'calendar_id')::uuid;v_preview jsonb;v_version bigint;v_calendar public.ihr_leave_calendars%ROWTYPE;
 BEGIN
  SELECT version INTO v_version FROM private.ihr_leave_calendar_registry WHERE id=v_key;
  IF v_version IS DISTINCT FROM (p->>'expected_version')::bigint THEN RAISE EXCEPTION 'Stale calendar' USING ERRCODE='55000',DETAIL='{"code":"STALE_VERSION"}'; END IF;
  v_preview:=private.ihr_leave_roster_preview(v_key,(p->>'anchor')::date,p->'groups',(p->>'effective_from')::date,(p->>'effective_until')::date);
- IF v_preview->>'fingerprint' IS DISTINCT FROM p->>'preview_fingerprint' THEN RAISE EXCEPTION 'Preview changed' USING ERRCODE='55000',DETAIL='{"code":"PREVIEW_STALE"}'; END IF;
+ IF v_preview->'impacts'->>'available' IS DISTINCT FROM 'true' OR v_preview->>'fingerprint' IS DISTINCT FROM p->>'preview_fingerprint' THEN RAISE EXCEPTION 'Preview changed' USING ERRCODE='55000',DETAIL='{"code":"PREVIEW_STALE"}'; END IF;
  SELECT * INTO v_calendar FROM public.ihr_leave_calendars c WHERE c.calendar_id=v_key AND daterange(c.effective_from,c.effective_until,'[)') @> (p->>'effective_from')::date ORDER BY c.version DESC LIMIT 1;
  IF (p->>'effective_from')::date<=(p_at AT TIME ZONE private.ihr_leave_calendar_timezone(v_key))::date THEN RAISE EXCEPTION 'Past/current roster cannot change' USING ERRCODE='55000',DETAIL='{"code":"PAST_VERSION_IMMUTABLE"}'; END IF;
  v_version:=v_version+1;
@@ -426,7 +460,7 @@ BEGIN
 END;
 $$;
 CREATE OR REPLACE FUNCTION private.ihr_leave_dispatch_command(p_actor uuid,p_operation text,p_payload jsonb,p_authorized_at timestamptz) RETURNS jsonb
-LANGUAGE plpgsql VOLATILE SET search_path='' AS $$
+LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$
 DECLARE v_actor uuid;v_at timestamptz;
 BEGIN
  -- Envelope actor/key -> setup -> employee assignment -> scope revision -> domain rows/audit.
@@ -451,7 +485,7 @@ $$;
 
 -- Member timezone snapshots are not authority after explicit draft confirmation.
 CREATE OR REPLACE FUNCTION public.leave_context_v1() RETURNS jsonb
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE actor uuid:=private.ihr_leave_require_actor(); member public.ihr_leave_members%ROWTYPE;
  blockers jsonb:='[]'::jsonb; can_request boolean:=false;
 BEGIN
@@ -477,7 +511,7 @@ BEGIN
 END;
 $$;
 CREATE OR REPLACE FUNCTION public.leave_admin_setup_v1(p_section text,p_page int,p_page_size int) RETURNS jsonb
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE v_actor uuid:=private.ihr_leave_require_actor();v_rows jsonb;v_total bigint;
 BEGIN
  IF NOT(private.ihr_leave_has_grant(v_actor,'configure') OR private.ihr_leave_has_grant(v_actor,'manage_access')) THEN RAISE EXCEPTION 'Leave access denied' USING ERRCODE='42501',DETAIL='{"code":"ACCESS_DENIED"}'; END IF;
@@ -513,7 +547,7 @@ BEGIN
     'timezone',c.timezone,'confirmedTimezone',private.ihr_leave_calendar_timezone(k.id),'holidaysConfirmed',c.holidays_confirmed,'sundayMinutes',c.sunday_minutes,
     'holidays',(SELECT coalesce(jsonb_agg(e.day ORDER BY e.day),'[]'::jsonb) FROM public.ihr_leave_calendar_exceptions e WHERE e.calendar_version_id=c.id),
     'groups',(SELECT coalesce(jsonb_agg(jsonb_build_object('id',g.id,'name',g.name,'onAnchor',NULL) ORDER BY g.name,g.id),'[]'::jsonb) FROM public.ihr_saturday_groups g WHERE g.calendar_id=k.id),
-    'impacts',jsonb_build_object('available',false,'pendingCount',NULL,'approvedCount',NULL)) AS calendar
+    'impacts',private.ihr_leave_calendar_impacts(k.id,c.effective_from,c.effective_until)-'sourceFingerprint') AS calendar
    FROM private.ihr_leave_calendar_registry k CROSS JOIN LATERAL(SELECT * FROM public.ihr_leave_calendars c WHERE c.calendar_id=k.id ORDER BY c.version DESC LIMIT 1)c
    ORDER BY c.name,k.id LIMIT p_page_size OFFSET (p_page::bigint-1)*p_page_size)r;
  END IF;
@@ -526,6 +560,8 @@ REVOKE ALL ON FUNCTION private.ihr_leave_global_config(uuid,timestamptz),private
  private.ihr_leave_set_member(uuid,jsonb,timestamptz),private.ihr_leave_set_approver(uuid,jsonb,timestamptz),private.ihr_leave_save_calendar(uuid,jsonb,timestamptz),
  private.ihr_leave_set_membership(uuid,jsonb,timestamptz),private.ihr_leave_publish_roster(uuid,jsonb,timestamptz),
  private.ihr_leave_authorize_command(uuid,text,jsonb,timestamptz),private.ihr_leave_dispatch_command(uuid,text,jsonb,timestamptz) FROM PUBLIC,anon,authenticated;
+REVOKE ALL ON FUNCTION private.ihr_leave_calendar_impacts(uuid,date,date,uuid[],uuid[]),private.ihr_leave_calendar_preview(jsonb),public.leave_calendar_preview_v1(jsonb) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.leave_calendar_preview_v1(jsonb) TO authenticated;
 REVOKE ALL ON FUNCTION public.leave_roster_preview_v1(uuid,date,jsonb,date,date) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.leave_roster_preview_v1(uuid,date,jsonb,date,date) TO authenticated;
 COMMIT;

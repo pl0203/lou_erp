@@ -112,3 +112,11 @@ test('retry after a malformed success keeps the same command UUID',async()=>{
  expect(mocks.rpc.mock.calls[1][1].p_request_id).toBe(requestId)
  expect(transport.hasUnresolved()).toBe(false)
 })
+test('calendar impact read binds input version and serializes only proposal fields before save',async()=>{
+ const {previewLeaveCalendar}=await import('../../src/lib/leave/setupRpc'),input={calendarId:cal,name:'Fictional',effectiveFrom:'2099-10-01',effectiveUntil:null,timezone:null,holidaysConfirmed:false,sundayMinutes:null,holidays:[],groups:[],expectedVersion:1}
+ const data={calendarId:cal,calendarVersion:1,fingerprint:'a'.repeat(32),impacts:{available:true,pendingCount:2,approvedCount:1}}
+ mocks.rpc.mockReturnValue({abortSignal:()=>Promise.resolve({data,error:null})});expect(await previewLeaveCalendar(input,new AbortController().signal)).toEqual(data)
+ expect(mocks.rpc.mock.calls.at(-1)?.[1].p_proposal).not.toHaveProperty('reason')
+ expect(toSetupPayload({...input,operation:'save_calendar_version',previewFingerprint:data.fingerprint,reason:'Reviewed impact'})).toMatchObject({preview_fingerprint:data.fingerprint,expected_version:1})
+ for(const changed of [{...data,calendarId:id},{...data,calendarVersion:2},{...data,impacts:{available:true,pendingCount:null,approvedCount:null}}]){mocks.rpc.mockReturnValue({abortSignal:()=>Promise.resolve({data:changed,error:null})});await expect(previewLeaveCalendar(input,new AbortController().signal)).rejects.toThrow()}
+})

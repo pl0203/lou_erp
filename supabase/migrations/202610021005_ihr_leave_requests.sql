@@ -1,5 +1,6 @@
 -- Unpublished annual requests candidate. No actual employees, policies, grants or openings.
 BEGIN;
+SET LOCAL search_path = pg_catalog, pg_temp;
 CREATE TABLE public.ihr_leave_requests (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),sequence bigint GENERATED ALWAYS AS IDENTITY UNIQUE,
  employee_id uuid NOT NULL REFERENCES public.ihr_leave_members(user_id),
@@ -60,7 +61,7 @@ CREATE TRIGGER ihr_request_events_immutable BEFORE UPDATE OR DELETE ON private.i
 CREATE TRIGGER ihr_request_events_no_truncate BEFORE TRUNCATE ON private.ihr_leave_request_events FOR EACH STATEMENT EXECUTE FUNCTION private.ihr_leave_immutable_audit();
 
 CREATE FUNCTION private.ihr_leave_require_personal_actor() RETURNS uuid
-LANGUAGE plpgsql STABLE SET search_path='' AS $$
+LANGUAGE plpgsql STABLE SET search_path = pg_catalog, pg_temp AS $$
 DECLARE actor uuid:=private.ihr_leave_require_actor();
 BEGIN
  IF NOT EXISTS(SELECT 1 FROM public.ihr_leave_members m WHERE m.user_id=actor AND m.active AND m.member_kind IN('employee','manager')) THEN
@@ -72,7 +73,7 @@ $$;
 -- its own committed reservation changes account versions; booking cutoffs may also have passed.
 ALTER FUNCTION private.ihr_leave_authorize_command(uuid,text,jsonb,timestamptz) RENAME TO ihr_leave_authorize_account_command;
 CREATE FUNCTION private.ihr_leave_authorize_command(p_actor uuid,p_operation text,p_payload jsonb,p_authorized_at timestamptz) RETURNS void
-LANGUAGE plpgsql STABLE SET search_path='' AS $$
+LANGUAGE plpgsql STABLE SET search_path = pg_catalog, pg_temp AS $$
 DECLARE input jsonb;starts date;ends date;
 BEGIN
  IF p_operation<>'submit_request' THEN PERFORM private.ihr_leave_authorize_account_command(p_actor,p_operation,p_payload,p_authorized_at);RETURN; END IF;
@@ -99,7 +100,7 @@ END;
 $$;
 -- Freeze the complete selected source records; the browser detail projection does not expose them.
 CREATE FUNCTION private.ihr_leave_day_snapshot(p_employee uuid,p_day date) RETURNS jsonb
-LANGUAGE sql STABLE SET search_path='' AS $$
+LANGUAGE sql STABLE SET search_path = pg_catalog, pg_temp AS $$
  SELECT jsonb_build_object('working',w.value,'calendar',to_jsonb(c),'exception',to_jsonb(e),'membership',to_jsonb(sm),'group',to_jsonb(sg),'roster',to_jsonb(r))
  FROM (SELECT private.ihr_working_day_v1(p_employee,p_day) value) w
  LEFT JOIN public.ihr_leave_calendars c ON c.id=(w.value->>'calendar_id')::uuid
@@ -109,7 +110,7 @@ LANGUAGE sql STABLE SET search_path='' AS $$
  LEFT JOIN public.ihr_saturday_roster r ON r.id=(w.value->>'roster_id')::uuid;
 $$;
 CREATE FUNCTION private.ihr_leave_submit_request(p_actor uuid,p_payload jsonb,p_authorized_at timestamptz) RETURNS jsonb
-LANGUAGE plpgsql VOLATILE SET search_path='' AS $$
+LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$
 DECLARE actor uuid;at_time timestamptz;quote jsonb;d jsonb;allocation jsonb;yr integer;request_id uuid:=gen_random_uuid();a public.ihr_leave_accounts%ROWTYPE;
 BEGIN
  -- Actor/key is held by the original command envelope. Submission lock order:
@@ -169,7 +170,7 @@ END;
 $$;
 ALTER FUNCTION private.ihr_leave_dispatch_command(uuid,text,jsonb,timestamptz) RENAME TO ihr_leave_dispatch_account_command;
 CREATE FUNCTION private.ihr_leave_dispatch_command(p_actor uuid,p_operation text,p_payload jsonb,p_authorized_at timestamptz) RETURNS jsonb
-LANGUAGE plpgsql VOLATILE SET search_path='' AS $$
+LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
  IF p_operation='submit_request' THEN RETURN private.ihr_leave_submit_request(p_actor,p_payload,p_authorized_at); END IF;
  RETURN private.ihr_leave_dispatch_account_command(p_actor,p_operation,p_payload,p_authorized_at);
@@ -179,7 +180,7 @@ $$;
 -- Outer reconcile_opening dispatcher already owns setup/assignment/scope/occupancy BEFORE
 -- account locks. This helper takes no new locks and never inserts a second usage ledger event.
 CREATE OR REPLACE FUNCTION private.ihr_import_opening_absences_v1(p_employee uuid,p_account uuid,p_source uuid,p_as_of date,p_lines jsonb,p_actor uuid,p_at timestamptz) RETURNS void
-LANGUAGE plpgsql VOLATILE SET search_path='' AS $$
+LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$
 DECLARE a public.ihr_leave_accounts%ROWTYPE;m public.ihr_leave_members%ROWTYPE;p public.ihr_leave_policies%ROWTYPE;
  ar public.ihr_leave_approvers%ROWTYPE;line jsonb;working jsonb;days jsonb;d jsonb;v_day date;starts date;ends date;
  total integer;capacity integer;charge integer;request_id uuid;v_source_id uuid;approver_name text;
@@ -235,12 +236,12 @@ BEGIN
 END;
 $$;
 CREATE FUNCTION private.ihr_leave_request_summary(r public.ihr_leave_requests) RETURNS jsonb
-LANGUAGE sql STABLE SET search_path='' AS $$
+LANGUAGE sql STABLE SET search_path = pg_catalog, pg_temp AS $$
  SELECT jsonb_build_object('id',r.id,'sequence',r.sequence,'startDate',r.start_date,'endDate',r.end_date,'duration',r.duration,
   'totalMinutes',r.total_minutes,'status',r.status,'version',r.version,'submittedAt',r.submitted_at,'sourceKind',r.source_kind);
 $$;
 CREATE FUNCTION public.leave_own_history_v1(p_before bigint DEFAULT NULL,p_limit integer DEFAULT 25) RETURNS jsonb
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE actor uuid:=private.ihr_leave_require_personal_actor();rows jsonb;next_before bigint;
 BEGIN
  IF p_limit IS NULL OR p_limit<1 OR p_limit>100 OR (p_before IS NOT NULL AND p_before<1) THEN RAISE EXCEPTION 'Invalid history page' USING ERRCODE='22023',DETAIL='{"code":"INVALID_HISTORY_PAGE"}'; END IF;
@@ -253,7 +254,7 @@ BEGIN
 END;
 $$;
 CREATE FUNCTION public.leave_own_request_v1(p_request_id uuid) RETURNS jsonb
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE actor uuid:=private.ihr_leave_require_personal_actor();r public.ihr_leave_requests%ROWTYPE;days jsonb;allocations jsonb;
 BEGIN
  SELECT * INTO r FROM public.ihr_leave_requests WHERE id=p_request_id AND employee_id=actor;
@@ -268,7 +269,7 @@ $$;
 -- A scoped configurator receives only aggregate impact counts for the specified authorized employee.
 -- Unprovable setup remains unavailable/null; no IDs, reasons or peer expansion enter the response.
 CREATE OR REPLACE FUNCTION private.ihr_leave_setup_impacts_v1(target uuid,"from" date,"to" date) RETURNS jsonb
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE actor uuid:=private.ihr_leave_require_actor();pending_count bigint;approved_count bigint;
 BEGIN
  IF target IS NULL OR NOT private.ihr_leave_has_grant(actor,'configure',target) THEN
@@ -282,6 +283,23 @@ BEGIN
  INTO pending_count,approved_count FROM public.ihr_leave_requests r WHERE r.employee_id=target
   AND EXISTS(SELECT 1 FROM public.ihr_leave_request_days d WHERE d.request_id=r.id AND d.charged_minutes>0 AND ("from" IS NULL OR d.day>="from") AND ("to" IS NULL OR d.day<="to"));
  RETURN jsonb_build_object('available',true,'pendingCount',pending_count,'approvedCount',approved_count);
+END;
+$$;
+-- Minimized global-configure projection. Calendar lineage, proposed range and exact group dependencies only.
+CREATE OR REPLACE FUNCTION private.ihr_leave_calendar_impacts(p_calendar_id uuid,p_from date,p_to date,p_roster_groups uuid[] DEFAULT NULL,p_changed_groups uuid[] DEFAULT '{}') RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE pending_count bigint;approved_count bigint;sources jsonb;
+BEGIN
+ IF NOT private.ihr_leave_global_config(private.ihr_leave_require_actor()) THEN RAISE EXCEPTION 'Global configure required' USING ERRCODE='42501';END IF;
+ IF p_calendar_id IS NULL OR p_from IS NULL OR (p_to IS NOT NULL AND p_to<=p_from) THEN RAISE EXCEPTION 'Invalid impact range' USING ERRCODE='22023';END IF;
+ SELECT count(*) FILTER(WHERE r.status='submitted'),count(*) FILTER(WHERE r.status IN('approved','cancellation_pending')),
+ coalesce(jsonb_agg(jsonb_build_array(r.id,r.version,r.status) ORDER BY r.id),'[]') INTO pending_count,approved_count,sources
+ FROM public.ihr_leave_requests r WHERE r.status IN('submitted','approved','cancellation_pending')
+ AND EXISTS(SELECT 1 FROM public.ihr_leave_request_days d WHERE d.request_id=r.id
+  AND d.source_snapshot->'calendar'->>'calendar_id'=p_calendar_id::text
+  AND ((d.day>=p_from AND (p_to IS NULL OR d.day<p_to) AND (p_roster_groups IS NULL OR (extract(isodow FROM d.day)=6 AND (d.source_snapshot->'group'->>'id')::uuid=ANY(p_roster_groups))))
+   OR (d.source_snapshot->'group'->>'id')::uuid=ANY(p_changed_groups)));
+ RETURN jsonb_build_object('available',true,'pendingCount',pending_count,'approvedCount',approved_count,'sourceFingerprint',md5(sources::text));
 END;
 $$;
 REVOKE ALL ON FUNCTION private.ihr_leave_require_personal_actor(),private.ihr_leave_authorize_command(uuid,text,jsonb,timestamptz),private.ihr_leave_day_snapshot(uuid,date),private.ihr_leave_submit_request(uuid,jsonb,timestamptz),private.ihr_leave_dispatch_command(uuid,text,jsonb,timestamptz),private.ihr_import_opening_absences_v1(uuid,uuid,uuid,date,jsonb,uuid,timestamptz),private.ihr_leave_request_summary(public.ihr_leave_requests),private.ihr_leave_setup_impacts_v1(uuid,date,date) FROM PUBLIC,anon,authenticated;
@@ -333,7 +351,7 @@ CREATE TRIGGER ihr_charge_reversal_immutable BEFORE UPDATE OR DELETE ON private.
 CREATE TRIGGER ihr_charge_reversal_no_truncate BEFORE TRUNCATE ON private.ihr_leave_charge_reversals FOR EACH STATEMENT EXECUTE FUNCTION private.ihr_leave_immutable_audit();
 
 CREATE FUNCTION private.ihr_leave_request_transition_guard() RETURNS trigger
-LANGUAGE plpgsql SET search_path='' AS $$
+LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
  IF TG_OP<>'UPDATE' OR (to_jsonb(NEW)-'status'-'version') IS DISTINCT FROM (to_jsonb(OLD)-'status'-'version')
   OR NEW.version<>OLD.version+1 OR NOT ((OLD.status='submitted' AND NEW.status IN('approved','rejected','withdrawn'))
@@ -346,7 +364,7 @@ DROP TRIGGER ihr_request_immutable ON public.ihr_leave_requests;
 CREATE TRIGGER ihr_request_immutable BEFORE UPDATE OR DELETE ON public.ihr_leave_requests FOR EACH ROW EXECUTE FUNCTION private.ihr_leave_request_transition_guard();
 
 CREATE FUNCTION private.ihr_leave_assignment_active(p_actor uuid,p_employee uuid,p_assignment uuid,p_at timestamptz) RETURNS boolean
-LANGUAGE sql STABLE SET search_path='' AS $$
+LANGUAGE sql STABLE SET search_path = pg_catalog, pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM public.ihr_leave_approvers a
   JOIN public.users au ON au.id=a.approver_id AND au.is_active JOIN public.users eu ON eu.id=a.employee_id AND eu.is_active
   JOIN public.ihr_leave_members am ON am.user_id=au.id AND am.active JOIN public.ihr_leave_members em ON em.user_id=eu.id AND em.active
@@ -357,19 +375,24 @@ $$;
 -- Administrative reassignment may replace this resolver with an audited append-only override.
 -- Original request columns and source_snapshot remain immutable.
 CREATE FUNCTION private.ihr_leave_request_assignment(r public.ihr_leave_requests) RETURNS jsonb
-LANGUAGE sql STABLE SET search_path='' AS $$
+LANGUAGE sql STABLE SET search_path = pg_catalog, pg_temp AS $$
  SELECT jsonb_build_object('id',r.assignment_id,'version',r.assignment_version,'approverId',r.approver_id,'approverName',r.approver_name,'source',r.source_snapshot->'assignment');
 $$;
+-- Cancellation route snapshots remain attempt-bound and append-only; admin adds audited overrides later.
+CREATE FUNCTION private.ihr_leave_cancellation_assignment(ca private.ihr_leave_cancellation_attempts) RETURNS jsonb
+LANGUAGE sql STABLE SET search_path = pg_catalog, pg_temp AS $$
+ SELECT jsonb_build_object('id',ca.assignment_id,'version',ca.assignment_version,'approverId',ca.approver_id,'approverName',ca.approver_name);
+$$;
 CREATE FUNCTION private.ihr_leave_is_assigned_request(p_actor uuid,p_request_id uuid,p_at timestamptz DEFAULT statement_timestamp()) RETURNS boolean
-LANGUAGE sql STABLE SET search_path='' AS $$
+LANGUAGE sql STABLE SET search_path = pg_catalog, pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM public.ihr_leave_requests r WHERE r.id=p_request_id AND
   ((r.status='submitted' AND private.ihr_leave_assignment_active(p_actor,r.employee_id,(private.ihr_leave_request_assignment(r)->>'id')::uuid,p_at))
    OR (r.status='cancellation_pending' AND EXISTS(SELECT 1 FROM private.ihr_leave_cancellation_attempts ca
     WHERE ca.request_id=r.id AND NOT EXISTS(SELECT 1 FROM private.ihr_leave_cancellation_decisions cd WHERE cd.attempt_id=ca.id)
-     AND private.ihr_leave_assignment_active(p_actor,r.employee_id,ca.assignment_id,p_at)))));
+     AND private.ihr_leave_assignment_active(p_actor,r.employee_id,(private.ihr_leave_cancellation_assignment(ca)->>'id')::uuid,p_at)))));
 $$;
 CREATE FUNCTION private.ihr_leave_cancellation_blocker(r public.ihr_leave_requests,p_at timestamptz) RETURNS text
-LANGUAGE plpgsql STABLE SET search_path='' AS $$
+LANGUAGE plpgsql STABLE SET search_path = pg_catalog, pg_temp AS $$
 DECLARE p public.ihr_leave_policies%ROWTYPE;
 BEGIN
  SELECT pol.* INTO p FROM public.ihr_leave_members m JOIN public.ihr_leave_policies pol ON pol.id=m.active_policy_id WHERE m.user_id=r.employee_id;
@@ -384,7 +407,7 @@ BEGIN
 END;
 $$;
 CREATE FUNCTION private.ihr_leave_request_sources_current(r public.ihr_leave_requests) RETURNS boolean
-LANGUAGE plpgsql STABLE SET search_path='' AS $$
+LANGUAGE plpgsql STABLE SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
  -- Account versions and balance are intentionally absent: the request's own reservation advances them.
  IF NOT EXISTS(SELECT 1 FROM public.ihr_leave_members m JOIN public.ihr_leave_policies p ON p.id=m.active_policy_id
@@ -398,7 +421,7 @@ $$;
 -- Keep frozen core submission validation and account/calendar delegates unchanged.
 ALTER FUNCTION private.ihr_leave_authorize_command(uuid,text,jsonb,timestamptz) RENAME TO ihr_leave_authorize_request_command;
 CREATE OR REPLACE FUNCTION private.ihr_leave_authorize_command(p_actor uuid,p_operation text,p_payload jsonb,p_authorized_at timestamptz) RETURNS void
-LANGUAGE plpgsql STABLE SET search_path='' AS $$
+LANGUAGE plpgsql STABLE SET search_path = pg_catalog, pg_temp AS $$
 DECLARE r public.ihr_leave_requests%ROWTYPE;ca private.ihr_leave_cancellation_attempts%ROWTYPE;keys text[]:=ARRAY['request_id','expected_version'];
 BEGIN
  IF p_operation NOT IN('approve_request','reject_request','withdraw_request','request_cancellation','approve_cancellation','decline_cancellation') THEN
@@ -423,7 +446,7 @@ BEGIN
    IF private.ihr_leave_assignment_active(p_actor,r.employee_id,(private.ihr_leave_request_assignment(r)->>'id')::uuid,p_authorized_at) THEN RETURN; END IF;
   ELSE
    SELECT * INTO ca FROM private.ihr_leave_cancellation_attempts WHERE id=(p_payload->>'attempt_id')::uuid AND request_id=r.id;
-   IF ca.id IS NOT NULL AND private.ihr_leave_assignment_active(p_actor,r.employee_id,ca.assignment_id,p_authorized_at) THEN RETURN; END IF;
+   IF ca.id IS NOT NULL AND private.ihr_leave_assignment_active(p_actor,r.employee_id,(private.ihr_leave_cancellation_assignment(ca)->>'id')::uuid,p_authorized_at) THEN RETURN; END IF;
   END IF;
  END IF;
  RAISE EXCEPTION 'Request access denied' USING ERRCODE='42501',DETAIL='{"code":"REQUEST_ACCESS_DENIED"}';
@@ -431,7 +454,7 @@ EXCEPTION WHEN invalid_text_representation OR numeric_value_out_of_range THEN RA
 END;
 $$;
 CREATE FUNCTION private.ihr_leave_transition_request(p_actor uuid,p_operation text,p_payload jsonb,p_authorized_at timestamptz) RETURNS jsonb
-LANGUAGE plpgsql VOLATILE SET search_path='' AS $$
+LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$
 DECLARE r public.ihr_leave_requests%ROWTYPE;a public.ihr_leave_request_allocations%ROWTYPE;
  ca private.ihr_leave_cancellation_attempts%ROWTYPE;assignment public.ihr_leave_approvers%ROWTYPE;p public.ihr_leave_policies%ROWTYPE;
  actor uuid;at_time timestamptz;target uuid;blocker text;next_status text;event_name text;ledger_kind text;
@@ -485,7 +508,7 @@ BEGIN
   SELECT * INTO ca FROM private.ihr_leave_cancellation_attempts c WHERE c.id=(p_payload->>'attempt_id')::uuid AND c.request_id=r.id
    AND NOT EXISTS(SELECT 1 FROM private.ihr_leave_cancellation_decisions cd WHERE cd.attempt_id=c.id);
   IF ca.id IS NULL THEN RAISE EXCEPTION 'Cancellation attempt changed' USING ERRCODE='55000',DETAIL='{"code":"REQUEST_STATE_CONFLICT"}'; END IF;
-  IF NOT EXISTS(SELECT 1 FROM public.ihr_leave_approvers ar WHERE ar.id=ca.assignment_id AND ar.version=ca.assignment_version) THEN
+  IF NOT EXISTS(SELECT 1 FROM public.ihr_leave_approvers ar WHERE ar.id=(private.ihr_leave_cancellation_assignment(ca)->>'id')::uuid AND ar.version=(private.ihr_leave_cancellation_assignment(ca)->>'version')::bigint) THEN
    RAISE EXCEPTION 'Cancellation assignment changed' USING ERRCODE='55000',DETAIL='{"code":"STALE_CANCELLATION_ASSIGNMENT"}'; END IF;
   INSERT INTO private.ihr_leave_cancellation_decisions(attempt_id,decision,actor_id,decided_at,reason)
    VALUES(ca.id,CASE p_operation WHEN 'approve_cancellation' THEN 'accepted' ELSE 'declined' END,actor,at_time,p_payload->>'reason');
@@ -523,7 +546,7 @@ END;
 $$;
 ALTER FUNCTION private.ihr_leave_dispatch_command(uuid,text,jsonb,timestamptz) RENAME TO ihr_leave_dispatch_request_command;
 CREATE OR REPLACE FUNCTION private.ihr_leave_dispatch_command(p_actor uuid,p_operation text,p_payload jsonb,p_authorized_at timestamptz) RETURNS jsonb
-LANGUAGE plpgsql VOLATILE SET search_path='' AS $$
+LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
  IF p_operation IN('approve_request','reject_request','withdraw_request','request_cancellation','approve_cancellation','decline_cancellation') THEN
   RETURN private.ihr_leave_transition_request(p_actor,p_operation,p_payload,p_authorized_at); END IF;
@@ -532,7 +555,7 @@ END;
 $$;
 
 CREATE FUNCTION private.ihr_leave_assigned_summary(r public.ihr_leave_requests) RETURNS jsonb
-LANGUAGE sql STABLE SET search_path='' AS $$
+LANGUAGE sql STABLE SET search_path = pg_catalog, pg_temp AS $$
  SELECT private.ihr_leave_request_summary(r)||jsonb_build_object('employee',jsonb_build_object('id',r.employee_id,'name',u.full_name),
   'cancellationAttemptId',ca.id,'cancellationRequestedAt',ca.requested_at)
  FROM public.users u LEFT JOIN private.ihr_leave_cancellation_attempts ca ON ca.request_id=r.id
@@ -540,7 +563,7 @@ LANGUAGE sql STABLE SET search_path='' AS $$
  WHERE u.id=r.employee_id;
 $$;
 CREATE FUNCTION public.leave_assigned_inbox_v1(p_before bigint DEFAULT NULL,p_limit integer DEFAULT 25) RETURNS jsonb
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE actor uuid:=private.ihr_leave_require_actor();rows jsonb;cursor bigint;has_more boolean;
 BEGIN
  IF p_limit IS NULL OR p_limit NOT BETWEEN 1 AND 100 OR (p_before IS NOT NULL AND p_before<1) THEN RAISE EXCEPTION 'Invalid inbox page' USING ERRCODE='22023'; END IF;
@@ -554,8 +577,8 @@ BEGIN
 END;
 $$;
 CREATE FUNCTION public.leave_assigned_request_v1(p_request_id uuid) RETURNS jsonb
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $$
-DECLARE actor uuid:=private.ihr_leave_require_actor();r public.ihr_leave_requests%ROWTYPE;days jsonb;allocations jsonb;cancellation jsonb;
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
+DECLARE actor uuid:=private.ihr_leave_require_actor();r public.ihr_leave_requests%ROWTYPE;days jsonb;allocations jsonb;cancellation jsonb;balances jsonb;
 BEGIN
  SELECT * INTO r FROM public.ihr_leave_requests WHERE id=p_request_id AND private.ihr_leave_is_assigned_request(actor,id,statement_timestamp());
  IF r.id IS NULL THEN RAISE EXCEPTION 'Request access denied' USING ERRCODE='42501',DETAIL='{"code":"REQUEST_ACCESS_DENIED"}'; END IF;
@@ -563,13 +586,18 @@ BEGIN
   INTO days FROM public.ihr_leave_request_days d WHERE d.request_id=r.id;
  SELECT jsonb_agg(jsonb_build_object('year',a.year,'startDate',a.period_start,'endDate',a.period_end,'chargedMinutes',a.charged_minutes) ORDER BY a.year)
   INTO allocations FROM public.ihr_leave_request_allocations a WHERE a.request_id=r.id;
- SELECT jsonb_build_object('id',ca.id,'requestedAt',ca.requested_at,'reason',ca.reason,'approverName',ca.approver_name) INTO cancellation
+ SELECT jsonb_build_object('id',ca.id,'requestedAt',ca.requested_at,'reason',ca.reason,'approverName',private.ihr_leave_cancellation_assignment(ca)->>'approverName') INTO cancellation
  FROM private.ihr_leave_cancellation_attempts ca WHERE ca.request_id=r.id AND NOT EXISTS(SELECT 1 FROM private.ihr_leave_cancellation_decisions cd WHERE cd.attempt_id=ca.id);
- RETURN private.ihr_leave_assigned_summary(r)||jsonb_build_object('reason',r.reason,'approverName',private.ihr_leave_request_assignment(r)->>'approverName','days',days,'allocations',allocations,'cancellation',cancellation);
+ -- Only periods allocated to this currently assigned request, with no account IDs or ledger entries.
+ SELECT jsonb_agg(jsonb_build_object('year',a.year,'reservedMinutes',b.value->'pendingMinutes','usedMinutes',b.value->'approvedMinutes',
+  'availableMinutes',b.value->'availableMinutes','expiredMinutes',b.value->'expiredMinutes','reconciled',b.value->'reconciled') ORDER BY a.year)
+ INTO balances FROM public.ihr_leave_request_allocations a JOIN public.ihr_leave_accounts account ON account.id=a.account_id
+ CROSS JOIN LATERAL(SELECT private.ihr_leave_balance_json(account,statement_timestamp()) value)b WHERE a.request_id=r.id;
+ RETURN private.ihr_leave_assigned_summary(r)||jsonb_build_object('reason',r.reason,'approverName',private.ihr_leave_request_assignment(r)->>'approverName','days',days,'allocations',allocations,'cancellation',cancellation,'balanceContext',jsonb_build_object('asOf',statement_timestamp(),'basis','current','periods',balances));
 END;
 $$;
 CREATE FUNCTION public.leave_request_transition_state_v1(p_request_id uuid) RETURNS jsonb
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE actor uuid:=private.ihr_leave_require_personal_actor();r public.ihr_leave_requests%ROWTYPE;blocker text;attempt uuid;
 BEGIN
  SELECT * INTO r FROM public.ihr_leave_requests WHERE id=p_request_id AND employee_id=actor;
@@ -580,7 +608,7 @@ BEGIN
   'canRequestCancellation',r.status='approved' AND blocker IS NULL,'cancellationBlocker',blocker,'activeAttemptId',attempt);
 END;
 $$;
-REVOKE ALL ON FUNCTION private.ihr_leave_request_assignment(public.ihr_leave_requests),private.ihr_leave_request_transition_guard(),private.ihr_leave_assignment_active(uuid,uuid,uuid,timestamptz),private.ihr_leave_is_assigned_request(uuid,uuid,timestamptz),private.ihr_leave_cancellation_blocker(public.ihr_leave_requests,timestamptz),private.ihr_leave_request_sources_current(public.ihr_leave_requests),private.ihr_leave_authorize_command(uuid,text,jsonb,timestamptz),private.ihr_leave_transition_request(uuid,text,jsonb,timestamptz),private.ihr_leave_dispatch_command(uuid,text,jsonb,timestamptz),private.ihr_leave_assigned_summary(public.ihr_leave_requests) FROM PUBLIC,anon,authenticated;
+REVOKE ALL ON FUNCTION private.ihr_leave_cancellation_assignment(private.ihr_leave_cancellation_attempts),private.ihr_leave_request_assignment(public.ihr_leave_requests),private.ihr_leave_request_transition_guard(),private.ihr_leave_assignment_active(uuid,uuid,uuid,timestamptz),private.ihr_leave_is_assigned_request(uuid,uuid,timestamptz),private.ihr_leave_cancellation_blocker(public.ihr_leave_requests,timestamptz),private.ihr_leave_request_sources_current(public.ihr_leave_requests),private.ihr_leave_authorize_command(uuid,text,jsonb,timestamptz),private.ihr_leave_transition_request(uuid,text,jsonb,timestamptz),private.ihr_leave_dispatch_command(uuid,text,jsonb,timestamptz),private.ihr_leave_assigned_summary(public.ihr_leave_requests) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.leave_assigned_inbox_v1(bigint,integer),public.leave_assigned_request_v1(uuid),public.leave_request_transition_state_v1(uuid) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.leave_assigned_inbox_v1(bigint,integer),public.leave_assigned_request_v1(uuid),public.leave_request_transition_state_v1(uuid) TO authenticated;
 COMMIT;

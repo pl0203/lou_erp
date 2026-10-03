@@ -37,3 +37,10 @@ test('actual grant fingerprint change drops draft even when capability booleans 
 test('new epoch during pending send hides drafts before the response arrives',async()=>{
  let resolve!:(v:any)=>void;const p=props();p.send=vi.fn(()=>new Promise(r=>{resolve=r}));const view=render(<LeaveAdminSettings {...p}/>);edit('Bukti retensi',approval);edit('Alasan retention','Sensitive draft');fireEvent.click(screen.getByRole('button',{name:'Gunakan bukti retensi'}));view.rerender(<LeaveAdminSettings {...p} scopeVersion="two" dataScopeVersion="two"/>);expect(screen.queryByLabelText('Alasan retention')).toBeNull();resolve({id:approval,version:1,operation:'set_governance_reference'});await waitFor(()=>expect(p.onRefresh).toHaveBeenCalled())
 })
+test('cancellation recovery sends the exact reviewed attempt and request version with an independent reason',async()=>{
+ const request='81000000-0000-0000-0000-000000000002',attempt='81000000-0000-0000-0000-000000000003',assignment='81000000-0000-0000-0000-000000000004',p=props()
+ p.canReadPrivate=true;p.requests=[{id:request,sequence:1,version:3,startDate:'2026-10-09',endDate:'2026-10-10',approverName:'Old manager',currentAssignmentId:assignment,status:'cancellation_pending',cancellationAttemptId:attempt}]
+ p.send=vi.fn(async command=>({id:request,version:4,operation:command.operation}));render(<LeaveAdminSettings {...p}/>);
+ edit('Permohonan yang dialihkan',request);edit('ID penugasan efektif baru',assignment);edit('Alasan reassignment','Explicit independent recovery');fireEvent.click(screen.getByRole('button',{name:'Alihkan satu permohonan'}))
+ await waitFor(()=>expect(p.send).toHaveBeenCalledWith({operation:'reassign_request',employeeId:employee,requestId:request,expectedVersion:3,assignmentId:assignment,attemptId:attempt,reason:'Explicit independent recovery'}))
+})

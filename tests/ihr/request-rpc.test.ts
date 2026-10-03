@@ -33,3 +33,13 @@ test('request reads reject cancellation and sanitize network and server messages
  response(null,{code:'42501',message:'Private fixture reason'});await expect(fetchOwnLeaveRequest(employeeA,new AbortController().signal)).rejects.not.toThrow('Private fixture reason')
  mocks.rpc.mockReturnValue({abortSignal:()=>Promise.reject(new Error('Private fixture reason'))});await expect(fetchOwnLeaveHistory(null,25,new AbortController().signal)).rejects.not.toThrow('Private fixture reason')
 })
+test('owner event envelope binds request version and scope and retains exact microsecond tuple ordering',async()=>{
+ const {fetchOwnRequestEvents}=await import('../../src/lib/leave/requestRpc')
+ const newer={id:employeeA,event:'cancellation_declined',atTime:'2026-10-03T10:00:00.000002Z',actor:{id:employeeA,name:'Manager'},reason:'Declined once',approverName:'Manager'},older={...newer,id:'71000000-0000-0000-0000-000000000002',atTime:'2026-10-03T10:00:00.000001Z',event:'cancellation_requested'}
+ const data={requestId:employeeA,requestVersion:4,scopeVersion:'scope',rows:[newer,older],nextBefore:{atTime:older.atTime,id:older.id}}
+ response(data);expect((await fetchOwnRequestEvents(employeeA,4,'scope',null,2,new AbortController().signal)).rows).toEqual([newer,older])
+ expect(mocks.rpc).toHaveBeenLastCalledWith('leave_own_request_history_v1',{p_request_id:employeeA,p_before_at:null,p_before_id:null,p_limit:2})
+ for(const bad of [{...data,requestVersion:3},{...data,scopeVersion:'stale'},{...data,requestId:older.id},{...data,rows:[older,newer]},{...data,rows:[{...newer,data:{private:true}},older]},{...data,nextBefore:{atTime:newer.atTime,id:newer.id}}]){
+  response(bad);await expect(fetchOwnRequestEvents(employeeA,4,'scope',null,2,new AbortController().signal)).rejects.toThrow()
+ }
+})

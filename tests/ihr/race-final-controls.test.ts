@@ -44,7 +44,7 @@ test('both roster orderings capture the owner fixture date and verify independen
  expect(roster.indexOf('admin.rosterSaturday=settings.saturday')).toBeLessThan(roster.indexOf("await app('roster-preview'"))
  expect(roster.indexOf('assertFinalRosterPreview(admin.preview,admin.rosterSaturday)')).toBeGreaterThan(roster.indexOf("admin.preview=parsed(await preview.finish(),'preview')"))
  expect(roster.indexOf('assertFinalRosterPreview(admin.preview,admin.rosterSaturday)')).toBeLessThan(roster.indexOf('preview_fingerprint:admin.preview.fingerprint'))
- expect(roster).toContain("if(scenario.startsWith('submit')) await pair(submit,admin)")
+ expect(roster).toContain("if(scenario.startsWith('submit')) await pair(submit,admin,{sqlstate:'55000',code:'PREVIEW_STALE'})")
  expect(roster).toContain("else await pair(admin,submit,{sqlstate:'55000',code:'STALE_QUOTE'})")
  const state=readFileSync('tests/database/ihr/race-final-state.mjs','utf8')
  expect(state).toContain("const added=additions(before,after,'roster',2)")

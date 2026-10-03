@@ -32,7 +32,10 @@ export function buildCapacityWorkloads(f = buildCapacityFixture()) {
   const detail = f.requests.find(r => r.status === 'submitted' && r.employee === 1 && r.days.length > 1) ?? f.requests.find(r => r.status === 'submitted' && r.employee === 1)
   const expectedDetail = { type: 'detail', summary: summary(detail), days: detail.days.map(d => ({ date: d.date, scheduledMinutes: d.scheduled, chargedMinutes: d.charged, exclusion: d.scheduled ? null : holidays.includes(d.date) ? 'holiday' : 'off_duty', groupName: weekday(d.date) === 6 ? `Fictional ${groupAt(detail.employee, d.date)}` : null })), allocations: [{ year: detail.year, startDate: `${detail.year}-01-01`, endDate: `${detail.year + 1}-01-01`, chargedMinutes: detail.total }], reason: 'Fictional capacity request', approverName: personName(detail.approver) }
   add('own-detail-days', 1, 'own', `SELECT public.leave_own_request_v1(${literal(detail.id)}::uuid)`, expectedDetail)
-  add('assigned-detail-days', detail.approver, 'exact-assigned', `SELECT public.leave_assigned_request_v1(${literal(detail.id)}::uuid)`, { ...expectedDetail, summary: assignedSummary(detail), cancellation: null })
+  const related=f.requests.filter(r=>r.employee===detail.employee&&r.year===detail.year),reservedMinutes=related.filter(r=>r.status==='submitted').reduce((sum,r)=>sum+r.total,0),usedMinutes=related.filter(r=>['approved','cancellation_pending'].includes(r.status)).reduce((sum,r)=>sum+r.total,0)
+  const remaining=5400-reservedMinutes-usedMinutes,expired=detail.year<Number(AS_OF.slice(0,4))
+  const balanceContext={basis:'current',periods:[{year:detail.year,reservedMinutes,usedMinutes,availableMinutes:expired?0:remaining,expiredMinutes:expired?remaining:0,reconciled:true}]}
+  add('assigned-detail-days', detail.approver, 'exact-assigned', `SELECT public.leave_assigned_request_v1(${literal(detail.id)}::uuid)`, { ...expectedDetail, summary: assignedSummary(detail), cancellation: null, balanceContext })
   add('unrelated-detail-denied', 480, 'unrelated', `SELECT public.leave_own_request_v1(${literal(detail.id)}::uuid)`, deny('42501', 'REQUEST_ACCESS_DENIED'))
   // Exact ledger sequences derive from materialization order; no opaque guessed cursor.
   let sequence = 1500
@@ -113,7 +116,12 @@ export function assertCapacityResult(workload, captured) {
   } else if (e.type === 'detail') {
     subset(value, e.summary, 'detail'); equal(value.days, e.days, 'immutable days'); equal(value.allocations, e.allocations, 'original allocations'); equal(value.reason, e.reason, 'private reason'); equal(value.approverName, e.approverName, 'approver name')
     if ('cancellation' in e) equal(value.cancellation, e.cancellation, 'cancellation detail')
-    equal(Object.keys(value).sort(), [...Object.keys(e.summary), 'reason', 'approverName', 'days', 'allocations', ...('cancellation' in e ? ['cancellation'] : [])].sort(), 'detail keys')
+    if ('balanceContext' in e) {
+      equal(Object.keys(value.balanceContext??{}).sort(),['asOf','basis','periods'],'balance context keys')
+      equal(value.balanceContext.basis,e.balanceContext.basis,'fresh balance basis');equal(value.balanceContext.periods,e.balanceContext.periods,'request allocated balance periods')
+      if(typeof value.balanceContext.asOf!=='string'||!/^\d{4}-\d{2}-\d{2}T/.test(value.balanceContext.asOf)||!Number.isFinite(Date.parse(value.balanceContext.asOf)))fail('fresh balance timestamp')
+    }
+    equal(Object.keys(value).sort(), [...Object.keys(e.summary), 'reason', 'approverName', 'days', 'allocations', ...('cancellation' in e ? ['cancellation'] : []),...('balanceContext' in e ? ['balanceContext'] : [])].sort(), 'detail keys')
   } else if (e.type === 'quote') {
     equal(value.totalMinutes, e.totalMinutes, 'total'); equal(value.days?.map(d => d.date), e.dates, 'dates'); equal(value.days?.map(d => d.scheduledMinutes), e.scheduledMinutes, 'schedule'); equal(value.days?.map(d => d.chargedMinutes), e.chargedMinutes, 'charge')
   } else if (e.type === 'receipt') {

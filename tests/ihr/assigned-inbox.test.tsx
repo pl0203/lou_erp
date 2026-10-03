@@ -12,7 +12,7 @@ import AssignedApprovalInbox from '../../src/pages/ihr/leave/AssignedApprovalInb
 const actor='71000000-0000-0000-0000-000000000003',id='82000000-0000-0000-0000-000000000001'
 const context:LeaveContext={scopeVersion:'fixture-scope',memberKind:'manager',capabilities:{request:true,approve:true,configure:false,adjust:false,readPrivate:false,manageAccess:false},setup:{ready:true,blockers:[]},balances:[],timezone:'Etc/UTC'}
 const row={id,sequence:1,startDate:'2026-10-09',endDate:'2026-10-09',duration:{mode:'full_scheduled_day'},totalMinutes:450,status:'submitted',version:1,submittedAt:'2026-10-03T00:00:00Z',sourceKind:'submission',employee:{id:'71000000-0000-0000-0000-000000000001',name:'Fictional employee'},cancellationAttemptId:null,cancellationRequestedAt:null}
-const detail={...row,reason:'Fictional private reason',approverName:'Fictional manager',days:[{date:'2026-10-09',scheduledMinutes:450,chargedMinutes:450,exclusion:null,groupName:null}],allocations:[{year:2026,startDate:'2026-01-01',endDate:'2027-01-01',chargedMinutes:450}],cancellation:null}
+const detail={...row,reason:'Fictional private reason',approverName:'Fictional manager',days:[{date:'2026-10-09',scheduledMinutes:450,chargedMinutes:450,exclusion:null,groupName:null}],allocations:[{year:2026,startDate:'2026-01-01',endDate:'2027-01-01',chargedMinutes:450}],cancellation:null,balanceContext:{basis:'current',asOf:'2026-10-03T01:00:00Z',periods:[{year:2026,reservedMinutes:450,usedMinutes:900,availableMinutes:4050,expiredMinutes:0,reconciled:true}]}}
 const clients:QueryClient[]=[]
 let rows:unknown[],failure:boolean,finish:((value:unknown)=>void)|undefined
 function serve(){rpc.mockImplementation((name:string)=>{
@@ -178,4 +178,23 @@ test('invalidation without immediate refetch also revokes a cached detail comple
  expect(rpc.mock.calls.filter(([name])=>name==='leave_assigned_request_v1')).toHaveLength(reads)
  await waitFor(()=>expect(screen.queryByText('Fictional private reason')).toBeNull());expect(screen.queryByRole('button',{name:'Setujui cuti'})).toBeNull()
  fireEvent.click(screen.getByRole('button',{name:'Muat ulang detail'}));expect(await screen.findByText('Fictional private reason')).toBeTruthy()
+})
+
+test('review presents duration, scheduled versus charged capacity, current version and minimized fresh balance',async()=>{
+ mount();fireEvent.click(await screen.findByRole('button',{name:'Tinjau Fictional employee'}));await screen.findByText('Fictional private reason')
+ expect(screen.getByText('Versi permohonan: 1')).toBeTruthy()
+ expect(screen.getByText('Durasi: Sehari sesuai jadwal')).toBeTruthy()
+ expect(screen.getByText(/Jadwal 7j 30m/)).toBeTruthy()
+ expect(screen.getByText(/Saldo terkini/)).toBeTruthy()
+ expect(screen.getByText(/Tersedia: 67j 30m/)).toBeTruthy()
+})
+test('partial weekday and Saturday context refreshes the displayed decision version',async()=>{
+ let version=7
+ const partial={...row,endDate:'2026-10-10',duration:{mode:'fixed_minutes',minutes:225},totalMinutes:450}
+ rows=[{...partial,version}]
+ rpc.mockImplementation((name:string)=>name==='leave_transaction_v1'?new Promise(resolve=>finish=resolve):{abortSignal:()=>Promise.resolve({data:name==='leave_context_v1'?context:name==='leave_assigned_request_v1'?{...detail,...partial,version,days:[{date:'2026-10-09',scheduledMinutes:450,chargedMinutes:225,exclusion:null,groupName:null},{date:'2026-10-10',scheduledMinutes:225,chargedMinutes:225,exclusion:null,groupName:'Saturday group'}]}:{rows,nextBefore:null},error:null})})
+ mount();fireEvent.click(await screen.findByRole('button',{name:'Tinjau Fictional employee'}));await screen.findByText('Versi permohonan: 7')
+ expect(screen.getByText('Durasi: 3j 45m per hari kerja')).toBeTruthy();expect(screen.getByText(/2026-10-09 · Jadwal 7j 30m · Diminta 3j 45m/)).toBeTruthy();expect(screen.getByText(/2026-10-10 · Jadwal 3j 45m · Diminta 3j 45m/)).toBeTruthy()
+ version=8;fireEvent.click(screen.getByRole('button',{name:'Muat ulang daftar'}));await screen.findByText('Versi permohonan: 8')
+ fireEvent.click(screen.getByRole('button',{name:'Setujui cuti'}));await waitFor(()=>expect(finish).toBeDefined());expect(rpc.mock.calls.find(([name])=>name==='leave_transaction_v1')?.[1].p_payload.expected_version).toBe(8)
 })

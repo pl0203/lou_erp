@@ -1,5 +1,6 @@
 -- Unpublished request quote. No actual policy choices, accounts, staff or grants are installed.
 BEGIN;
+SET LOCAL search_path = pg_catalog, pg_temp;
 -- Immutable policy versions retain these choices alongside the existing annual policy.
 -- The legacy opaque notice_rule is not interpreted as approval of these explicit rules.
 ALTER TABLE public.ihr_leave_policies
@@ -13,7 +14,7 @@ ALTER TABLE public.ihr_leave_policies
 -- Read-only, statement-consistent calculator. Task6 must call this again AFTER its locks with
 -- a freshly captured authorization instant. It neither prepares accounts nor grants future years.
 CREATE FUNCTION private.ihr_leave_quote_v1(p_employee uuid,p_input jsonb,p_at timestamptz) RETURNS jsonb
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE m public.ihr_leave_members%ROWTYPE;p public.ihr_leave_policies%ROWTYPE;
  assignment public.ihr_leave_approvers%ROWTYPE;approver_member public.ihr_leave_members%ROWTYPE;
  a public.ihr_leave_accounts%ROWTYPE;g public.ihr_saturday_groups%ROWTYPE;
@@ -112,7 +113,7 @@ EXCEPTION WHEN invalid_text_representation OR invalid_datetime_format OR datetim
 END;
 $$;
 CREATE FUNCTION public.leave_quote_v1(p_input jsonb) RETURNS jsonb
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path='' AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
  RETURN private.ihr_leave_quote_v1(private.ihr_leave_require_actor(),p_input,statement_timestamp());
 END;

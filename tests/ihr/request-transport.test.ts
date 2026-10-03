@@ -16,7 +16,7 @@ test('lost response survives reload, fences a different attempt and keeps only U
  const raw=localStorage.getItem(localStorage.key(0)!)!;expect(Object.keys(JSON.parse(raw)).sort()).toEqual(['id','key','uncertain']);expect(raw).not.toMatch(/reason|input|start_date|Private/)
  const reloaded=transport();expect(reloaded.hasUnresolved()).toBe(true)
  await expect(reloaded.send({...quoteInput,reason:'Changed'},'a'.repeat(64))).rejects.toThrow();expect(mocks.rpc).toHaveBeenCalledTimes(1)
- const recovered={...receipt,id:JSON.parse(raw).id};mocks.rpc.mockResolvedValueOnce({data:{state:'committed',result:{...recovered,reason:'must not persist'}},error:null})
+ const recovered=receipt;expect(recovered.id).not.toBe(JSON.parse(raw).id);mocks.rpc.mockResolvedValueOnce({data:{state:'committed',result:{...recovered,reason:'must not persist'}},error:null})
  expect(await reloaded.reconcile()).toEqual({state:'committed',result:recovered})
  expect(localStorage.getItem(localStorage.key(0)!)).not.toMatch(/reason|must not persist/)
  reloaded.acknowledgeRecovered();expect(reloaded.hasUnresolved()).toBe(false)
@@ -30,7 +30,7 @@ test('terminal abandonment permits a new UUID and backend/actor scopes isolate m
  mocks.rpc.mockRejectedValueOnce(new Error('lost'));const t=transport();await expect(t.send(quoteInput,'a'.repeat(64))).rejects.toThrow()
  const first=mocks.rpc.mock.calls[0][1].p_request_id;expect(transport(async()=>{},employeeB).hasUnresolved()).toBe(false);expect(transport(async()=>{},employeeA,'other').hasUnresolved()).toBe(false)
  mocks.rpc.mockResolvedValueOnce({data:{state:'abandoned'},error:null});expect(await t.reconcile()).toEqual({state:'abandoned'});expect(t.hasUnresolved()).toBe(false)
- mocks.rpc.mockImplementationOnce((_name,args)=>Promise.resolve({data:{...receipt,id:args.p_request_id},error:null}));await t.send(quoteInput,'a'.repeat(64));expect(mocks.rpc.mock.calls.at(-1)?.[1].p_request_id).not.toBe(first)
+ mocks.rpc.mockResolvedValueOnce({data:receipt,error:null});await t.send(quoteInput,'a'.repeat(64));expect(mocks.rpc.mock.calls.at(-1)?.[1].p_request_id).not.toBe(first)
 })
 test('wrong successful/recovered operation cannot consume stored identity',async()=>{
  mocks.rpc.mockRejectedValueOnce(new Error('lost'));const t=transport();await expect(t.send(quoteInput,'a'.repeat(64))).rejects.toThrow()
@@ -56,10 +56,9 @@ test('shared command transport validates configured minimal receipt and isolates
  expect(localStorage.getItem(localStorage.key(0)!)).not.toContain('Private');t.acknowledgeRecovered();expect(t.hasUnresolved()).toBe(false)
 })
 
-test('submit rejects a receipt for a different command UUID and preserves recovery identity',async()=>{
+test('submit accepts server-created subject distinct from command UUID and clears only confirmed uncertainty',async()=>{
  mocks.rpc.mockResolvedValueOnce({data:receipt,error:null});const t=transport()
- await expect(t.send(quoteInput,'a'.repeat(64))).rejects.toThrow();expect(t.hasUnresolved()).toBe(true)
- const raw=localStorage.getItem(localStorage.key(0)!)!,id=JSON.parse(raw).id;expect(id).not.toBe(receipt.id)
- mocks.rpc.mockResolvedValueOnce({data:{state:'committed',result:receipt},error:null});await expect(t.reconcile()).rejects.toThrow();expect(t.hasUnresolved()).toBe(true)
- mocks.rpc.mockResolvedValueOnce({data:{state:'committed',result:{...receipt,id}},error:null});expect(await t.reconcile()).toEqual({state:'committed',result:{...receipt,id}})
+ expect(await t.send(quoteInput,'a'.repeat(64))).toEqual(receipt)
+ expect(mocks.rpc.mock.calls[0][1].p_request_id).not.toBe(receipt.id)
+ expect(t.hasUnresolved()).toBe(false)
 })

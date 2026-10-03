@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { LeaveContext } from '../../../lib/leave/contracts'
-import type { LeaveCalendarSetup, RosterPreviewInput } from '../../../lib/leave/setupContracts'
-import { createLeaveSetupTransport, fetchLeaveRota, previewLeaveRoster } from '../../../lib/leave/setupRpc'
+import type { LeaveCalendarSetup, RosterPreviewInput, CalendarPreviewInput } from '../../../lib/leave/setupContracts'
+import { createLeaveSetupTransport, fetchLeaveRota, previewLeaveRoster, previewLeaveCalendar } from '../../../lib/leave/setupRpc'
 import { useAuthorizedLeaveRead } from '../../../lib/leave/useLeaveReads'
 import { LEAVE_BACKEND, leaveKeys } from '../../../lib/leave/queryKeys'
 import { runLeaveInteraction } from '../../../lib/leave/useLeaveContext'
@@ -45,7 +45,12 @@ function RotaEditor({actorId,context,calendar,readState,onDirtyChange}:{actorId:
   activePreview.current?.abort();const abort=new AbortController();activePreview.current=abort
   return runLeaveInteraction(client,actorId,context.scopeVersion,live=>{abort.signal.throwIfAborted();if(!live.capabilities.configure)throw new Error('Akses roster berubah.');return previewLeaveRoster(input,abort.signal)})
  }
- return <div className="space-y-4">{command.recoveryUI}{data&&<LeaveRotaSettings key={continuity.key} calendar={data} send={command.send} preview={preview} authorityReady={continuity.ready&&!command.recovery} onDirtyChange={setDirty} onSaved={continuity.onSaved}/>}
+ async function previewCalendar(input:CalendarPreviewInput){
+  if(!fresh||command.recovery)throw new Error('Akses kalender belum dikonfirmasi.')
+  activePreview.current?.abort();const abort=new AbortController();activePreview.current=abort
+  return runLeaveInteraction(client,actorId,context.scopeVersion,live=>{abort.signal.throwIfAborted();if(!live.capabilities.configure||live.memberKind==='director')throw new Error('Akses kalender berubah.');return previewLeaveCalendar(input,abort.signal)})
+ }
+ return <div className="space-y-4">{command.recoveryUI}{data&&<LeaveRotaSettings key={continuity.key} calendar={data} send={command.send} preview={preview} previewCalendar={previewCalendar} authorityReady={continuity.ready&&!command.recovery} onDirtyChange={setDirty} onSaved={continuity.onSaved}/>}
   {readState==='ready'&&!query.available&&!query.isFetching&&<div role="alert"><p>Kalender belum dapat dikonfirmasi.</p><button type="button" onClick={()=>void query.refetch()}>Muat ulang kalender terpilih</button></div>}
  </div>
 }

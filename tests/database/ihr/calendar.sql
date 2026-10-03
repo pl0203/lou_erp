@@ -1,5 +1,6 @@
 -- Fictional-only calendar suite. Load helpers.sql first through the guarded runner.
 -- Owner fixture/calculation blocks are NOT permission/RLS evidence. App assertions use real roles.
+\ir calendar-timezone-shadow.sql
 BEGIN;
 \ir seed.sql
 INSERT INTO private.ihr_leave_calendar_registry(id,version) VALUES('73000000-0000-0000-0000-000000000001',1);

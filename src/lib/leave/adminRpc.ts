@@ -41,7 +41,7 @@ export function toAdminPayload(c:LeaveAdminCommand):Record<string,unknown>{
  case 'set_governance_reference':return {...base,employee_id:parseUUID(c.employeeId),kind:enumeration<GovernanceKind>(c.kind,['retention','access_review']),approval_id:parseUUID(c.approvalId)}
  case 'grant_leave_access':if(c.expectedVersion!==0)invalid();return {...base,manifest_id:parseUUID(c.manifestId)}
  case 'revoke_leave_access':if(c.expectedVersion<1)invalid();return {...base,grant_id:parseUUID(c.grantId)}
- case 'reassign_request':if(c.expectedVersion<1)invalid();return {...base,employee_id:parseUUID(c.employeeId),request_id:parseUUID(c.requestId),assignment_id:parseUUID(c.assignmentId)}
+ case 'reassign_request':if(c.expectedVersion<1)invalid();return {...base,employee_id:parseUUID(c.employeeId),request_id:parseUUID(c.requestId),assignment_id:parseUUID(c.assignmentId),...(c.attemptId===undefined?{}:{attempt_id:parseUUID(c.attemptId)})}
  default:return invalid()
  }
 }
@@ -68,7 +68,8 @@ export async function fetchLeaveAdminAccess(employeeId:string,signal:AbortSignal
 }
 export async function fetchLeaveAdminRequests(employeeId:string,before:number|null,limit:number,signal:AbortSignal):Promise<{rows:LeaveAdminRequest[];nextBefore:number|null}>{
  const v=await read('leave_admin_requests_v1',{p_employee_id:parseUUID(employeeId),p_before:nullable(before,x=>integer(x,1)),p_limit:integer(limit,1,100)},signal)
- const rows=list(v.rows).map(x=>{const r=obj(x);return {id:parseUUID(r.id),sequence:integer(r.sequence,1),version:integer(r.version,1),startDate:parseDateKey(r.startDate),endDate:parseDateKey(r.endDate),approverName:text(r.approverName),currentAssignmentId:parseUUID(r.currentAssignmentId)}})
+ const rows=list(v.rows).map(x=>{const r=obj(x);return {id:parseUUID(r.id),sequence:integer(r.sequence,1),version:integer(r.version,1),startDate:parseDateKey(r.startDate),endDate:parseDateKey(r.endDate),approverName:text(r.approverName),currentAssignmentId:parseUUID(r.currentAssignmentId),status:enumeration(r.status,['submitted','cancellation_pending'] as const),cancellationAttemptId:nullable(r.cancellationAttemptId,parseUUID)}})
+ if(rows.some(r=>(r.status==='cancellation_pending')!==(r.cancellationAttemptId!==null)))invalid()
  if(rows.length>limit||rows.some((r,i)=>(before!==null&&r.sequence>=before)||(i>0&&r.sequence>=rows[i-1].sequence)))invalid()
  const nextBefore=nullable(v.nextBefore,x=>integer(x,1));if(nextBefore!==null&&nextBefore!==rows.at(-1)?.sequence)invalid()
  return {rows,nextBefore}
@@ -160,9 +161,15 @@ export async function fetchHrRequestHistory(employeeId:string,scopeVersion:strin
  const boundary=before===null?null:{atTime:hrTimestamp(before.atTime),id:parseUUID(before.id)}
  const v=await read('leave_hr_request_history_v1',{p_employee_id:parseUUID(employeeId),p_request_id:parseUUID(requestId),p_before_at:boundary?.atTime??null,p_before_id:boundary?.id??null,p_limit:integer(limit,1,50)},signal),envelope=hrEnvelope(v,employeeId,scopeVersion,'authorityKey,employeeId,nextBefore,requestId,rows,scopeVersion')
  if(v.requestId!==requestId)invalid()
+ const {rows,nextBefore}=parseRequestEventPage(v,boundary,limit)
+ return {...envelope,requestId,rows,nextBefore}
+}
+
+export function parseRequestEventCursor(before:HrHistoryCursor|null):HrHistoryCursor|null{return before===null?null:{atTime:hrTimestamp(before.atTime),id:parseUUID(before.id)}}
+export function parseRequestEventPage(v:Record<string,unknown>,boundary:HrHistoryCursor|null,limit:number):Pick<HrRequestHistoryPage,'rows'|'nextBefore'>{
  const rows=list(v.rows).map(x=>{const e=obj(x),actor=obj(e.actor);exactHr(e,'actor,approverName,atTime,event,id,reason');exactHr(actor,'id,name');const reason=nullable(e.reason,text);if(reason!==null&&reason.length>1000)invalid();return {id:parseUUID(e.id),event:enumeration(e.event,['submitted','opening_imported','approved','rejected','withdrawn','cancellation_requested','cancellation_accepted','cancellation_declined','reassigned']),atTime:hrTimestamp(e.atTime),actor:{id:parseUUID(actor.id),name:text(actor.name)},reason,approverName:nullable(e.approverName,text)} satisfies HrRequestEvent})
  if(rows.length>limit||new Set(rows.map(r=>r.id)).size!==rows.length||rows.some((r,i)=>(boundary!==null&&hrCompare(r,boundary)>=0)||(i>0&&hrCompare(r,rows[i-1])>=0)))invalid()
  const nextBefore=nullable(v.nextBefore,x=>{const c=obj(x);exactHr(c,'atTime,id');return {atTime:hrTimestamp(c.atTime),id:parseUUID(c.id)}})
  if(nextBefore!==null&&(!rows.length||hrCompare(nextBefore,rows[rows.length-1])!==0))invalid()
- return {...envelope,requestId,rows,nextBefore}
+ return {rows,nextBefore}
 }

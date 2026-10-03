@@ -226,7 +226,13 @@ ROLLBACK;`,'marker',true)
         admin.calendarVersion='73000000-0000-0000-0000-000000000091'
         admin.payload={calendar_id:calendar,anchor:settings.saturday,groups,effective_from:settings.saturday,effective_until:end,preview_fingerprint:admin.preview.fingerprint,expected_version:1,reason:'Fictional roster race'}
       } else admin.payload={calendar_id:calendar,name:'Fictional revised calendar',effective_from:settings.friday,effective_until:(await query(`SELECT (${literal(settings.friday)}::date+1)::text;`,'calendar-end',true)).trim(),timezone:'Pacific/Kiritimati',holidays_confirmed:true,sunday_minutes:0,holidays:[],groups:[],expected_version:1,reason:'Fictional calendar race'}
-      if(scenario.startsWith('submit')) await pair(submit,admin)
+      if(!roster) {
+        const preview=await app('calendar-preview',admin.actor),{reason,...proposal}=admin.payload
+        preview.write(`SELECT 'RECEIPT:'||public.leave_calendar_preview_v1(${literal(JSON.stringify(proposal))}::jsonb)::text;`)
+        admin.preview=parsed(await preview.finish(),'preview');admin.payload.preview_fingerprint=admin.preview.fingerprint
+      }
+      // A submission committed after preview changes the affected request set, so publication must re-preview.
+      if(scenario.startsWith('submit')) await pair(submit,admin,{sqlstate:'55000',code:'PREVIEW_STALE'})
       else await pair(admin,submit,{sqlstate:'55000',code:'STALE_QUOTE'})
     } else if(scenario==='adjust_then_submit'||scenario==='submit_then_adjust') {
       await run(await adjustment(10,-4950)) // Exactly one 450-minute day remains; annual grant stays 5400.

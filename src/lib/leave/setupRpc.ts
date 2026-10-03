@@ -3,7 +3,7 @@ import { createTransactionSender } from '../orderTransactions'
 import { parseDateKey, parseUUID } from './contracts'
 import type { LeaveResult, Page, Recovery, UUID } from './contracts'
 import { leaveErrorMessage } from './rpc'
-import type { LeaveApproverOption, LeaveCalendarSetup, LeaveMemberSetup, LeaveSetupCommand, RosterPreview, RosterPreviewInput, SetupImpacts } from './setupContracts'
+import type { LeaveApproverOption, LeaveCalendarSetup, LeaveMemberSetup, LeaveSetupCommand, RosterPreview, RosterPreviewInput, SetupImpacts, CalendarPreviewInput, CalendarPreview } from './setupContracts'
 function invalid(): never { throw new Error('Respons pengaturan cuti tidak valid. Muat ulang sebelum melanjutkan.') }
 function obj(v: unknown): Record<string, unknown> { if (!v || typeof v !== 'object' || Array.isArray(v)) invalid(); return v as Record<string, unknown> }
 function text(v: unknown): string { if (typeof v !== 'string') invalid(); return v }
@@ -35,9 +35,7 @@ export function toSetupPayload(c: LeaveSetupCommand): Record<string, unknown> {
   if (c.approverId!==null && c.effectiveFrom===null) invalid()
   return {...base,employee_id:parseUUID(c.employeeId),approver_id:idOrNull(c.approverId),effective_from:dateOrNull(c.effectiveFrom),effective_until:dateOrNull(c.effectiveUntil),replace_assignment_id:idOrNull(c.replaceAssignmentId)}
  case 'set_group_membership':return {...base,employee_id:parseUUID(c.employeeId),group_id:parseUUID(c.groupId),effective_from:parseDateKey(c.effectiveFrom),effective_until:dateOrNull(c.effectiveUntil),replace_membership_id:idOrNull(c.replaceMembershipId)}
- case 'save_calendar_version':
-  if(c.sundayMinutes!==null && c.sundayMinutes!==0) invalid()
-  return {...base,calendar_id:parseUUID(c.calendarId),name:text(c.name),effective_from:parseDateKey(c.effectiveFrom),effective_until:dateOrNull(c.effectiveUntil),timezone:c.timezone===null?null:text(c.timezone),holidays_confirmed:bool(c.holidaysConfirmed),sunday_minutes:c.sundayMinutes,holidays:c.holidays.map(parseDateKey),groups:c.groups.map(g=>({id:parseUUID(g.id),name:text(g.name)}))}
+ case 'save_calendar_version':return {...base,...toCalendarProposal(c),preview_fingerprint:text(c.previewFingerprint)}
  case 'publish_roster':return {...base,calendar_id:parseUUID(c.calendarId),anchor:parseDateKey(c.anchor),groups:c.groups.map(g=>({id:parseUUID(g.id),on_anchor:bool(g.onAnchor)})),effective_from:parseDateKey(c.from),effective_until:parseDateKey(c.to),preview_fingerprint:text(c.previewFingerprint)}
  default:return invalid()
  }
@@ -78,4 +76,15 @@ export async function previewLeaveRoster(input:RosterPreviewInput,signal:AbortSi
  const {data,error}=await supabase.rpc('leave_roster_preview_v1',{p_calendar_id:parseUUID(input.calendarId),p_anchor:parseDateKey(input.anchor),p_groups:input.groups.map(g=>({id:parseUUID(g.id),on_anchor:bool(g.onAnchor)})),p_from:parseDateKey(input.from),p_to:parseDateKey(input.to)}).abortSignal(signal);signal.throwIfAborted()
  if(error)throw new Error(leaveErrorMessage(error));const v=obj(data);if(v.calendarId!==input.calendarId||!text(v.fingerprint)||integer(v.calendarVersion)<1)invalid()
  return {calendarId:parseUUID(v.calendarId),calendarVersion:integer(v.calendarVersion),fingerprint:text(v.fingerprint),impacts:impacts(v.impacts),rows:list(v.rows).map(value=>{const r=obj(value);if(r.capacityMinutes!==0&&r.capacityMinutes!==225)invalid();const date=parseDateKey(r.date),groupId=parseUUID(r.groupId);if(date<input.from||date>=input.to||!input.groups.some(g=>g.id===groupId))invalid();return {date,groupId,capacityMinutes:r.capacityMinutes}})}
+}
+
+export function toCalendarProposal(c:CalendarPreviewInput):Record<string,unknown>{
+ if(c.sundayMinutes!==null&&c.sundayMinutes!==0)invalid()
+ return {expected_version:integer(c.expectedVersion),calendar_id:parseUUID(c.calendarId),name:text(c.name),effective_from:parseDateKey(c.effectiveFrom),effective_until:dateOrNull(c.effectiveUntil),timezone:c.timezone===null?null:text(c.timezone),holidays_confirmed:bool(c.holidaysConfirmed),sunday_minutes:c.sundayMinutes,holidays:c.holidays.map(parseDateKey),groups:c.groups.map(g=>({id:parseUUID(g.id),name:text(g.name)}))}
+}
+export async function previewLeaveCalendar(input:CalendarPreviewInput,signal:AbortSignal):Promise<CalendarPreview>{
+ const {data,error}=await supabase.rpc('leave_calendar_preview_v1',{p_proposal:toCalendarProposal(input)}).abortSignal(signal);signal.throwIfAborted()
+ if(error)throw new Error(leaveErrorMessage(error));const v=obj(data)
+ if(v.calendarId!==input.calendarId||v.calendarVersion!==input.expectedVersion||!text(v.fingerprint))invalid()
+ return {calendarId:parseUUID(v.calendarId),calendarVersion:integer(v.calendarVersion),fingerprint:text(v.fingerprint),impacts:impacts(v.impacts)}
 }

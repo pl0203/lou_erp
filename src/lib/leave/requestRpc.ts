@@ -1,3 +1,5 @@
+import { parseRequestEventCursor,parseRequestEventPage } from './adminRpc'
+import type { HrHistoryCursor } from './adminContracts'
 import { supabase } from '../supabase'
 import { parseDateKey,parseDurationSelection,parseUUID } from './contracts'
 import type { LeaveStatus,UUID } from './contracts'
@@ -62,5 +64,16 @@ export async function fetchOwnLeaveRequest(id:UUID,signal:AbortSignal):Promise<O
   })
   if(allocations.reduce((sum,a)=>sum+a.chargedMinutes,0)!==s.totalMinutes||allocations.some((a,i)=>i>0&&a.year<=allocations[i-1].year))invalidRequest()
   return {...s,reason:text(v.reason,1000,true),approverName:text(v.approverName,500),days,allocations}
+ }catch{return invalidRequest()}
+}
+
+/** Owner-only event read; the server separately rejects directors, guessed IDs and inactive owners. */
+export async function fetchOwnRequestEvents(id:UUID,version:number,scopeVersion:string,before:HrHistoryCursor|null,limit:number,signal:AbortSignal){
+ parseUUID(id);integer(version,1);integer(limit,1,50);const cursor=parseRequestEventCursor(before)
+ const raw=await read('leave_own_request_history_v1',{p_request_id:id,p_before_at:cursor?.atTime??null,p_before_id:cursor?.id??null,p_limit:limit},signal)
+ try{
+  const v=exact(raw,['requestId','requestVersion','scopeVersion','rows','nextBefore'])
+  if(v.requestId!==id||v.requestVersion!==version||v.scopeVersion!==scopeVersion)invalidRequest()
+  return {requestId:id,requestVersion:version,scopeVersion,...parseRequestEventPage(v,cursor,limit)}
  }catch{return invalidRequest()}
 }

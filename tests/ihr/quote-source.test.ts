@@ -15,7 +15,7 @@ test('quote owns rules with no inferred notice, horizon, reason or future grants
 })
 test('public quote only derives its actor and authorization time; private helpers remain closed',()=>{
  const rpc=body('public.leave_quote_v1')
- expect(rpc).toContain('STABLE SECURITY DEFINER SET search_path=\'\'')
+ expect(rpc).toContain('STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp')
  expect(rpc).toContain('private.ihr_leave_require_actor()');expect(rpc).toContain('statement_timestamp()')
  expect(sql).toContain('REVOKE ALL ON FUNCTION private.ihr_leave_quote_v1(uuid,jsonb,timestamptz) FROM PUBLIC,anon,authenticated')
  expect(sql).toContain('GRANT EXECUTE ON FUNCTION public.leave_quote_v1(jsonb) TO authenticated')

@@ -13,16 +13,16 @@ import MyLeave from '../../src/pages/ihr/leave/MyLeave'
 const context:LeaveContext={scopeVersion:quoteScope,memberKind:'employee',capabilities:{request:true,approve:false,configure:false,adjust:false,readPrivate:false,manageAccess:false},currentPeriod:{year:2026,startDate:'2026-01-01',endDate:'2027-01-01'},timezone:'Etc/UTC',setup:{ready:false,blockers:[]},balances:[{accountId:employeeA,year:2026,allowanceMinutes:5400,approvedMinutes:450,pendingMinutes:60,availableMinutes:4890,expiredMinutes:0,version:4,reconciled:true}]}
 const clients:QueryClient[]=[]
 function mount(actor=employeeA){const client=new QueryClient({defaultOptions:{queries:{retry:false}}});clients.push(client);const panel=(identity=actor)=><QueryClientProvider client={client}><MyLeave actorId={identity} context={context}/></QueryClientProvider>;return {client,panel,view:render(panel())}}
-function serve(){mocks.rpc.mockImplementation((name:string,args:Record<string,unknown>)=>name==='leave_transaction_v1'?Promise.resolve({data:{id:args.p_request_id,version:1,operation:'submit_request'},error:null}):{abortSignal:()=>Promise.resolve({data:name==='leave_context_v1'?context:quoteFixture,error:null})})}
+function serve(){mocks.rpc.mockImplementation((name:string,args:Record<string,unknown>)=>name==='leave_transaction_v1'?Promise.resolve({data:{id:employeeB,version:1,operation:'submit_request'},error:null}):{abortSignal:()=>Promise.resolve({data:name==='leave_context_v1'?context:quoteFixture,error:null})})}
 async function open(){fireEvent.click(screen.getByRole('button',{name:'Buat pratinjau cuti'}));await screen.findByLabelText('Tanggal mulai')}
 async function preview(){for(const [label,value] of [['Tanggal mulai',quoteInput.startDate],['Tanggal selesai',quoteInput.endDate],['Alasan pribadi',quoteInput.reason]])fireEvent.change(screen.getByLabelText(label),{target:{value}});fireEvent.click(screen.getByRole('button',{name:'Hitung pratinjau'}));await screen.findByRole('region',{name:'Pratinjau cuti'})}
 beforeEach(()=>{vi.stubGlobal('AbortController',class{constructor(){return transferableAbortController()}});localStorage.clear();serve();vi.spyOn(window,'confirm').mockReturnValue(true)})
 afterEach(()=>{cleanup();clients.splice(0).forEach(c=>c.clear());vi.unstubAllGlobals();vi.restoreAllMocks()})
 test('submission refreshes authority, sends the exact quote contract once and clears the private draft after confirmation',async()=>{
- const {client}=mount();await open();await preview();const before=mocks.rpc.mock.calls.filter(([name])=>name==='leave_context_v1').length
+ const {client}=mount();client.setQueryData(leaveKeys.private(employeeA,quoteScope,'team-calendar'),{rows:[]});await open();await preview();const before=mocks.rpc.mock.calls.filter(([name])=>name==='leave_context_v1').length
  const button=screen.getByRole('button',{name:'Ajukan cuti'});fireEvent.click(button);fireEvent.click(button)
  expect(await screen.findByText('Cuti berhasil diajukan. Saldo telah direservasi.')).toBeTruthy()
- const commands=mocks.rpc.mock.calls.filter(([name])=>name==='leave_transaction_v1');expect(commands).toHaveLength(1)
+ const commands=mocks.rpc.mock.calls.filter(([name])=>name==='leave_transaction_v1');expect(commands).toHaveLength(1);expect(commands[0][1].p_request_id).not.toBe(employeeB);expect(client.getQueryState(leaveKeys.private(employeeA,quoteScope,'team-calendar'))?.isInvalidated).toBe(true)
  expect(commands[0][1]).toMatchObject({p_operation:'submit_request',p_payload:{input:{start_date:quoteInput.startDate,end_date:quoteInput.endDate,duration:quoteInput.duration,reason:quoteInput.reason},quote_fingerprint:quoteFixture.fingerprint}})
  expect(mocks.rpc.mock.calls.filter(([name])=>name==='leave_context_v1').length).toBeGreaterThan(before)
  expect(screen.queryByDisplayValue(quoteInput.reason)).toBeNull();expect(localStorage.length).toBe(0);expect(JSON.stringify(client.getQueryCache().getAll().map(q=>q.state.data))).not.toContain(quoteInput.reason)
@@ -31,7 +31,7 @@ test('submission refreshes authority, sends the exact quote contract once and cl
 test('lost send fences edits and survives close/reopen; recovery returns committed success without another submission',async()=>{
  mount();await open();await preview();mocks.rpc.mockImplementationOnce(()=>({abortSignal:()=>Promise.resolve({data:context,error:null})}));mocks.rpc.mockRejectedValueOnce(new Error(quoteInput.reason))
  fireEvent.click(screen.getByRole('button',{name:'Ajukan cuti'}));await screen.findByRole('button',{name:'Pulihkan hasil pengajuan'});expect(screen.queryByLabelText('Alasan pribadi')).toBeNull()
- const raw=localStorage.getItem(localStorage.key(0)!)!;expect(raw).not.toMatch(/Private|reason|input|start_date/);const id=JSON.parse(raw).id
+ const raw=localStorage.getItem(localStorage.key(0)!)!;expect(raw).not.toMatch(/Private|reason|input|start_date/);const id=employeeB;expect(id).not.toBe(JSON.parse(raw).id)
  fireEvent.click(screen.getByRole('button',{name:'Tutup formulir'}));fireEvent.click(screen.getByRole('button',{name:'Buat pratinjau cuti'}));await screen.findByRole('button',{name:'Pulihkan hasil pengajuan'});expect(screen.queryByLabelText('Tanggal mulai')).toBeNull()
  mocks.rpc.mockImplementation((name:string)=>name==='leave_reconcile_request_v1'?Promise.resolve({data:{state:'committed',result:{id,version:1,operation:'submit_request'}},error:null}):{abortSignal:()=>Promise.resolve({data:context,error:null})})
  fireEvent.click(screen.getByRole('button',{name:'Pulihkan hasil pengajuan'}));expect(await screen.findByText('Cuti berhasil diajukan. Saldo telah direservasi.')).toBeTruthy();expect(localStorage.length).toBe(0)

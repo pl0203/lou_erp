@@ -115,3 +115,10 @@ test('published fixture, roster and workload manifests match the generator exact
   expect(audiences.people).toEqual(fixture.people)
   expect(audiences.memberships).toEqual(fixture.memberships)
 })
+test('assigned detail capacity assertion checks every fresh request-period balance field',()=>{
+ const workload=workloads.find(w=>w.name==='assigned-detail-days'),e=workload.expected
+ const value={...e.summary,days:e.days,allocations:e.allocations,reason:e.reason,approverName:e.approverName,cancellation:e.cancellation,
+  balanceContext:{basis:'current',asOf:new Date().toISOString(),periods:e.balanceContext?.periods??[{year:e.allocations[0].year,reservedMinutes:1,usedMinutes:1,availableMinutes:0,expiredMinutes:5398,reconciled:true}]}}
+ expect(()=>assertCapacityResult(workload,{ok:true,value})).not.toThrow()
+ for(const balanceContext of [{...value.balanceContext,basis:'submission'},{...value.balanceContext,periods:[]},{...value.balanceContext,accountId:'unrelated'}, {...value.balanceContext,periods:[{...value.balanceContext.periods[0],usedMinutes:99999}]}])expect(()=>assertCapacityResult(workload,{ok:true,value:{...value,balanceContext}})).toThrow()
+})

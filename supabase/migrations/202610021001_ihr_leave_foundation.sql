@@ -1,6 +1,7 @@
 -- Unpublished iHR candidate. No people, employment dates, policy settings or bootstrap grants.
 -- Dedicated authority; application roles and pilot business-data helpers confer no HR rights.
 BEGIN;
+SET LOCAL search_path = pg_catalog, pg_temp;
 CREATE SCHEMA IF NOT EXISTS private;
 CREATE TABLE public.ihr_leave_members (
   user_id uuid PRIMARY KEY REFERENCES public.users(id),
@@ -106,7 +107,7 @@ REVOKE ALL ON public.ihr_leave_members,public.ihr_leave_access_grants,public.ihr
  public.ihr_leave_admin_events,private.ihr_leave_commands,private.ihr_leave_scope_revision FROM PUBLIC,anon,authenticated;
 
 CREATE FUNCTION private.ihr_leave_bump_scope() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
  UPDATE private.ihr_leave_scope_revision SET version=version+1 WHERE singleton;
  RETURN NULL;
@@ -117,7 +118,7 @@ CREATE TRIGGER ihr_leave_grants_scope AFTER INSERT OR UPDATE OR DELETE ON public
 CREATE TRIGGER ihr_leave_approvers_scope AFTER INSERT OR UPDATE OR DELETE ON public.ihr_leave_approvers FOR EACH STATEMENT EXECUTE FUNCTION private.ihr_leave_bump_scope();
 CREATE TRIGGER ihr_leave_user_active_scope AFTER UPDATE OF is_active ON public.users FOR EACH STATEMENT EXECUTE FUNCTION private.ihr_leave_bump_scope();
 CREATE FUNCTION private.ihr_leave_version_row() RETURNS trigger
-LANGUAGE plpgsql SET search_path = '' AS $$
+LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
  IF TG_OP='INSERT' THEN NEW.version:=1; ELSE NEW.version:=OLD.version+1; END IF;
  NEW.updated_at:=clock_timestamp(); RETURN NEW;
@@ -127,7 +128,7 @@ CREATE TRIGGER ihr_leave_member_version BEFORE INSERT OR UPDATE ON public.ihr_le
 CREATE TRIGGER ihr_leave_grant_version BEFORE INSERT OR UPDATE ON public.ihr_leave_access_grants FOR EACH ROW EXECUTE FUNCTION private.ihr_leave_version_row();
 CREATE TRIGGER ihr_leave_approver_version BEFORE INSERT OR UPDATE ON public.ihr_leave_approvers FOR EACH ROW EXECUTE FUNCTION private.ihr_leave_version_row();
 CREATE FUNCTION private.ihr_leave_require_actor() RETURNS uuid
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE actor uuid:=auth.uid();
 BEGIN
  IF actor IS NULL OR NOT EXISTS (SELECT 1 FROM public.users u WHERE u.id=actor AND u.is_active) THEN
@@ -139,7 +140,7 @@ $$;
 -- NULL employee means capability discovery only, never permission for an unspecified target.
 -- Commands MUST pass their captured post-lock authorized_at. Defaults are for STABLE reads.
 CREATE FUNCTION private.ihr_leave_has_grant(p_actor uuid,p_capability text,p_employee uuid DEFAULT NULL,p_authorized_at timestamptz DEFAULT statement_timestamp()) RETURNS boolean
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
  SELECT EXISTS (
   SELECT 1 FROM public.ihr_leave_access_grants g JOIN public.users u ON u.id=g.actor_id AND u.is_active
   WHERE g.actor_id=p_actor AND g.capability=p_capability AND g.revoked_at IS NULL
@@ -150,7 +151,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
  );
 $$;
 CREATE FUNCTION private.ihr_leave_is_approver(p_actor uuid,p_employee uuid DEFAULT NULL,p_authorized_at timestamptz DEFAULT statement_timestamp()) RETURNS boolean
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
  SELECT EXISTS (
   SELECT 1 FROM public.ihr_leave_approvers a
   JOIN public.users actor ON actor.id=a.approver_id AND actor.is_active
@@ -163,14 +164,14 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
  );
 $$;
 CREATE FUNCTION private.ihr_leave_can_read_employee(p_actor uuid,p_employee uuid,p_authorized_at timestamptz DEFAULT statement_timestamp()) RETURNS boolean
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
  SELECT EXISTS (SELECT 1 FROM public.users u WHERE u.id=p_actor AND u.is_active)
   AND EXISTS (SELECT 1 FROM public.ihr_leave_members m WHERE m.user_id=p_employee AND m.member_kind IN ('employee','manager'))
   AND (p_actor=p_employee OR private.ihr_leave_is_approver(p_actor,p_employee,p_authorized_at)
    OR private.ihr_leave_has_grant(p_actor,'read_private',p_employee,p_authorized_at));
 $$;
 CREATE FUNCTION private.ihr_leave_guard_member() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE actor uuid:=auth.uid(); target uuid; authorized_at timestamptz:=clock_timestamp();
 BEGIN
  IF TG_OP='DELETE' THEN target:=OLD.user_id; ELSE target:=NEW.user_id; END IF;
@@ -188,7 +189,7 @@ END;
 $$;
 CREATE TRIGGER ihr_leave_member_guard BEFORE INSERT OR UPDATE OR DELETE ON public.ihr_leave_members FOR EACH ROW EXECUTE FUNCTION private.ihr_leave_guard_member();
 CREATE FUNCTION private.ihr_leave_guard_grant() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE actor uuid:=auth.uid(); target uuid; scope text;
  -- A separate stricter write boundary; never trust a caller-settable GUC for authority time.
  authorized_at timestamptz := clock_timestamp();
@@ -218,7 +219,7 @@ END;
 $$;
 CREATE TRIGGER ihr_leave_access_guard BEFORE INSERT OR UPDATE OR DELETE ON public.ihr_leave_access_grants FOR EACH ROW EXECUTE FUNCTION private.ihr_leave_guard_grant();
 CREATE FUNCTION private.ihr_leave_guard_approver() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE actor uuid:=auth.uid(); authorized_at timestamptz;
 BEGIN
  IF TG_OP='UPDATE' AND ROW(NEW.id,NEW.employee_id,NEW.approver_id,NEW.assigned_by,NEW.created_at)
@@ -251,7 +252,7 @@ END;
 $$;
 CREATE TRIGGER ihr_leave_approver_guard BEFORE INSERT OR UPDATE ON public.ihr_leave_approvers FOR EACH ROW EXECUTE FUNCTION private.ihr_leave_guard_approver();
 CREATE FUNCTION private.ihr_leave_immutable_audit() RETURNS trigger
-LANGUAGE plpgsql SET search_path = '' AS $$
+LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
  RAISE EXCEPTION 'Leave audit is immutable' USING ERRCODE='42501',DETAIL='{"code":"AUDIT_IMMUTABLE"}';
 END;
@@ -259,7 +260,7 @@ $$;
 CREATE TRIGGER ihr_leave_audit_immutable BEFORE UPDATE OR DELETE ON public.ihr_leave_admin_events FOR EACH ROW EXECUTE FUNCTION private.ihr_leave_immutable_audit();
 CREATE TRIGGER ihr_leave_audit_no_truncate BEFORE TRUNCATE ON public.ihr_leave_admin_events FOR EACH STATEMENT EXECUTE FUNCTION private.ihr_leave_immutable_audit();
 CREATE FUNCTION private.ihr_leave_scope_version(p_actor uuid) RETURNS text
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
  -- Effective-window transitions must change a token even with no database write/global role change.
  SELECT s.version::text || ':' || md5(jsonb_build_object('actor',p_actor,
   'grants',(SELECT coalesce(jsonb_agg(g.id ORDER BY g.id),'[]'::jsonb) FROM public.ihr_leave_access_grants g
@@ -269,7 +270,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = '' AS $$
  )::text) FROM private.ihr_leave_scope_revision s WHERE s.singleton;
 $$;
 CREATE FUNCTION private.ihr_leave_validate_payload(p_payload jsonb,p_allowed_keys text[],p_required_keys text[] DEFAULT '{}') RETURNS void
-LANGUAGE plpgsql SET search_path = '' AS $$
+LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
  IF jsonb_typeof(p_payload) IS DISTINCT FROM 'object' OR p_allowed_keys IS NULL OR p_required_keys IS NULL THEN
   RAISE EXCEPTION 'Invalid payload' USING ERRCODE='22023',DETAIL='{"code":"INVALID_PAYLOAD"}';
@@ -284,7 +285,7 @@ $$;
 -- STABLE authorization shares its fresh calling-query snapshot. Pass p_authorized_at explicitly
 -- through every temporal helper. After further relevant waits, refresh actor/time/authority again.
 CREATE FUNCTION private.ihr_leave_authorize_command(p_actor uuid,p_operation text,p_payload jsonb,p_authorized_at timestamptz) RETURNS void
-LANGUAGE plpgsql STABLE SET search_path = '' AS $$
+LANGUAGE plpgsql STABLE SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
  IF p_authorized_at IS NULL OR p_actor IS DISTINCT FROM private.ihr_leave_require_actor() THEN
   RAISE EXCEPTION 'Invalid command authority' USING ERRCODE='42501',DETAIL='{"code":"COMMAND_AUTHORITY_REQUIRED"}';
@@ -297,7 +298,7 @@ BEGIN
 END;
 $$;
 CREATE FUNCTION private.ihr_leave_dispatch_command(p_actor uuid,p_operation text,p_payload jsonb,p_authorized_at timestamptz) RETURNS jsonb
-LANGUAGE plpgsql SET search_path = '' AS $$
+LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
  CASE p_operation
   WHEN '' THEN RAISE EXCEPTION 'Invalid operation' USING ERRCODE='22023',DETAIL='{"code":"INVALID_OPERATION"}';
@@ -306,7 +307,7 @@ BEGIN
 END;
 $$;
 CREATE FUNCTION public.leave_context_v1() RETURNS jsonb
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE actor uuid:=private.ihr_leave_require_actor(); member public.ihr_leave_members%ROWTYPE;
  blockers jsonb:='[]'::jsonb; can_request boolean:=false;
 BEGIN
@@ -331,7 +332,7 @@ BEGIN
 END;
 $$;
 CREATE FUNCTION public.leave_admin_setup_v1(p_section text,p_page int,p_page_size int) RETURNS jsonb
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE actor uuid:=private.ihr_leave_require_actor(); v_rows jsonb; v_total bigint;
 BEGIN
  IF NOT (private.ihr_leave_has_grant(actor,'configure') OR private.ihr_leave_has_grant(actor,'manage_access')) THEN
@@ -350,7 +351,7 @@ BEGIN
 END;
 $$;
 CREATE FUNCTION private.ihr_leave_require_command_isolation() RETURNS void
-LANGUAGE plpgsql VOLATILE SET search_path = '' AS $$
+LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
  IF current_setting('transaction_isolation') IS DISTINCT FROM 'read committed' THEN
   RAISE EXCEPTION 'Unsupported command isolation' USING ERRCODE='55000',DETAIL='{"code":"UNSUPPORTED_COMMAND_ISOLATION"}';
@@ -361,7 +362,7 @@ $$;
 -- employee assignment -> scope revision -> sorted occupancy -> fixed request/account -> audit.
 -- No user/scope row locks are added by these envelopes. Never acquire occupancy after accounts.
 CREATE FUNCTION public.leave_transaction_v1(p_request_id uuid,p_operation text,p_payload jsonb) RETURNS jsonb
-LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = '' AS $$
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE actor uuid:=private.ihr_leave_require_actor(); command private.ihr_leave_commands%ROWTYPE;
  authorized_at timestamptz; v_result jsonb;
 BEGIN
@@ -390,7 +391,7 @@ BEGIN
 END;
 $$;
 CREATE FUNCTION public.leave_reconcile_request_v1(p_request_id uuid,p_abandon boolean) RETURNS jsonb
-LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = '' AS $$
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 DECLARE actor uuid:=private.ihr_leave_require_actor(); command private.ihr_leave_commands%ROWTYPE; authorized_at timestamptz;
 BEGIN
  PERFORM private.ihr_leave_require_command_isolation();

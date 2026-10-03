@@ -45,7 +45,7 @@ test('explicit permission loss has a safe distinct message and aborted denial st
 })
 test('new read preserves the original global setup API and command restrictions',()=>{
  const sql=readFileSync('supabase/migrations/202610021007_ihr_leave_admin.sql','utf8'),body=sql.split('CREATE FUNCTION public.leave_admin_rota_context_v1(')[1]?.split('\n$$;')[0]??''
- expect(body).toContain('private.ihr_leave_global_config(actor,at_time)');expect(body).toContain('private.ihr_leave_require_actor()');expect(body).toContain("SECURITY DEFINER SET search_path=''")
+ expect(body).toContain('private.ihr_leave_global_config(actor,at_time)');expect(body).toContain('private.ihr_leave_require_actor()');expect(body).toContain("SECURITY DEFINER SET search_path = pg_catalog, pg_temp")
  expect(body).not.toMatch(/INSERT|UPDATE|DELETE|leave_admin_setup_v1/)
  expect(sql).not.toMatch(/CREATE (?:OR REPLACE )?FUNCTION public.leave_admin_setup_v1/)
  expect(sql).toContain('REVOKE ALL ON FUNCTION public.leave_admin_rota_context_v1(uuid) FROM PUBLIC,anon,authenticated')

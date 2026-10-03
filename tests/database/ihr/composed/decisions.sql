@@ -130,6 +130,8 @@ GRANT SELECT ON refund_observation TO authenticated;
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub','71000000-0000-0000-0000-000000000001',true);
 SELECT pg_temp.assert_true(released AND refund_once AND exact_original AND history_kept,'whole cancellation refunds original charge once and keeps immutable attempts') FROM refund_observation;
+SELECT public.leave_own_request_history_v1(:'request_id',NULL,NULL,50) owner_attempt_history \gset
+SELECT pg_temp.assert_true((SELECT count(*)=2 FROM jsonb_array_elements(:'owner_attempt_history'::jsonb->'rows') e WHERE e->>'event'='cancellation_declined') AND (SELECT count(*)=3 FROM jsonb_array_elements(:'owner_attempt_history'::jsonb->'rows') e WHERE e->>'event'='cancellation_requested') AND :'owner_attempt_history'::jsonb->'rows'->0->>'event'='cancellation_accepted','owner sees each declined attempt, later attempt and final acceptance');
 RESET ROLE;
 SELECT set_config('request.jwt.claim.sub','',true);
 UPDATE public.ihr_leave_members SET active_policy_id='86000000-0000-0000-0000-000000000001' WHERE user_id='71000000-0000-0000-0000-000000000001';

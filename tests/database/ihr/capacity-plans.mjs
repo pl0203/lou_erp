@@ -26,13 +26,14 @@ export function buildCapacityPlans() {
     { name: 'narrow-private-hr-history-cursor', scope: 'one request, exact time/UUID cursor, 50 events and original projection joins', rpc: 'leave_hr_request_history_v1', requiredRelations: ['ihr_leave_request_events', 'users'], forbidSeqScan: ['ihr_leave_request_events'], sql: `SELECT coalesce(jsonb_agg(jsonb_build_object('id',e.id,'event',e.event,'atTime',e.at_time,'actor',jsonb_build_object('id',e.actor_id,'name',u.full_name),
 'reason',CASE WHEN e.event='reassigned' THEN reassignment.reason WHEN e.event IN('rejected','cancellation_requested','cancellation_declined') AND jsonb_typeof(e.data->'reason')='string' THEN e.data->>'reason' ELSE NULL END,
 'approverName',CASE WHEN e.event IN('submitted','opening_imported') THEN ${routeName} WHEN e.event='reassigned' THEN reassignment.assignment_source->>'approver_name'
- WHEN e.event IN('cancellation_requested','cancellation_accepted','cancellation_declined') THEN attempt.approver_name
+ WHEN e.event='cancellation_requested' THEN attempt.approver_name
+ WHEN e.event IN('cancellation_accepted','cancellation_declined') THEN coalesce(decision_route.assignment_source->>'approver_name',attempt.approver_name)
  WHEN e.event IN('approved','rejected') THEN coalesce(decision_route.assignment_source->>'approver_name',${routeName}) ELSE NULL END) ORDER BY e.at_time DESC,e.id DESC),'[]')
 FROM(SELECT * FROM private.ihr_leave_request_events WHERE request_id=${requestId} AND (at_time,id)<('${request.year}-01-01T00:01:14.000000Z'::timestamptz,${literal(eventId(request, 74))}::uuid) ORDER BY at_time DESC,id DESC LIMIT 50)e
 JOIN public.users u ON u.id=e.actor_id
 LEFT JOIN private.ihr_leave_request_reassignments reassignment ON e.event='reassigned' AND reassignment.request_id=${requestId} AND reassignment.request_version::text=e.data->>'requestVersion'
 LEFT JOIN private.ihr_leave_cancellation_attempts attempt ON attempt.request_id=${requestId} AND attempt.id::text=e.data->>'attemptId'
-LEFT JOIN LATERAL(SELECT rr.assignment_source FROM private.ihr_leave_request_reassignments rr WHERE rr.request_id=${requestId} AND rr.created_at<=e.at_time ORDER BY rr.request_version DESC LIMIT 1)decision_route ON e.event IN('approved','rejected')` },
+LEFT JOIN LATERAL(SELECT rr.assignment_source FROM private.ihr_leave_request_reassignments rr WHERE rr.request_id=${requestId} AND rr.created_at<=e.at_time AND ((e.event IN('approved','rejected') AND NOT (rr.assignment_source ? 'cancellation_attempt_id')) OR (e.event IN('cancellation_accepted','cancellation_declined') AND rr.assignment_source->>'cancellation_attempt_id'=attempt.id::text)) ORDER BY rr.request_version DESC LIMIT 1)decision_route ON e.event IN('approved','rejected','cancellation_accepted','cancellation_declined')` },
   ].map(plan => ({ ...plan, role: 'postgres', sqlSha256: sha256(plan.sql), source: sources[plan.rpc], authorityEvidence: 'underlying SELECT only; actual authenticated RPC permission assertions are separate' }))
 }
 export function assertCapacityPlanInventory(plans) {

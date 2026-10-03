@@ -86,7 +86,9 @@ test('missing, malformed, opaque and incomplete plan evidence fails without rela
   expect(calendar.source.definition).toContain("private.ihr_leave_calendar_can_read(actor,r.employee_id,p_audience,authorized_at)")
   const history = plans.find(p => p.name === 'narrow-private-hr-history-cursor')
   for (const token of ['(at_time,id)<', 'ORDER BY at_time DESC,id DESC LIMIT 50', 'JOIN public.users', 'LEFT JOIN LATERAL', 'ihr_leave_request_reassignments', 'ihr_leave_cancellation_attempts']) expect(history.sql).toContain(token)
-  expect(history.source.commit).toBe('0c687a61034d96bbbb7c349bf7478090cf0a6171')
+  expect(history.source.commit).toBe('9b546f0962ee3bf3b55cba3f4eb68c52a30bfcf0')
+  expect(history.source.dependencies[0].rpc).toBe('private.ihr_leave_request_history_page')
+  expect(history.source.dependencies[0].definition).toContain("p_limit NOT BETWEEN 1 AND 50")
 })
 test('dense cancellation history is legal, fully funded and preserves final cardinalities and refunds', () => {
   const f = buildCapacityFixture(), report = validateCapacityFixture(f), dense = f.requests.find(r => r.id === f.denseHistory.requestId)

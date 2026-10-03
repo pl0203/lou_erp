@@ -34,7 +34,7 @@ function MyLeavePanel({actorId,context,onDirtyChange,readState='ready'}:Props){
  }
  return <section className="space-y-4" aria-label="Cuti saya">
   {readState==='ready'&&<button type="button" className="underline" disabled={requestOpen} onClick={toggleHistory}>{historyOpen?'Tutup riwayat pengajuan':'Riwayat pengajuan'}</button>}
-  {historyOpen&&<OwnLeaveHistory actorId={actorId} scopeVersion={context.scopeVersion} readState={readState} onDirtyChange={reportHistoryDirty}/>}
+  {historyOpen&&<OwnLeaveHistory context={context} actorId={actorId} scopeVersion={context.scopeVersion} readState={readState} onDirtyChange={reportHistoryDirty}/>}
   {readState==='ready'&&<button ref={requestOpener} type="button" disabled={requestOpen||historyOpen} onClick={()=>setRequestOpen(true)} className="rounded bg-orange-600 px-4 py-2 text-white disabled:opacity-50">Buat pratinjau cuti</button>}
   {requestOpen&&<LeaveRequestForm actorId={actorId} context={context} onDirtyChange={onDirtyChange} readState={readState} onClose={()=>{setRequestOpen(false);queueMicrotask(()=>requestOpener.current?.focus())}}/>}
   {readState==='ready'&&<>

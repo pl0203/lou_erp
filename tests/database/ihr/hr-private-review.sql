@@ -60,6 +60,11 @@ SELECT public.leave_hr_request_history_v1('71000000-0000-0000-0000-000000000001'
 SELECT pg_temp.assert_true(jsonb_array_length(:'hr_history_page'::jsonb->'rows')=50 AND :'hr_history_page'::jsonb->'nextBefore'<>'null'::jsonb,'history is bounded50 even with a longer genuine event stream');
 SELECT public.leave_hr_request_history_v1('71000000-0000-0000-0000-000000000001',(:'successor_request'::jsonb->>'id')::uuid,(:'hr_history_page'::jsonb->'nextBefore'->>'atTime')::timestamptz,(:'hr_history_page'::jsonb->'nextBefore'->>'id')::uuid,50) hr_history_last \gset
 SELECT pg_temp.assert_true(jsonb_array_length(:'hr_history_last'::jsonb->'rows')=2 AND :'hr_history_last'::jsonb->'nextBefore'='null'::jsonb,'tuple cursor resumes without duplicate/lost events and reaches genuine end');
+SELECT set_config('request.jwt.claim.sub','71000000-0000-0000-0000-000000000001',true);
+SELECT public.leave_own_request_history_v1((:'successor_request'::jsonb->>'id')::uuid,NULL,NULL,50) own_history_page \gset
+SELECT pg_temp.assert_true(:'own_history_page'::jsonb->'rows'=:'hr_history_page'::jsonb->'rows','owner uses identical minimized immutable 50-event page');
+SELECT pg_temp.assert_true(public.leave_own_request_history_v1((:'successor_request'::jsonb->>'id')::uuid,(:'own_history_page'::jsonb->'nextBefore'->>'atTime')::timestamptz,(:'own_history_page'::jsonb->'nextBefore'->>'id')::uuid,50)->'rows'=:'hr_history_last'::jsonb->'rows','owner tuple continuation has no duplicates or missing events');
+SELECT pg_temp.assert_true(EXISTS(SELECT 1 FROM jsonb_array_elements(public.leave_own_request_history_v1((:'receipt'::jsonb->>'id')::uuid)->'rows') e WHERE e->>'event'='cancellation_declined' AND e->>'reason'='Fictional private decline note'),'owner sees decline reason even after status returns to approved');
 RESET ROLE;
 SELECT set_config('request.jwt.claim.sub','',true);
 UPDATE public.ihr_leave_access_grants SET revoked_at=clock_timestamp(),revoked_by='71000000-0000-0000-0000-000000000006' WHERE actor_id='71000000-0000-0000-0000-000000000011' AND capability='read_private' AND employee_id='71000000-0000-0000-0000-000000000001';

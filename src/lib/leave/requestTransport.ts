@@ -43,12 +43,8 @@ export function createLeaveCommandTransport<T extends LeaveResult>(options:Leave
  }
 }
 export function createLeaveRequestTransport(options:Omit<LeaveCommandTransportOptions<RequestReceipt>,'parseReceipt'>){
- const transport=createLeaveCommandTransport({...options,parseReceipt:(value:unknown)=>{
-  const receipt=parseRequestReceipt(value),raw=options.storage().getItem(storageKey(options))
-  // Submit's subject is its command UUID. Transitions intentionally use their own receipt parser.
-  if(raw!==null&&parseUUID(requestObject(JSON.parse(raw)).id)!==receipt.id)invalidRequest()
-  return receipt
- }})
+ // The command key binds the ledger/reconciliation RPC; the server creates a distinct request subject.
+ const transport=createLeaveCommandTransport({...options,parseReceipt:parseRequestReceipt})
  return {...transport,async send(input:LeaveQuoteInput,fingerprint:string):Promise<RequestReceipt>{
   try{return await transport.send('submit_request',toSubmitPayload(input,fingerprint))}
   catch{throw new Error('Pengajuan belum dapat dipastikan. Periksa akses dan isian; pulihkan hasil sebelum mencoba pengajuan lain.')}

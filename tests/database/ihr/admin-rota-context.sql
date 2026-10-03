@@ -42,11 +42,12 @@ SELECT pg_temp.assert_true(:'rota_context_before'::jsonb->>'calendarId'='7300000
 SELECT pg_temp.assert_true(public.leave_admin_rota_context_v1('85000000-0000-0000-0000-000000000020')->>'authorityKey'<>:'rota_context_before'::jsonb->>'authorityKey','authority proof binds the exact selected calendar');
 SELECT pg_temp.assert_denied($s$SELECT public.leave_admin_rota_context_v1('85000000-0000-0000-0000-000000000099')$s$,'42501');
 SELECT pg_temp.assert_denied($s$SELECT public.leave_admin_rota_context_v1(NULL)$s$,'42501');
-SELECT public.leave_transaction_v1('85000000-0000-0000-0000-000000000030','save_calendar_version',jsonb_build_object(
+SELECT jsonb_build_object(
  'calendar_id','73000000-0000-0000-0000-000000000090','expected_version',(:'rota_context_before'::jsonb->'calendar'->>'version')::bigint,'reason','Fictional own calendar revision continuity',
  'name','Fictional future calendar','effective_from',(clock_timestamp() AT TIME ZONE 'Pacific/Kiritimati')::date+2,'effective_until',(clock_timestamp() AT TIME ZONE 'Pacific/Kiritimati')::date+32,
  'timezone','Pacific/Kiritimati','holidays_confirmed',true,'sunday_minutes',0,'holidays','[]'::jsonb,
- 'groups',(SELECT jsonb_agg(g-'onAnchor') FROM jsonb_array_elements(:'rota_context_before'::jsonb->'calendar'->'groups') g)));
+ 'groups',(SELECT jsonb_agg(g-'onAnchor') FROM jsonb_array_elements(:'rota_context_before'::jsonb->'calendar'->'groups') g)) rota_save_payload \gset
+SELECT public.leave_transaction_v1('85000000-0000-0000-0000-000000000030','save_calendar_version',:'rota_save_payload'::jsonb||jsonb_build_object('preview_fingerprint',public.leave_calendar_preview_v1(:'rota_save_payload'::jsonb-'reason')->>'fingerprint'));
 SELECT public.leave_admin_rota_context_v1('73000000-0000-0000-0000-000000000090') rota_context_after \gset
 SELECT pg_temp.assert_true(:'rota_context_after'::jsonb->>'authorityKey'=:'rota_context_before'::jsonb->>'authorityKey'
  AND :'rota_context_after'::jsonb->>'scopeVersion'<>:'rota_context_before'::jsonb->>'scopeVersion'

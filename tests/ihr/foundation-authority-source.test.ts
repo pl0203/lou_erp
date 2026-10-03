@@ -41,7 +41,7 @@ test('read context remains snapshot consistent and grants trigger has a stricter
 test('every function has fixed search path and private helpers are explicitly revoked', () => {
   const names = [...sql.matchAll(/CREATE FUNCTION (private\.[a-z_]+)\(/g)].map(match => match[1]); expect(names.length).toBeGreaterThan(10)
   const revokes = sql.slice(sql.indexOf('-- Close every private helper'))
-  for (const name of names) { expect(fn(name)).toContain("SET search_path = ''"); expect(revokes).toContain(name + '(') }
+  for (const name of names) { expect(fn(name)).toContain("SET search_path = pg_catalog, pg_temp"); expect(revokes).toContain(name + '(') }
   expect(revokes).toContain('FROM PUBLIC, anon, authenticated')
 })
 test('assignment trigger refreshes authority after its own employee advisory wait', () => {
