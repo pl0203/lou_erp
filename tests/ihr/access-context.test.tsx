@@ -1,6 +1,6 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { onlineManager, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import type { LeaveContext } from '../../src/lib/leave/contracts'
 import { employeeA } from './fixtures'
@@ -9,6 +9,8 @@ vi.mock('../../src/lib/supabase', () => ({ supabase: { rpc: mocks.rpc } }))
 vi.mock('../../src/lib/AuthContext', () => ({ useAuth: () => mocks.auth }))
 import { fetchLeaveContext, fetchLeavePeople, leaveErrorMessage } from '../../src/lib/leave/rpc'
 import LeaveManagement from '../../src/pages/ihr/LeaveManagement'
+import { runLeaveInteraction } from '../../src/lib/leave/useLeaveContext'
+import { leaveKeys } from '../../src/lib/leave/queryKeys'
 const base: LeaveContext = { scopeVersion: '1', memberKind: 'employee', timezone: null, capabilities: { request: true, approve: false, configure: false, adjust: false, readPrivate: false, manageAccess: false }, setup: { ready: false, blockers: [{ code: 'SCHEMA_NOT_READY', message: 'Layanan cuti belum siap.' }] }, balances: [] }
 function reply(data: unknown, error: unknown = null) { return { abortSignal: vi.fn().mockResolvedValue({ data, error }) } }
 beforeEach(() => { mocks.rpc.mockReset(); mocks.rpc.mockReturnValue(reply(base)) })
@@ -60,4 +62,32 @@ test.each(['42501', '55000', '22023'])('SQLSTATE %s produces safe Indonesian cop
 test('aborted transport does not publish a response that ignored the abort signal', async () => {
   const abort = new AbortController(); abort.abort()
   await expect(fetchLeaveContext(abort.signal)).rejects.toThrow()
+})
+test('coalesced interactions reject a cancelled read even when fetchQuery reverts to cached success',async()=>{
+ const client=new QueryClient({defaultOptions:{queries:{retry:false}}}),action=vi.fn(),key=leaveKeys.context(employeeA,'current')
+ try{
+  await runLeaveInteraction(client,employeeA,base.scopeVersion,()=>undefined)
+  let signal!:AbortSignal;mocks.rpc.mockReturnValue({abortSignal:(s:AbortSignal)=>(signal=s,new Promise(()=>{}))})
+  const one=runLeaveInteraction(client,employeeA,base.scopeVersion,action),two=runLeaveInteraction(client,employeeA,base.scopeVersion,action),outcomes=Promise.allSettled([one,two])
+  expect(mocks.rpc).toHaveBeenCalledTimes(2);await client.cancelQueries({queryKey:key,exact:true})
+  expect(signal.aborted).toBe(true);expect((await outcomes).map(result=>result.status)).toEqual(['rejected','rejected']);expect(action).not.toHaveBeenCalled()
+ }finally{client.clear()}
+})
+test('two current-scope interactions share one successful fresh authority read and both may continue',async()=>{
+ const client=new QueryClient({defaultOptions:{queries:{retry:false}}}),one=vi.fn(),two=vi.fn();let finish!:(value:unknown)=>void
+ try{
+  mocks.rpc.mockReturnValue({abortSignal:()=>new Promise(resolve=>finish=resolve)})
+  const first=runLeaveInteraction(client,employeeA,base.scopeVersion,one),second=runLeaveInteraction(client,employeeA,base.scopeVersion,two)
+  expect(mocks.rpc).toHaveBeenCalledTimes(1);expect(one).not.toHaveBeenCalled();expect(two).not.toHaveBeenCalled()
+  finish({data:base,error:null});await Promise.all([first,second]);expect(one).toHaveBeenCalledWith(base);expect(two).toHaveBeenCalledWith(base)
+ }finally{client.clear()}
+})
+test('an offline-initiated authority read cannot continue from cached success when cancelled',async()=>{
+ const client=new QueryClient({defaultOptions:{queries:{retry:false}}}),action=vi.fn(),key=leaveKeys.context(employeeA,'current')
+ try{
+  await runLeaveInteraction(client,employeeA,base.scopeVersion,()=>undefined)
+  onlineManager.setOnline(false);mocks.rpc.mockReturnValue({abortSignal:()=>new Promise(()=>{})})
+  const outcome=Promise.allSettled([runLeaveInteraction(client,employeeA,base.scopeVersion,action)])
+  await client.cancelQueries({queryKey:key,exact:true});expect((await outcome)[0].status).toBe('rejected');expect(action).not.toHaveBeenCalled()
+ }finally{onlineManager.setOnline(true);client.clear()}
 })

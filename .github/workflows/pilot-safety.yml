@@ -129,6 +129,13 @@ jobs:
           grep -Fxq 'IHR_CALENDAR_PERMISSIONS_AND_SETUP_PASSED' "$calendar_log"
           node scripts/test-ihr-db.mjs --suite accounts | tee "$accounts_log"
           grep -Fxq 'IHR_ACCOUNTS_PERMISSIONS_AND_RECONCILIATION_PASSED' "$accounts_log"
+      - name: Guarded iHR quote SQL suite
+        run: |
+          set -euo pipefail
+          quote_log="$(mktemp)"
+          trap 'rm -f "$quote_log"' EXIT
+          node scripts/test-ihr-db.mjs --suite quote | tee "$quote_log"
+          grep -Fxq 'IHR_QUOTE_PERMISSIONS_AND_CALCULATION_PASSED' "$quote_log"
       - name: Concurrent business operations
         run: node tests/database/concurrency.mjs
 

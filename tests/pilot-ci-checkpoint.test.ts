@@ -12,6 +12,9 @@ const proofStep = workflow.match(/      - name: Verify immutable source checkpoi
 const proofScript = proofStep.match(/        run: \|\n([\s\S]*)/)?.[1].replace(/^          /gm, '') ?? ''
 const task4Step = workflow.match(/      - name: Guarded iHR calendar and accounts SQL suites\n([\s\S]*?)(?=      - )/)?.[1] ?? ''
 const task4Script = task4Step.match(/        run: \|\n([\s\S]*)/)?.[1].replace(/^          /gm, '') ?? ''
+const quoteStep = workflow.match(/      - name: Guarded iHR quote SQL suite\n([\s\S]*?)(?=      - )/)?.[1] ?? ''
+const quoteScript = quoteStep.match(/        run: \|\n([\s\S]*)/)?.[1].replace(/^          /gm, '') ?? ''
+const quoteMarker = 'IHR_QUOTE_PERMISSIONS_AND_CALCULATION_PASSED'
 const task4Suites = [
   ['calendar', 'IHR_CALENDAR_PERMISSIONS_AND_SETUP_PASSED'],
   ['accounts', 'IHR_ACCOUNTS_PERMISSIONS_AND_RECONCILIATION_PASSED'],
@@ -86,6 +89,37 @@ if [[ "$FAKE_RUNNER_MODE" == "failed-$suite" ]]; then exit 42; fi
   }
 }
 
+function runQuoteMarkerGate(mode = 'complete') {
+  // Run the exact workflow shell against test-only output; no SQL is executed.
+  expect(quoteScript, 'workflow must contain the guarded quote suite block').not.toBe('')
+  const sandbox = mkdtempSync(join(tmpdir(), 'pilot-ci-quote-'))
+  const trace = join(sandbox, 'runner-trace')
+  writeFileSync(join(sandbox, 'node'), `#!/bin/bash
+set -euo pipefail
+printf '%s\\n' "$*" >> "$FAKE_RUNNER_TRACE"
+[[ "$*" == 'scripts/test-ihr-db.mjs --suite quote' ]] || exit 43
+marker=${quoteMarker}
+case "$FAKE_RUNNER_MODE" in
+  missing) exit 0 ;;
+  partial) printf '%s\\n' "prefix-$marker"; exit 0 ;;
+  suffixed) printf '%s\\n' "$marker-suffix"; exit 0 ;;
+  failed-before) exit 42 ;;
+esac
+printf '%s\\n' "$marker"
+if [[ "$FAKE_RUNNER_MODE" == failed-after ]]; then exit 42; fi
+`, { mode: 0o755 })
+  try {
+    const result = spawnSync('/bin/bash', ['-c', quoteScript], {
+      cwd: sandbox, encoding: 'utf8', timeout: 5000,
+      env: { PATH: `${sandbox}:/usr/bin:/bin`, TMPDIR: sandbox,
+        FAKE_RUNNER_TRACE: trace, FAKE_RUNNER_MODE: mode },
+    })
+    return { ...result, runnerCalls: (() => { try { return readFileSync(trace, 'utf8') } catch { return '' } })() }
+  } finally {
+    rmSync(sandbox, { recursive: true, force: true })
+  }
+}
+
 test('checkout and the proof expectation pin PR head with a manual github.sha fallback', () => {
   expect(workflow).toContain(`      - uses: actions/checkout@v4\n        with:\n          ref: ${immutableRef}\n`)
   expect(proofStep).toContain(`          EXPECTED_SOURCE_SHA: ${immutableRef}\n`)
@@ -132,13 +166,14 @@ test('the full application suite uses one worker before the preserved SQL checks
   expect(workflow.indexOf('      - run: npm test -- --maxWorkers=1')).toBeLessThan(workflow.indexOf('      - name: Load only synthetic test contract and candidate migrations'))
 })
 
-test('synthetic SQL checks run only accepted foundation, calendar and accounts suites after migrations', () => {
+test('synthetic SQL checks run only accepted foundation, calendar, accounts and quote suites after migrations', () => {
   const sqlChecks = workflow.match(/      - name: SQL invariants, real role permissions and Storage metadata policies\n([\s\S]*?)(?=      - )/)?.[1] ?? ''
   expect(sqlChecks).toContain('          node scripts/test-ihr-db.mjs --suite foundation\n')
   expect(workflow.match(/node scripts\/test-ihr-db\.mjs --suite \S+/g)).toEqual([
     'node scripts/test-ihr-db.mjs --suite foundation',
     'node scripts/test-ihr-db.mjs --suite calendar',
     'node scripts/test-ihr-db.mjs --suite accounts',
+    'node scripts/test-ihr-db.mjs --suite quote',
   ])
   expect(workflow.indexOf('      - name: Guarded iHR calendar and accounts SQL suites')).toBeGreaterThan(workflow.indexOf('      - name: SQL invariants, real role permissions and Storage metadata policies'))
   expect(workflow.indexOf('      - name: Guarded iHR calendar and accounts SQL suites')).toBeLessThan(workflow.indexOf('      - name: Concurrent business operations'))
@@ -172,6 +207,33 @@ test.each(['missing-calendar', 'partial-calendar', 'failed-calendar', 'missing-a
     : 'scripts/test-ihr-db.mjs --suite calendar\nscripts/test-ihr-db.mjs --suite accounts\n')
 })
 
+test('the quote workflow requires the native marker after the complete boundary include', () => {
+  const sql = readFileSync('tests/database/ihr/quote.sql', 'utf8')
+  expect(sql.trimEnd()).toMatch(/\\ir quote-boundaries\.sql\n\\echo IHR_QUOTE_PERMISSIONS_AND_CALCULATION_PASSED$/)
+  expect(sql.match(/\\echo IHR_QUOTE_PERMISSIONS_AND_CALCULATION_PASSED/g)).toHaveLength(1)
+  expect(readFileSync('tests/database/ihr/quote-boundaries.sql', 'utf8')).not.toBe('')
+  expect(quoteStep).toContain(`grep -Fxq '${quoteMarker}'`)
+  expect(quoteStep).not.toMatch(new RegExp(`(?:echo|printf)[^\\n]*${quoteMarker}`))
+  expect(workflow.indexOf('      - name: Guarded iHR quote SQL suite')).toBeGreaterThan(workflow.indexOf('      - name: Guarded iHR calendar and accounts SQL suites'))
+  expect(workflow.indexOf('      - name: Guarded iHR quote SQL suite')).toBeLessThan(workflow.indexOf('      - name: Concurrent business operations'))
+})
+
+test('the quote shell accepts the exact complete-suite marker', () => {
+  const result = runQuoteMarkerGate()
+  expect(result.error).toBeUndefined()
+  expect(result.status).toBe(0)
+  expect(result.stderr).toBe('')
+  expect(result.runnerCalls).toBe('scripts/test-ihr-db.mjs --suite quote\n')
+  expect(result.stdout).toBe(`${quoteMarker}\n`)
+})
+
+test.each(['missing', 'partial', 'suffixed', 'failed-before', 'failed-after'])('the quote shell rejects incomplete or failed suite output: %s', mode => {
+  const result = runQuoteMarkerGate(mode)
+  expect(result.error).toBeUndefined()
+  expect(result.status).toBe(mode.startsWith('failed-') ? 42 : 1)
+  expect(result.runnerCalls).toBe('scripts/test-ihr-db.mjs --suite quote\n')
+})
+
 test('the envelope preserves every existing synthetic workflow byte outside its reviewed additions', () => {
   // Baseline: reviewed HR product commit 00ee204c38be40208ab8f59d8506680e64448ccd.
   // Removing only the allowed envelope restores services, permissions, guards,
@@ -182,5 +244,6 @@ test('the envelope preserves every existing synthetic workflow byte outside its 
     .replace('      - run: npm test -- --maxWorkers=1\n', '      - run: npm test\n')
     .replace('          node scripts/test-ihr-db.mjs --suite foundation\n', '')
     .replace(/      - name: Guarded iHR calendar and accounts SQL suites\n[\s\S]*?(?=      - )/, '')
+    .replace(/      - name: Guarded iHR quote SQL suite\n[\s\S]*?(?=      - )/, '')
   expect(createHash('sha256').update(preserved).digest('hex')).toBe('5e2058b31879c0059d04b9be6ced0aae2a530648208790e897f90d94d1e4fbda')
 })
