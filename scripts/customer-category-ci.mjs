@@ -6,7 +6,7 @@ import { buildCustomerCategoryLegacyGuards, LEGACY_CATEGORY_MARKERS } from '../t
 import { buildCustomerCategoryPreapplyMetadataSql, evaluateCustomerCategoryPreapply, assertCustomerCategoryPreflightSource } from './customer-category-preapply.mjs';
 export const CATEGORY_GUARD_MARKERS=Object.freeze([
  'CUSTOMER_CATEGORY_MIGRATION_EXISTING_ROWS_VERIFIED',
- ...Array.from({length:6},(_,i)=>`CUSTOMER_CATEGORY_MIGRATION_DRIFT_REJECTED_${i+1}`),
+ ...Array.from({length:7},(_,i)=>`CUSTOMER_CATEGORY_MIGRATION_DRIFT_REJECTED_${i+1}`),
 ]);
 export { LEGACY_CATEGORY_MARKERS };
 export const CATEGORY_INVARIANT_MARKERS=Object.freeze([

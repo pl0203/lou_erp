@@ -97,6 +97,7 @@ LOCK TABLE public.customers IN ACCESS EXCLUSIVE MODE;`
     ['ALTER TABLE public.customers ADD COLUMN synthetic_unexpected_field text;', 'Unexpected customers column contract; migration refused'],
     ['ALTER TABLE public.customers DISABLE ROW LEVEL SECURITY;', 'Unexpected customers relation contract; migration refused'],
     ['ALTER TABLE public.customers FORCE ROW LEVEL SECURITY;', 'Unexpected customers relation contract; migration refused'],
+    ['GRANT DELETE ON TABLE public.customers TO authenticated;', 'Unexpected customers relation contract; migration refused'],
   ]
   const negative = cases.map(([mutation, expected], index) => `BEGIN;
 ${guard}

@@ -95,7 +95,7 @@ test.each([
  ['inheritance',(m:any)=>{m.relation.inheritance=true}],
  ['missing partition evidence',(m:any)=>{delete m.relation.partition}],
  ['missing inheritance evidence',(m:any)=>{delete m.relation.inheritance}],
- ['legacy columns with canonical wider ACL',(m:any)=>{m.relation.acl=metadata(0).relation.acl}],
+ ['legacy columns with DELETE regrant',(m:any)=>{m.relation.acl[0]='authenticated=arwd/postgres'}],
 ])('refuses %s using the migration relation contract', (_,mutate) => {
  const m=cleanMetadata();mutate(m)
  expect(evaluateCustomerCategoryPreapply(m).reason).toBe('Unexpected customers relation contract; migration refused')

@@ -12,7 +12,8 @@ const relation = authenticatedPrivileges => ({
 const primaryKey = name => [{name,kind:'p',validated:true,definition:'PRIMARY KEY (id)',columns:['id']}];
 const layouts = [
  {
-  name:'canonical-fixture-v1',relation:relation('arwd'),primary_keys:primaryKey('customers_pkey'),
+  // The category gate runs after pilot_security has revoked customer DELETE.
+  name:'canonical-fixture-v1',relation:relation('arw'),primary_keys:primaryKey('customers_pkey'),
   columns:[
    column(1,'id','uuid',true,'gen_random_uuid()'),column(2,'name','text',true),
    column(3,'address','text',false),column(4,'city','text',false),column(5,'phone','text',false),column(6,'email','text',false),

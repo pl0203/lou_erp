@@ -6,20 +6,21 @@ import { buildCustomerCategoryMigrationGuards } from './customer-category-migrat
 import * as ci from '../scripts/customer-category-ci.mjs'
 import { CUSTOMER_CATEGORY_PREAPPLY_CONTRACTS } from '../scripts/customer-category-preapply.mjs'
 const workflow = readFileSync('.github/workflows/pilot-safety.yml', 'utf8')
-const guards = ['CUSTOMER_CATEGORY_MIGRATION_EXISTING_ROWS_VERIFIED', ...Array.from({length:6}, (_,i)=>`CUSTOMER_CATEGORY_MIGRATION_DRIFT_REJECTED_${i+1}`)]
+const guards = ['CUSTOMER_CATEGORY_MIGRATION_EXISTING_ROWS_VERIFIED', ...Array.from({length:7}, (_,i)=>`CUSTOMER_CATEGORY_MIGRATION_DRIFT_REJECTED_${i+1}`)]
 const invariants = ['CUSTOMER_CATEGORIES_VALUES_VERIFIED','CUSTOMER_CATEGORIES_ROLES_VERIFIED','CUSTOMER_CATEGORIES_PRICING_HISTORY_VERIFIED','CUSTOMER_CATEGORIES_VERIFIED']
 const preapply = (index=1) => {
  const {name,...contract}=structuredClone(CUSTOMER_CATEGORY_PREAPPLY_CONTRACTS[index])
  return {current_user:'postgres',category_attribute_present:false,category_constraint_present:false,has_dropped_attributes:false,...contract}
 }
-test('requires exactly the seven reviewed guard markers and four invariant markers', () => {
+test('requires exactly the eight reviewed guard markers and four invariant markers', () => {
  expect(ci.CATEGORY_GUARD_MARKERS).toEqual(guards); expect(ci.CATEGORY_INVARIANT_MARKERS).toEqual(invariants)
  expect(ci.assertCategorySqlMarkers(guards.map(m=>`psql:guard.sql:9: NOTICE:  ${m}`).join('\n'), guards)).toEqual(guards)
+ expect(()=>ci.assertCategorySqlMarkers(guards.slice(0,-1).join('\n'),guards)).toThrow('Exact')
  expect(ci.assertCategorySqlMarkers(invariants.join('\n'), invariants)).toEqual(invariants)
 })
 test('requires the reviewed guard packet built from the exact corrected category migration bytes', () => {
  const packet=buildCustomerCategoryMigrationGuards(readFileSync('supabase/migrations/202610020001_customer_categories.sql','utf8'))
- expect(createHash('sha256').update(packet).digest('hex')).toBe('55878b3b78d304c62fdf9a4448e645b6c82abbdb1bee8308ca8562fbe82d88a4')
+ expect(createHash('sha256').update(packet).digest('hex')).toBe('37536ea21daea93dfb81aebfb1aa939c50f5fd7bfc60b1961288d41c0ba3c288')
 })
 test('requires complete single metadata JSON and its explicitly selected known layout', () => {
  const evidence=JSON.stringify(preapply())
