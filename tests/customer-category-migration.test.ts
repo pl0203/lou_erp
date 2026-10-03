@@ -41,7 +41,7 @@ describe('forward-only additive customer category migration', () => {
     expect(sql).toContain('Unexpected customer category schema; migration refused')
     expect(sql).toContain('Unexpected customers relation contract; migration refused')
     expect(sql).toContain('Unexpected customers column contract; migration refused')
-    for (const field of ['id', 'name', 'address', 'city', 'phone', 'email', 'pricing_tier', 'visit_frequency_days', 'last_visit_date', 'created_at']) expect(sql).toContain(`'${field}'`)
+    for (const field of ['id', 'name', 'address', 'city', 'phone', 'email', 'pricing_tier', 'visit_frequency_days', 'last_visit_date', 'created_at']) expect(sql).toContain(`"name":"${field}"`)
     expect(statements(sql)).not.toMatch(/\b(?:ADD COLUMN|ADD CONSTRAINT|CREATE TABLE)\s+IF NOT EXISTS\b/i)
   })
   it('compares exact old row/column/default/owner/ACL/RLS/policy metadata and new column ACL', () => {

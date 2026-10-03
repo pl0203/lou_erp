@@ -96,6 +96,16 @@ jobs:
               psql -X -v ON_ERROR_STOP=1 -f scale-results/catalog-pricing-guards.sql
             fi
             if [[ "$file" == supabase/migrations/202610020001_customer_categories.sql ]]; then
+              node scripts/customer-category-ci.mjs build-preapply
+              psql -X -qAt -v ON_ERROR_STOP=1 -f scale-results/customer-category-preapply.sql 2>&1 | tee scale-results/customer-category-preapply-canonical.log
+              node scripts/customer-category-ci.mjs verify-preapply-canonical
+              psql -X -v ON_ERROR_STOP=1 -d postgres -c 'CREATE DATABASE pilot_category_legacy_test;'
+              psql -X -v ON_ERROR_STOP=1 -d pilot_category_legacy_test -f tests/database/customer-category-legacy-fixture.sql
+              psql -X -qAt -v ON_ERROR_STOP=1 -d pilot_category_legacy_test -f scale-results/customer-category-preapply.sql 2>&1 | tee scale-results/customer-category-preapply-legacy.log
+              node scripts/customer-category-ci.mjs verify-preapply-legacy
+              node scripts/customer-category-ci.mjs build-legacy-guards
+              psql -X -qAt -v ON_ERROR_STOP=1 -d pilot_category_legacy_test -f scale-results/customer-category-legacy-guards.sql 2>&1 | tee scale-results/customer-category-legacy-guards.log
+              node scripts/customer-category-ci.mjs verify-legacy-guards
               node scripts/customer-category-ci.mjs build-guards
               psql -X -qAt -v ON_ERROR_STOP=1 -f scale-results/customer-category-guards.sql 2>&1 | tee scale-results/customer-category-guards.log
               node scripts/customer-category-ci.mjs verify-guards

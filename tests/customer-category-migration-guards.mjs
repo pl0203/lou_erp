@@ -3,7 +3,8 @@
 // Deliberately category-specific, not a SQL parser. Only the current migration's
 // top-level statement sequence is supported; comments and quoted content cannot
 // disguise another statement. Backslashes are unsupported even inside comments.
-function assertSupportedMigration(source) {
+import { assertCustomerCategoryPreflightSource } from '../scripts/customer-category-preapply.mjs'
+export function assertSupportedCustomerCategoryMigrationSource(source) {
   if (typeof source !== 'string' || /[\\\0]/.test(source)) throw new Error('Unsupported migration input or psql execution path')
   const statements = []
   let statement = ''
@@ -70,10 +71,11 @@ function assertSupportedMigration(source) {
     || source.match(/^BEGIN;$/gm)?.length !== 1 || source.match(/^COMMIT;$/gm)?.length !== 1 || !/\nCOMMIT;\s*$/.test(source)) {
     throw new Error('Only the bounded category migration statement sequence is supported')
   }
+  assertCustomerCategoryPreflightSource(source)
 }
 
 export function buildCustomerCategoryMigrationGuards(source) {
-  assertSupportedMigration(source)
+  assertSupportedCustomerCategoryMigrationSource(source)
   const preflights = source.match(/DO \$preflight\$[\s\S]*?END \$preflight\$;/g)
   if (preflights?.length !== 1 || source.includes('$category_guard_source$')) throw new Error('Exact category preflight boundary required')
   const preflight = preflights[0]

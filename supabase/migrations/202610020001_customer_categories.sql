@@ -17,23 +17,39 @@ BEGIN
  IF EXISTS(SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid='public.customers'::regclass AND attname='customer_category')
  OR EXISTS(SELECT 1 FROM pg_catalog.pg_constraint WHERE conrelid='public.customers'::regclass AND conname='customers_customer_category_check')
  THEN RAISE EXCEPTION 'Unexpected customer category schema; migration refused'; END IF;
- IF NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class WHERE oid='public.customers'::regclass AND relkind='r'
+ IF current_user<>'postgres'
+ OR NOT EXISTS(SELECT 1 FROM pg_catalog.pg_class WHERE oid='public.customers'::regclass AND relkind='r'
    AND NOT relispartition AND relrowsecurity AND NOT relforcerowsecurity
    AND relowner=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user))
  OR EXISTS(SELECT 1 FROM pg_catalog.pg_inherits WHERE inhrelid='public.customers'::regclass OR inhparent='public.customers'::regclass)
  THEN RAISE EXCEPTION 'Unexpected customers relation contract; migration refused'; END IF;
- SELECT jsonb_agg(jsonb_build_array(a.attname,pg_catalog.format_type(a.atttypid,a.atttypmod),a.attnotnull,a.attidentity,a.attgenerated) ORDER BY a.attnum)
- INTO actual FROM pg_catalog.pg_attribute a WHERE a.attrelid='public.customers'::regclass AND a.attnum>0 AND NOT a.attisdropped;
- SELECT jsonb_agg(jsonb_build_array(name,type_name,required,'','') ORDER BY position) INTO expected FROM (VALUES
-  (1,'id','uuid',true), (2,'name','text',true), (3,'address','text',false),
-  (4,'city','text',false), (5,'phone','text',false), (6,'email','text',false),
-  (7,'pricing_tier','public.pricing_tier',true), (8,'visit_frequency_days','integer',true),
-  (9,'last_visit_date','date',false), (10,'created_at','timestamp with time zone',false)
- ) contract(position,name,type_name,required);
- IF actual IS DISTINCT FROM expected
- OR NOT EXISTS(SELECT 1 FROM pg_catalog.pg_constraint k JOIN pg_catalog.pg_attribute a ON a.attrelid=k.conrelid AND a.attname='id'
-   WHERE k.conrelid='public.customers'::regclass AND k.contype='p' AND k.convalidated AND k.conkey=ARRAY[a.attnum])
+ SELECT metadata.value INTO actual FROM (SELECT jsonb_build_object(
+ 'current_user',current_user,
+ 'category_attribute_present',EXISTS(SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid='public.customers'::regclass AND attname='customer_category'),
+ 'category_constraint_present',EXISTS(SELECT 1 FROM pg_catalog.pg_constraint WHERE conrelid='public.customers'::regclass AND conname='customers_customer_category_check'),
+ 'has_dropped_attributes',EXISTS(SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid='public.customers'::regclass AND attnum>0 AND attisdropped),
+ 'relation',(SELECT jsonb_build_object('kind',c.relkind,'owner',pg_catalog.pg_get_userbyid(c.relowner),
+  'rls',c.relrowsecurity,'force_rls',c.relforcerowsecurity,'partition',c.relispartition,
+  'inheritance',EXISTS(SELECT 1 FROM pg_catalog.pg_inherits WHERE inhrelid=c.oid OR inhparent=c.oid),
+  'acl',(SELECT jsonb_agg(e::text ORDER BY e::text) FROM unnest(c.relacl) e))
+  FROM pg_catalog.pg_class c WHERE c.oid='public.customers'::regclass),
+ 'columns',(SELECT jsonb_agg(jsonb_build_object('position',a.attnum,'name',a.attname,
+  'type',pg_catalog.format_type(a.atttypid,a.atttypmod),'notnull',a.attnotnull,'identity',a.attidentity,'generated',a.attgenerated,
+  'default',pg_catalog.pg_get_expr(d.adbin,d.adrelid),'acl',a.attacl::text) ORDER BY a.attnum)
+  FROM pg_catalog.pg_attribute a LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
+  WHERE a.attrelid='public.customers'::regclass AND a.attnum>0 AND NOT a.attisdropped),
+ 'primary_keys',(SELECT coalesce(jsonb_agg(jsonb_build_object('name',k.conname,'kind',k.contype,'validated',k.convalidated,
+  'definition',pg_catalog.pg_get_constraintdef(k.oid),'columns',(SELECT jsonb_agg(a.attname ORDER BY key.position)
+   FROM unnest(k.conkey) WITH ORDINALITY AS key(number,position) JOIN pg_catalog.pg_attribute a ON a.attrelid=k.conrelid AND a.attnum=key.number)) ORDER BY k.conname),'[]'::jsonb)
+  FROM pg_catalog.pg_constraint k WHERE k.conrelid='public.customers'::regclass AND k.contype='p')
+) AS value) metadata;
+ SELECT contract INTO expected FROM jsonb_array_elements('[{"name":"canonical-fixture-v1","relation":{"kind":"r","owner":"postgres","rls":true,"force_rls":false,"partition":false,"inheritance":false,"acl":["authenticated=arwd/postgres","postgres=arwdDxtm/postgres","service_role=arwdDxtm/postgres"]},"primary_keys":[{"name":"customers_pkey","kind":"p","validated":true,"definition":"PRIMARY KEY (id)","columns":["id"]}],"columns":[{"position":1,"name":"id","type":"uuid","notnull":true,"identity":"","generated":"","default":"gen_random_uuid()","acl":null},{"position":2,"name":"name","type":"text","notnull":true,"identity":"","generated":"","default":null,"acl":null},{"position":3,"name":"address","type":"text","notnull":false,"identity":"","generated":"","default":null,"acl":null},{"position":4,"name":"city","type":"text","notnull":false,"identity":"","generated":"","default":null,"acl":null},{"position":5,"name":"phone","type":"text","notnull":false,"identity":"","generated":"","default":null,"acl":null},{"position":6,"name":"email","type":"text","notnull":false,"identity":"","generated":"","default":null,"acl":null},{"position":7,"name":"pricing_tier","type":"public.pricing_tier","notnull":true,"identity":"","generated":"","default":"''luar_kota''::public.pricing_tier","acl":null},{"position":8,"name":"visit_frequency_days","type":"integer","notnull":true,"identity":"","generated":"","default":"7","acl":null},{"position":9,"name":"last_visit_date","type":"date","notnull":false,"identity":"","generated":"","default":null,"acl":null},{"position":10,"name":"created_at","type":"timestamp with time zone","notnull":false,"identity":"","generated":"","default":"now()","acl":null}]},{"name":"known-legacy-v1","relation":{"kind":"r","owner":"postgres","rls":true,"force_rls":false,"partition":false,"inheritance":false,"acl":["authenticated=arw/postgres","postgres=arwdDxtm/postgres","service_role=arwdDxtm/postgres"]},"primary_keys":[{"name":"suppliers_pkey","kind":"p","validated":true,"definition":"PRIMARY KEY (id)","columns":["id"]}],"columns":[{"position":1,"name":"id","type":"uuid","notnull":true,"identity":"","generated":"","default":"extensions.uuid_generate_v4()","acl":null},{"position":2,"name":"name","type":"text","notnull":true,"identity":"","generated":"","default":null,"acl":null},{"position":3,"name":"phone","type":"text","notnull":false,"identity":"","generated":"","default":null,"acl":null},{"position":4,"name":"email","type":"text","notnull":false,"identity":"","generated":"","default":null,"acl":null},{"position":5,"name":"created_at","type":"timestamp with time zone","notnull":true,"identity":"","generated":"","default":"now()","acl":null},{"position":6,"name":"address","type":"text","notnull":false,"identity":"","generated":"","default":null,"acl":null},{"position":7,"name":"visit_frequency_days","type":"integer","notnull":true,"identity":"","generated":"","default":"7","acl":null},{"position":8,"name":"last_visit_date","type":"date","notnull":false,"identity":"","generated":"","default":null,"acl":null},{"position":9,"name":"city","type":"text","notnull":false,"identity":"","generated":"","default":null,"acl":null},{"position":10,"name":"pricing_tier","type":"public.pricing_tier","notnull":true,"identity":"","generated":"","default":"''luar_kota''::public.pricing_tier","acl":null}]}]'::jsonb) contract
+ WHERE actual->'columns'=contract->'columns';
+ IF expected IS NULL OR actual->'has_dropped_attributes' IS DISTINCT FROM 'false'::jsonb
+ OR actual->'primary_keys' IS DISTINCT FROM expected->'primary_keys'
  THEN RAISE EXCEPTION 'Unexpected customers column contract; migration refused'; END IF;
+ IF actual->'relation' IS DISTINCT FROM expected->'relation'
+ THEN RAISE EXCEPTION 'Unexpected customers relation contract; migration refused'; END IF;
 END $preflight$;
 
 -- Exact snapshots are taken under the customer lock. row_security=off raises if
