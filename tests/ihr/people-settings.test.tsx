@@ -1,3 +1,4 @@
+import { Profiler } from 'react'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 import LeavePeopleSettings from '../../src/pages/ihr/leave/LeavePeopleSettings'
@@ -92,4 +93,17 @@ test('revocation preserves an unsent replacement draft and its dates',async()=>{
  expect(send).toHaveBeenCalledWith(expect.objectContaining({approverId:null,effectiveFrom:null,effectiveUntil:null}))
  expect((screen.getByLabelText('Berlaku mulai') as HTMLInputElement).value).toBe('2099-10-03')
  expect(warned()).toBe(true);expect(onSaved).toHaveBeenCalledWith({hasUnsavedChanges:true})
+})
+
+test('confirmed member save releases the unload warning in the same UI commit',async()=>{
+ const send=vi.fn().mockResolvedValue({id,version:2,operation:'set_member'}),onSaved=vi.fn()
+ const committedWarnings:boolean[]=[]
+ render(<Profiler id="member-editor" onRender={()=>{
+  if(screen.queryByRole('status'))committedWarnings.push(warned())
+ }}><LeavePeopleSettings actorId={actor} member={member} approvers={people} calendars={[]} impacts={impacts} send={send} onSaved={onSaved}/></Profiler>)
+ edit('Mulai bekerja','2026-10-01');edit('Alasan perubahan','Fictional save')
+ expect(warned()).toBe(true)
+ fireEvent.click(screen.getByRole('button',{name:'Simpan anggota'}));await screen.findByRole('status')
+ expect(onSaved).toHaveBeenCalledWith({hasUnsavedChanges:false})
+ expect(committedWarnings).toEqual([false])
 })
