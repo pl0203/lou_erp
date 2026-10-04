@@ -107,6 +107,7 @@ SELECT pg_temp.assert_true(jsonb_array_length(public.leave_calendar_v1(pg_temp.q
 SELECT pg_temp.assert_true(public.leave_reads_context_v1('own')->>'defaultRangeState'='ready','own audience remains independent of mixed assigned default');
 RESET ROLE;
 SELECT set_config('request.jwt.claim.sub','',true);
+\ir calendar-authorization-boundaries.sql
 UPDATE public.ihr_leave_approvers SET revoked_at=statement_timestamp(),revoked_by='71000000-0000-0000-0000-000000000005' WHERE employee_id='71000000-0000-0000-0000-000000000001';
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub','71000000-0000-0000-0000-000000000003',true);

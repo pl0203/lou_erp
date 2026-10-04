@@ -16,6 +16,9 @@ export function unitExplain(plan: any, changed: Record<string, any> = {}) {
   return [{ 'Planning Time': .1, 'Execution Time': .2, Plan: { 'Node Type': 'Aggregate', 'Actual Rows': 1, 'Actual Loops': 1, 'Shared Hit Blocks': 1, 'Shared Read Blocks': 0, Plans: plan.requiredRelations.map(node) } }]
 }
 export function unitPlanQuery(sql: string, plans = buildCapacityPlans()) {
+  const calendar = plans.find(p => p.calendarAuthorization?.sql === sql)
+  if (calendar) return { actor: calendar.calendarAuthorization.actor, audience: calendar.calendarAuthorization.audience,
+    employeeIds: [...calendar.calendarAuthorization.employeeIds].reverse(), authorizedAt: '2026-10-03T12:00:00+00:00' }
   if (sql.startsWith('EXPLAIN ')) return unitExplain(plans.find(p => sql.endsWith(p.sql)))
   if (sql.includes('FROM pg_indexes')) return [{ indexname: 'ihr_leave_hr_history_page', schemaname: 'private', tablename: 'ihr_leave_request_events', indexdef: 'CREATE INDEX ihr_leave_hr_history_page ON private.ihr_leave_request_events USING btree (request_id, at_time DESC, id DESC)' }]
   return undefined

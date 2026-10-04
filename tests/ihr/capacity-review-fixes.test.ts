@@ -14,10 +14,11 @@ test('measurement requires a sealed logical artifact and independently verified 
   expect(source).toContain('sealedBaseline')
   expect(source).toContain('assertRestorationProof')
 })
-test('missing plans fail closed and calendar query preserves actual security-definer predicate', () => {
+test('missing plans fail closed and calendar query binds the actual security-definer authorization set', () => {
   const plan = buildCapacityPlans().find(p => p.name === 'narrow-calendar-employee-date')
   expect(() => assertPlanGate(plan, null)).toThrow()
-  expect(plan.sql).toContain('private.ihr_leave_calendar_can_read')
+  expect(plan.calendarAuthorization.sql).toContain('private.ihr_leave_calendar_can_read')
+  expect(plan.sql).toContain('r.employee_id=ANY(')
   expect(plan.sql).toContain('jsonb_agg')
 })
 test('private request history contains genuine populated first and deep pages of fifty', () => {
@@ -81,9 +82,11 @@ test('missing, malformed, opaque and incomplete plan evidence fails without rela
   expect(() => assertPlanGate(calendar, opaque)).toThrow('opaque')
   expect(() => assertPlanGate(calendar, unitExplain(calendar, { 'Node Type': 'Seq Scan' }))).toThrow('full-table scan')
   expect(() => assertPlanGate(calendar, unitExplain(calendar))).not.toThrow()
-  expect(calendar.sql).not.toMatch(/r\.employee_id\s*=/)
-  expect(calendar.sql).toContain("private.ihr_leave_calendar_can_read")
-  expect(calendar.source.definition).toContain("private.ihr_leave_calendar_can_read(actor,r.employee_id,p_audience,authorized_at)")
+  expect(calendar.sql).toContain('r.employee_id=ANY(')
+  expect(calendar.sql).not.toContain('private.ihr_leave_calendar_can_read')
+  expect(calendar.calendarAuthorization.sql).toContain('private.ihr_leave_calendar_can_read')
+  expect(calendar.source.definition).toContain('private.ihr_leave_calendar_can_read(actor,m.user_id,p_audience,authorized_at)')
+  expect(calendar.source.definition).toContain('r.employee_id=ANY(authorized_employees)')
   const history = plans.find(p => p.name === 'narrow-private-hr-history-cursor')
   for (const token of ['(at_time,id)<', 'ORDER BY at_time DESC,id DESC LIMIT 50', 'JOIN public.users', 'LEFT JOIN LATERAL', 'ihr_leave_request_reassignments', 'ihr_leave_cancellation_attempts']) expect(history.sql).toContain(token)
   expect(history.source.commit).toBe('9b546f0962ee3bf3b55cba3f4eb68c52a30bfcf0')

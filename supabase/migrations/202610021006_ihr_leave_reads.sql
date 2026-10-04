@@ -50,15 +50,17 @@ END;
 $$;
 CREATE FUNCTION public.leave_calendar_v1(p_from date,p_to date,p_audience text DEFAULT 'own') RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
-DECLARE actor uuid:=private.ihr_leave_require_actor();authorized_at timestamptz:=statement_timestamp();rows jsonb;
+DECLARE actor uuid:=private.ihr_leave_require_actor();authorized_at timestamptz:=statement_timestamp();rows jsonb;authorized_employees uuid[];
 BEGIN
  IF p_from IS NULL OR p_to IS NULL OR NOT isfinite(p_from) OR NOT isfinite(p_to)
   OR p_from>p_to OR p_to-p_from>92 OR p_audience IS NULL OR p_audience NOT IN('own','assigned_team','granted') THEN
   RAISE EXCEPTION 'Invalid calendar range or audience' USING ERRCODE='22023';
  END IF;
  -- Audience authorization precedes row lookup, so guessed ranges cannot distinguish access.
- IF NOT EXISTS(SELECT 1 FROM public.ihr_leave_members m
-  WHERE private.ihr_leave_calendar_can_read(actor,m.user_id,p_audience,authorized_at)) THEN
+ SELECT pg_catalog.array_agg(m.user_id) INTO authorized_employees
+ FROM public.ihr_leave_members m
+ WHERE private.ihr_leave_calendar_can_read(actor,m.user_id,p_audience,authorized_at);
+ IF authorized_employees IS NULL THEN
   RAISE EXCEPTION 'Calendar access denied' USING ERRCODE='42501';
  END IF;
  SELECT coalesce(jsonb_agg(jsonb_build_object(
@@ -69,7 +71,7 @@ BEGIN
  FROM public.ihr_leave_requests r JOIN public.ihr_leave_request_days d ON d.request_id=r.id
  JOIN public.users u ON u.id=r.employee_id
  WHERE r.status IN('approved','cancellation_pending') AND d.charged_minutes>0 AND d.day BETWEEN p_from AND p_to
-  AND private.ihr_leave_calendar_can_read(actor,r.employee_id,p_audience,authorized_at);
+  AND r.employee_id=ANY(authorized_employees);
  RETURN rows;
 END;
 $$;

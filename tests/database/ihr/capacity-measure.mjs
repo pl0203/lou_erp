@@ -5,7 +5,7 @@ import { validateIhrDbTarget } from '../../../scripts/test-ihr-db.mjs'
 import { AS_OF, buildCapacityFixture, sha256, validateCapacityFixture } from './capacity-fixture.mjs'
 import { buildCapacityPlans, buildCapacityWorkloads, assertCapacityResult } from './capacity-workloads.mjs'
 import { literal } from './capacity-sql.mjs'
-import { assertPlanGate, assertCapacityPlanInventory } from './capacity-plans.mjs'
+import { assertPlanGate, assertCapacityPlanInventory, captureCapacityPlan } from './capacity-plans.mjs'
 import { assertBaselineMatches, assertCapacityIdentity, assertSealedBaseline, assertRestorationProof } from './capacity-baseline.mjs'
 export const WARMUPS = 5
 export const SAMPLES = 30
@@ -192,19 +192,25 @@ export async function runCapacityMeasurement({ environment, openSession, restore
     }
     await restore('plans', 'plan', 0)
     const session = await owner()
+    let planTransaction = false
     try {
       await verifyBaseline(session)
+      await session.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY')
+      planTransaction = true
       for (const plan of plans) {
-        const explain = await session.query(`EXPLAIN (ANALYZE, BUFFERS, SETTINGS, FORMAT JSON) ${plan.sql}`)
-        const record = { ...plan, explain }; receipt.plans.push(record); await emit('plan', record)
-        try { assertPlanGate(plan, explain); record.passed = true } catch (error) { record.passed = false; record.failure = error.message; receipt.gateFailures.push(error.message) }
+        const record = await captureCapacityPlan(session, plan, emit); receipt.plans.push(record); await emit('plan', record)
+        try { assertPlanGate(plan, record.explain); record.passed = true } catch (error) { record.passed = false; record.failure = error.message; receipt.gateFailures.push(error.message) }
       }
       if (receipt.plans.length !== plans.length || receipt.plans.some(p => p.passed !== true)) receipt.gateFailures.push('Required complete analyzed plan evidence did not pass')
       receipt.indexes = await session.query("SELECT coalesce(jsonb_agg(to_jsonb(i) ORDER BY schemaname,tablename,indexname),'[]') FROM pg_indexes i WHERE (schemaname='public' OR schemaname='private') AND tablename LIKE 'ihr_%'")
       if (!Array.isArray(receipt.indexes) || !receipt.indexes.some(i => i.indexname === 'ihr_leave_hr_history_page' && i.schemaname === 'private' && i.tablename === 'ihr_leave_request_events' && /request_id, at_time DESC, id DESC/.test(i.indexdef ?? ''))) receipt.gateFailures.push('Required private-history request/time/UUID index evidence missing')
       // Read-only EXPLAIN must leave the exact sealed state intact, including commands and sequences.
       await verifyBaseline(session)
-    } finally { await session.close() }
+      await session.query('COMMIT')
+      planTransaction = false
+    } finally {
+      try { if (planTransaction) await session.query('ROLLBACK') } finally { await session.close() }
+    }
     if (receipt.gateFailures.length) throw new Error(receipt.gateFailures.join('; '))
     const completeWorkloads = sha256(workloads) === sha256(buildCapacityWorkloads())
     receipt.capacityAccepted = completeWorkloads
