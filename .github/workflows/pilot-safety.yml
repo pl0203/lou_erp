@@ -159,6 +159,7 @@ jobs:
           set -euo pipefail
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/202610021006_ihr_leave_reads.sql
           psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/202610021007_ihr_leave_admin.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/202610021008_ihr_leave_context.sql
       - name: SQL invariants, real role permissions and Storage metadata policies
         run: |
           set -euo pipefail
@@ -185,7 +186,10 @@ jobs:
           set -euo pipefail
           composed_log="$(mktemp)"
           trap 'rm -f "$composed_log"' EXIT
+          mkdir -p scale-results
           node scripts/test-ihr-db.mjs --suite composed | tee "$composed_log"
+          [[ "$(grep -Fxc 'IHR_FINAL_CONTEXT_CONTRACT_PASSED' "$composed_log")" == 1 ]]
+          IHR_CONTEXT_CONTRACT_PATH=scale-results/ihr-context-contract.json npm test -- tests/ihr/context-sql-output.test.ts --maxWorkers=1
           [[ "$(grep -Fxc 'IHR_QUOTE_PERMISSIONS_AND_CALCULATION_PASSED' "$composed_log")" == 1 ]]
           [[ "$(grep -Fxc 'IHR_REQUESTS_ATOMIC_SUBMISSION_PASSED' "$composed_log")" == 1 ]]
           [[ "$(grep -Fxc 'IHR_REQUEST_DECISIONS_CANCELLATIONS_PASSED' "$composed_log")" == 1 ]]

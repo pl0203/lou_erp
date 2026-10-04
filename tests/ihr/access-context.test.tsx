@@ -41,6 +41,7 @@ test('director has approval-only navigation and no implied future personal balan
 })
 test.each([
   { ...base, capabilities: { request: 'true' } },
+  { ...base, setup: { ready: false, blockers: null } },
   { ...base, memberKind: 'director' },
   { ...base, scopeVersion: '' },
   { ...base, setup: { ready: true, blockers: base.setup.blockers } },

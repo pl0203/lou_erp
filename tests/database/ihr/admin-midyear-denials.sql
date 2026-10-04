@@ -10,10 +10,15 @@ DO $$ DECLARE source jsonb;BEGIN
 END $$;
 UPDATE public.ihr_leave_members SET active_policy_id=(SELECT active_policy_id FROM admin_saved_policy WHERE user_id='71000000-0000-0000-0000-000000000001') WHERE user_id='71000000-0000-0000-0000-000000000002';
 SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','71000000-0000-0000-0000-000000000006',true);
+SELECT pg_temp.assert_true(public.leave_admin_readiness_v1('71000000-0000-0000-0000-000000000002')->>'ready'='true','policy-lineage denial is not erased by otherwise-ready setup');
 SELECT set_config('request.jwt.claim.sub','71000000-0000-0000-0000-000000000002',true);
 SELECT pg_temp.assert_denied($s$SELECT public.leave_prepare_self_v1()$s$,'55000');
 SELECT pg_temp.assert_denied($s$SELECT public.leave_quote_v1(pg_temp.quote_input(pg_temp.quote_friday()+4,pg_temp.quote_friday()+4))$s$,'55000');
 SELECT pg_temp.assert_true(public.leave_context_v1()->'currentPeriod'='null'::jsonb,'cross-owner successor does not confer annual eligibility');
+SELECT public.leave_context_v1() denied_context \gset
+SELECT pg_temp.assert_true(:'denied_context'::jsonb->'setup'->>'ready'='false' AND jsonb_typeof(:'denied_context'::jsonb->'setup'->'blockers')='array','invalid entitlement remains visibly blocked in the final context');
+SELECT pg_temp.assert_true(EXISTS(SELECT 1 FROM jsonb_array_elements(:'denied_context'::jsonb->'setup'->'blockers') b WHERE b->>'code'='opening_unreconciled') AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(:'denied_context'::jsonb->'setup'->'blockers') b WHERE b->>'code'='SCHEMA_NOT_READY'),'real legacy entitlement blocker survives without obsolete sentinel');
 RESET ROLE;
 SELECT set_config('request.jwt.claim.sub','',true);
 UPDATE public.ihr_leave_members SET active_policy_id='82000000-0000-0000-0000-000000000050' WHERE user_id='71000000-0000-0000-0000-000000000002';

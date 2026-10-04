@@ -260,6 +260,7 @@ const finalMarkers = [
   'IHR_ADMIN_SCOPED_SETTINGS_PASSED',
   'IHR_FINAL_SCHEMA_PREPARATION_APPROVALS_PASSED',
   'IHR_COMPOSED_BACKEND_PLAIN_PASSED',
+  'IHR_FINAL_CONTEXT_CONTRACT_PASSED',
 ] as const
 const finalStep = workflow.match(/      - name: Guarded final composed iHR SQL suite\n([\s\S]*?)(?=      - )/)?.[1] ?? ''
 const finalScript = finalStep.match(/        run: \|\n([\s\S]*)/)?.[1].replace(/^          /gm, '') ?? ''
@@ -278,12 +279,18 @@ for marker in ${finalMarkers.join(' ')}; do
 done
 if [[ "$FAKE_RUNNER_MODE" == failed-after ]]; then exit 42; fi
 `, { mode: 0o755 })
+  writeFileSync(join(sandbox, 'npm'), `#!/bin/bash
+set -euo pipefail
+[[ \"$*\" == 'test -- tests/ihr/context-sql-output.test.ts --maxWorkers=1' ]] || exit 43
+[[ \"$IHR_CONTEXT_CONTRACT_PATH\" == 'scale-results/ihr-context-contract.json' ]] || exit 44
+if [[ \"$FAKE_RUNNER_MODE\" == failed-client ]]; then exit 45; fi
+`, { mode: 0o755 })
   try { return spawnSync('/bin/bash', ['-c', finalScript], {
     cwd: sandbox, encoding: 'utf8', timeout: 5000,
     env: { PATH: `${sandbox}:/usr/bin:/bin`, TMPDIR: sandbox, FAKE_RUNNER_MODE: mode },
   }) } finally { rmSync(sandbox, { recursive: true, force: true }) }
 }
-test('final composed shell accepts all seven distinct native completion markers once', () => {
+test('final composed shell accepts all eight distinct native completion markers once', () => {
   expect(runFinalMarkerGate().status).toBe(0)
   expect(finalStep).toContain('set -euo pipefail')
   expect(finalStep).not.toMatch(/(?:echo|printf)[^\n]*IHR_/)
@@ -294,6 +301,9 @@ test('final composed shell accepts all seven distinct native completion markers 
 })
 test.each(finalMarkers.flatMap(marker => ['missing', 'partial', 'duplicate'].map(mode => `${mode}-${marker}`)))('final composed shell rejects incomplete native proof: %s', mode => {
   expect(runFinalMarkerGate(mode).status).toBe(1)
+})
+test('final composed shell rejects a failed strict client parse of real SQL evidence',()=>{
+  expect(runFinalMarkerGate('failed-client').status).toBe(45)
 })
 test.each(['failed-before', 'failed-after'])('final composed shell rejects failed runner output: %s', mode => {
   expect(runFinalMarkerGate(mode).status).toBe(42)
@@ -338,11 +348,11 @@ function assertLiteralSqlClosure(entries: Map<string, string>, entryPoints: stri
 
 test('the literal CI source manifest pins every HR migration and recursive SQL include', () => {
   const lines = readFileSync('tests/database/ihr/ci-source-manifest.sha256', 'utf8').trimEnd().split('\n')
-  expect(lines.every(line => /^[a-f0-9]{64}  (?:scripts\/test-ihr-db\.mjs|supabase\/migrations\/20261002100[1-7]_ihr_leave_[a-z]+\.sql|tests\/database\/ihr\/[a-z/-]+\.sql)$/.test(line))).toBe(true)
+  expect(lines.every(line => /^[a-f0-9]{64}  (?:scripts\/test-ihr-db\.mjs|supabase\/migrations\/20261002100[1-8]_ihr_leave_[a-z]+\.sql|tests\/database\/ihr\/[a-z/-]+\.sql)$/.test(line))).toBe(true)
   const entries = new Map(lines.map(line => [line.slice(66), line.slice(0, 64)]))
   expect(entries.size).toBe(lines.length)
-  for (const name of ['foundation', 'calendar', 'accounts', 'quote', 'requests', 'reads', 'admin']) {
-    const number = ['foundation', 'calendar', 'accounts', 'quote', 'requests', 'reads', 'admin'].indexOf(name) + 1
+  for (const name of ['foundation', 'calendar', 'accounts', 'quote', 'requests', 'reads', 'admin', 'context']) {
+    const number = ['foundation', 'calendar', 'accounts', 'quote', 'requests', 'reads', 'admin', 'context'].indexOf(name) + 1
     expect(entries.has(`supabase/migrations/20261002100${number}_ihr_leave_${name}.sql`)).toBe(true)
   }
   assertLiteralSqlClosure(entries, ['foundation', 'calendar', 'accounts', 'quote', 'requests', 'composed'].map(suite => `tests/database/ihr/${suite}.sql`))

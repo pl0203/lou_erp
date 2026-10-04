@@ -43,6 +43,7 @@ SELECT set_config('request.jwt.claim.sub','71000000-0000-0000-0000-000000000001'
 SELECT public.leave_quote_v1(pg_temp.quote_input(pg_temp.quote_friday()+3,pg_temp.quote_friday()+3)) after_successor_quote \gset
 SELECT pg_temp.assert_true(:'after_successor_quote'::jsonb->>'totalMinutes'='450' AND :'after_successor_quote'::jsonb->>'fingerprint'<>:'before_successor_quote'::jsonb->>'fingerprint','legitimate midyear successor quotes successfully with changed fingerprint');
 SELECT pg_temp.assert_true(public.leave_context_v1()->'currentPeriod'->>'year'=:'before_successor_account'::jsonb->>'year','midyear successor retains current-period context');
+SELECT pg_temp.assert_true(public.leave_context_v1()->'setup'='{"ready":true,"blockers":[]}'::jsonb,'valid owned policy successor remains ready in the final context');
 SELECT pg_temp.assert_true(public.leave_prepare_self_v1()->>'accountId'=:'before_successor_account'::jsonb->>'accountId','midyear preparation returns original account');
 SELECT public.leave_quote_v1(jsonb_set(pg_temp.quote_input(pg_temp.quote_friday()+3,pg_temp.quote_friday()+3),'{reason}','""')) no_reason_quote \gset
 SELECT public.leave_transaction_v1('81000000-0000-0000-0000-000000000017','submit_request',jsonb_build_object('input',jsonb_set(pg_temp.quote_input(pg_temp.quote_friday()+3,pg_temp.quote_friday()+3),'{reason}','""'),'quote_fingerprint',:'no_reason_quote'::jsonb->>'fingerprint')) successor_request \gset
