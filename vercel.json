@@ -1,0 +1,17 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "git": {
+    "deploymentEnabled": {
+      "fix/pilot-database": true,
+      "fix/pilot-scale-sql": false,
+      "ci/customer-categories-postgres": false,
+      "ci/ihr-leave-postgres": false
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

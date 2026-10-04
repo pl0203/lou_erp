@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
+import { getPasswordSetupIdentity, updatePasswordForSetup } from '../lib/supabase'
+import type { PasswordSetupResult } from '../lib/passwordSetup'
 
 export default function ResetPassword() {
   const navigate = useNavigate()
@@ -8,24 +9,38 @@ export default function ResetPassword() {
   const [confirm, setConfirm] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [setup, setSetup] = useState<PasswordSetupResult | null>(null)
+  const submitting = useRef(false)
+
+  useEffect(() => {
+    let active = true
+    void getPasswordSetupIdentity().then(result => { if (active) setSetup(result) })
+    return () => { active = false }
+  }, [])
 
   const handleReset = async () => {
+    if (submitting.current || !setup?.identity) return
     if (!password) return setError('Masukkan kata sandi baru.')
     if (password.length < 8) return setError('Kata sandi minimal 8 karakter.')
     if (password !== confirm) return setError('Kata sandi tidak cocok.')
 
+    submitting.current = true
     setLoading(true)
     setError('')
-
-    const { error: updateError } = await supabase.auth.updateUser({ password })
-
-    if (updateError) {
-      setError(updateError.message)
+    try {
+      const result = await updatePasswordForSetup(setup.identity.userId, password)
+      if (result.sessionChanged) {
+        setSetup({ identity: null, error: result.error })
+        return
+      }
+      if (result.error) { setError(result.error); return }
+      navigate('/login', { replace: true })
+    } catch {
+      setError('Tidak dapat menyimpan kata sandi. Periksa koneksi dan coba lagi.')
+    } finally {
+      submitting.current = false
       setLoading(false)
-      return
     }
-
-    navigate('/login', { replace: true })
   }
 
   return (
@@ -36,7 +51,13 @@ export default function ResetPassword() {
           <p className="text-sm text-gray-500 mt-1">Pilih kata sandi yang kuat untuk akun Anda.</p>
         </div>
 
-        <div className="space-y-4">
+        {!setup ? <p role="status">Memeriksa tautan...</p> : !setup.identity ? (
+          <div role="alert">
+            <p className="text-red-600 text-sm">{setup.error}</p>
+            <button onClick={() => navigate('/forgot-password')} className="text-blue-600 text-sm mt-4">Minta tautan reset baru</button>
+          </div>
+        ) : <div className="space-y-4">
+          <p className="text-sm text-gray-600">{setup.identity.email}</p>
           <div>
             <label className="block text-sm text-gray-600 mb-1">Kata sandi baru</label>
             <input
@@ -68,7 +89,7 @@ export default function ResetPassword() {
           >
             {loading ? 'Menyimpan...' : 'Simpan kata sandi'}
           </button>
-        </div>
+        </div>}
       </div>
     </div>
   )

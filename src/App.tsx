@@ -140,12 +140,12 @@ export default function App() {
         <ProtectedRoute allowedRoles={HEAD_UP}><Promotions /></ProtectedRoute>
       } />
 
-      {/* iHR — executive only */}
+      {/* User administration stays executive-only; leave authority is server-controlled. */}
       <Route path="/ihr/users" element={
         <ProtectedRoute allowedRoles={EXECUTIVE_ONLY}><UserManagement /></ProtectedRoute>
       } />
       <Route path="/ihr/leave" element={
-        <ProtectedRoute allowedRoles={EXECUTIVE_ONLY}><LeaveManagement /></ProtectedRoute>
+        <ProtectedRoute><LeaveManagement /></ProtectedRoute>
       } />
 
       {/* Default */}

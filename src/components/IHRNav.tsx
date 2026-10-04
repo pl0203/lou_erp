@@ -4,14 +4,17 @@ import { useAuth } from '../lib/AuthContext'
 
 const IHR_COLOR = '#e56d3a'
 
-const links = [
+const allLinks = [
   { to: '/ihr/users', label: 'Manajemen Pengguna' },
-  { to: '/ihr/leave', label: 'Manajemen Cuti', comingSoon: true },
+  { to: '/ihr/leave', label: 'Manajemen Cuti' },
 ]
 
-export default function IHRNav() {
+export default function IHRNav({ beforeSignOut }: { beforeSignOut?: () => boolean } = {}) {
   const { profile, signOut } = useAuth()
   const navigate = useNavigate()
+  const roleHome: Record<string, string> = { po_admin: '/athel/po', sales_person: '/girard/schedule', sales_manager: '/girard/schedule', sales_head: '/girard/schedule', executive: '/landing' }
+  const home = roleHome[profile?.role ?? ''] ?? '/ihr/leave'
+  const links = allLinks.filter(link => link.to !== '/ihr/users' || profile?.role === 'executive')
   const [showUser, setShowUser] = useState(false)
   const userRef = useRef<HTMLDivElement>(null)
 
@@ -26,6 +29,7 @@ export default function IHRNav() {
   }, [])
 
   const handleSignOut = async () => {
+    if (beforeSignOut && !beforeSignOut()) return
     await signOut()
     navigate('/login', { replace: true })
   }
@@ -41,7 +45,7 @@ export default function IHRNav() {
     <div className="bg-white border-b border-gray-200 px-4 md:px-8">
       <div className="flex items-center gap-1 h-14">
         <button
-          onClick={() => navigate('/landing')}
+          onClick={() => navigate(home)}
           className="flex items-center gap-1.5 py-1.5 px-2 rounded-lg hover:bg-gray-100 transition-colors mr-4"
         >
           <span className="text-lg font-bold" style={{ color: IHR_COLOR }}>iHR</span>
@@ -59,11 +63,6 @@ export default function IHRNav() {
               }
             >
               {link.label}
-              {link.comingSoon && (
-                <span className="text-xs bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded-full font-normal">
-                  Segera
-                </span>
-              )}
             </NavLink>
           ))}
         </div>
@@ -80,17 +79,13 @@ export default function IHRNav() {
               }
             >
               {link.label}
-              {link.comingSoon && (
-                <span className="text-xs bg-gray-100 text-gray-400 px-1 py-0.5 rounded-full font-normal">
-                  Segera
-                </span>
-              )}
             </NavLink>
           ))}
         </div>
 
         <div className="relative ml-auto" ref={userRef}>
           <button
+            aria-label="Menu pengguna"
             onClick={() => setShowUser(p => !p)}
             className="w-8 h-8 rounded-full text-white text-xs font-semibold flex items-center justify-center transition-opacity hover:opacity-80"
             style={{ backgroundColor: IHR_COLOR }}
@@ -105,10 +100,10 @@ export default function IHRNav() {
                 <p className="text-xs text-gray-400 mt-0.5 capitalize">{profile?.role.replace(/_/g, ' ')}</p>
               </div>
               <button
-                onClick={() => { navigate('/landing'); setShowUser(false) }}
+                onClick={() => { navigate(home); setShowUser(false) }}
                 className="w-full text-left px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50 transition-colors border-b border-gray-100"
               >
-                Ganti modul
+                {profile?.role === 'executive' ? 'Ganti modul' : 'Kembali ke modul'}
               </button>
               <button
                 onClick={handleSignOut}

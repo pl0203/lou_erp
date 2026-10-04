@@ -40,7 +40,8 @@ export default function AthelNav() {
     { to: '/athel/po',           label: 'Manajemen PO', roles: ['po_admin', 'executive'] },
     { to: '/athel/sales-orders', label: 'PO dari Sales', roles: ['po_admin', 'executive'], badge: pendingCount },
     { to: '/athel/customers',    label: 'Daftar Pelanggan',  roles: ['po_admin', 'executive'] },
-    { to: '/athel/products',     label: 'Daftar Barang',     roles: ['po_admin', 'executive'] }
+    { to: '/athel/products',     label: 'Daftar Barang',     roles: ['po_admin', 'executive'] },
+    { to: '/ihr/leave',          label: 'Cuti', roles: ['po_admin', 'executive'] }
   ]
 
   const links = allAthelLinks.filter(l => profile && l.roles.includes(profile.role))
@@ -75,7 +76,7 @@ export default function AthelNav() {
       <div className="flex items-center gap-1 h-14">
 
         {/* Logo / Module switcher */}
-        <div className="relative mr-4" ref={switcherRef}>
+        <div className="relative mr-2 shrink-0 lg:mr-4" ref={switcherRef}>
           <button
             onClick={() => showSwitcherBtn && setShowSwitcher(p => !p)}
             className={`flex items-center gap-1.5 py-1.5 px-2 rounded-lg transition-colors
@@ -117,7 +118,7 @@ export default function AthelNav() {
         </div>
 
         {/* Nav links — desktop */}
-        <div className="hidden md:flex items-center gap-1 flex-1">
+        <div className="hidden min-w-0 lg:flex items-center gap-1 flex-1 overflow-x-auto">
           {links.map(link => (
             <NavLink
               key={link.to}
@@ -141,7 +142,7 @@ export default function AthelNav() {
         </div>
 
         {/* Nav links — mobile */}
-        <div className="flex md:hidden items-center gap-1 flex-1 overflow-x-auto">
+        <div className="flex min-w-0 lg:hidden items-center gap-1 flex-1 overflow-x-auto">
           {links.map(link => (
             <NavLink
               key={link.to}
@@ -165,7 +166,7 @@ export default function AthelNav() {
         </div>
 
         {/* User menu */}
-        <div className="relative ml-auto" ref={userRef}>
+        <div className="relative ml-auto shrink-0" ref={userRef}>
           <button
             onClick={() => setShowUser(p => !p)}
             className="w-8 h-8 rounded-full bg-blue-600 text-white text-xs font-semibold flex items-center justify-center hover:bg-blue-700 transition-colors"

@@ -1,30 +1,15 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
+import { usePagedRead } from '../../lib/reads/usePagedRead'
+import { fetchSalesPerformancePage } from '../../lib/reads/reports'
+import type { SalesPerformanceRow } from '../../lib/reads/contracts'
+import { formatMoney } from '../../lib/reads/money'
+import PaginationControls from '../../components/PaginationControls'
 import { useAuth } from '../../lib/AuthContext'
 import GirardNav from '../../components/GirardNav'
 
-type PerformanceData = {
-  id: string
-  full_name: string
-  scheduled: number
-  visited: number
-  missed: number
-  orders: number
-  total_sales: number
-  visit_rate: number
-  sales_target: number | null
-}
-
-function getMonthRange(yearMonth: string): { from: string; to: string } {
-  const [year, month] = yearMonth.split('-').map(Number)
-  const from = new Date(year, month - 1, 1)
-  const to   = new Date(year, month, 0)
-  return {
-    from: from.toISOString().split('T')[0],
-    to:   to.toISOString().split('T')[0],
-  }
-}
+type PerformanceData = SalesPerformanceRow
 
 function currentYearMonth(): string {
   const now = new Date()
@@ -32,11 +17,12 @@ function currentYearMonth(): string {
 }
 
 async function fetchEarliestScheduleMonth(): Promise<string> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('sales_schedules')
     .select('scheduled_date')
-    .order('scheduled_date', { ascending: true })
+    .order('scheduled_date', { ascending: true }).order('id')
     .limit(1)
+  if (error) throw error
   if (!data || data.length === 0) return currentYearMonth()
   const d = new Date(data[0].scheduled_date)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
@@ -58,26 +44,6 @@ function buildMonthOptions(earliest: string): { value: string; label: string }[]
   return options
 }
 
-async function fetchSalesTargets(
-  userIds: string[],
-  yearMonth: string
-): Promise<Record<string, number>> {
-  if (userIds.length === 0) return {}
-  const { data } = await supabase
-    .from('sales_targets')
-    .select('user_id, year_month, target_value')
-    .in('user_id', userIds)
-    .lte('year_month', yearMonth)
-    .order('year_month', { ascending: false })
-  const result: Record<string, number> = {}
-  for (const userId of userIds) {
-    const records = (data ?? []).filter(r => r.user_id === userId)
-    if (records.length === 0) continue
-    result[userId] = records[0].target_value
-  }
-  return result
-}
-
 async function upsertSalesTarget(
   userId: string,
   yearMonth: string,
@@ -96,80 +62,6 @@ async function upsertSalesTarget(
   if (error) throw error
 }
 
-async function fetchPerformance(
-  managerId: string,
-  role: string,
-  yearMonth: string
-): Promise<PerformanceData[]> {
-  const { from, to } = getMonthRange(yearMonth)
-
-  let teamQuery = supabase
-    .from('users')
-    .select('id, full_name')
-    .in('role', ['sales_person', 'sales_manager', 'sales_head', 'executive'])
-    .eq('is_active', true)
-    .order('full_name')
-
-  if (role === 'sales_manager') {
-    const { data: teamIds } = await supabase
-      .from('users')
-      .select('id')
-      .eq('manager_id', managerId)
-      .eq('is_active', true)
-    const ids = [...(teamIds ?? []).map(t => t.id), managerId]
-    teamQuery = teamQuery.in('id', ids)
-  }
-
-  const { data: team, error: teamError } = await teamQuery
-  if (teamError) throw teamError
-  if (!team || team.length === 0) return []
-
-  const teamIds = team.map(t => t.id)
-
-  const { data: schedules, error: schedError } = await supabase
-    .from('sales_schedules')
-    .select('id, sales_person_id, status, outlet_visits(id)')
-    .in('sales_person_id', teamIds)
-    .gte('scheduled_date', from)
-    .lte('scheduled_date', to)
-  if (schedError) throw schedError
-
-  const { data: orders, error: ordError } = await supabase
-    .from('girard_orders')
-    .select('id, submitted_by, total_value')
-    .in('submitted_by', teamIds)
-    .gte('created_at', `${from}T00:00:00`)
-    .lte('created_at', `${to}T23:59:59`)
-  if (ordError) throw ordError
-
-  const targetsMap = await fetchSalesTargets(teamIds, yearMonth)
-
-  return team.map(member => {
-    const mySchedules = (schedules ?? []).filter(s => s.sales_person_id === member.id)
-    const myVisited = mySchedules.filter(s => (s.outlet_visits as any[]).length > 0)
-    const myMissed = mySchedules.filter(s =>
-      (s.outlet_visits as any[]).length === 0 && s.status === 'missed'
-    )
-    const myOrders = (orders ?? []).filter(o => o.submitted_by === member.id)
-    const totalSales = myOrders.reduce((sum, o) => sum + (o.total_value ?? 0), 0)
-    const visitRate = mySchedules.length > 0
-      ? Math.round((myVisited.length / mySchedules.length) * 100)
-      : 0
-
-    return {
-      id: member.id,
-      full_name: member.full_name,
-      scheduled: mySchedules.length,
-      visited: myVisited.length,
-      missed: myMissed.length,
-      orders: myOrders.length,
-      total_sales: totalSales,
-      visit_rate: visitRate,
-      sales_target: targetsMap[member.id] ?? null,
-    }
-  })
-}
-
 function InlineSalesTargetEdit({
   userId,
   yearMonth,
@@ -179,7 +71,7 @@ function InlineSalesTargetEdit({
 }: {
   userId: string
   yearMonth: string
-  currentTarget: number | null
+  currentTarget: string | null
   canEdit: boolean
   onSaved: () => void
 }) {
@@ -201,7 +93,7 @@ function InlineSalesTargetEdit({
   if (!canEdit) {
     return (
       <span className="text-gray-400 text-xs">
-        {currentTarget != null ? `Rp ${(currentTarget / 1_000_000).toFixed(1)}M` : '—'}
+        {currentTarget != null ? `Rp ${formatMoney(currentTarget, 'millions')}M` : '—'}
       </span>
     )
   }
@@ -244,7 +136,7 @@ function InlineSalesTargetEdit({
       className="text-right w-full group"
     >
       <span className="text-gray-400 text-xs group-hover:text-green-600 transition-colors">
-        {currentTarget != null ? `Rp ${(currentTarget / 1_000_000).toFixed(1)}M` : '+ Set target'}
+        {currentTarget != null ? `Rp ${formatMoney(currentTarget, 'millions')}M` : '+ Set target'}
       </span>
     </button>
   )
@@ -315,10 +207,10 @@ function PerformanceTable({
                 </td>
                 <td className="px-5 py-4 text-center text-gray-700">{p.orders}</td>
                 <td className="px-5 py-4 text-right font-medium text-gray-900">
-                  Rp {(p.total_sales / 1_000_000).toFixed(1)}M
+                  Rp {formatMoney(p.total_sales, 'millions')}M
                 </td>
                 <td className="px-5 py-4 text-right">
-                  <InlineSalesTargetEdit
+                  <InlineSalesTargetEdit key={`${p.id}:${yearMonth}`}
                     userId={p.id}
                     yearMonth={yearMonth}
                     currentTarget={p.sales_target}
@@ -374,12 +266,12 @@ function PerformanceTable({
               <div className="bg-gray-50 rounded-lg p-3 text-center">
                 <p className="text-xs text-gray-400 mb-1">Total Penjualan</p>
                 <p className="font-semibold text-gray-900">
-                  Rp {(p.total_sales / 1_000_000).toFixed(1)}M
+                  Rp {formatMoney(p.total_sales, 'millions')}M
                 </p>
               </div>
               <div className="bg-gray-50 rounded-lg p-3 text-center">
                 <p className="text-xs text-gray-400 mb-1">Target</p>
-                <InlineSalesTargetEdit
+                <InlineSalesTargetEdit key={`${p.id}:${yearMonth}`}
                   userId={p.id}
                   yearMonth={yearMonth}
                   currentTarget={p.sales_target}
@@ -402,7 +294,7 @@ function SummaryCards({
   totalVisited: number
   totalScheduled: number
   totalOrders: number
-  totalSales: number
+  totalSales: string
 }) {
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -424,7 +316,7 @@ function SummaryCards({
       <div className="bg-white rounded-xl border border-gray-200 p-4">
         <p className="text-xs text-gray-400 mb-1">Total Penjualan</p>
         <p className="text-2xl font-bold text-gray-900">
-          Rp {(totalSales / 1_000_000).toFixed(1)}M
+          Rp {formatMoney(totalSales, 'millions')}M
         </p>
         <p className="text-xs text-gray-400 mt-1">dari tim sales lapangan</p>
       </div>
@@ -433,165 +325,30 @@ function SummaryCards({
 }
 
 export default function GirardPerformance() {
-  const { profile } = useAuth()
-  const queryClient = useQueryClient()
-  const [yearMonth, setYearMonth] = useState(currentYearMonth())
-
-  const canEdit = profile?.role === 'sales_head' ||
-                  profile?.role === 'executive' ||
-                  profile?.role === 'sales_manager'
-
-  const { data: earliest } = useQuery({
-    queryKey: ['earliest_schedule_month'],
-    queryFn: fetchEarliestScheduleMonth,
-  })
-
-  const monthOptions = earliest ? buildMonthOptions(earliest) : []
-
-  const { data: performance, isLoading } = useQuery({
-    queryKey: ['performance', profile?.id, profile?.role, yearMonth],
-    queryFn: () => fetchPerformance(profile!.id, profile!.role, yearMonth),
-    enabled: !!profile?.id,
-  })
-
-  const totalVisited   = performance?.reduce((sum, p) => sum + p.visited, 0) ?? 0
-  const totalScheduled = performance?.reduce((sum, p) => sum + p.scheduled, 0) ?? 0
-  const totalOrders    = performance?.reduce((sum, p) => sum + p.orders, 0) ?? 0
-  const totalSales     = performance?.reduce((sum, p) => sum + p.total_sales, 0) ?? 0
-  const avgVisitRate   = performance?.length
-    ? Math.round(performance.reduce((sum, p) => sum + p.visit_rate, 0) / performance.length)
-    : 0
-
-  const selectedLabel = monthOptions.find(m => m.value === yearMonth)?.label ?? yearMonth
-
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['performance'] })
-
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <GirardNav />
-
-      <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900">Performa Tim Sales</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{selectedLabel}</p>
-        </div>
-        <select
-          value={yearMonth}
-          onChange={e => setYearMonth(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-        >
-          {monthOptions.map(m => (
-            <option key={m.value} value={m.value}>{m.label}</option>
-          ))}
-        </select>
-      </div>
-
-      <div className="px-4 md:px-8 py-6 space-y-6">
-        <SummaryCards
-          avgVisitRate={avgVisitRate}
-          totalVisited={totalVisited}
-          totalScheduled={totalScheduled}
-          totalOrders={totalOrders}
-          totalSales={totalSales}
-        />
-        {isLoading && (
-          <div className="text-center text-gray-400 text-sm py-12">Memuat data performa...</div>
-        )}
-        {!isLoading && (!performance || performance.length === 0) && (
-          <div className="text-center py-12">
-            <p className="text-gray-400 text-sm">Tidak ada data performa untuk bulan ini.</p>
-          </div>
-        )}
-        {!isLoading && performance && performance.length > 0 && (
-          <PerformanceTable
-            performance={performance}
-            yearMonth={yearMonth}
-            canEdit={canEdit}
-            onSaved={invalidate}
-          />
-        )}
-      </div>
-    </div>
-  )
+  return <div className="min-h-screen bg-gray-50"><GirardNav /><PerformanceContent /></div>
 }
 
-// ─── Named export for Dashboard ───────────────────────────────────────────────
 export function PerformanceContent() {
   const { profile } = useAuth()
   const queryClient = useQueryClient()
-  const [yearMonth, setYearMonth] = useState(currentYearMonth())
-
-  const canEdit = profile?.role === 'sales_head' ||
-                  profile?.role === 'executive' ||
-                  profile?.role === 'sales_manager'
-
-  const { data: earliest } = useQuery({
-    queryKey: ['earliest_schedule_month'],
-    queryFn: fetchEarliestScheduleMonth,
-  })
-
-  const monthOptions = earliest ? buildMonthOptions(earliest) : []
-
-  const { data: performance, isLoading } = useQuery({
-    queryKey: ['performance', profile?.id, profile?.role, yearMonth],
-    queryFn: () => fetchPerformance(profile!.id, profile!.role, yearMonth),
-    enabled: !!profile?.id,
-  })
-
-  const totalVisited   = performance?.reduce((sum, p) => sum + p.visited, 0) ?? 0
-  const totalScheduled = performance?.reduce((sum, p) => sum + p.scheduled, 0) ?? 0
-  const totalOrders    = performance?.reduce((sum, p) => sum + p.orders, 0) ?? 0
-  const totalSales     = performance?.reduce((sum, p) => sum + p.total_sales, 0) ?? 0
-  const avgVisitRate   = performance?.length
-    ? Math.round(performance.reduce((sum, p) => sum + p.visit_rate, 0) / performance.length)
-    : 0
-
-  const selectedLabel = monthOptions.find(m => m.value === yearMonth)?.label ?? yearMonth
-
+  const { data, filters, setFilters, setPage, isPending, isError, refetch } = usePagedRead('performance', { yearMonth: currentYearMonth() }, (filters, page, signal) => fetchSalesPerformancePage(profile!.id, profile!.role, filters.yearMonth, page, signal))
+  const { data: earliest, isError: monthError, refetch: refetchMonths } = useQuery({ queryKey: ['earliest_schedule_month'], queryFn: fetchEarliestScheduleMonth })
+  const monthOptions = buildMonthOptions(earliest ?? currentYearMonth())
+  const yearMonth = filters.yearMonth
+  const selectedLabel = monthOptions.find(month => month.value === yearMonth)?.label ?? yearMonth
+  const canEdit = ['sales_head', 'executive', 'sales_manager'].includes(profile?.role ?? '')
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['performance'] })
-
-  return (
-    <div className="px-4 md:px-8 py-6 space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900">Performa Tim Sales</h2>
-          <p className="text-sm text-gray-500 mt-0.5">{selectedLabel}</p>
-        </div>
-        <select
-          value={yearMonth}
-          onChange={e => setYearMonth(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-        >
-          {monthOptions.map(m => (
-            <option key={m.value} value={m.value}>{m.label}</option>
-          ))}
-        </select>
-      </div>
-
-      <SummaryCards
-        avgVisitRate={avgVisitRate}
-        totalVisited={totalVisited}
-        totalScheduled={totalScheduled}
-        totalOrders={totalOrders}
-        totalSales={totalSales}
-      />
-
-      {isLoading && (
-        <div className="text-center text-gray-400 text-sm py-12">Memuat data performa...</div>
-      )}
-      {!isLoading && (!performance || performance.length === 0) && (
-        <div className="text-center py-12">
-          <p className="text-gray-400 text-sm">Tidak ada data performa untuk bulan ini.</p>
-        </div>
-      )}
-      {!isLoading && performance && performance.length > 0 && (
-        <PerformanceTable
-          performance={performance}
-          yearMonth={yearMonth}
-          canEdit={canEdit}
-          onSaved={invalidate}
-        />
-      )}
+  return <div className="px-4 md:px-8 py-6 space-y-6">
+    <div className="flex items-center justify-between flex-wrap gap-3">
+      <div><h2 className="text-lg font-semibold text-gray-900">Performa Tim Sales</h2><p className="text-sm text-gray-500 mt-0.5">{selectedLabel}</p></div>
+      <select aria-label="Bulan performa sales" value={yearMonth} onChange={event => setFilters({ yearMonth: event.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+        {monthOptions.map(month => <option key={month.value} value={month.value}>{month.label}</option>)}
+      </select>
     </div>
-  )
+    {isError || monthError ? <div role="alert" className="text-red-600">{monthError ? 'Daftar bulan tidak tersedia.' : 'Data performa tidak tersedia.'} <button onClick={() => { refetch(); refetchMonths() }} className="underline">Coba lagi</button></div> : !data ? <p className="text-center text-gray-400 text-sm py-12">Memuat data performa...</p> : <>
+      <PaginationControls page={data.page} total={data.total} pageSize={data.page_size} pending={isPending} onPageChange={setPage} />
+      <SummaryCards avgVisitRate={data.summary.average_visit_rate} totalVisited={data.summary.total_visited} totalScheduled={data.summary.total_scheduled} totalOrders={data.summary.total_orders} totalSales={data.summary.total_sales} />
+      {data.items.length === 0 ? <p className="text-center text-gray-400 text-sm py-12">Tidak ada data performa untuk bulan ini.</p> : <PerformanceTable performance={data.items} yearMonth={yearMonth} canEdit={canEdit && !isPending} onSaved={invalidate} />}
+    </>}
+  </div>
 }

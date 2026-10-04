@@ -1,40 +1,13 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
+import { usePagedRead } from '../../lib/reads/usePagedRead'
+import { fetchCustomerPerformancePage } from '../../lib/reads/reports'
+import { formatMoney, moneyPercentage } from '../../lib/reads/money'
+import PaginationControls from '../../components/PaginationControls'
 import { useAuth } from '../../lib/AuthContext'
 
 type MonthOption = { value: string; label: string }
-
-type CustomerRow = {
-  id: string
-  name: string
-  manager_name: string | null
-  actual_visits: number
-  target_visits: number
-  last_visit_date: string | null
-  order_count: number
-  total_sales: number
-  sales_target: number | null
-}
-
-function getMonthRange(yearMonth: string): { from: string; to: string } {
-  const [year, month] = yearMonth.split('-').map(Number)
-  const from = new Date(year, month - 1, 1)
-  const to = new Date(year, month, 0)
-  return {
-    from: from.toISOString().split('T')[0],
-    to: to.toISOString().split('T')[0],
-  }
-}
-
-function calcTargetVisits(frequencyDays: number, daysInMonth: number): number {
-  return Math.ceil(daysInMonth / frequencyDays)
-}
-
-function getDaysInMonth(yearMonth: string): number {
-  const [year, month] = yearMonth.split('-').map(Number)
-  return new Date(year, month, 0).getDate()
-}
 
 function currentYearMonth(): string {
   const now = new Date()
@@ -42,11 +15,12 @@ function currentYearMonth(): string {
 }
 
 async function fetchEarliestMonth(): Promise<string> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('purchase_orders')
     .select('order_date')
-    .order('order_date', { ascending: true })
+    .order('order_date', { ascending: true }).order('id')
     .limit(1)
+  if (error) throw error
   if (!data || data.length === 0) return currentYearMonth()
   const d = new Date(data[0].order_date)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
@@ -68,26 +42,6 @@ function buildMonthOptions(earliest: string): MonthOption[] {
   return options
 }
 
-async function fetchCustomerTargets(
-  customerIds: string[],
-  yearMonth: string
-): Promise<Record<string, number>> {
-  if (customerIds.length === 0) return {}
-  const { data } = await supabase
-    .from('customer_targets')
-    .select('customer_id, year_month, target_value')
-    .in('customer_id', customerIds)
-    .lte('year_month', yearMonth)
-    .order('year_month', { ascending: false })
-  const result: Record<string, number> = {}
-  for (const customerId of customerIds) {
-    const records = (data ?? []).filter(r => r.customer_id === customerId)
-    if (records.length === 0) continue
-    result[customerId] = records[0].target_value
-  }
-  return result
-}
-
 async function upsertCustomerTarget(
   customerId: string,
   yearMonth: string,
@@ -106,137 +60,14 @@ async function upsertCustomerTarget(
   if (error) throw error
 }
 
-async function fetchCustomerPerformance(
-  managerId: string,
-  role: string,
-  yearMonth: string
-): Promise<CustomerRow[]> {
-  const { from, to } = getMonthRange(yearMonth)
-  const days = getDaysInMonth(yearMonth)
+export const fetchCustomerPerformance = fetchCustomerPerformancePage
 
-  let customerIds: string[] = []
-  const managerMap: Record<string, string> = {}
-
-  if (role === 'sales_manager') {
-    const { data: assignments } = await supabase
-      .from('customer_manager_assignments')
-      .select('customer_id')
-      .eq('manager_id', managerId)
-    customerIds = (assignments ?? []).map(a => a.customer_id)
-  } else {
-    const { data: allCustomers } = await supabase
-      .from('customers')
-      .select('id')
-    customerIds = (allCustomers ?? []).map(c => c.id)
-    const { data: assignments } = await supabase
-      .from('customer_manager_assignments')
-      .select('customer_id, users!customer_manager_assignments_manager_id_fkey(full_name)')
-    for (const a of assignments ?? []) {
-      managerMap[a.customer_id] = (a as any).users?.full_name ?? ''
-    }
-  }
-
-  if (customerIds.length === 0) return []
-
-  const { data: customers } = await supabase
-    .from('customers')
-    .select('id, name, visit_frequency_days')
-    .in('id', customerIds)
-    .order('name')
-
-  const { data: visits } = await supabase
-    .from('outlet_visits')
-    .select('outlet_id')
-    .in('outlet_id', customerIds)
-    .gte('checked_in_at', `${from}T00:00:00`)
-    .lte('checked_in_at', `${to}T23:59:59`)
-
-  const visitCounts: Record<string, number> = {}
-  for (const v of visits ?? []) {
-    visitCounts[v.outlet_id] = (visitCounts[v.outlet_id] ?? 0) + 1
-  }
-
-  const { data: pos } = await supabase
-    .from('purchase_orders')
-    .select('id, customer_id, status')
-    .in('customer_id', customerIds)
-    .gte('order_date', from)
-    .lte('order_date', to)
-
-  const poIds = (pos ?? [])
-    .filter(po => ['in_progress', 'complete'].includes(po.status))
-    .map(po => po.id)
-
-  const sjSalesMap: Record<string, number> = {}
-  if (poIds.length > 0) {
-    const { data: sjs } = await supabase
-      .from('surat_jalan')
-      .select('purchase_order_id, sj_line_items(quantity_delivered, po_line_items(unit_price))')
-      .in('purchase_order_id', poIds)
-      .gte('sj_date', from)
-      .lte('sj_date', to)
-    for (const sj of sjs ?? []) {
-      const po = (pos ?? []).find(p => p.id === sj.purchase_order_id)
-      if (!po) continue
-      for (const sli of (sj.sj_line_items as any[]) ?? []) {
-        sjSalesMap[po.customer_id] = (sjSalesMap[po.customer_id] ?? 0) +
-          (sli.quantity_delivered ?? 0) * (sli.po_line_items?.unit_price ?? 0)
-      }
-    }
-  }
-
-  const poLineMap: Record<string, number> = {}
-  if (poIds.length > 0) {
-    const { data: poli } = await supabase
-      .from('po_line_items')
-      .select('purchase_order_id, quantity, unit_price')
-      .in('purchase_order_id', poIds)
-    for (const li of poli ?? []) {
-      const po = (pos ?? []).find(p => p.id === li.purchase_order_id)
-      if (!po) continue
-      poLineMap[po.customer_id] = (poLineMap[po.customer_id] ?? 0) + li.quantity * li.unit_price
-    }
-  }
-
-  const orderCountMap: Record<string, number> = {}
-  for (const po of pos ?? []) {
-    orderCountMap[po.customer_id] = (orderCountMap[po.customer_id] ?? 0) + 1
-  }
-
-  const targetsMap = await fetchCustomerTargets(customerIds, yearMonth)
-
-  return (customers ?? []).map(c => ({
-    id: c.id,
-    name: c.name,
-    manager_name: managerMap[c.id] ?? null,
-    actual_visits: visitCounts[c.id] ?? 0,
-    target_visits: calcTargetVisits(c.visit_frequency_days, days),
-    last_visit_date: null,
-    order_count: orderCountMap[c.id] ?? 0,
-    total_sales: sjSalesMap[c.id] ?? poLineMap[c.id] ?? 0,
-    sales_target: targetsMap[c.id] ?? null,
-  }))
-}
-
-async function fetchLastVisitDates(customerIds: string[]): Promise<Record<string, string>> {
-  if (customerIds.length === 0) return {}
-  const { data } = await supabase
-    .from('outlet_visits')
-    .select('outlet_id, checked_in_at')
-    .in('outlet_id', customerIds)
-    .order('checked_in_at', { ascending: false })
-  const map: Record<string, string> = {}
-  for (const v of data ?? []) {
-    if (!map[v.outlet_id]) map[v.outlet_id] = v.checked_in_at
-  }
-  return map
-}
-
-function SalesPctBar({ actual, target }: { actual: number; target: number | null }) {
-  if (target == null || target === 0) {
+function SalesPctBar({ actual, target }: { actual: string; target: string | null }) {
+  if (target == null || /^0+(?:\.0+)?$/.test(target)) {
     return <span className="text-gray-300 text-xs">—</span>
   }
-  const pct = Math.round((actual / target) * 100)
+  const pctText = moneyPercentage(actual, target)
+  const pct = Number(pctText)
   return (
     <div className="flex flex-col items-end gap-1">
       <span className={`text-xs font-medium ${
@@ -244,7 +75,7 @@ function SalesPctBar({ actual, target }: { actual: number; target: number | null
         : pct >= 70  ? 'text-yellow-600'
         : 'text-red-500'
       }`}>
-        {pct}%
+        {pctText}%
       </span>
       <div className="w-16 bg-gray-100 rounded-full h-1">
         <div
@@ -265,7 +96,7 @@ function InlineTargetEdit({
 }: {
   customerId: string
   yearMonth: string
-  currentTarget: number | null
+  currentTarget: string | null
   canEdit: boolean
   onSaved: () => void
 }) {
@@ -284,7 +115,7 @@ function InlineTargetEdit({
   if (!canEdit) {
     return (
       <span className="text-gray-400 text-xs">
-        {currentTarget != null ? `Rp ${(currentTarget / 1_000_000).toFixed(1)}M` : '—'}
+        {currentTarget != null ? `Rp ${formatMoney(currentTarget, 'millions')}M` : '—'}
       </span>
     )
   }
@@ -324,7 +155,7 @@ function InlineTargetEdit({
       className="text-right w-full group"
     >
       <span className="text-gray-400 text-xs group-hover:text-green-600 transition-colors">
-        {currentTarget != null ? `Rp ${(currentTarget / 1_000_000).toFixed(1)}M` : '+ Set target'}
+        {currentTarget != null ? `Rp ${formatMoney(currentTarget, 'millions')}M` : '+ Set target'}
       </span>
     </button>
   )
@@ -333,42 +164,33 @@ function InlineTargetEdit({
 export function CustomerPerformanceContent() {
   const { profile } = useAuth()
   const queryClient = useQueryClient()
-  const [yearMonth, setYearMonth] = useState(currentYearMonth())
+  const { data: pageData, filters, setFilters, setPage, isPending, isError, refetch } = usePagedRead('customer_performance', { yearMonth: currentYearMonth() }, (filters, page, signal) => fetchCustomerPerformancePage(profile!.id, profile!.role, filters.yearMonth, page, signal))
+  const yearMonth = filters.yearMonth
+  const setYearMonth = (yearMonth: string) => setFilters({ yearMonth })
+  const isLoading = !pageData && isPending
 
   const canEditTargets = profile?.role === 'sales_head' || profile?.role === 'executive'
 
-  const { data: earliestMonth } = useQuery({
+  const { data: earliestMonth, isError: monthError, refetch: refetchMonths } = useQuery({
     queryKey: ['earliest_month'],
     queryFn: fetchEarliestMonth,
   })
 
-  const monthOptions = earliestMonth ? buildMonthOptions(earliestMonth) : []
+  const monthOptions = buildMonthOptions(earliestMonth ?? currentYearMonth())
 
-  const { data: rows, isLoading } = useQuery({
-    queryKey: ['customer_performance', profile?.id, profile?.role, yearMonth],
-    queryFn: () => fetchCustomerPerformance(profile!.id, profile!.role, yearMonth),
-    enabled: !!profile?.id,
-  })
+  const data = pageData?.items ?? []
 
-  const customerIds = rows?.map(r => r.id) ?? []
+  if (isError) return <div role="alert" className="p-6 text-red-600">Data performa tidak tersedia. <button onClick={() => refetch()} className="underline">Coba lagi</button></div>
 
-  const { data: lastVisits } = useQuery({
-    queryKey: ['last_visits', customerIds],
-    queryFn: () => fetchLastVisitDates(customerIds),
-    enabled: customerIds.length > 0,
-  })
+  if (monthError) return <div role="alert" className="p-6 text-red-600">Daftar bulan tidak tersedia. <button onClick={() => refetchMonths()} className="underline">Coba lagi</button></div>
 
-  const data = rows?.map(r => ({
-    ...r,
-    last_visit_date: lastVisits?.[r.id] ?? null,
-  })) ?? []
-
-  const totalSales      = data.reduce((sum, r) => sum + r.total_sales, 0)
-  const activePelanggan = data.filter(r => r.order_count > 0).length
-  const totalVisits     = data.reduce((sum, r) => sum + r.actual_visits, 0)
-  const totalTarget     = data.reduce((sum, r) => sum + r.target_visits, 0)
-  const visitPct        = totalTarget > 0 ? Math.round((totalVisits / totalTarget) * 100) : 0
-  const topCustomer     = [...data].sort((a, b) => b.total_sales - a.total_sales)[0]
+  const summary = pageData?.summary
+  const totalSales = summary?.total_sales ?? '0'
+  const activePelanggan = summary?.active_customers ?? 0
+  const totalVisits = summary?.total_visits ?? 0
+  const totalTarget = summary?.total_target_visits ?? 0
+  const visitPct = summary?.visit_percent ?? 0
+  const topCustomer = summary?.top_customer
   const selectedLabel   = monthOptions.find(m => m.value === yearMonth)?.label ?? yearMonth
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['customer_performance'] })
@@ -395,18 +217,20 @@ export function CustomerPerformanceContent() {
         </select>
       </div>
 
+      {pageData && <PaginationControls page={pageData.page} total={pageData.total} pageSize={pageData.page_size} pending={isPending} onPageChange={setPage} />}
+
       {/* Top metrics */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      {pageData && (      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <p className="text-xs text-gray-400 mb-1">Total Penjualan</p>
           <p className="text-xl font-bold text-gray-900">
-            Rp {(totalSales / 1_000_000).toFixed(1)}M
+            Rp {formatMoney(totalSales, 'millions')}M
           </p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <p className="text-xs text-gray-400 mb-1">Pelanggan Aktif</p>
           <p className="text-xl font-bold text-gray-900">{activePelanggan}</p>
-          <p className="text-xs text-gray-400 mt-1">dari {data.length} total</p>
+          <p className="text-xs text-gray-400 mt-1">dari {summary?.total_customers} total</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <p className="text-xs text-gray-400 mb-1">Total Kunjungan</p>
@@ -418,9 +242,9 @@ export function CustomerPerformanceContent() {
           <p className="text-sm font-bold text-gray-900 truncate">
             {topCustomer?.name ?? '—'}
           </p>
-          {topCustomer && topCustomer.total_sales > 0 && (
+          {topCustomer && !/^0+(?:\.0+)?$/.test(topCustomer.total_sales) && (
             <p className="text-xs text-gray-400 mt-1">
-              Rp {(topCustomer.total_sales / 1_000_000).toFixed(1)}M
+              Rp {formatMoney(topCustomer.total_sales, 'millions')}M
             </p>
           )}
         </div>
@@ -436,6 +260,7 @@ export function CustomerPerformanceContent() {
           <p className="text-xs text-gray-400 mt-1">{totalVisits}/{totalTarget} kunjungan</p>
         </div>
       </div>
+      )}
 
       {isLoading && (
         <div className="text-center text-gray-400 text-sm py-12">Memuat data...</div>
@@ -501,16 +326,16 @@ export function CustomerPerformanceContent() {
                       </td>
                       <td className="px-5 py-4 text-center text-gray-700">{r.order_count}</td>
                       <td className="px-5 py-4 text-right font-medium text-gray-900">
-                        {r.total_sales > 0
-                          ? `Rp ${(r.total_sales / 1_000_000).toFixed(1)}M`
+                        {!/^0+(?:\.0+)?$/.test(r.total_sales)
+                          ? `Rp ${formatMoney(r.total_sales, 'millions')}M`
                           : '—'}
                       </td>
                       <td className="px-5 py-4 text-right font-medium text-gray-900">
-                        <InlineTargetEdit
+                        <InlineTargetEdit key={`${r.id}:${yearMonth}`}
                           customerId={r.id}
                           yearMonth={yearMonth}
                           currentTarget={r.sales_target}
-                          canEdit={canEditTargets}
+                          canEdit={canEditTargets && !isPending}
                           onSaved={invalidate}
                         />
                       </td>
@@ -566,8 +391,8 @@ export function CustomerPerformanceContent() {
                     <div>
                       <p className="text-gray-400">Total Penjualan</p>
                       <p className="font-semibold text-gray-900 mt-0.5">
-                        {r.total_sales > 0
-                          ? `Rp ${(r.total_sales / 1_000_000).toFixed(1)}M`
+                        {!/^0+(?:\.0+)?$/.test(r.total_sales)
+                          ? `Rp ${formatMoney(r.total_sales, 'millions')}M`
                           : '—'}
                       </p>
                     </div>
@@ -576,11 +401,11 @@ export function CustomerPerformanceContent() {
                   {/* Visit progress bar */}
                   <div className="pt-2 border-t border-gray-100">
                       <p className="text-xs text-gray-400 mb-1">Target Penjualan
-                      <InlineTargetEdit
+                      <InlineTargetEdit key={`${r.id}:${yearMonth}`}
                         customerId={r.id}
                         yearMonth={yearMonth}
                         currentTarget={r.sales_target}
-                        canEdit={canEditTargets}
+                        canEdit={canEditTargets && !isPending}
                         onSaved={invalidate}
                       />
                       </p>
@@ -616,16 +441,12 @@ export function CustomerPerformanceContent() {
                             onTrack ? 'bg-green-500' : 'bg-red-400'
                           }`}
                           style={{
-                            width: `${Math.min(100, r.sales_target > 0
-                              ? (r.total_sales / r.sales_target) * 100
-                              : 0)}%`
+                            width: `${Math.min(100, Number(moneyPercentage(r.total_sales, r.sales_target ?? '0')))}%`
                           }}
                         />
                       </div>
                       <span className="text-xs text-gray-400">
-                        {r.target_visits > 0
-                          ? Math.round((r.total_sales / r.sales_target) * 100)
-                          : 0}%
+                        {moneyPercentage(r.total_sales, r.sales_target ?? '0')}%
                       </span>
                     </div>
                   </div>

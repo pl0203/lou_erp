@@ -1,3 +1,6 @@
+import { PRICE_TIERS, resolvePromotionPrice, parseCatalogPrice, formatCatalogPrice } from '../../lib/catalogPricing'
+import ReadFailure from '../../components/ReadFailure'
+import { readCompleteQuery } from '../../lib/reads/completeQuery'
 import { singleRelation } from '../../lib/relations'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -12,10 +15,10 @@ type Product = {
   name: string
   sku: string
   size: string | null
-  harga_pokok: number
-  luar_kota: number
-  dalam_kota: number
-  depo_bangunan: number
+  harga_pokok: number | null
+  luar_kota: number | null
+  dalam_kota: number | null
+  depo_bangunan: number | null
 }
 
 type Promotion = {
@@ -67,49 +70,49 @@ const TIER_LABELS: Record<string, string> = {
   luar_kota:     'Luar Kota',
   dalam_kota:    'Dalam Kota',
   depo_bangunan: 'Depo Bangunan',
+  others: 'Others',
 }
 
 function formatCurrency(value: number | null | undefined): string {
-  return `Rp ${(value ?? 0).toLocaleString('id-ID')}`
+  return formatCatalogPrice(value)
 }
 
 function getPromotionTierPrice(
   promo: Promotion,
   tier: 'harga_pokok' | 'luar_kota' | 'dalam_kota' | 'depo_bangunan'
 ): number | null {
-  return promo[tier] ?? promo.products?.[tier] ?? null
+  return resolvePromotionPrice(promo, tier)
 }
 
-async function fetchProducts(): Promise<Product[]> {
-  const { data, error } = await supabase
+async function fetchProducts(signal?: AbortSignal): Promise<Product[]> {
+  const data = await readCompleteQuery((offset, limit) => supabase
     .from('products')
-    .select('id, name, sku, size, harga_pokok, luar_kota, dalam_kota, depo_bangunan')
-    .order('name')
-  if (error) throw error
-  return data
+    .select('id, name, sku, size, harga_pokok, luar_kota, dalam_kota, depo_bangunan', { count: 'exact' })
+    .order('id')
+    .range(offset, offset + limit - 1), row => row.id, signal)
+  return data.sort((a, b) => a.name.localeCompare(b.name))
 }
 
-async function fetchPromotions(): Promise<Promotion[]> {
-  const { data, error } = await supabase
-    .from('promotions')
-    .select('id, product_id, start_date, end_date, harga_pokok, luar_kota, dalam_kota, depo_bangunan, is_active, created_at, products(name, sku, size, harga_pokok, luar_kota, dalam_kota, depo_bangunan)')
-    .order('created_at', { ascending: false })
-
-  if (error) throw error
-  return (data ?? []).map(row => ({ ...row, products: singleRelation(row.products) }))
+async function fetchPromotions(signal?: AbortSignal): Promise<Promotion[]> {
+  const data = await readCompleteQuery((offset, limit) => supabase.from('promotions')
+    .select('id, product_id, start_date, end_date, harga_pokok, luar_kota, dalam_kota, depo_bangunan, is_active, created_at, products(name, sku, size, harga_pokok, luar_kota, dalam_kota, depo_bangunan)', { count: 'exact' })
+    .order('created_at', { ascending: false }).order('id').range(offset, offset + limit - 1), row => row.id, signal)
+  return data.map(row => ({ ...row, products: singleRelation(row.products) }))
 }
 
 async function createPromotion(form: PromoForm, createdBy: string) {
+  const prices = Object.fromEntries(PRICE_TIERS.map(tier => [tier, parseCatalogPrice(form[tier])]))
+  if (Object.values(prices).some(price => price === null)) throw new Error('Isi harga promosi untuk semua tier. Harga nol diperbolehkan jika memang gratis.')
   const { error } = await supabase
     .from('promotions')
     .insert({
       product_id: form.product_id,
       start_date: form.start_date,
       end_date: form.end_date,
-      harga_pokok: parseFloat(form.harga_pokok) || 0,
-      luar_kota: parseFloat(form.luar_kota) || 0,
-      dalam_kota: parseFloat(form.dalam_kota) || 0,
-      depo_bangunan: parseFloat(form.depo_bangunan) || 0,
+      harga_pokok: prices.harga_pokok,
+      luar_kota: prices.luar_kota,
+      dalam_kota: prices.dalam_kota,
+      depo_bangunan: prices.depo_bangunan,
       created_by: createdBy,
       is_active: true,
     })
@@ -139,14 +142,14 @@ export default function Promotions() {
   const [form, setForm] = useState<PromoForm>(EMPTY_FORM)
   const [deleteId, setDeleteId] = useState<string | null>(null)
 
-  const { data: products } = useQuery({
-    queryKey: ['products'],
-    queryFn: fetchProducts,
+  const { data: products, isError: productReadError, refetch: retryProducts } = useQuery({
+    queryKey: ['products', 'complete', 'promotions'],
+    queryFn: ({ signal }) => fetchProducts(signal),
   })
 
-  const { data: promotions, isLoading } = useQuery({
+  const { data: promotions, isLoading, isError: promotionReadError, refetch: retryPromotions } = useQuery({
     queryKey: ['promotions'],
-    queryFn: fetchPromotions,
+    queryFn: ({ signal }) => fetchPromotions(signal),
   })
 
   const activeCount = promotions?.filter(isCurrentlyActive).length ?? 0
@@ -185,14 +188,14 @@ export default function Promotions() {
     setForm(prev => ({ ...prev, discount: discountPct }))
     const pct = parseFloat(discountPct)
     if (isNaN(pct) || pct < 0 || pct > 100) return
-    const apply = (base: number) => Math.round(base * (1 - pct / 100))
+    const apply = (base: number | null) => base === null ? '' : Math.round(base * (1 - pct / 100)).toString()
     setForm(prev => ({
       ...prev,
       discount: discountPct,
-      harga_pokok: apply(product.harga_pokok).toString(),
-      luar_kota: apply(product.luar_kota).toString(),
-      dalam_kota: apply(product.dalam_kota).toString(),
-      depo_bangunan: apply(product.depo_bangunan).toString(),
+      harga_pokok: apply(product.harga_pokok),
+      luar_kota: apply(product.luar_kota),
+      dalam_kota: apply(product.dalam_kota),
+      depo_bangunan: apply(product.depo_bangunan),
     }))
   }
   
@@ -202,10 +205,10 @@ export default function Promotions() {
     setForm(prev => ({
       ...prev,
       product_id: productId,
-      harga_pokok: product.harga_pokok.toString(),
-      luar_kota: product.luar_kota.toString(),
-      dalam_kota: product.dalam_kota.toString(),
-      depo_bangunan: product.depo_bangunan.toString(),
+      harga_pokok: product.harga_pokok?.toString() ?? '',
+      luar_kota: product.luar_kota?.toString() ?? '',
+      dalam_kota: product.dalam_kota?.toString() ?? '',
+      depo_bangunan: product.depo_bangunan?.toString() ?? '',
       discount: '',
     }))
   }
@@ -219,6 +222,8 @@ export default function Promotions() {
   }
 
   const deleteTarget = promotions?.find(p => p.id === deleteId)
+
+  if (productReadError || promotionReadError) return <div className="min-h-screen bg-gray-50"><GirardNav /><ReadFailure onRetry={() => { void retryProducts(); void retryPromotions() }} /></div>
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -468,7 +473,7 @@ export default function Promotions() {
               <div className="border-t border-gray-100 pt-4">
                 <p className="text-sm font-medium text-gray-700 mb-1">Harga Promosi per Tier</p>
                 <p className="text-xs text-gray-400 mb-3">
-                  Harga sudah diisi otomatis dari data produk. Ubah sesuai harga promosi.
+                  Isi harga promosi untuk setiap tier. Harga katalog yang belum diisi tetap kosong; nol berarti gratis.
                 </p>
                 <div className="grid grid-cols-2 gap-3">
                   {([
@@ -482,10 +487,12 @@ export default function Promotions() {
                       <input
                         type="number"
                         min={0}
+                        step="0.01"
+                        required
                         value={form[field]}
                         onChange={e => setForm(p => ({ ...p, [field]: e.target.value }))}
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                        placeholder="0"
+                        placeholder="Wajib diisi"
                       />
                     </div>
                   ))}

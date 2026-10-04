@@ -1,6 +1,19 @@
+import { compressVisitPhoto } from '../../lib/visitPhoto'
+import { PRICE_TIERS, resolveCatalogPrice, resolvePromotionPrice, formatCatalogPrice, formatLineAmount } from '../../lib/catalogPricing'
+import { fetchSalesOrderPage } from '../../lib/reads/orders'
+import { fetchSalesOrderLines, fetchCompleteRows } from '../../lib/reads/detailReads'
+import { readComplete } from '../../lib/reads/completeReads'
+import { usePagedRead } from '../../lib/reads/usePagedRead'
+import { formatMoney } from '../../lib/reads/money'
+import PaginationControls from '../../components/PaginationControls'
+import { createVisitCheckIn } from '../../lib/visitCheckIn'
+import TransactionRecovery from '../../components/TransactionRecovery'
+import { createTransactionSender, useTransactionSender } from '../../lib/orderTransactions'
+import type { TransactionSender } from '../../lib/orderTransactions'
 import { singleRelation } from '../../lib/relations'
 import { validateOrderLines } from '../../lib/orderValidation'
-import { useState, useRef, useEffect } from 'react'
+import { hasOrderItemChanges, useUnsavedChanges } from '../../lib/useUnsavedChanges'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
@@ -44,25 +57,11 @@ type Product = {
   name: string
   sku: string
   size: string | null
-  unit_price: number
-  harga_pokok: number
-  luar_kota: number
-  dalam_kota: number
-  depo_bangunan: number
-}
-
-type GirardOrder = {
-  id: string
-  status: string
-  total_value: number
-  created_at: string
-  girard_order_items: {
-    id: string
-    product_name: string
-    sku: string | null
-    quantity: number
-    unit_price: number
-  }[]
+  unit_price: number | null
+  harga_pokok: number | null
+  luar_kota: number | null
+  dalam_kota: number | null
+  depo_bangunan: number | null
 }
 
 const TIER_LABELS: Record<string, string> = {
@@ -70,61 +69,29 @@ const TIER_LABELS: Record<string, string> = {
   luar_kota:     'Luar Kota',
   dalam_kota:    'Dalam Kota',
   depo_bangunan: 'Depo Bangunan',
+  others: 'Others',
 }
 
 const ORDER_STATUS_STYLES: Record<string, string> = {
   pending:  'bg-yellow-100 text-yellow-700',
   approved: 'bg-green-100 text-green-700',
   rejected: 'bg-red-100 text-red-700',
+  cancelled: 'bg-gray-100 text-gray-700',
 }
 
-async function compressImage(blob: Blob): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    const url = URL.createObjectURL(blob)
-    img.onload = () => {
-      URL.revokeObjectURL(url)
-      const MAX_SIZE = 1280
-      let { width, height } = img
-      if (width > height && width > MAX_SIZE) {
-        height = Math.round((height * MAX_SIZE) / width)
-        width = MAX_SIZE
-      } else if (height > width && height > MAX_SIZE) {
-        width = Math.round((width * MAX_SIZE) / height)
-        height = MAX_SIZE
-      } else if (width > MAX_SIZE) {
-        height = Math.round((height * MAX_SIZE) / width)
-        width = MAX_SIZE
-      }
-      const canvas = document.createElement('canvas')
-      canvas.width = width
-      canvas.height = height
-      const ctx = canvas.getContext('2d')
-      if (!ctx) return reject(new Error('Canvas tidak didukung'))
-      ctx.drawImage(img, 0, 0, width, height)
-      canvas.toBlob(
-        result => {
-          if (result) resolve(result)
-          else reject(new Error('Kompresi gagal'))
-        },
-        'image/webp',
-        0.8
-      )
-    }
-    img.onerror = reject
-    img.src = url
-  })
-}
 
-export async function fetchSchedule(scheduleId: string): Promise<Schedule> {
+class ScheduleCustomerUnavailableError extends Error {}
+
+export async function fetchSchedule(scheduleId: string): Promise<Schedule | null> {
   const { data, error } = await supabase
     .from('sales_schedules')
     .select('id, scheduled_date, status, customers!sales_schedules_outlet_id_fkey(id, name, address, city, pricing_tier)')
     .eq('id', scheduleId)
-    .single()
+    .maybeSingle()
   if (error) throw error
+  if (!data) return null
   const customer = singleRelation(data.customers)
-  if (!customer) throw new Error('Pelanggan untuk jadwal ini tidak tersedia. Hubungi administrator.')
+  if (!customer) throw new ScheduleCustomerUnavailableError('Pelanggan untuk jadwal ini tidak tersedia. Hubungi administrator.')
   return { ...data, customers: customer }
 }
 
@@ -138,117 +105,15 @@ async function fetchVisit(scheduleId: string): Promise<Visit | null> {
   return data as Visit | null
 }
 
-async function fetchOrders(customerId: string, visitId: string): Promise<GirardOrder[]> {
-  const { data, error } = await supabase
-    .from('girard_orders')
-    .select('id, status, total_value, created_at, girard_order_items(id, product_name, sku, quantity, unit_price)')
-    .eq('customer_id', customerId)
-    .eq('visit_id', visitId)
-    .order('created_at', { ascending: false })
-  if (error) throw error
-  return data as GirardOrder[]
-}
-
-async function fetchProducts(): Promise<Product[]> {
-  const { data, error } = await supabase
-    .from('products')
-    .select('id, name, sku, size, unit_price, harga_pokok, luar_kota, dalam_kota, depo_bangunan')
-    .order('name')
-  if (error) throw error
-  return data
-}
-
-async function checkIn(payload: {
-  schedule_id: string
-  outlet_id: string
-  sales_person_id: string
-  lat: number | null
-  lng: number | null
-  photo_blob: Blob
-}): Promise<Visit> {
-  const fileName = `${payload.schedule_id}_${Date.now()}.webp`
-  const storagePath = `visits/${payload.schedule_id}/${fileName}`
-
-  const { error: uploadError } = await supabase.storage
-    .from('visits')
-    .upload(storagePath, payload.photo_blob, { contentType: 'image/webp', upsert: false })
-  if (uploadError) throw uploadError
-
-  const { data: visit, error: visitError } = await supabase
-    .from('outlet_visits')
-    .insert({
-      outlet_id: payload.outlet_id,
-      sales_person_id: payload.sales_person_id,
-      schedule_id: payload.schedule_id,
-      lat: payload.lat,
-      lng: payload.lng,
-    })
-    .select()
-    .single()
-  if (visitError) throw visitError
-
-  const { error: photoError } = await supabase
-    .from('visit_photos')
-    .insert({
-      visit_id: visit.id,
-      storage_path: storagePath,
-      lat: payload.lat,
-      lng: payload.lng,
-      taken_at: new Date().toISOString(),
-    })
-  if (photoError) throw photoError
-
-  await supabase
-    .from('sales_schedules')
-    .update({ status: 'completed' })
-    .eq('id', payload.schedule_id)
-
-  await supabase
-    .from('customers')
-    .update({ last_visit_date: new Date().toISOString().split('T')[0] })
-    .eq('id', payload.outlet_id)
-
-  return visit
+async function fetchProducts(signal?: AbortSignal): Promise<Product[]> {
+  return (await fetchCompleteRows<Product>('products', 'id, name, sku, size, unit_price, harga_pokok, luar_kota, dalam_kota, depo_bangunan', {}, signal)).sort((a, b) => a.name.localeCompare(b.name))
 }
 
 export async function submitOrder(payload: {
-  customer_id: string
-  visit_id: string
-  submitted_by: string
-  items: OrderItem[]
-}) {
+  customer_id: string; visit_id: string; submitted_by: string; items: OrderItem[]
+}, send: TransactionSender = createTransactionSender()) {
   validateOrderLines(payload.items)
-  const total = payload.items.reduce((sum, i) => sum + i.quantity * i.unit_price, 0)
-
-  const { data: order, error: orderError } = await supabase
-    .from('girard_orders')
-    .insert({
-      customer_id: payload.customer_id,
-      visit_id: payload.visit_id,
-      submitted_by: payload.submitted_by,
-      status: 'pending',
-      source: 'sales_initiated',
-      total_value: total,
-    })
-    .select()
-    .single()
-  if (orderError) throw orderError
-
-  const { error: itemError } = await supabase
-    .from('girard_order_items')
-    .insert(
-      payload.items.map(i => ({
-        order_id: order.id,
-        product_id: i.product_id,
-        product_name: i.product_name,
-        sku: i.sku || null,
-        quantity: i.quantity,
-        unit_price: i.unit_price,
-        is_promo: i.is_promo ?? false,
-        promotion_id: i.promotion_id ?? null,
-      }))
-    )
-  if (itemError) throw itemError
+  return send('submit_sales', { customer_id: payload.customer_id, visit_id: payload.visit_id, items: payload.items })
 }
 
 function SKULookup({ products, onSelect }: {
@@ -301,87 +166,108 @@ function SKULookup({ products, onSelect }: {
 
 function LiveCamera({ onCapture }: { onCapture: (blob: Blob, preview: string) => void }) {
   const videoRef = useRef<HTMLVideoElement>(null)
-  const [stream, setStream] = useState<MediaStream | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const mounted = useRef(false)
+  const generation = useRef(0)
+  const captureBusy = useRef(false)
   const [error, setError] = useState<string | null>(null)
+  const [starting, setStarting] = useState(true)
+  const [ready, setReady] = useState(false)
   const [capturing, setCapturing] = useState(false)
 
-  useEffect(() => {
-    startCamera()
-    return () => stopCamera()
-  }, [])
-
-  const startCamera = async () => {
-    try {
-      const s = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: false,
-      })
-      setStream(s)
-      if (videoRef.current) videoRef.current.srcObject = s
-    } catch {
-      setError('Akses kamera ditolak. Izinkan akses kamera dan coba lagi.')
-    }
-  }
-
   const stopCamera = () => {
-    if (stream) {
-      stream.getTracks().forEach(t => { t.stop(); stream.removeTrack(t) })
-      setStream(null)
-    }
+    streamRef.current?.getTracks().forEach(track => track.stop())
+    streamRef.current = null
     if (videoRef.current) videoRef.current.srcObject = null
   }
 
-  const capturePhoto = async () => {
-    if (!videoRef.current) return
-    setCapturing(true)
+  const startCamera = async () => {
+    const request = ++generation.current
+    setError(null)
+    setStarting(true)
+    setReady(false)
+    stopCamera()
     try {
-      const canvas = document.createElement('canvas')
-      canvas.width = videoRef.current.videoWidth
-      canvas.height = videoRef.current.videoHeight
-      const ctx = canvas.getContext('2d')
-      if (!ctx) throw new Error('Canvas tidak didukung')
-      ctx.drawImage(videoRef.current, 0, 0)
-      canvas.toBlob(async (rawBlob) => {
-        if (!rawBlob) { setCapturing(false); return }
-        const compressed = await compressImage(rawBlob)
-        const preview = URL.createObjectURL(compressed)
-        stopCamera()
-        if (videoRef.current) videoRef.current.srcObject = null
-        onCapture(compressed, preview)
-        setCapturing(false)
-      }, 'image/webp', 0.9)
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      })
+      if (!mounted.current || generation.current !== request) {
+        stream.getTracks().forEach(track => track.stop())
+        return
+      }
+      streamRef.current = stream
+      if (videoRef.current) videoRef.current.srcObject = stream
+      setError(null)
     } catch {
-      setCapturing(false)
+      if (mounted.current && generation.current === request) setError('Akses kamera ditolak. Izinkan akses kamera dan coba lagi.')
+    } finally {
+      if (mounted.current && generation.current === request) setStarting(false)
     }
   }
 
-  if (error) {
-    return (
-      <div className="w-full h-48 bg-gray-100 rounded-xl flex flex-col items-center justify-center gap-2 p-4">
-        <span className="text-3xl">📷</span>
-        <p className="text-sm text-red-500 text-center">{error}</p>
-        <button onClick={startCamera} className="text-xs text-blue-600 font-medium underline mt-1">
-          Coba lagi
-        </button>
-      </div>
-    )
+  useEffect(() => {
+    mounted.current = true
+    void startCamera()
+    return () => {
+      mounted.current = false
+      generation.current++
+      stopCamera()
+    }
+  }, [])
+
+  const capturePhoto = async () => {
+    const video = videoRef.current
+    if (!video || !ready || !video.videoWidth || !video.videoHeight || captureBusy.current) return
+    const request = generation.current
+    captureBusy.current = true
+    setCapturing(true)
+    try {
+      const canvas = document.createElement('canvas')
+      canvas.width = video.videoWidth
+      canvas.height = video.videoHeight
+      const ctx = canvas.getContext('2d')
+      if (!ctx) throw new Error('Canvas tidak didukung')
+      ctx.drawImage(video, 0, 0)
+      const raw = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Foto tidak tersedia')), 'image/webp', 0.9)
+      })
+      const compressed = await compressVisitPhoto(raw)
+      if (!mounted.current || generation.current !== request) return
+      const preview = URL.createObjectURL(compressed)
+      stopCamera()
+      onCapture(compressed, preview)
+    } catch {
+      if (mounted.current && generation.current === request) {
+        stopCamera()
+        setReady(false)
+        setError('Foto gagal diproses. Coba ambil foto lagi.')
+      }
+    } finally {
+      captureBusy.current = false
+      if (mounted.current && generation.current === request) setCapturing(false)
+    }
   }
 
   return (
     <div className="relative w-full rounded-xl overflow-hidden bg-black">
-      <video ref={videoRef} autoPlay playsInline muted className="w-full h-56 object-cover" />
-      <button
+      <video ref={videoRef} autoPlay playsInline muted onLoadedData={() => setReady(!!streamRef.current && !!videoRef.current?.videoWidth && !!videoRef.current?.videoHeight)} className="w-full h-56 object-cover" />
+      {!error && <button
+        aria-label="Ambil foto"
         onClick={capturePhoto}
-        disabled={capturing}
+        disabled={capturing || starting || !ready}
         className="absolute bottom-4 left-1/2 -translate-x-1/2 w-14 h-14 rounded-full bg-white border-4 border-gray-300 hover:border-green-500 transition-colors disabled:opacity-50 flex items-center justify-center"
       >
         <div className="w-10 h-10 rounded-full bg-green-500" />
-      </button>
-      {capturing && (
-        <div className="absolute inset-0 bg-white/50 flex items-center justify-center">
-          <p className="text-sm text-gray-700 font-medium">Mengambil foto...</p>
-        </div>
-      )}
+      </button>}
+      {(starting || capturing) && <div role="status" className="absolute inset-0 bg-white/70 flex items-center justify-center">
+        <p className="text-sm text-gray-700 font-medium">{starting ? 'Membuka kamera...' : 'Mengambil foto...'}</p>
+      </div>}
+      {error && <div className="absolute inset-0 bg-gray-100 flex flex-col items-center justify-center gap-2 p-4">
+        <span className="text-3xl" aria-hidden="true">📷</span>
+        <p role="alert" className="text-sm text-red-500 text-center">{error}</p>
+        <button onClick={startCamera} disabled={starting} className="text-xs text-blue-600 font-medium underline mt-1">Coba lagi</button>
+      </div>}
     </div>
   )
 }
@@ -416,44 +302,73 @@ type ActivePromo = {
   } | null
 }
 
-async function fetchActivePromos(): Promise<ActivePromo[]> {
+async function fetchActivePromos(signal?: AbortSignal): Promise<ActivePromo[]> {
   const today = new Date().toISOString().split('T')[0]
-  const { data, error } = await supabase
-    .from('promotions')
-    .select('id, product_id, harga_pokok, luar_kota, dalam_kota, depo_bangunan, products(name, sku, size, harga_pokok, luar_kota, dalam_kota, depo_bangunan)')
-    .eq('is_active', true)
-    .lte('start_date', today)
-    .gte('end_date', today)
-  if (error) throw error
-  return (data ?? []).map(row => ({ ...row, products: singleRelation(row.products) }))
+  return readComplete<ActivePromo>(async (offset, limit) => {
+    let query = supabase.from('promotions')
+      .select('id, product_id, harga_pokok, luar_kota, dalam_kota, depo_bangunan, products(name, sku, size, harga_pokok, luar_kota, dalam_kota, depo_bangunan)', { count: 'exact' })
+      .eq('is_active', true).lte('start_date', today).gte('end_date', today).order('id').range(offset, offset + limit - 1)
+    if (signal) query = query.abortSignal(signal)
+    const { data, error, count } = await query
+    if (error) throw error
+    return { items: (data ?? []).map(row => ({ ...row, products: singleRelation(row.products) })), total: count as number }
+  }, row => row.id, signal)
 }
 
 function getActivePromoTierPrice(
   promo: ActivePromo,
   tier: 'harga_pokok' | 'luar_kota' | 'dalam_kota' | 'depo_bangunan'
-): number {
-  return promo[tier] ?? promo.products?.[tier] ?? promo.luar_kota ?? promo.products?.luar_kota ?? 0
+): number | null {
+  return resolvePromotionPrice(promo, tier)
+}
+
+function VisitOrderHistory({ customerId, visitId }: { customerId: string; visitId: string }) {
+  const orders = usePagedRead('visit_orders', { status: 'all' as const, ownOnly: false, customerId, visitId }, fetchSalesOrderPage)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const lines = useQuery({ queryKey: ['sales_order_lines', selectedId], queryFn: ({ signal }) => fetchSalesOrderLines(selectedId!, signal), enabled: !!selectedId })
+  if (orders.isError) return <div role="alert" className="p-5 text-sm text-red-600">Riwayat pesanan gagal dimuat. <button onClick={() => orders.refetch()} className="underline">Coba lagi</button></div>
+  return <div className="p-5" aria-busy={orders.isPending}>
+    {!orders.isPending && orders.data?.total === 0 && <p className="text-sm text-gray-400">Belum ada pesanan dalam kunjungan ini.</p>}
+    {orders.data?.items?.map(order => <div key={order.id} className="py-4 border-b border-gray-100">
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${ORDER_STATUS_STYLES[order.status] ?? 'bg-gray-100 text-gray-600'}`}>{order.status === 'pending' ? 'Menunggu' : order.status === 'approved' ? 'Disetujui' : order.status === 'rejected' ? 'Ditolak' : order.status}</span>
+        <span className="text-xs text-gray-400">{new Date(order.created_at).toLocaleString('id-ID')}</span>
+      </div>
+      <div className="flex justify-between text-sm"><button disabled={orders.isPending} className="text-blue-600" onClick={() => setSelectedId(selectedId === order.id ? null : order.id)}>{selectedId === order.id ? 'Tutup barang' : 'Lihat barang'}</button><span>Rp {formatMoney(order.total_value, 'full')}</span></div>
+      {selectedId === order.id && (lines.isError ? <p role="alert" className="text-sm text-red-600">Barang pesanan gagal dimuat. <button onClick={() => lines.refetch()}>Coba lagi</button></p>
+        : lines.isPending ? <p role="status">Memuat barang…</p> : <table className="w-full mt-3 text-xs"><thead><tr><th className="text-left">Barang</th><th>Jml</th><th>Harga</th><th>Total</th></tr></thead><tbody>
+          {lines.data?.map(item => <tr key={item.id}><td>{item.product_name}</td><td>{item.quantity}</td><td>Rp {item.unit_price.toLocaleString('id-ID')}</td><td>{formatLineAmount(item.quantity, item.unit_price)}</td></tr>)}
+        </tbody></table>)}
+    </div>)}
+    <PaginationControls page={orders.page} total={orders.data?.total ?? 0} pageSize={10} pending={orders.isPending} onPageChange={page => { setSelectedId(null); orders.setPage(page) }} />
+  </div>
 }
 
 export default function VisitPage() {
-  const { data: activePromos } = useQuery({
-    queryKey: ['active_promos'],
-    queryFn: fetchActivePromos,
+  const { data: activePromos, isError: promosError, refetch: refetchPromos } = useQuery({
+    queryKey: ['active_promos', 'complete'],
+    queryFn: ({ signal }) => fetchActivePromos(signal),
   })
   const { scheduleId } = useParams<{ scheduleId: string }>()
   const { profile } = useAuth()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const sendTransaction = useTransactionSender(`sales-visit:${scheduleId}`)
+  const sendVisit = useTransactionSender(`check-in:${scheduleId}`, true)
+  const uploadKey = `pilot-upload:${profile?.id}:${scheduleId}`
+  const checkIn = useMemo(() => createVisitCheckIn(sendVisit, () => window.localStorage, uploadKey), [sendVisit, uploadKey])
 
   const [showCamera, setShowCamera] = useState(false)
   const [photoPreview, setPhotoPreview] = useState<string | null>(null)
   const [photoBlob, setPhotoBlob] = useState<Blob | null>(null)
+  useEffect(() => () => { if (photoPreview) URL.revokeObjectURL(photoPreview) }, [photoPreview])
   const [locationStatus, setLocationStatus] = useState<'idle' | 'loading' | 'granted' | 'denied' | 'unavailable'>('idle')
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null)
   const [showOrderForm, setShowOrderForm] = useState(false)
   const [orderItems, setOrderItems] = useState<OrderItem[]>([
-    { product_id: null, product_name: '', sku: '', quantity: 1, unit_price: 0 }
+    { product_id: null, product_name: '', sku: '', quantity: 1, unit_price: Number.NaN }
   ])
+  const unsaved = useUnsavedChanges(showOrderForm && hasOrderItemChanges(orderItems))
 
   const { data: schedule, isLoading: scheduleLoading, error: scheduleError } = useQuery({
     queryKey: ['schedule', scheduleId],
@@ -467,35 +382,27 @@ export default function VisitPage() {
     enabled: !!scheduleId,
   })
 
-  const { data: orders } = useQuery({
-    queryKey: ['visit_orders', visit?.id],
-    queryFn: () => fetchOrders(schedule!.customers.id, visit!.id),
-    enabled: !!visit && !!schedule?.customers,
-  })
-
-  const { data: products } = useQuery({
-    queryKey: ['products'],
-    queryFn: fetchProducts,
+  const { data: products, isError: productsError, refetch: refetchProducts } = useQuery({
+    queryKey: ['products', 'complete', 'visit'], queryFn: ({ signal }) => fetchProducts(signal),
   })
 
   const checkInMutation = useMutation({
     mutationFn: checkIn,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['visit', scheduleId] })
-      queryClient.invalidateQueries({ queryKey: ['my_visits'] })
-      queryClient.invalidateQueries({ queryKey: ['schedules'] })
+      queryClient.invalidateQueries()
       setShowCamera(false)
       setPhotoPreview(null)
       setPhotoBlob(null)
+      window.localStorage.removeItem(uploadKey)
     },
   })
 
   const orderMutation = useMutation({
-    mutationFn: submitOrder,
+    mutationFn: (payload: Parameters<typeof submitOrder>[0]) => submitOrder(payload, sendTransaction),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['visit_orders', visit?.id] })
+      queryClient.invalidateQueries()
       setShowOrderForm(false)
-      setOrderItems([{ product_id: null, product_name: '', sku: '', quantity: 1, unit_price: 0 }])
+      setOrderItems([{ product_id: null, product_name: '', sku: '', quantity: 1, unit_price: Number.NaN }])
     },
   })
 
@@ -531,8 +438,6 @@ export default function VisitPage() {
     if (!profile || !schedule?.customers) return
     checkInMutation.mutate({
       schedule_id: scheduleId!,
-      outlet_id: schedule.customers.id,
-      sales_person_id: profile.id,
       lat: location?.lat ?? null,
       lng: location?.lng ?? null,
       photo_blob: photoBlob,
@@ -544,8 +449,8 @@ export default function VisitPage() {
   }
 
   const fillFromProduct = (index: number, product: Product) => {
-    const tier = schedule?.customers?.pricing_tier ?? 'luar_kota'
-    const price = (product[tier as keyof Product] as number) || product.unit_price
+    const tier = schedule?.customers?.pricing_tier ?? 'others'
+    const price = resolveCatalogPrice(product, tier) ?? Number.NaN
     setOrderItems(prev => prev.map((item, i) =>
       i === index
         ? { ...item, product_id: product.id, product_name: product.name, sku: product.sku, unit_price: price }
@@ -555,11 +460,12 @@ export default function VisitPage() {
 
   const addPromoItem = (promo: ActivePromo) => {
     if (!promo.products) return
-    const tier = schedule?.customers?.pricing_tier ?? 'luar_kota'
+    const tier = schedule?.customers?.pricing_tier ?? 'others'
     const price = getActivePromoTierPrice(
       promo,
       tier as 'harga_pokok' | 'luar_kota' | 'dalam_kota' | 'depo_bangunan'
     )
+    if (price === null) return alert(PRICE_TIERS.some(known => known === tier) ? 'Harga promosi untuk tier pelanggan belum diisi. Hubungi admin untuk melengkapi harga promosi.' : 'Promosi tidak tersedia untuk kelompok pelanggan ini.')
     setOrderItems(prev => {
       const exists = prev.find(i => i.product_id === promo.product_id && i.is_promo)
       if (exists) return prev
@@ -577,7 +483,7 @@ export default function VisitPage() {
 
   const addOrderItem = () => setOrderItems(prev => [
     ...prev,
-    { product_id: null, product_name: '', sku: '', quantity: 1, unit_price: 0 }
+    { product_id: null, product_name: '', sku: '', quantity: 1, unit_price: Number.NaN }
   ])
 
   const removeOrderItem = (index: number) => {
@@ -602,7 +508,10 @@ export default function VisitPage() {
   if (scheduleLoading || visitLoading) {
     return (
       <div className="min-h-screen bg-gray-50">
+        {unsaved.dialog}
         <GirardNav />
+        <TransactionRecovery send={sendVisit} onCommitted={() => { queryClient.invalidateQueries(); setShowCamera(false); setPhotoPreview(null); setPhotoBlob(null); window.localStorage.removeItem(uploadKey) }} />
+        <TransactionRecovery send={sendTransaction} onCommitted={() => { queryClient.invalidateQueries(); setShowOrderForm(false); setOrderItems([{ product_id: null, product_name: '', sku: '', quantity: 1, unit_price: Number.NaN }]) }} />
         <div className="p-8 text-gray-400 text-sm text-center">Memuat...</div>
       </div>
     )
@@ -611,8 +520,13 @@ export default function VisitPage() {
   if (!schedule || !schedule.customers) {
     return (
       <div className="min-h-screen bg-gray-50">
+        {unsaved.dialog}
         <GirardNav />
-        <div className="p-8 text-red-500 text-sm">{scheduleError ? scheduleError.message : !schedule ? 'Jadwal tidak ditemukan.' : 'Pelanggan untuk jadwal ini tidak tersedia. Hubungi administrator.'}</div>
+        <TransactionRecovery send={sendVisit} onCommitted={() => { queryClient.invalidateQueries(); setShowCamera(false); setPhotoPreview(null); setPhotoBlob(null); window.localStorage.removeItem(uploadKey) }} />
+        <TransactionRecovery send={sendTransaction} onCommitted={() => { queryClient.invalidateQueries(); setShowOrderForm(false); setOrderItems([{ product_id: null, product_name: '', sku: '', quantity: 1, unit_price: Number.NaN }]) }} />
+        <div className="p-8 text-red-500 text-sm">{scheduleError
+          ? scheduleError instanceof ScheduleCustomerUnavailableError ? scheduleError.message : 'Gagal memuat jadwal. Silakan muat ulang halaman untuk mencoba lagi.'
+          : !schedule ? 'Jadwal tidak ditemukan atau Anda tidak memiliki akses.' : 'Pelanggan untuk jadwal ini tidak tersedia. Hubungi administrator.'}</div>
       </div>
     )
   }
@@ -622,7 +536,10 @@ export default function VisitPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {unsaved.dialog}
       <GirardNav />
+        <TransactionRecovery send={sendVisit} onCommitted={() => { queryClient.invalidateQueries(); setShowCamera(false); setPhotoPreview(null); setPhotoBlob(null); window.localStorage.removeItem(uploadKey) }} />
+        <TransactionRecovery send={sendTransaction} onCommitted={() => { queryClient.invalidateQueries(); setShowOrderForm(false); setOrderItems([{ product_id: null, product_name: '', sku: '', quantity: 1, unit_price: Number.NaN }]) }} />
 
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center gap-4">
         <button onClick={() => navigate(-1)} className="text-gray-400 hover:text-gray-600 text-sm">
@@ -820,7 +737,7 @@ export default function VisitPage() {
                 <div className="bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
                   <p className="text-xs text-blue-600">
                     Harga yang digunakan: <span className="font-semibold">
-                      {TIER_LABELS[schedule?.customers?.pricing_tier ?? 'luar_kota']}
+                      {TIER_LABELS[schedule?.customers?.pricing_tier ?? 'others']}
                     </span>
                   </p>
                 </div>
@@ -831,11 +748,11 @@ export default function VisitPage() {
                   <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 space-y-2">
                     <p className="text-xs font-semibold text-orange-700">🔥 Product Highlight — Harga Spesial</p>
                     <p className="text-xs text-orange-500">
-                      Harga sudah sesuai tier pelanggan ({TIER_LABELS[schedule?.customers?.pricing_tier ?? 'luar_kota']}) dan tidak dapat diubah.
+                      Harga sudah sesuai tier pelanggan ({TIER_LABELS[schedule?.customers?.pricing_tier ?? 'others']}) dan tidak dapat diubah.
                     </p>
                     <div className="space-y-2">
                       {activePromos.map(promo => {
-                        const tier = schedule?.customers?.pricing_tier ?? 'luar_kota'
+                        const tier = schedule?.customers?.pricing_tier ?? 'others'
                         const price = getActivePromoTierPrice(
                           promo,
                           tier as 'harga_pokok' | 'luar_kota' | 'dalam_kota' | 'depo_bangunan'
@@ -846,19 +763,20 @@ export default function VisitPage() {
                             <div className="flex-1 min-w-0">
                               <p className="text-xs font-semibold text-gray-900 truncate">{promo.products?.name ?? 'Produk tidak tersedia'}</p>
                               <p className="text-xs text-gray-500">
-                                Rp {price.toLocaleString('id-ID')}
+                                {formatCatalogPrice(price)}
                               </p>
+                              {price === null && <p className="text-xs text-orange-700">{PRICE_TIERS.some(known => known === tier) ? 'Hubungi admin untuk melengkapi harga promosi tier ini.' : 'Promosi tidak tersedia untuk kelompok pelanggan ini.'}</p>}
                             </div>
                             <button
                               onClick={() => addPromoItem(promo)}
-                              disabled={alreadyAdded || !promo.products}
+                              disabled={alreadyAdded || !promo.products || price === null}
                               className={`ml-3 text-xs font-medium px-3 py-1.5 rounded-lg shrink-0 transition-colors ${
-                                alreadyAdded || !promo.products
+                                alreadyAdded || !promo.products || price === null
                                   ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                                   : 'bg-orange-500 text-white hover:bg-orange-600'
                               }`}
                             >
-                              {alreadyAdded ? '✓ Ditambah' : '+ Tambah'}
+                              {price === null ? 'Harga belum diisi' : alreadyAdded ? '✓ Ditambah' : '+ Tambah'}
                             </button>
                           </div>
                         )
@@ -916,8 +834,11 @@ export default function VisitPage() {
                             }
                           </label>
                           <input
-                            type="number" min={0}
-                            value={Number.isNaN(item.unit_price) ? '' : item.unit_price}
+                            type="number" min={0} step="0.01"
+                            aria-label="Harga satuan"
+                        required
+                        placeholder="Harga belum diisi"
+                        value={Number.isNaN(item.unit_price) ? '' : item.unit_price}
                             onChange={e => !item.is_promo && updateOrderItem(i, 'unit_price', e.target.valueAsNumber)}
                             readOnly={item.is_promo}
                             className={`w-full border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 ${
@@ -928,9 +849,10 @@ export default function VisitPage() {
                           />
                         </div>
                       </div>
-                      <p className="text-right text-xs text-gray-400">
+                      {Number.isNaN(item.unit_price) && <p className="text-xs text-amber-700">Isi harga satuan sebelum menyimpan. Nol hanya untuk barang gratis.</p>}
+                  <p className="text-right text-xs text-gray-400">
                         Subtotal: <span className="text-gray-700 font-medium">
-                          Rp {(item.quantity * item.unit_price).toLocaleString('id-ID')}
+                          {formatLineAmount(item.quantity, item.unit_price)}
                         </span>
                       </p>
                     </div>
@@ -941,13 +863,15 @@ export default function VisitPage() {
                 </button>
                 <div className="flex items-center justify-between pt-2 border-t border-gray-100">
                   <p className="text-sm text-gray-500">
-                    Total: <span className="font-semibold text-gray-900">Rp {orderTotal.toLocaleString('id-ID')}</span>
+                    Total: <span className="font-semibold text-gray-900">{Number.isFinite(orderTotal) ? `Rp ${orderTotal.toLocaleString('id-ID')}` : 'Harga belum lengkap'}</span>
                   </p>
                   <div className="flex gap-2">
                     <button
                       onClick={() => {
-                        setShowOrderForm(false)
-                        setOrderItems([{ product_id: null, product_name: '', sku: '', quantity: 1, unit_price: 0 }])
+                        unsaved.confirmDiscard(() => {
+                          setShowOrderForm(false)
+                          setOrderItems([{ product_id: null, product_name: '', sku: '', quantity: 1, unit_price: Number.NaN }])
+                        })
                       }}
                       className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
                     >
@@ -973,61 +897,8 @@ export default function VisitPage() {
               </div>
             )}
 
-            {!orders || orders.length === 0 ? (
-              <div className="px-5 py-8 text-center">
-                <p className="text-gray-400 text-sm">Belum ada pesanan dalam kunjungan ini.</p>
-              </div>
-            ) : (
-              <div className="divide-y divide-gray-100">
-                {orders.map(order => (
-                  <div key={order.id} className="px-5 py-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium capitalize ${ORDER_STATUS_STYLES[order.status] ?? 'bg-gray-100 text-gray-600'}`}>
-                        {order.status === 'pending' ? 'Menunggu'
-                          : order.status === 'approved' ? 'Disetujui'
-                          : order.status === 'rejected' ? 'Ditolak'
-                          : order.status}
-                      </span>
-                      <span className="text-xs text-gray-400">
-                        {new Date(order.created_at).toLocaleString('id-ID')}
-                      </span>
-                    </div>
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="text-gray-400">
-                          <th className="text-left pb-1 font-medium">Barang</th>
-                          <th className="text-right pb-1 font-medium">Jml</th>
-                          <th className="text-right pb-1 font-medium">Harga</th>
-                          <th className="text-right pb-1 font-medium">Total</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {order.girard_order_items.map(item => (
-                          <tr key={item.id}>
-                            <td className="py-0.5 text-gray-700">{item.product_name}</td>
-                            <td className="py-0.5 text-right text-gray-600">{item.quantity}</td>
-                            <td className="py-0.5 text-right text-gray-600">
-                              Rp {item.unit_price.toLocaleString('id-ID')}
-                            </td>
-                            <td className="py-0.5 text-right text-gray-900 font-medium">
-                              Rp {(item.quantity * item.unit_price).toLocaleString('id-ID')}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr className="border-t border-gray-100">
-                          <td colSpan={3} className="pt-2 text-right text-gray-500 font-medium">Total</td>
-                          <td className="pt-2 text-right text-gray-900 font-semibold">
-                            Rp {order.total_value.toLocaleString('id-ID')}
-                          </td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                ))}
-              </div>
-            )}
+            {(productsError || promosError) && <div role="alert" className="p-5 text-sm text-red-600">Pilihan produk atau promosi belum lengkap. <button onClick={() => { refetchProducts(); refetchPromos() }} className="underline">Coba lagi</button></div>}
+            <VisitOrderHistory key={visit.id} customerId={schedule.customers.id} visitId={visit.id} />
           </div>
         )}
       </div>
