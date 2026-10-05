@@ -40,9 +40,21 @@ const renderCancel = vi.fn();
 const pageCleanup = vi.fn();
 const pdfDestroy = vi.fn();
 const taskDestroy = vi.fn();
-function page(items = [item()]) { return { getViewport: ({ scale }: {
-        scale: number;
-    }) => ({ width: 600 * scale, height: 800 * scale, transform: [scale, 0, 0, -scale, 0, 800 * scale] }), getTextContent: vi.fn(async () => ({ items, styles: { f1: { ascent: 0.8, descent: -0.2, vertical: false } } })), render: vi.fn(() => ({ promise: Promise.resolve(), cancel: renderCancel })), cleanup: pageCleanup }; }
+function page(items = [item()]) {
+    const streamTextContent = vi.fn(() => new ReadableStream({ start(controller) {
+        controller.enqueue({ items, styles: { f1: { ascent: 0.8, descent: -0.2, vertical: false } }, lang: null }); controller.close();
+    } }));
+    // Match the pinned library rather than bypassing its stream behavior in tests.
+    const getTextContent = vi.fn(async () => {
+        const result = { items: [] as any[], styles: {} };
+        for await (const chunk of streamTextContent() as any) {
+            result.items.push(...chunk.items); Object.assign(result.styles, chunk.styles);
+        }
+        return result as any;
+    });
+    return { getViewport: ({ scale }: { scale: number }) => ({ width: 600 * scale, height: 800 * scale, transform: [scale, 0, 0, -scale, 0, 800 * scale] }),
+        getTextContent, streamTextContent, render: vi.fn(() => ({ promise: Promise.resolve(), cancel: renderCancel })), cleanup: pageCleanup };
+}
 function installPDF(pages = [page()]) { const doc = { numPages: pages.length, getPage: vi.fn(async (n: number) => pages[n - 1]), destroy: pdfDestroy, getMetadata: vi.fn(async () => ({ info: { EncryptFilterName: null } })) }; mocks.getDocument.mockReturnValue({ promise: Promise.resolve(doc), destroy: taskDestroy }); return doc; }
 let worker: {
     recognize: ReturnType<typeof vi.fn>;
@@ -123,6 +135,73 @@ describe('bounded local file validation', () => {
     it('accepts supported static image signatures', async () => { await expect(validatePOFile(fakeFile('x.png', png(), 'image/png'))).resolves.toEqual({ kind: 'image' }); await expect(validatePOFile(fakeFile('x.webp', webp(), 'image/webp'))).resolves.toEqual({ kind: 'image' }); });
 });
 describe('local document reader', () => {
+    it('reads every text chunk when streams have no async iterator', async () => {
+        const fake = page(), streams: ReadableStream[] = [];
+        const chunks = [
+            { items: [item('PO 123')], styles: { f1: { ascent: 0.7, descent: -0.3, vertical: false } }, lang: 'id' },
+            { items: [item('SECOND ROW', [12, 0, 0, 12, 20, 700])], styles: { f2: { ascent: 0.9, descent: -0.1, vertical: false } }, lang: null },
+        ];
+        fake.streamTextContent.mockImplementation(() => {
+            const stream = new ReadableStream({ start(controller) { for (const chunk of chunks) controller.enqueue(chunk); controller.close(); } });
+            Object.defineProperty(stream, Symbol.asyncIterator, { value: undefined });
+            streams.push(stream); return stream;
+        });
+        installPDF([fake]);
+        const result = await readPODocument(pdfFile(), options());
+        expect(result.pages[0].tokens.map(token => token.text)).toEqual(['PO 123', 'SECOND ROW']);
+        expect(result.pages[0].tokens[0].y).toBeCloseTo(124.8);
+        expect(streams).toHaveLength(1); expect(streams[0].locked).toBe(false);
+        expect(fake.getTextContent).not.toHaveBeenCalled();
+        result.dispose();
+    });
+    it('discards partial text and releases the stream lock after a text-stream error', async () => {
+        const fake = page(); let reads = 0;
+        const stream = new ReadableStream({ pull(controller) {
+            if (reads++ === 0) controller.enqueue({ items: [item('PARTIAL')], styles: {} });
+            else controller.error(new Error('private synthetic text'));
+        } });
+        fake.streamTextContent.mockReturnValue(stream);
+        installPDF([fake]);
+        await expect(readPODocument(pdfFile(), options())).rejects.toMatchObject({ code: 'READ_FAILED', message: expect.not.stringContaining('private') });
+        expect(stream.locked).toBe(false); expect(fake.render).not.toHaveBeenCalled();
+        expect(taskDestroy).toHaveBeenCalled();
+    });
+    it('cancels a pending text read and releases its stream lock without partial output', async () => {
+        const fake = page(), cancelled = vi.fn(), controller = new AbortController();
+        const stream = new ReadableStream({ start(source) { source.enqueue({ items: [item('PARTIAL')], styles: {} }); }, cancel: cancelled });
+        fake.streamTextContent.mockReturnValue(stream);
+        installPDF([fake]);
+        const work = readPODocument(pdfFile(), options(controller.signal));
+        const rejection = expect(work).rejects.toMatchObject({ code: 'ABORTED' });
+        await vi.waitFor(() => expect(stream.locked).toBe(true));
+        controller.abort(); await rejection;
+        expect(cancelled).toHaveBeenCalledTimes(1); expect(stream.locked).toBe(false);
+        expect(fake.render).not.toHaveBeenCalled(); expect(nativeWorkers[0].terminate).toHaveBeenCalledTimes(1);
+    });
+    it('times out a pending text read and releases its stream lock', async () => {
+        vi.useFakeTimers();
+        const fake = page(), cancelled = vi.fn();
+        const stream = new ReadableStream({ cancel: cancelled });
+        fake.streamTextContent.mockReturnValue(stream); installPDF([fake]);
+        const work = readPODocument(pdfFile(), options());
+        const rejection = expect(work).rejects.toMatchObject({ code: 'TIMEOUT' });
+        await vi.advanceTimersByTimeAsync(0); expect(stream.locked).toBe(true);
+        await vi.advanceTimersByTimeAsync(120_000); await rejection;
+        expect(cancelled).toHaveBeenCalledTimes(1); expect(stream.locked).toBe(false);
+        expect(fake.render).not.toHaveBeenCalled();
+    });
+    it('retains worker policy failure precedence during a pending text read', async () => {
+        const fake = page(), cancelled = vi.fn();
+        const stream = new ReadableStream({ cancel: cancelled });
+        fake.streamTextContent.mockReturnValue(stream); installPDF([fake]);
+        const work = readPODocument(pdfFile(), options());
+        const rejection = expect(work).rejects.toMatchObject({ code: 'INVALID_PDF' });
+        await vi.waitFor(() => expect(stream.locked).toBe(true));
+        (nativeWorkers[0] as any).emit('message', { data: { type: 'po-reader-policy-error', code: 'INVALID_PDF' } });
+        await rejection;
+        expect(cancelled).toHaveBeenCalledTimes(1); expect(stream.locked).toBe(false);
+        expect(fake.render).not.toHaveBeenCalled();
+    });
     it('waits for vendor worker readiness before configuring PDF.js', async () => { mocks.autoReady = false; installPDF(); const work = readPODocument(pdfFile(), options()); await vi.waitFor(() => expect(nativeWorkers).toHaveLength(1)); expect(mocks.pdfWorkerCreate).not.toHaveBeenCalled(); expect(mocks.getDocument).not.toHaveBeenCalled(); (nativeWorkers[0] as any).emit('message', { data: { type: 'po-reader-ready' } }); const result = await work; expect(mocks.pdfWorkerCreate).toHaveBeenCalledTimes(1); result.dispose(); });
     it('cancels before PDF readiness without initializing a fake worker', async () => { mocks.autoReady = false; installPDF(); const c = new AbortController(); const work = readPODocument(pdfFile(), options(c.signal)); await vi.waitFor(() => expect(nativeWorkers).toHaveLength(1)); c.abort(); await expect(work).rejects.toMatchObject({ code: 'ABORTED' }); expect(mocks.pdfWorkerCreate).not.toHaveBeenCalled(); expect(nativeWorkers[0].terminate).toHaveBeenCalled(); });
     it('times out a missing bootstrap readiness signal without configuring PDF.js', async () => {
