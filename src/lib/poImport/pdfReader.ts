@@ -1,7 +1,7 @@
 import type { PageText, Progress, Token } from './contracts'
 import { ASSETS, LIMITS, canvasPreview, readerError, releaseCanvas } from './limits'
 import type { ReadContext } from './limits'
-import type { TextItem, TextStyle } from 'pdfjs-dist/types/src/display/api'
+import type { PDFPageProxy, TextContent, TextItem, TextStyle } from 'pdfjs-dist/types/src/display/api'
 
 type Matrix = [number, number, number, number, number, number]
 function transform(a: number[], b: number[]): Matrix {
@@ -20,6 +20,35 @@ function textToken(item: TextItem, style: TextStyle | undefined, viewport: { tra
   const right = Math.max(x,Math.min(viewport.width,Math.max(...corners.map(p=>p[0])))), bottom = Math.max(y,Math.min(viewport.height,Math.max(...corners.map(p=>p[1]))))
   if (right === x || bottom === y) return null
   return { text: item.str, x, y, width: right-x, height: bottom-y, confidence: null }
+}
+
+/** PDF.js 6 uses async stream iteration in getTextContent, absent in older
+ * WebKit. Consume the same complete stream with its broadly supported reader API.
+ * Keep cancellation local to this read; never patch browser/vendor prototypes.
+ */
+async function readTextContent(page: PDFPageProxy, context: ReadContext, workerFailure: Promise<never>): Promise<TextContent> {
+  const reader: ReadableStreamDefaultReader<TextContent> = page.streamTextContent().getReader()
+  let complete = false, cancelled = false
+  const cancel = () => {
+    if (cancelled) return
+    cancelled = true
+    return reader.cancel().catch(() => {})
+  }
+  const removeCancel = context.defer(cancel)
+  const content: TextContent = { items: [], styles: Object.create(null), lang: null }
+  try {
+    while (true) {
+      const { value, done } = await context.wait(Promise.race([reader.read(), workerFailure]))
+      if (done) { complete = true; return content }
+      content.lang ??= value.lang
+      Object.assign(content.styles, value.styles)
+      content.items.push(...value.items)
+    }
+  } finally {
+    if (!complete) cancel()
+    removeCancel()
+    reader.releaseLock()
+  }
 }
 
 export async function readLocalPDF(file: File, context: ReadContext, pages: PageText[], previews: Blob[], onProgress: (p: Progress) => void) {
@@ -92,7 +121,7 @@ export async function readLocalPDF(file: File, context: ReadContext, pages: Page
         if (![initial.width,initial.height].every(v => Number.isFinite(v) && v > 0)) throw readerError('INVALID_PDF')
         const scale = LIMITS.renderEdge / Math.max(initial.width,initial.height), viewport = page.getViewport({ scale })
         canvas.width = Math.max(1,Math.floor(viewport.width)); canvas.height = Math.max(1,Math.floor(viewport.height))
-        const content = await context.wait(Promise.race([page.getTextContent(),workerFailure]))
+        const content = await readTextContent(page, context, workerFailure)
         const tokens = content.items.filter((item): item is TextItem => 'str' in item).map(item => textToken(item,content.styles[item.fontName],{transform:viewport.transform,width:canvas.width,height:canvas.height,scale})).filter((item): item is Token => item !== null)
         const drawing = canvas.getContext('2d', { alpha: false })
         if (!drawing) throw readerError('READ_FAILED')
