@@ -31,6 +31,18 @@ test('fresh assigned detail gates private reason and blocks repeated approval cl
  const approve=screen.getByRole('button',{name:'Setujui cuti'});fireEvent.click(approve);fireEvent.click(approve);await waitFor(()=>expect(finish).toBeDefined());expect(rpc.mock.calls.filter(([name])=>name==='leave_transaction_v1')).toHaveLength(1)
  rows=[];await act(async()=>finish!({data:{id,version:2,operation:'approve_request'},error:null}));expect(await screen.findByText('Keputusan tersimpan.')).toBeTruthy();expect(screen.queryByText('Fictional private reason')).toBeNull()
 })
+test('assigned cards show a status badge and collapse daily details without hiding decisions or balance context',async()=>{
+ mount();await screen.findByRole('button',{name:'Tinjau Fictional employee'})
+ expect(screen.getByLabelText('Status permintaan: Menunggu persetujuan cuti').className).toContain('rounded-full')
+ fireEvent.click(screen.getByRole('button',{name:'Tinjau Fictional employee'}))
+ await screen.findByText('Fictional private reason')
+ const region=screen.getByRole('region',{name:'Detail permintaan ditugaskan'})
+ const breakdown=within(region).getByText('Rincian tanggal dan periode').closest('details')!
+ expect(breakdown).toBeTruthy();expect(breakdown.hasAttribute('open')).toBe(false)
+ expect(within(region).getByRole('region',{name:'Konteks saldo permohonan'}).closest('details')).toBeNull()
+ expect(within(region).getByRole('button',{name:'Setujui cuti'}).closest('details')).toBeNull()
+ expect(within(region).getByRole('button',{name:'Setujui cuti'}).classList.contains('bg-orange-700')).toBe(true)
+})
 test('reject requires a reason, and shared authority suspension hides retained private input',async()=>{
  const {view,element}=mount();fireEvent.click(await screen.findByRole('button',{name:'Tinjau Fictional employee'}));const reason=await screen.findByLabelText('Alasan penolakan');expect((screen.getByRole('button',{name:'Tolak cuti'}) as HTMLButtonElement).disabled).toBe(true)
  fireEvent.change(reason,{target:{value:'Private decision note'}});view.rerender(element('pending'));expect(screen.queryByDisplayValue('Private decision note')).toBeNull();expect(screen.queryByText('Fictional private reason')).toBeNull()

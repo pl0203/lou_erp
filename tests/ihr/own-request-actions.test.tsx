@@ -60,9 +60,9 @@ test('personal cancellation is reachable from own detail and protects closing hi
  mocks.rpc.mockImplementation((name:string)=>({abortSignal:()=>Promise.resolve({data:name==='leave_context_v1'?context:name==='leave_own_history_v1'?{rows:[summary],nextBefore:null}:name==='leave_own_request_v1'?detail:approved,error:null})}))
  const client=new QueryClient({defaultOptions:{queries:{retry:false}}});clients.push(client);render(<QueryClientProvider client={client}><MyLeave actorId={employeeA} context={context}/></QueryClientProvider>)
  fireEvent.click(screen.getByRole('button',{name:'Riwayat pengajuan'}));fireEvent.click(await screen.findByRole('button',{name:'Lihat rincian 2026-10-02 sampai 2026-10-03'}));fireEvent.click(await screen.findByRole('button',{name:'Minta pembatalan seluruh pengajuan'}));fireEvent.change(screen.getByLabelText('Alasan pembatalan'),{target:{value:'Private cancellation reason'}})
- expect((screen.getByRole('button',{name:'Buat pratinjau cuti'}) as HTMLButtonElement).disabled).toBe(true)
+ expect((screen.getByRole('button',{name:'Ajukan cuti'}) as HTMLButtonElement).disabled).toBe(true)
  fireEvent.click(screen.getByRole('button',{name:'Tutup rincian'}));expect(screen.getByDisplayValue('Private cancellation reason')).toBeTruthy();fireEvent.click(screen.getByRole('button',{name:'Tutup riwayat pengajuan'}));expect(screen.getByDisplayValue('Private cancellation reason')).toBeTruthy();expect(unload()).toBe(true)
- vi.mocked(window.confirm).mockReturnValue(true);fireEvent.click(screen.getByRole('button',{name:'Tutup riwayat pengajuan'}));expect(screen.queryByDisplayValue('Private cancellation reason')).toBeNull();expect(unload()).toBe(false);expect((screen.getByRole('button',{name:'Buat pratinjau cuti'}) as HTMLButtonElement).disabled).toBe(false)
+ vi.mocked(window.confirm).mockReturnValue(true);fireEvent.click(screen.getByRole('button',{name:'Tutup riwayat pengajuan'}));expect(screen.queryByDisplayValue('Private cancellation reason')).toBeNull();expect(unload()).toBe(false);expect((screen.getByRole('button',{name:'Ajukan cuti'}) as HTMLButtonElement).disabled).toBe(false)
 })
 
 test('real page keeps a private cancellation draft and dirty guard through shared context failure and cache purge',async()=>{

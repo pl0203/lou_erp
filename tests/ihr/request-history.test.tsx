@@ -32,6 +32,19 @@ test('own history pages by server cursor and own detail renders frozen reason/da
  expect((screen.getByRole('button',{name:'Pengajuan lebih lama'}) as HTMLButtonElement).disabled).toBe(true)
  fireEvent.click(screen.getByRole('button',{name:'Pengajuan lebih baru'}));await screen.findByText('Menunggu persetujuan')
 })
+test('own requests use named status badges and keep routine daily detail collapsed',async()=>{
+ mount();await history()
+ const status=screen.getByLabelText('Status pengajuan: Menunggu persetujuan')
+ expect(status.textContent).toBe('Menunggu persetujuan')
+ expect(status.closest('li')?.className).toContain('rounded-xl')
+ await details()
+ const region=screen.getByRole('region',{name:'Rincian pengajuan cuti'})
+ const breakdown=within(region).getByText('Rincian tanggal dan periode').closest('details')!
+ expect(breakdown).toBeTruthy();expect(breakdown.hasAttribute('open')).toBe(false)
+ expect(within(region).getByText(detail.reason).closest('details')).toBeNull()
+ fireEvent.click(within(region).getByText('Rincian tanggal dan periode'))
+ expect(breakdown.hasAttribute('open')).toBe(true)
+})
 test('cancelled cached reopening cannot reveal rows or run a history read before a genuinely completed authority retry',async()=>{
  const {client}=mount();await history();fireEvent.click(screen.getByRole('button',{name:'Tutup riwayat pengajuan'}));let signal!:AbortSignal
  mocks.rpc.mockImplementation((name:string,args:Record<string,unknown>)=>({abortSignal:(s:AbortSignal)=>name==='leave_context_v1'?(signal=s,new Promise(()=>{})):Promise.resolve({data:response(name,args),error:null})}))
@@ -68,7 +81,7 @@ test('real shared page completes history/detail gates and hides frozen reason du
  let signal!:AbortSignal;mocks.rpc.mockImplementation((name:string,args:Record<string,unknown>)=>({abortSignal:(s:AbortSignal)=>name==='leave_context_v1'?(signal=s,new Promise(()=>{})):Promise.resolve({data:response(name,args),error:null})}))
  fireEvent(window,new Event('focus'));await waitFor(()=>expect(signal).toBeDefined());expect(screen.queryByText(detail.reason)).toBeNull()
  await act(async()=>client.cancelQueries({queryKey:leaveKeys.context(employeeA,'current'),exact:true}));expect(screen.queryByText(detail.reason)).toBeNull()
- serve();fireEvent.click(await screen.findByRole('button',{name:'Coba lagi'}));await screen.findByRole('button',{name:'Buat pratinjau cuti'})
+ serve();fireEvent.click(await screen.findByRole('button',{name:'Coba lagi'}));await screen.findByRole('button',{name:'Ajukan cuti'})
  expect(screen.queryByText(detail.reason)).toBeNull();fireEvent.click(screen.getByRole('button',{name:'Coba lagi riwayat pengajuan'}));await screen.findByText('Menunggu persetujuan');fireEvent.click(screen.getByRole('button',{name:'Coba lagi rincian'}));expect(await screen.findByText(detail.reason)).toBeTruthy()
 })
 

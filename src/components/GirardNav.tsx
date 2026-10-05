@@ -42,10 +42,10 @@ export default function GirardNav() {
   const switcherRef = useRef<HTMLDivElement>(null)
   const userRef = useRef<HTMLDivElement>(null)
 
-  const links = profile ? [...(ROLE_LINKS[profile.role] ?? []), { to: '/ihr/leave', label: 'Cuti' }] : []
+  const links = profile ? [...(ROLE_LINKS[profile.role] ?? []), { to: ['sales_person','sales_manager'].includes(profile.role)?'/ihr/leave?tab=mine':'/ihr/leave', label: 'iHR' }] : []
   const canAccessAthel  = profile && ATHEL_ROLES.includes(profile.role)
   const canAccessGirard = profile && GIRARD_ROLES.includes(profile.role)
-  const showSwitcherBtn = canAccessAthel && canAccessGirard
+  const showSwitcherBtn = canAccessGirard
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -73,10 +73,12 @@ export default function GirardNav() {
     .toUpperCase() ?? '?'
 
   return (
-    <div className="bg-white border-b border-gray-200 px-4 md:px-8">
+    <div className="bg-white border-b border-gray-200 px-4 md:px-8" onKeyDown={event=>{if(event.key==='Escape'&&showSwitcher){setShowSwitcher(false);switcherRef.current?.querySelector('button')?.focus()}}}>
       <div className="flex items-center gap-1 h-14">
         <div className="relative mr-4" ref={switcherRef}>
           <button
+            aria-expanded={!!showSwitcherBtn&&showSwitcher}
+            aria-controls="girard-module-options"
             onClick={() => showSwitcherBtn && setShowSwitcher(p => !p)}
             className={`flex items-center gap-1.5 py-1.5 px-2 rounded-lg transition-colors
               ${showSwitcherBtn ? 'hover:bg-gray-100 cursor-pointer' : 'cursor-default'}`}
@@ -90,14 +92,14 @@ export default function GirardNav() {
           </button>
 
           {showSwitcher && (
-            <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden z-50 w-44">
-              <button
+            <div id="girard-module-options" aria-label="Pilihan modul" className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden z-50 w-44">
+              {canAccessAthel&&<button
                 onClick={() => { navigate('/athel/po'); setShowSwitcher(false) }}
                 className="w-full text-left px-4 py-3 text-sm hover:bg-gray-50 transition-colors border-b border-gray-100"
               >
                 <span className="font-medium text-blue-600">Athel</span>
                 <p className="text-xs text-gray-400 mt-0.5">Manajemen pembelian</p>
-              </button>
+              </button>}
               <button
                 onClick={() => { navigate('/girard/schedule'); setShowSwitcher(false) }}
                 className="w-full text-left px-4 py-3 text-sm hover:bg-gray-50 transition-colors border-b border-gray-100"
@@ -106,7 +108,7 @@ export default function GirardNav() {
                 <p className="text-xs text-gray-400 mt-0.5">Manajemen penjualan</p>
               </button>
               <button
-                onClick={() => { navigate('/ihr/users'); setShowSwitcher(false) }}
+                onClick={() => { navigate(profile?.role==='executive'?'/ihr/users':['sales_person','sales_manager'].includes(profile?.role??'')?'/ihr/leave?tab=mine':'/ihr/leave'); setShowSwitcher(false) }}
                 className="w-full text-left px-4 py-3 text-sm hover:bg-gray-50 transition-colors"
               >
                 <span className="font-medium" style={{ color: '#e56d3a' }}>iHR</span>

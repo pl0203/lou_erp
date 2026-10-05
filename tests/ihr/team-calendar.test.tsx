@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import * as calendar from '../../src/pages/ihr/leave/TeamLeaveCalendar'
@@ -25,6 +25,15 @@ test('calendar shows exact minutes, partial no-clock-time explanation and no pri
  expect(screen.getByText('1j')).toBeTruthy();expect(screen.getByText(/waktu mulai dan selesai tidak dicatat/)).toBeTruthy()
  expect(screen.getByText('Sebagian jadwal')).toBeTruthy();expect(screen.queryByRole('link')).toBeNull()
  expect(screen.queryByText(/AM|PM/)).toBeNull();expect(screen.queryByText(/reason|alasan|saldo/i)).toBeNull()
+})
+test('calendar presents a compact dated agenda with exact leave minutes',async()=>{
+ const Calendar=calendar.default;mount(<Calendar actorId={actor} context={context}/>)
+ await screen.findByText('Fictional manager')
+ const agenda=screen.getByRole('list',{name:'Agenda cuti'})
+ expect(within(agenda).getAllByRole('listitem')).toHaveLength(1)
+ expect(agenda.querySelector('time')?.getAttribute('dateTime')).toBe('2026-10-01')
+ expect(within(agenda).getByText('1j')).toBeTruthy()
+ expect(screen.queryByRole('grid')).toBeNull()
 })
 test('audiences come from server and range change revalidates authority before another calendar read',async()=>{
  expect(calendar.default).toBeTypeOf('function');const Calendar=calendar.default

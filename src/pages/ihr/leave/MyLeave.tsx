@@ -32,27 +32,33 @@ function MyLeavePanel({actorId,context,onDirtyChange,readState='ready'}:Props){
   catch{setError('Jatah belum dapat disiapkan. Muat ulang konteks untuk memeriksa periode dan akses terbaru.')}
   finally{submitting.current=false;setBusy(false);void client.invalidateQueries({queryKey:leaveKeys.context(actorId,'current')})}
  }
- return <section className="space-y-4" aria-label="Cuti saya">
-  {readState==='ready'&&<button type="button" className="underline" disabled={requestOpen} onClick={toggleHistory}>{historyOpen?'Tutup riwayat pengajuan':'Riwayat pengajuan'}</button>}
-  {historyOpen&&<OwnLeaveHistory context={context} actorId={actorId} scopeVersion={context.scopeVersion} readState={readState} onDirtyChange={reportHistoryDirty}/>}
-  {readState==='ready'&&<button ref={requestOpener} type="button" disabled={requestOpen||historyOpen} onClick={()=>setRequestOpen(true)} className="rounded bg-orange-600 px-4 py-2 text-white disabled:opacity-50">Buat pratinjau cuti</button>}
-  {requestOpen&&<LeaveRequestForm actorId={actorId} context={context} onDirtyChange={onDirtyChange} readState={readState} onClose={()=>{setRequestOpen(false);queueMicrotask(()=>requestOpener.current?.focus())}}/>}
+ return <section className="space-y-5" aria-label="Cuti saya">
   {readState==='ready'&&<>
-  {!context.currentPeriod&&<p>Periode tahunan belum dikonfirmasi. Hubungi administrator HR.</p>}
-  {context.currentPeriod&&!currentExists&&<div className="rounded-xl border bg-white p-4"><p>Jatah {context.currentPeriod.year} belum disiapkan. Penyiapan jatah tidak memverifikasi saldo awal.</p><button type="button" disabled={busy} onClick={()=>void prepare()} className="mt-2 rounded bg-orange-600 px-3 py-2 text-white">{busy?'Menyiapkan...':'Siapkan jatah tahun ini'}</button></div>}
-  {error&&<p role="alert">{error}</p>}
-  {account&&<>
-   <label className="block">Periode<select aria-label="Periode saldo" value={account.accountId} onChange={e=>{setSelected(e.target.value);setOpen(false)}} className="ml-2 rounded border p-2">{context.balances.map(b=><option key={b.accountId} value={b.accountId}>{b.year}</option>)}</select></label>
-   <dl className="grid grid-cols-2 gap-3 md:grid-cols-4">
-    {[['Jatah dan penyesuaian',formatLeaveMinutes(account.allowanceMinutes)],['Pemakaian disetujui',known(account.approvedMinutes)],['Reservasi tertunda',known(account.pendingMinutes)],['Tersedia',known(account.availableMinutes)]].map(([label,value])=><div key={label} className="rounded-xl border bg-white p-4"><dt className="text-sm text-gray-600">{label}</dt><dd className="mt-2 text-lg font-semibold text-gray-900">{value}</dd></div>)}
-   </dl>
-   <p className="text-sm">Termasuk cuti disetujui di masa depan dalam pemakaian disetujui.</p>
-   {account.reconciled!==true&&<p className="text-sm">Saldo awal perlu diverifikasi sebelum saldo tersedia dapat dipakai.</p>}
-   {account.reconciled===true&&!!account.expiredMinutes&&<p>Kedaluwarsa, tidak dapat dipakai: <strong>{formatLeaveMinutes(account.expiredMinutes)}</strong></p>}
-   <button type="button" className="underline" onClick={()=>setOpen(!open)}>{open?'Tutup riwayat saldo':'Riwayat saldo'}</button>
-  </>}
+   {!context.currentPeriod&&<p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-950">Periode tahunan belum dikonfirmasi. Hubungi administrator HR.</p>}
+   {context.currentPeriod&&!currentExists&&<div className="rounded-xl border border-amber-200 bg-amber-50 p-4"><p>Jatah {context.currentPeriod.year} belum disiapkan. Penyiapan jatah tidak memverifikasi saldo awal.</p><button type="button" disabled={busy} onClick={()=>void prepare()} className="mt-3 min-h-11 rounded-lg bg-orange-700 px-4 py-2 font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-600">{busy?'Menyiapkan...':'Siapkan jatah tahun ini'}</button></div>}
+   {error&&<p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-900">{error}</p>}
+   {account&&<section aria-label="Saldo cuti" className="space-y-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
+    <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-semibold text-gray-900">Saldo cuti</h2><label className="flex items-center gap-2 text-sm">Periode<select aria-label="Periode saldo" value={account.accountId} onChange={e=>{setSelected(e.target.value);setOpen(false)}} className="min-h-11 rounded-lg border border-gray-200 bg-white px-3 py-2 focus-visible:outline-2 focus-visible:outline-orange-600">{context.balances.map(b=><option key={b.accountId} value={b.accountId}>{b.year}</option>)}</select></label></div>
+    <dl className="grid gap-3 sm:grid-cols-4">
+     <div className="rounded-xl bg-orange-50 p-4 sm:col-span-2"><dt className="text-sm font-medium text-orange-900">Tersedia</dt><dd className="mt-2 text-4xl font-semibold tracking-tight text-gray-900">{known(account.availableMinutes)}</dd></div>
+     {[['Pemakaian disetujui',known(account.approvedMinutes)],['Reservasi tertunda',known(account.pendingMinutes)]].map(([label,value])=><div key={label} className="rounded-xl bg-gray-50 p-4"><dt className="text-sm text-gray-600">{label}</dt><dd className="mt-2 text-xl font-semibold text-gray-900">{value}</dd></div>)}
+    </dl>
+    <p className="text-xs text-gray-500">Termasuk cuti disetujui di masa depan dalam pemakaian disetujui.</p>
+    {account.reconciled!==true&&<p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-950">Saldo awal perlu diverifikasi sebelum saldo tersedia dapat dipakai.</p>}
+    {account.reconciled===true&&!!account.expiredMinutes&&<p className="rounded-lg bg-amber-50 p-3 text-amber-950">Kedaluwarsa, tidak dapat dipakai: <strong>{formatLeaveMinutes(account.expiredMinutes)}</strong></p>}
+    <div className="flex flex-wrap items-start justify-between gap-3 border-t border-gray-100 pt-3">
+     <details className="text-sm"><summary className="cursor-pointer rounded py-2 font-medium text-gray-600 focus-visible:outline-2 focus-visible:outline-orange-600">Rincian saldo</summary><dl className="pt-2"><div><dt>Jatah dan penyesuaian</dt><dd className="font-semibold text-gray-900">{formatLeaveMinutes(account.allowanceMinutes)}</dd></div></dl></details>
+     <button type="button" aria-expanded={open} className="min-h-11 rounded-lg px-3 py-2 font-medium text-orange-700 hover:bg-orange-50 focus-visible:outline-2 focus-visible:outline-orange-600" onClick={()=>setOpen(!open)}>{open?'Tutup riwayat saldo':'Riwayat saldo'}</button>
+    </div>
+   </section>}
   </>}
   {open&&account&&<BalanceHistoryPanel key={`${account.accountId}:${account.version}`} actorId={actorId} scopeVersion={context.scopeVersion} accountId={account.accountId} year={account.year} version={account.version} readState={readState}/>}
+  {readState==='ready'&&<div className="flex flex-wrap items-center justify-between gap-3">
+   <button ref={requestOpener} type="button" hidden={requestOpen} disabled={requestOpen||historyOpen} onClick={()=>setRequestOpen(true)} className="min-h-11 w-full rounded-lg bg-orange-700 px-5 py-3 font-semibold text-white shadow-sm hover:bg-orange-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-600 disabled:opacity-50 sm:w-auto">Ajukan cuti</button>
+   <button type="button" aria-expanded={historyOpen} className="min-h-11 rounded-lg border border-gray-200 bg-white px-4 py-2 font-medium text-gray-700 hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-orange-600 disabled:opacity-50" disabled={requestOpen} onClick={toggleHistory}>{historyOpen?'Tutup riwayat pengajuan':'Riwayat pengajuan'}</button>
+  </div>}
+  {requestOpen&&<LeaveRequestForm actorId={actorId} context={context} onDirtyChange={onDirtyChange} readState={readState} onClose={()=>{setRequestOpen(false);queueMicrotask(()=>requestOpener.current?.focus())}}/>}
+  {historyOpen&&<OwnLeaveHistory context={context} actorId={actorId} scopeVersion={context.scopeVersion} readState={readState} onDirtyChange={reportHistoryDirty}/>}
  </section>
 }
 

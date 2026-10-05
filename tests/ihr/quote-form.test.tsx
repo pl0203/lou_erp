@@ -17,7 +17,7 @@ function client(){const c=new QueryClient({defaultOptions:{queries:{retry:false}
 function panel(c:QueryClient,ctx=context,actor=employeeA){return <QueryClientProvider client={c}><MyLeave actorId={actor} context={ctx}/></QueryClientProvider>}
 function reply(data:unknown,error:unknown=null){return {data,error}}
 function quotes(){return mocks.rpc.mock.calls.filter(([name])=>name==='leave_quote_v1')}
-async function open(){fireEvent.click(screen.getByRole('button',{name:'Buat pratinjau cuti'}));await screen.findByLabelText('Tanggal mulai')}
+async function open(){fireEvent.click(screen.getByRole('button',{name:'Ajukan cuti'}));await screen.findByLabelText('Tanggal mulai')}
 function fill(){for(const [label,value] of [['Tanggal mulai',quoteInput.startDate],['Tanggal selesai',quoteInput.endDate],['Alasan pribadi',quoteInput.reason]])fireEvent.change(screen.getByLabelText(label),{target:{value}})}
 async function preview(){fireEvent.click(screen.getByRole('button',{name:'Hitung pratinjau'}));await screen.findByRole('region',{name:'Pratinjau cuti'})}
 beforeEach(()=>{vi.stubGlobal('AbortController',class{constructor(){return transferableAbortController()}});mocks.rpc.mockImplementation((name:string)=>({abortSignal:()=>Promise.resolve(reply(name==='leave_context_v1'?context:quoteFixture))}));vi.spyOn(window,'confirm').mockReturnValue(false)})
@@ -30,6 +30,23 @@ test('single duration form focuses the date and shows authoritative 675-minute p
  expect(within(result).getByText('11j 15m')).toBeTruthy();expect(within(result).getByText('Fictional Manager')).toBeTruthy();expect(within(result).getByText('Fictional Amber')).toBeTruthy()
  expect(within(result).getByText('70j 15m')).toBeTruthy();expect(screen.getByRole('button',{name:'Ajukan cuti'})).toBeTruthy();expect(mocks.rpc.mock.calls.filter(([name])=>name==='leave_transaction_v1')).toHaveLength(0)
  expect(quotes()[0][1]).toEqual({p_input:{start_date:quoteInput.startDate,end_date:quoteInput.endDate,duration:{mode:'full_scheduled_day'},reason:quoteInput.reason}})
+})
+test('review keeps deduction remaining balance and approver visible while routine details start collapsed',async()=>{
+ render(panel(client()));await open();fill();await preview()
+ const result=screen.getByRole('region',{name:'Pratinjau cuti'})
+ expect(within(result).getByRole('heading',{name:/Total potongan: 11j 15m/})).toBeTruthy()
+ expect(within(result).getByText('Sisa tersedia')).toBeTruthy()
+ expect(within(result).getByText('70j 15m').closest('details')).toBeNull()
+ expect(within(result).getByText('Fictional Manager').closest('details')).toBeNull()
+ expect(within(result).getByRole('button',{name:'Ajukan cuti'}).classList.contains('bg-orange-700')).toBe(true)
+ expect(screen.getByRole('button',{name:'Hitung pratinjau'}).classList.contains('bg-orange-700')).toBe(true)
+ const breakdown=within(result).getByText('Rincian tanggal dan potongan').closest('details')!
+ expect(breakdown).toBeTruthy();expect(breakdown.hasAttribute('open')).toBe(false)
+ fireEvent.click(within(result).getByText('Rincian per tanggal'))
+ expect(breakdown.hasAttribute('open')).toBe(true)
+ expect(within(result).getByRole('table')).toBeTruthy()
+ expect(screen.getByText(/Pratinjau belum mengajukan cuti atau mereservasi saldo/).closest('details')).toBeNull()
+ expect(screen.getByText('Sehari sesuai jadwal: 7j 30m pada hari kerja biasa dan 3j 45m pada Sabtu bertugas. Durasi tetap harus muat pada setiap tanggal kerja.').closest('details')?.hasAttribute('open')).toBe(false)
 })
 test('read failure preserves private draft, focuses safe error and never stores it in query cache or browser storage',async()=>{
  const c=client(),storage=vi.spyOn(Storage.prototype,'setItem');render(panel(c));await open();fill()
@@ -57,7 +74,7 @@ test('every duration change invalidates preview and sends one supported exact pr
 test('close cancellation preserves draft and focus; confirmed close discards it and restores opener',async()=>{
  render(panel(client()));await open();fill();const reason=screen.getByLabelText('Alasan pribadi');reason.focus()
  fireEvent.click(screen.getByRole('button',{name:'Tutup formulir'}));expect(window.confirm).toHaveBeenCalledTimes(1);expect(screen.getByDisplayValue(quoteInput.reason)).toBeTruthy();expect(document.activeElement).toBe(reason)
- vi.mocked(window.confirm).mockReturnValue(true);fireEvent.click(screen.getByRole('button',{name:'Tutup formulir'}));expect(screen.queryByLabelText('Alasan pribadi')).toBeNull();await waitFor(()=>expect(document.activeElement).toBe(screen.getByRole('button',{name:'Buat pratinjau cuti'})))
+ vi.mocked(window.confirm).mockReturnValue(true);fireEvent.click(screen.getByRole('button',{name:'Tutup formulir'}));expect(screen.queryByLabelText('Alasan pribadi')).toBeNull();await waitFor(()=>expect(document.activeElement).toBe(screen.getByRole('button',{name:'Ajukan cuti'})))
  await open();expect((screen.getByLabelText('Alasan pribadi') as HTMLTextAreaElement).value).toBe('');expect(screen.queryByRole('region',{name:'Pratinjau cuti'})).toBeNull()
 })
 test('reload is guarded only while draft is dirty and listener is removed on close',async()=>{
@@ -69,7 +86,7 @@ test('tab navigation asks before discarding and returning starts a fresh form',a
  render(<QueryClientProvider client={client()}><LeaveTabs context={context}/></QueryClientProvider>);await open();fill()
  fireEvent.click(screen.getByRole('tab',{name:'Kalender'}));expect(screen.getByDisplayValue(quoteInput.reason)).toBeTruthy()
  vi.mocked(window.confirm).mockReturnValue(true);fireEvent.click(screen.getByRole('tab',{name:'Kalender'}));expect(screen.queryByLabelText('Alasan pribadi')).toBeNull()
- fireEvent.click(screen.getByRole('tab',{name:'Cuti Saya'}));await open();expect((screen.getByLabelText('Alasan pribadi') as HTMLTextAreaElement).value).toBe('')
+ fireEvent.click(screen.getByRole('tab',{name:'Ajukan Cuti'}));await open();expect((screen.getByLabelText('Alasan pribadi') as HTMLTextAreaElement).value).toBe('')
 })
 test('router push, Back and Forward remain blocked until discard is confirmed',async()=>{
  function Scene(){const navigate=useNavigate();return <><button onClick={()=>navigate('/other')}>Navigate away</button><button onClick={()=>navigate(-1)}>Back</button><button onClick={()=>navigate(1)}>Forward</button><MyLeave actorId={employeeA} context={context}/></>}
@@ -81,7 +98,7 @@ test('router push, Back and Forward remain blocked until discard is confirmed',a
 test('opening waits for live authority, and a denied reopening cannot reveal previous draft or preview',async()=>{
  render(panel(client()));await open();fill();await preview();vi.mocked(window.confirm).mockReturnValue(true);fireEvent.click(screen.getByRole('button',{name:'Tutup formulir'}))
  let finish!:(v:unknown)=>void;mocks.rpc.mockReturnValue({abortSignal:()=>new Promise(r=>finish=r)})
- fireEvent.click(screen.getByRole('button',{name:'Buat pratinjau cuti'}));await waitFor(()=>expect(finish).toBeDefined());expect(screen.queryByLabelText('Alasan pribadi')).toBeNull();expect(screen.queryByRole('region',{name:'Pratinjau cuti'})).toBeNull()
+ fireEvent.click(screen.getByRole('button',{name:'Ajukan cuti'}));await waitFor(()=>expect(finish).toBeDefined());expect(screen.queryByLabelText('Alasan pribadi')).toBeNull();expect(screen.queryByRole('region',{name:'Pratinjau cuti'})).toBeNull()
  await act(async()=>finish(reply(null,{code:'42501'})));expect(screen.queryByDisplayValue(quoteInput.reason)).toBeNull();expect(await screen.findByRole('alert')).toBeTruthy()
 })
 test('changed live scope before preview clears private input and never calls quote',async()=>{
@@ -96,7 +113,7 @@ test('the same revision with a genuinely different actor digest still clears a s
 test('scope, identity and director transitions immediately discard private drafts and obsolete quote responses',async()=>{
  const c=client(),view=render(panel(c));await open();fill();await preview()
  view.rerender(panel(c,{...context,scopeVersion:'2'},employeeB));expect(screen.queryByDisplayValue(quoteInput.reason)).toBeNull();expect(screen.queryByRole('region',{name:'Pratinjau cuti'})).toBeNull()
- view.rerender(panel(c,{...context,memberKind:'director',capabilities:{...context.capabilities,request:false},balances:[]}));expect(screen.queryByRole('button',{name:'Buat pratinjau cuti'})).toBeNull()
+ view.rerender(panel(c,{...context,memberKind:'director',capabilities:{...context.capabilities,request:false},balances:[]}));expect(screen.queryByRole('button',{name:'Ajukan cuti'})).toBeNull()
 })
 test('account change and foreground authority refresh hide a previous quote until recalculated',async()=>{
  const c=client(),view=render(panel(c));await open();fill();await preview()

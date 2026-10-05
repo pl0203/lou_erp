@@ -60,10 +60,10 @@ function tab(name:string){return screen.getByRole('tab',{name:new RegExp(name)})
 beforeEach(()=>{vi.stubGlobal('AbortController',class{constructor(){return transferableAbortController()}});identity(employeeA);mocks.auth.profile.role='sales_person';mocks.auth.profile.is_active=true;context=personal;audiences=['own'];ownRows=[];targets=[];rows=[summary];counts={pendingLeave:1,pendingCancellation:2};pausedContext=false;rejectContext=false;pendingSignals=[];finishMutation=undefined;localStorage.clear();onlineManager.setOnline(true);vi.spyOn(window,'confirm').mockReturnValue(false);serve()})
 afterEach(()=>{cleanup();routers.splice(0).forEach(r=>r.dispose());clients.splice(0).forEach(c=>c.clear());onlineManager.setOnline(true);vi.restoreAllMocks();vi.unstubAllGlobals();mocks.rpc.mockReset();mocks.auth.signOut.mockClear()})
 test('employee navigates between real own history and authorized own calendar without duplicate private owners',async()=>{
- mount();await screen.findByRole('tab',{name:'Cuti Saya'});fireEvent.click(await screen.findByRole('button',{name:'Riwayat pengajuan'}));await screen.findByText('Belum ada pengajuan cuti.')
- fireEvent.click(tab('Kalender'));expect(await screen.findByText('Fictional calendar employee')).toBeTruthy();expect(screen.queryByRole('button',{name:'Buat pratinjau cuti'})).toBeNull();expect(screen.queryByRole('tab',{name:/Persetujuan/})).toBeNull()
+ mount();await screen.findByRole('tab',{name:'Ajukan Cuti'});fireEvent.click(await screen.findByRole('button',{name:'Riwayat pengajuan'}));await screen.findByText('Belum ada pengajuan cuti.')
+ fireEvent.click(tab('Kalender'));expect(await screen.findByText('Fictional calendar employee')).toBeTruthy();expect(screen.queryByRole('button',{name:'Ajukan cuti'})).toBeNull();expect(screen.queryByRole('tab',{name:/Persetujuan/})).toBeNull()
  expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(tab('Kalender').id)
- fireEvent.click(tab('Cuti Saya'));expect(await screen.findByRole('button',{name:'Buat pratinjau cuti'})).toBeTruthy()
+ fireEvent.click(tab('Ajukan Cuti'));expect(await screen.findByRole('button',{name:'Ajukan cuti'})).toBeTruthy()
 })
 test('assigned manager gets full count, opens detail, guards tab and router departure, then decides and refreshes counts',async()=>{
  identity(managerA);context={...personal,memberKind:'manager',capabilities:{...none,request:true,approve:true}};audiences=['own','assigned_team'];const {router}=mount()
@@ -73,9 +73,22 @@ test('assigned manager gets full count, opens detail, guards tab and router depa
  fireEvent.click(screen.getByRole('button',{name:'Tolak cuti'}));await waitFor(()=>expect(finishMutation).toBeDefined());rows=[];counts={pendingLeave:0,pendingCancellation:0};await act(async()=>finishMutation!({data:{id:requestId,version:2,operation:'reject_request'},error:null}))
  expect(await screen.findByText('Keputusan tersimpan.')).toBeTruthy();expect(await screen.findByLabelText('0 persetujuan menunggu')).toBeTruthy();expect(screen.queryByDisplayValue('Private decision draft')).toBeNull()
 })
+test('top Ajukan Cuti navigation selects own page and respects a manager decision draft',async()=>{
+ identity(managerA);mocks.auth.profile.role='sales_manager';context={...personal,memberKind:'manager',capabilities:{...none,request:true,approve:true}};audiences=['own','assigned_team'];const {router}=mount()
+ fireEvent.click(await screen.findByRole('tab',{name:'Persetujuan'}));fireEvent.click(await screen.findByRole('button',{name:'Tinjau Fictional employee'}));fireEvent.change(await screen.findByLabelText('Alasan penolakan'),{target:{value:'Keep decision draft'}})
+ fireEvent.click(screen.getAllByRole('link',{name:'Ajukan Cuti'})[0]);await waitFor(()=>expect(window.confirm).toHaveBeenCalled());expect(tab('Persetujuan').getAttribute('aria-selected')).toBe('true');expect(screen.getByDisplayValue('Keep decision draft')).toBeTruthy();expect(router.state.location.search).toBe('')
+ vi.mocked(window.confirm).mockReturnValue(true);fireEvent.click(screen.getAllByRole('link',{name:'Ajukan Cuti'})[0]);await waitFor(()=>expect(tab('Ajukan Cuti').getAttribute('aria-selected')).toBe('true'));expect(router.state.location.search).toBe('?tab=mine');expect(screen.queryByDisplayValue('Keep decision draft')).toBeNull()
+ fireEvent.click(tab('Persetujuan'));await screen.findByRole('button',{name:'Tinjau Fictional employee'});fireEvent.click(screen.getAllByRole('link',{name:'Ajukan Cuti'})[0]);await waitFor(()=>expect(tab('Ajukan Cuti').getAttribute('aria-selected')).toBe('true'))
+})
+test('top Ajukan Cuti intent waits for an in-flight manager decision before replacing its owner',async()=>{
+ identity(managerA);mocks.auth.profile.role='sales_manager';context={...personal,memberKind:'manager',capabilities:{...none,request:true,approve:true}};audiences=['own','assigned_team'];mount()
+ fireEvent.click(await screen.findByRole('tab',{name:'Persetujuan'}));fireEvent.click(await screen.findByRole('button',{name:'Tinjau Fictional employee'}));fireEvent.click(await screen.findByRole('button',{name:'Setujui cuti'}));await waitFor(()=>expect(finishMutation).toBeDefined())
+ fireEvent.click(screen.getAllByRole('link',{name:'Ajukan Cuti'})[0]);expect(tab('Persetujuan').getAttribute('aria-selected')).toBe('true');expect(screen.getByText('Fictional private reason')).toBeTruthy()
+ rows=[];counts={pendingLeave:0,pendingCancellation:0};await act(async()=>finishMutation!({data:{id:requestId,version:2,operation:'approve_request'},error:null}));await waitFor(()=>expect(tab('Ajukan Cuti').getAttribute('aria-selected')).toBe('true'));expect(mocks.rpc.mock.calls.filter(([name])=>name==='leave_transaction_v1')).toHaveLength(1)
+})
 test('director sees only assigned approval and minimal assigned-manager calendar, never personal entitlement or HR settings',async()=>{
  identity(directorA);context={...personal,memberKind:'director',balances:[],currentPeriod:null,timezone:null,capabilities:{...none,approve:true}};audiences=['assigned_team'];mount()
- expect(await screen.findByRole('button',{name:'Tinjau Fictional employee'})).toBeTruthy();expect(screen.queryByRole('tab',{name:'Cuti Saya'})).toBeNull();expect(screen.queryByRole('tab',{name:'Pengaturan'})).toBeNull();fireEvent.click(tab('Kalender'));await screen.findByText('Fictional calendar employee')
+ expect(await screen.findByRole('button',{name:'Tinjau Fictional employee'})).toBeTruthy();expect(screen.queryByRole('tab',{name:'Ajukan Cuti'})).toBeNull();expect(screen.queryByRole('tab',{name:'Pengaturan'})).toBeNull();fireEvent.click(tab('Kalender'));await screen.findByText('Fictional calendar employee')
  expect(screen.queryByRole('option',{name:'Cuti saya'})).toBeNull();expect(screen.queryByRole('option',{name:'Akses kalender yang diberikan'})).toBeNull();expect(mocks.rpc.mock.calls.some(([name])=>name==='leave_balance_accounts_v1'||name==='leave_own_history_v1'||name==='leave_admin_targets_v1')).toBe(false)
 })
 test('configure-only discovers exact targets and exposes policy without approval/private balance/access controls',async()=>{
@@ -127,7 +140,7 @@ test.each(['leave_assigned_inbox_v1','leave_approval_counts_v1','leave_reads_con
 })
 test('narrow navigation wraps and uses one selected tab with keyboard focus and associated panel',async()=>{
  Object.defineProperty(window,'innerWidth',{configurable:true,value:320});identity(managerA);context={...personal,memberKind:'manager',capabilities:{...none,request:true,approve:true}};audiences=['own','assigned_team'];mount();await screen.findByLabelText('3 persetujuan menunggu');const list=screen.getByRole('tablist');expect(list.className).toContain('flex-wrap');expect(screen.getAllByRole('tab').filter(t=>t.getAttribute('tabindex')==='0')).toHaveLength(1)
- tab('Cuti Saya').focus();fireEvent.keyDown(tab('Cuti Saya'),{key:'ArrowRight'});expect(document.activeElement).toBe(tab('Persetujuan'));expect(tab('Cuti Saya').getAttribute('aria-selected')).toBe('true');fireEvent.click(tab('Persetujuan'));await screen.findByRole('button',{name:'Tinjau Fictional employee'});expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(tab('Persetujuan').id);expect(screen.getByRole('tabpanel').className).toContain('min-w-0')
+ tab('Ajukan Cuti').focus();fireEvent.keyDown(tab('Ajukan Cuti'),{key:'ArrowRight'});expect(document.activeElement).toBe(tab('Persetujuan'));expect(tab('Ajukan Cuti').getAttribute('aria-selected')).toBe('true');fireEvent.click(tab('Persetujuan'));await screen.findByRole('button',{name:'Tinjau Fictional employee'});expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(tab('Persetujuan').id);expect(screen.getByRole('tabpanel').className).toContain('min-w-0')
 })
 
 test('scoped configuration cannot manufacture global rota options, and failed discovery stays bounded',async()=>{
@@ -294,4 +307,38 @@ test.each(['policy','member'] as const)('explicit target denial clears %s drafts
  const label=panel==='member'?'Alasan perubahan':'Alasan policy';change(label,'Private target draft');const normal=mocks.rpc.getMockImplementation()!;let code='55000';const rpc=panel==='member'?'leave_admin_write_context_v1':'leave_admin_settings_v1';mocks.rpc.mockImplementation((name,args)=>name===rpc?{abortSignal:()=>Promise.resolve({data:null,error:{code,message:'Private diagnostic'}})}:normal(name,args));fireEvent(window,new Event('focus'));await settledBudget(client,17);expect(screen.queryByDisplayValue('Private target draft')).toBeNull();expect(guarded()).toBe(true)
  code='42501';fireEvent.click(await screen.findByRole('button',{name:panel==='member'?'Muat ulang anggota terpilih':'Muat ulang pengaturan'}));await settledBudget(client,21);expect(guarded()).toBe(false);expect(screen.queryByText('Private diagnostic')).toBeNull()
  mocks.rpc.mockImplementation(normal);fireEvent.click(screen.getByRole('button',{name:panel==='member'?'Muat ulang anggota terpilih':'Muat ulang pengaturan'}));expect((await screen.findByLabelText(label) as HTMLInputElement).value).toBe('');await settledBudget(client,25)
+})
+
+
+test('same-page Ajukan Cuti navigation preserves dirty guards for a retained personal draft',async()=>{
+ const {router}=mount();await screen.findByRole('tab',{name:'Ajukan Cuti'})
+ fireEvent.click(await screen.findByRole('button',{name:'Ajukan cuti'}))
+ fireEvent.change(await screen.findByLabelText('Alasan pribadi'),{target:{value:'First private draft'}})
+ expect(guarded()).toBe(true)
+ vi.mocked(window.confirm).mockReturnValue(true)
+ fireEvent.click(screen.getAllByRole('link',{name:'Ajukan Cuti'})[0])
+ await waitFor(()=>expect(router.state.location.search).toBe('?tab=mine'))
+ expect(window.confirm).toHaveBeenCalledTimes(1)
+ expect(screen.getByDisplayValue('First private draft')).toBeTruthy()
+ fireEvent.change(screen.getByLabelText('Alasan pribadi'),{target:{value:'New work after home navigation'}})
+ vi.mocked(window.confirm).mockClear().mockReturnValue(false)
+ fireEvent.click(tab('Kalender'))
+ expect(window.confirm).toHaveBeenCalledTimes(1)
+ expect(screen.getByDisplayValue('New work after home navigation')).toBeTruthy()
+ fireEvent.click(screen.getByRole('button',{name:'Menu pengguna'}));fireEvent.click(screen.getByRole('button',{name:'Keluar'}))
+ expect(window.confirm).toHaveBeenCalledTimes(2)
+ expect(mocks.auth.signOut).not.toHaveBeenCalled()
+ expect(guarded()).toBe(true)
+})
+
+test('newer tab navigation supersedes a deferred Ajukan Cuti home intent',async()=>{
+ identity(managerA);mocks.auth.profile.role='sales_manager';context={...personal,memberKind:'manager',capabilities:{...none,request:true,approve:true}};audiences=['own','assigned_team'];mount()
+ fireEvent.click(await screen.findByRole('tab',{name:'Persetujuan'}));fireEvent.click(await screen.findByRole('button',{name:'Tinjau Fictional employee'}));fireEvent.click(await screen.findByRole('button',{name:'Setujui cuti'}));await waitFor(()=>expect(finishMutation).toBeDefined())
+ fireEvent.click(screen.getAllByRole('link',{name:'Ajukan Cuti'})[0]);expect(tab('Persetujuan').getAttribute('aria-selected')).toBe('true')
+ fireEvent.click(tab('Kalender'))
+ await screen.findByText('Fictional calendar employee')
+ expect(tab('Kalender').getAttribute('aria-selected')).toBe('true')
+ rows=[];counts={pendingLeave:0,pendingCancellation:0}
+ await act(async()=>finishMutation!({data:{id:requestId,version:2,operation:'approve_request'},error:null}))
+ expect(tab('Kalender').getAttribute('aria-selected')).toBe('true')
 })

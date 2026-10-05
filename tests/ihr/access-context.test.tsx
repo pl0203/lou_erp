@@ -35,7 +35,7 @@ test('director has approval-only navigation and no implied future personal balan
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(<QueryClientProvider client={client}><MemoryRouter><LeaveManagement /></MemoryRouter></QueryClientProvider>)
   expect(await screen.findByRole('tab', { name: 'Persetujuan' })).toBeTruthy()
-  expect(screen.queryByRole('tab', { name: 'Cuti Saya' })).toBeNull()
+  expect(screen.queryByRole('tab', { name: 'Ajukan Cuti' })).toBeNull()
   expect(screen.queryByText(/Saldo belum dapat ditampilkan/)).toBeNull()
   expect(data.capabilities.request).toBe(false); expect(data.balances).toEqual([]); client.clear()
 })

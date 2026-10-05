@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, expect, test, vi } from 'vitest'
 import type { LeaveContext } from '../../src/lib/leave/contracts'
@@ -21,6 +21,18 @@ test('unverified opening explicitly labels unknown buckets and never shows spend
 test('verified numbers remain visible despite missing approver and explain future approved usage',()=>{
  render(wrap(<MyLeave actorId={employeeA} context={context}/>))
  expect(screen.getByText('81j 30m')).toBeTruthy();expect(screen.getByText('7j 30m')).toBeTruthy();expect(screen.getByText(/Termasuk cuti disetujui di masa depan/)).toBeTruthy()
+})
+test('available hours lead the balance summary and remain above an opened request form',async()=>{
+ mocks.rpc.mockImplementation(()=>({abortSignal:()=>Promise.resolve({data:context,error:null})}))
+ render(wrap(<MyLeave actorId={employeeA} context={context}/>))
+ const balanceSummary=screen.getByRole('region',{name:'Saldo cuti'})
+ expect(within(balanceSummary).getAllByRole('term')[0].textContent).toBe('Tersedia')
+ expect(within(balanceSummary).getByText('81j 30m').className).toContain('text-4xl')
+ expect(screen.getByRole('button',{name:'Ajukan cuti'}).classList.contains('bg-orange-700')).toBe(true)
+ fireEvent.click(screen.getByRole('button',{name:'Ajukan cuti'}))
+ const form=await screen.findByRole('region',{name:'Formulir pratinjau cuti'})
+ expect(balanceSummary.compareDocumentPosition(form)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+ expect(document.activeElement).toBe(await screen.findByLabelText('Tanggal mulai'))
 })
 test('old omitted server period blocks prepare, while current eligible missing account offers explicit preparation',()=>{
  const {currentPeriod:_,...old}=context;const view=render(wrap(<MyLeave actorId={employeeA} context={{...old,balances:[]}}/>))

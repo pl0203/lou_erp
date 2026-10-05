@@ -16,7 +16,7 @@ const context:LeaveContext={scopeVersion:quoteScope,memberKind:'employee',capabi
 const clients:QueryClient[]=[]
 function mount(){const client=new QueryClient({defaultOptions:{queries:{retry:false}}});clients.push(client);const element=()=> <QueryClientProvider client={client}><LeaveManagement/></QueryClientProvider>;return {client,element,view:render(element())}}
 function serve(ctx:LeaveContext=context){mocks.rpc.mockImplementation((name:string)=>({abortSignal:()=>Promise.resolve({data:name==='leave_context_v1'?ctx:{...quoteFixture,scopeVersion:ctx.scopeVersion},error:null})}))}
-async function openFill(){fireEvent.click(await screen.findByRole('button',{name:'Buat pratinjau cuti'}));await screen.findByLabelText('Alasan pribadi');for(const [label,value] of [['Tanggal mulai',quoteInput.startDate],['Tanggal selesai',quoteInput.endDate],['Alasan pribadi',quoteInput.reason]])fireEvent.change(screen.getByLabelText(label),{target:{value}});fireEvent.change(screen.getByLabelText('Durasi setiap tanggal'),{target:{value:'225'}})}
+async function openFill(){fireEvent.click(await screen.findByRole('button',{name:'Ajukan cuti'}));await screen.findByLabelText('Alasan pribadi');for(const [label,value] of [['Tanggal mulai',quoteInput.startDate],['Tanggal selesai',quoteInput.endDate],['Alasan pribadi',quoteInput.reason]])fireEvent.change(screen.getByLabelText(label),{target:{value}});fireEvent.change(screen.getByLabelText('Durasi setiap tanggal'),{target:{value:'225'}})}
 function unloadGuarded(){const e=new Event('beforeunload',{cancelable:true});window.dispatchEvent(e);return e.defaultPrevented}
 async function failPreflight(){mocks.rpc.mockReturnValue({abortSignal:()=>Promise.reject(new Error('Sensitive transport diagnostic'))});fireEvent.click(screen.getByRole('button',{name:'Hitung pratinjau'}));await waitFor(()=>expect(screen.queryByLabelText('Alasan pribadi')).toBeNull())}
 beforeEach(()=>{vi.stubGlobal('AbortController',class{constructor(){return transferableAbortController()}});mocks.auth.user.id=employeeA;mocks.auth.profile.id=employeeA;mocks.auth.profile.is_active=true;mocks.auth.loading=false;serve();vi.spyOn(window,'confirm').mockReturnValue(false)})
@@ -39,7 +39,7 @@ test.each(['scope','capability','director'] as const)('retry with confirmed %s l
  mount();await openFill();await failPreflight();expect(unloadGuarded()).toBe(true)
  const changed:LeaveContext=loss==='scope'?{...context,scopeVersion:changedQuoteScope}:loss==='director'?{...context,scopeVersion:changedQuoteScope,memberKind:'director',currentPeriod:null,balances:[],capabilities:{...context.capabilities,request:false}}:{...context,capabilities:{...context.capabilities,request:false}}
  serve(changed);fireEvent.click(screen.getByRole('button',{name:'Coba lagi'}));await screen.findByRole('tab',{name:loss==='director'?'Persetujuan':'Kalender'});await waitFor(()=>expect(unloadGuarded()).toBe(false));expect(screen.queryByDisplayValue(quoteInput.reason)).toBeNull()
- if(loss==='scope'){fireEvent.click(screen.getByRole('button',{name:'Buat pratinjau cuti'}));expect((await screen.findByLabelText('Alasan pribadi') as HTMLTextAreaElement).value).toBe('')}
+ if(loss==='scope'){fireEvent.click(screen.getByRole('button',{name:'Ajukan cuti'}));expect((await screen.findByLabelText('Alasan pribadi') as HTMLTextAreaElement).value).toBe('')}
 })
 test.each(['identity','inactive'] as const)('a current %s change clears retained state immediately, before a new read completes',async change=>{
  const {view,element}=mount();await openFill();await failPreflight();expect(unloadGuarded()).toBe(true)
@@ -50,7 +50,7 @@ test.each(['identity','inactive'] as const)('a current %s change clears retained
 test('explicit server access denial destroys the suspended draft instead of treating it as a recoverable connection error',async()=>{
  mount();await openFill();mocks.rpc.mockReturnValue({abortSignal:()=>Promise.resolve({data:null,error:{code:'42501'}})})
  fireEvent.click(screen.getByRole('button',{name:'Hitung pratinjau'}));await waitFor(()=>expect(screen.queryByLabelText('Alasan pribadi')).toBeNull());expect(unloadGuarded()).toBe(false)
- serve();fireEvent.click(screen.getByRole('button',{name:'Coba lagi'}));fireEvent.click(await screen.findByRole('button',{name:'Buat pratinjau cuti'}));expect((await screen.findByLabelText('Alasan pribadi') as HTMLTextAreaElement).value).toBe('')
+ serve();fireEvent.click(screen.getByRole('button',{name:'Coba lagi'}));fireEvent.click(await screen.findByRole('button',{name:'Ajukan cuti'}));expect((await screen.findByLabelText('Alasan pribadi') as HTMLTextAreaElement).value).toBe('')
 })
 test('a suspended dirty page still guards router navigation and only discards after confirmation',async()=>{
  const client=new QueryClient({defaultOptions:{queries:{retry:false}}});clients.push(client)
