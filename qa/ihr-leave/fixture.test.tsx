@@ -1,0 +1,15 @@
+import {act,cleanup,fireEvent,render,screen} from '@testing-library/react';
+import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
+import {createMemoryRouter,RouterProvider} from 'react-router-dom';
+import {transferableAbortController} from 'node:util';
+import {afterEach,beforeEach,expect,test,vi} from 'vitest';
+import LeaveManagement from '../../src/pages/ihr/LeaveManagement';
+let client:QueryClient;let router:ReturnType<typeof createMemoryRouter>;
+beforeEach(()=>{vi.stubGlobal('AbortController',class{constructor(){return transferableAbortController()}});client=new QueryClient({defaultOptions:{queries:{retry:false}}});router=createMemoryRouter([{path:'/ihr/leave',element:<LeaveManagement/>}],{initialEntries:['/ihr/leave']});render(<QueryClientProvider client={client}><RouterProvider router={router}/></QueryClientProvider>)});
+afterEach(()=>{cleanup();client.clear();router.dispose();vi.unstubAllGlobals()});
+test('synthetic manager context and balance render default request view',async()=>{expect(await screen.findByRole('tab',{name:'Ajukan Cuti'})).toBeTruthy();expect(screen.getByText('67j 30m')).toBeTruthy();expect(screen.getByRole('tab',{name:'Ajukan Cuti'}).getAttribute('aria-selected')).toBe('true');expect(screen.getByRole('tab',{name:'Persetujuan'})).toBeTruthy()});
+test('synthetic quote renders real preview component',async()=>{fireEvent.click(await screen.findByRole('button',{name:'Ajukan cuti'}));fireEvent.change(await screen.findByLabelText('Tanggal mulai'),{target:{value:'2026-10-09'}});fireEvent.change(screen.getByLabelText('Tanggal selesai'),{target:{value:'2026-10-12'}});fireEvent.change(screen.getByLabelText('Alasan pribadi'),{target:{value:'Synthetic fixture leave'}});fireEvent.click(screen.getByRole('button',{name:'Hitung pratinjau'}));expect(await screen.findByRole('region',{name:'Pratinjau cuti'})).toBeTruthy();expect(screen.getByText('18j 45m')).toBeTruthy();});
+test('synthetic history cards render',async()=>{fireEvent.click(await screen.findByRole('button',{name:'Riwayat pengajuan'}));expect(await screen.findByText('2026-09-15 sampai 2026-09-16')).toBeTruthy()});
+test('synthetic approvals and detail render',async()=>{fireEvent.click(await screen.findByRole('tab',{name:'Persetujuan'}));fireEvent.click(await screen.findByRole('button',{name:'Tinjau Fictional Employee'}));expect(await screen.findByText('Synthetic private reason for visual QA.')).toBeTruthy()});
+test('synthetic calendar agenda renders',async()=>{fireEvent.click(await screen.findByRole('tab',{name:'Kalender'}));expect(await screen.findByText('Fictional Teammate')).toBeTruthy();expect(screen.getByRole('list',{name:'Agenda cuti'})).toBeTruthy()});
+test('synthetic module switcher offers authorized Girard and iHR',async()=>{await screen.findByRole('tab',{name:'Ajukan Cuti'});fireEvent.click(screen.getByRole('button',{name:'iHR',exact:true}));expect(screen.getByRole('button',{name:/Girard/})).toBeTruthy();expect(screen.queryByRole('button',{name:/Athel/})).toBeNull();});

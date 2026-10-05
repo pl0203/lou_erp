@@ -25,3 +25,6 @@ dist-ssr
 
 # Generated, deterministic self-hosted PO software/model assets
 public/po-reader/
+
+# Candidate-only synthetic UI output
+dist-ihr-leave-qa/
