@@ -1,0 +1,4 @@
+/* Candidate-only scanning includes the actual production importer classes. */
+@import "tailwindcss" source(none);
+@source "./main.tsx";
+@source "../../src";

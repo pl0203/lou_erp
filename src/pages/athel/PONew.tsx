@@ -1,3 +1,5 @@
+import PODocumentImport from '../../components/poImport/PODocumentImport'
+import { useAuth } from '../../lib/AuthContext'
 import { POCustomerLookup, POProductLookup } from '../../components/POLookup'
 import { POLineItemsHeader, POLineRow } from '../../components/POLineItems'
 import { resolveCatalogPrice } from '../../lib/catalogPricing'
@@ -89,6 +91,9 @@ export async function createPO(payload: {
 
 export default function PONew() {
   const navigate = useNavigate()
+  const { user, profile, loading: identityLoading, error: identityError } = useAuth()
+  const actorKey = !identityLoading && !identityError && user && profile?.id === user.id && profile.is_active && ['po_admin', 'executive'].includes(profile.role) ? `${user.id}:${profile.role}` : ''
+  const [importDirty, setImportDirty] = useState(false)
   const queryClient = useQueryClient()
   const sendTransaction = useTransactionSender('new-po')
   const [customerId, setCustomerId] = useState('')
@@ -106,7 +111,8 @@ export default function PONew() {
   const [entryNotice, setEntryNotice] = useState('')
   const [entryError, setEntryError] = useState<{ key: string; message: string } | null>(null)
   const itemsDirty = lineItems.length > 0 && hasOrderItemChanges(lineItems)
-  const unsaved = useUnsavedChanges(!!customerId || !!poNumber || !!expectedDelivery || !!notes || orderDate !== initialOrderDate || itemsDirty)
+  const formDirty = !!customerId || !!poNumber || !!expectedDelivery || !!notes || orderDate !== initialOrderDate || itemsDirty
+  const unsaved = useUnsavedChanges(formDirty || importDirty)
 
   const { data: customers, isError: customerReadError, isFetching: customersFetching, refetch: retryCustomers } = useQuery({ queryKey: ['customers'], queryFn: ({ signal }) => fetchCustomers(signal) })
   const { data: products, isError: productReadError, isFetching: productsFetching, refetch: retryProducts } = useQuery({ queryKey: ['products', 'complete', 'po-new'], queryFn: ({ signal }) => fetchProducts(signal) })
@@ -209,6 +215,17 @@ export default function PONew() {
       </div>
 
       <div className="px-4 md:px-8 py-6 max-w-4xl mx-auto space-y-6">
+
+        <PODocumentImport key={`${actorKey}:${customerId}`} customers={customers ?? []} products={products ?? []} actorKey={actorKey}
+          disabled={!actorKey || !customers || !products || customerReadError || productReadError || customersFetching || productsFetching || mutation.isPending}
+          hasFormEdits={formDirty} onDirtyChange={setImportDirty}
+          onApply={(proposed, accept) => unsaved.confirmDiscard(() => {
+            const draft = accept ? accept() : proposed
+            if (!draft) return
+            setCustomerId(draft.customerId); setPoNumber(draft.poNumber); setOrderDate(draft.orderDate)
+            setExpectedDelivery(draft.expectedDelivery); setNotes(draft.notes); setLineItems(draft.lineItems)
+            setEntryError(null); setEntryNotice(''); setImportDirty(false)
+          }, { when: formDirty, message: 'Ganti detail PO dan semua barang dengan hasil dokumen yang sudah diperiksa? Dokumen tidak disimpan dan PO belum dikirim.' })} />
 
         {/* Detail Pesanan */}
         <div className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 sm:p-6">

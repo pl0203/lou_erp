@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Generated, deterministic self-hosted PO software/model assets
+public/po-reader/

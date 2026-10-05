@@ -5,13 +5,16 @@
       "fix/pilot-database": true,
       "fix/pilot-scale-sql": false,
       "ci/customer-categories-postgres": false,
-      "ci/ihr-leave-postgres": false
+      "ci/ihr-leave-postgres": false,
+      "qa/po-document-import-20261005": true
     }
   },
   "rewrites": [
     {
       "source": "/(.*)",
-      "destination": "/index.html"
+      "destination": "/candidate.html"
     }
-  ]
+  ],
+  "buildCommand": "node scripts/copy-po-reader-assets.mjs && node qa/po-import/build.mjs",
+  "outputDirectory": "dist-po-import-qa"
 }
