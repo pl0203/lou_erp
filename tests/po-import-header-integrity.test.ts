@@ -126,6 +126,23 @@ test('a second complete PO section below the first table still cannot be merged'
   expect(parsed.complete).toBe(false); expect(parsed.issues.some(i => i.code === 'multiple-po' && i.blocking)).toBe(true)
 })
 
+test.each([true, false])('same-page matching PO table sections cannot silently omit later rows (repeated identity: %s)', withIdentity => {
+  const input = pricedIndent(), second = pricedIndent()[0]
+  if (!withIdentity) second.tokens = second.tokens.filter(t => t.y >= 153)
+  second.tokens.forEach(t => {
+    if (t.x / second.width < .055 && /^\d{1,3}$/.test(t.text)) t.text = String(Number(t.text) + 2)
+    t.y += 400
+  })
+  input[0].tokens.push(...second.tokens)
+  const parsed = parsePODocument(input)
+  const customers = [{ id: 'buyer', name: parsed.buyer.value!, pricing_tier: 'luar_kota' }]
+  const decision = { customerId: 'buyer', poNumber: parsed.poNumber.value!, orderDate: parsed.orderDate.value!, expiry: '', notes: parsed.notes, idrConfirmed: true, acknowledgedIssueIds: parsed.issues.map(i => i.id), rows: Object.fromEntries(parsed.rows.map(row => [row.id, { productId: null, manual: true, name: row.name.value!, sku: row.sku.value!, quantity: row.quantity.value!, unitPrice: row.unitPrice.value, unitConfirmed: true }])) }
+  decision.acknowledgedIssueIds.push(...preparePOFormDraft(parsed, decision, customers, []).issues.map(i => i.id))
+  expect(parsed.complete).toBe(false)
+  expect(parsed.issues.some(i => i.code === 'incomplete-extraction' && i.blocking)).toBe(true)
+  expect(preparePOFormDraft(parsed, decision, customers, []).draft).toBeNull()
+})
+
 test.each([
   ['combined title tokens', 'SURAT ORDER PEMBELIAN', false],
   ['combined case/whitespace variant', 'surat  order   pembelian', false],

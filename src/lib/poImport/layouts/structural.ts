@@ -145,6 +145,12 @@ export function tableRows(p: ParsedPO, pages: PageText[], spec: TableSpec): void
     for (const [pageIndex, page] of pages.entries()) {
         const ls = lines(page.tokens);
         const header = ls.find(l => spec.header.test(l.text));
+        // Only one table section per physical page is consumed below. Repeated
+        // sections must fail closed even when their PO identities are identical.
+        if (ls.filter(l => spec.header.test(l.text)).length > 1) {
+            p.complete = false;
+            p.issues.push(issue('document', 'incomplete-extraction', 'Satu halaman memuat beberapa bagian tabel. Gunakan satu bagian tabel per halaman atau masukkan PO secara manual.', true, `document:multiple-table-sections:${page.page}`));
+        }
         if (!header && !(spec.continuation && pageIndex > 0)) {
             p.complete = false;
             p.issues.push(issue('document', 'incomplete-extraction', 'Halaman tabel tidak memiliki struktur yang didukung.', true));
