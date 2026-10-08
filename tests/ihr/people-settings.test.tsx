@@ -40,6 +40,28 @@ test('mapped directors cannot be relabeled to gain entitlement',()=>{
  render(<LeavePeopleSettings actorId={actor} member={{...member,memberKind:'director'}} approvers={people} calendars={[]} impacts={impacts} send={vi.fn()}/> )
  expect((screen.getByLabelText('Jenis anggota') as HTMLSelectElement).disabled).toBe(true)
 })
+test('server-authorized PO Admin employee can select an explicitly named Director without becoming a manager',async()=>{
+ const director='71000000-0000-0000-0000-000000000004',send=vi.fn().mockResolvedValue({id:director,version:2,operation:'set_approver'})
+ const configured={...member,allowedApproverKinds:['manager','director'] as ('manager'|'director')[]}
+ render(<LeavePeopleSettings actorId={actor} member={configured} approvers={[...people,{id:director,name:'Fictional Director',memberKind:'director',active:true}]} calendars={[]} impacts={impacts} send={send}/> )
+ const select=screen.getByLabelText('Penyetuju') as HTMLSelectElement
+ expect(Array.from(select.options).map(o=>o.value)).toContain(director)
+ fireEvent.change(select,{target:{value:director}})
+ fireEvent.change(screen.getByLabelText('Berlaku mulai'),{target:{value:'2035-01-01'}})
+ fireEvent.change(screen.getByLabelText('Alasan perubahan'),{target:{value:'Explicit Director assignment'}})
+ fireEvent.click(screen.getByRole('button',{name:'Simpan penyetuju'}))
+ await waitFor(()=>expect(send).toHaveBeenCalledWith(expect.objectContaining({operation:'set_approver',approverId:director})))
+ expect((screen.getByLabelText('Jenis anggota') as HTMLSelectElement).value).toBe('employee')
+})
+test('ordinary employee and missing server metadata do not expose Director choices',()=>{
+ const director={id:'71000000-0000-0000-0000-000000000004',name:'Fictional Director',memberKind:'director' as const,active:true}
+ render(<LeavePeopleSettings actorId={actor} member={member} approvers={[...people,director]} calendars={[]} impacts={impacts} send={vi.fn()}/> )
+ expect(Array.from((screen.getByLabelText('Penyetuju') as HTMLSelectElement).options).map(o=>o.value)).not.toContain(director.id)
+})
+test.each(['director',null] as const)('server gives no approver choices for %s membership',kind=>{
+ render(<LeavePeopleSettings actorId={actor} member={{...member,memberKind:kind,allowedApproverKinds:[]}} approvers={people} calendars={[]} impacts={impacts} send={vi.fn()}/> )
+ expect((screen.getByLabelText('Penyetuju') as HTMLSelectElement).options).toHaveLength(1)
+})
 test('dirty setup warns before reload without saving any draft',()=>{
  render(<LeavePeopleSettings actorId={actor} member={member} approvers={people} calendars={[]} impacts={impacts} send={vi.fn()}/> )
  fireEvent.change(screen.getByLabelText('Alasan perubahan'),{target:{value:'Private in-memory reason'}})

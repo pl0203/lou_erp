@@ -168,13 +168,14 @@ test('the full application suite uses one worker before the preserved SQL checks
   expect(workflow.indexOf('      - run: npm test -- --maxWorkers=1')).toBeLessThan(workflow.indexOf('      - name: Load only synthetic test contract and candidate migrations'))
 })
 
-test('synthetic SQL checks preserve staged native suites before one final composed entry', () => {
+test('synthetic SQL checks preserve staged native suites and recheck composed schema after the route extension', () => {
   expect(workflow.match(/node scripts\/test-ihr-db\.mjs --suite \S+/g)).toEqual([
     'node scripts/test-ihr-db.mjs --suite foundation',
     'node scripts/test-ihr-db.mjs --suite calendar',
     'node scripts/test-ihr-db.mjs --suite accounts',
     'node scripts/test-ihr-db.mjs --suite quote',
     'node scripts/test-ihr-db.mjs --suite requests',
+    'node scripts/test-ihr-db.mjs --suite composed',
     'node scripts/test-ihr-db.mjs --suite composed',
   ])
   const staged = workflow.indexOf('      - name: Guarded iHR foundation SQL suite')
@@ -249,6 +250,7 @@ test('the composition preserves every category-staging workflow byte outside the
     .replace(/      - name: Guarded iHR requests SQL suite\n[\s\S]*?(?=      - )/, '')
     .replace(/      - name: Load final iHR reads and administration migrations\n[\s\S]*?(?=      - )/, '')
     .replace(/      - name: Guarded final composed iHR SQL suite\n[\s\S]*?(?=      - )/, '')
+    .replace(/      - name: Guarded PO Admin Director route regression\n[\s\S]*?(?=      - )/, '')
   expect(createHash('sha256').update(preserved).digest('hex')).toBe('674f7c74302c3f735008f272b61751427df20f97a9fd0638b380c42945912563')
 })
 

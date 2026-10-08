@@ -4,6 +4,8 @@ export type LeaveApproverOption = { id: UUID; name: string; memberKind: 'manager
 export type LeaveMemberSetup = {
  id: UUID; name: string; memberKind: 'employee' | 'manager' | 'director' | null; active: boolean
  employmentStart: DateKey | null; eligibilityDate: DateKey | null; calendarId: UUID | null; version: number
+ /** Current server-authorized route choices; legacy omission retains the narrower original UI. */
+ allowedApproverKinds?: ('manager' | 'director')[]
  assignments?: { id: UUID; approverId: UUID; effectiveFrom: string; effectiveUntil: string | null; version: number }[]
  memberships?: { id: UUID; groupId: UUID; effectiveFrom: DateKey; effectiveUntil: DateKey | null; version: number }[]
  impacts?: SetupImpacts

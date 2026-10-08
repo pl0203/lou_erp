@@ -197,6 +197,15 @@ jobs:
           [[ "$(grep -Fxc 'IHR_ADMIN_SCOPED_SETTINGS_PASSED' "$composed_log")" == 1 ]]
           [[ "$(grep -Fxc 'IHR_FINAL_SCHEMA_PREPARATION_APPROVALS_PASSED' "$composed_log")" == 1 ]]
           [[ "$(grep -Fxc 'IHR_COMPOSED_BACKEND_PLAIN_PASSED' "$composed_log")" == 1 ]]
+      - name: Guarded PO Admin Director route regression
+        run: |
+          set -euo pipefail
+          route_log="$(mktemp)"
+          trap 'rm -f "$route_log"' EXIT
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/202610081001_ihr_po_admin_director.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/ihr/po-admin-director.sql | tee "$route_log"
+          node scripts/test-ihr-db.mjs --suite composed
+          [[ "$(grep -Fxc 'IHR_PO_ADMIN_DIRECTOR_APPROVAL_CANCELLATION_PASSED' "$route_log")" == 1 ]]
       - name: Concurrent business operations
         run: node tests/database/concurrency.mjs
 

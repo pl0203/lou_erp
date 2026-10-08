@@ -1,10 +1,17 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 const mocks=vi.hoisted(()=>({rpc:vi.fn()}))
 vi.mock('../../src/lib/supabase',()=>({supabase:{rpc:mocks.rpc}}))
-import { createLeaveSetupTransport, fetchLeaveRota, previewLeaveRoster, toSetupPayload } from '../../src/lib/leave/setupRpc'
+import { createLeaveSetupTransport, fetchLeaveMembers, fetchLeaveRota, previewLeaveRoster, toSetupPayload } from '../../src/lib/leave/setupRpc'
 const actor='71000000-0000-0000-0000-000000000005',id='71000000-0000-0000-0000-000000000001',cal='73000000-0000-0000-0000-000000000001',group='74000000-0000-0000-0000-000000000001'
 const command={operation:'set_member' as const,employeeId:id,memberKind:'employee' as const,active:true,employmentStart:null,eligibilityDate:null,calendarId:null,expectedVersion:1,reason:'Fictional secret reason'}
 beforeEach(()=>{mocks.rpc.mockReset();localStorage.clear()})
+test('member setup decodes only known server-provided approver choices and preserves legacy omission',async()=>{
+ const member={id,name:'Fictional PO Admin',memberKind:'employee',active:true,employmentStart:null,eligibilityDate:null,calendarId:null,version:1,assignments:[],memberships:[],impacts:{available:false,pendingCount:null,approvedCount:null}}
+ const fetch=(row:object)=>{mocks.rpc.mockReturnValue({abortSignal:()=>Promise.resolve({data:{rows:[row],total:1,page:1,pageSize:20},error:null})});return fetchLeaveMembers(1,20,new AbortController().signal)}
+ expect((await fetch({...member,allowedApproverKinds:['manager','director']})).rows[0].allowedApproverKinds).toEqual(['manager','director'])
+ expect((await fetch(member)).rows[0]).not.toHaveProperty('allowedApproverKinds')
+ for(const choices of [['executive'],['director','director'],null,'director'])await expect(fetch({...member,allowedApproverKinds:choices})).rejects.toThrow()
+})
 test('maps exact SQL fields and rejects invalid date or unsupported working Sunday',()=>{
  expect(toSetupPayload({...command,actor_id:'forged'} as typeof command)).toEqual({employee_id:id,member_kind:'employee',active:true,employment_start:null,eligibility_date:null,calendar_id:null,expected_version:1,reason:command.reason})
  expect(()=>toSetupPayload({...command,employmentStart:'2026-02-30'})).toThrow()

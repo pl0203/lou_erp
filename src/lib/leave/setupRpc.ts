@@ -59,7 +59,10 @@ async function page<T>(section:string,number:number,size:number,signal:AbortSign
 }
 export function fetchLeaveMembers(number:number,size:number,signal:AbortSignal):Promise<Page<LeaveMemberSetup>>{
  return page('members',number,size,signal,value=>{const v=obj(value);if(![null,'employee','manager','director'].includes(v.memberKind as string|null))invalid()
+  const allowedApproverKinds=v.allowedApproverKinds===undefined?undefined:list(v.allowedApproverKinds).map(value=>{if(value!=='manager'&&value!=='director')invalid();return value as 'manager'|'director'})
+  if(allowedApproverKinds&&new Set(allowedApproverKinds).size!==allowedApproverKinds.length)invalid()
   return {id:parseUUID(v.id),name:text(v.name),memberKind:v.memberKind as LeaveMemberSetup['memberKind'],active:bool(v.active),employmentStart:dateOrNull(v.employmentStart),eligibilityDate:dateOrNull(v.eligibilityDate),calendarId:idOrNull(v.calendarId),version:integer(v.version),impacts:impacts(v.impacts),
+   ...(allowedApproverKinds===undefined?{}:{allowedApproverKinds}),
    assignments:list(v.assignments).map(value=>{const a=obj(value);return {id:parseUUID(a.id),approverId:parseUUID(a.approverId),effectiveFrom:text(a.effectiveFrom),effectiveUntil:a.effectiveUntil===null?null:text(a.effectiveUntil),version:integer(a.version)}}),
    memberships:list(v.memberships).map(value=>{const m=obj(value);return {id:parseUUID(m.id),groupId:parseUUID(m.groupId),effectiveFrom:parseDateKey(m.effectiveFrom),effectiveUntil:dateOrNull(m.effectiveUntil),version:integer(m.version)}})}
  })

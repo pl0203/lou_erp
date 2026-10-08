@@ -15,9 +15,10 @@ INSERT INTO public.ihr_saturday_groups(id,calendar_id,name) VALUES
 INSERT INTO public.ihr_saturday_memberships(id,employee_id,group_id,effective_from,effective_until,created_by) VALUES
 ('79000000-0000-0000-0000-000000000031','71000000-0000-0000-0000-000000000001','79000000-0000-0000-0000-000000000021','2020-01-01','2040-01-01','71000000-0000-0000-0000-000000000006'),
 ('79000000-0000-0000-0000-000000000032','71000000-0000-0000-0000-000000000002','79000000-0000-0000-0000-000000000022','2020-01-01','2040-01-01','71000000-0000-0000-0000-000000000006');
--- Next Friday on/after company today; following Saturday is deliberately Amber's anchor.
+-- Next Friday strictly after company today; the following Saturday is Amber's anchor.
+-- Current-day calendar edits are intentionally denied, including when CI runs on Friday.
 CREATE FUNCTION pg_temp.quote_friday() RETURNS date LANGUAGE sql STABLE SECURITY INVOKER AS $$
- SELECT (statement_timestamp() AT TIME ZONE 'Pacific/Kiritimati')::date + ((5-extract(isodow FROM statement_timestamp() AT TIME ZONE 'Pacific/Kiritimati')::integer+7)%7)
+ SELECT (statement_timestamp() AT TIME ZONE 'Pacific/Kiritimati')::date + ((5-extract(isodow FROM statement_timestamp() AT TIME ZONE 'Pacific/Kiritimati')::integer+6)%7)+1
 $$;
 CREATE FUNCTION pg_temp.quote_input(starts date,ends date,duration jsonb DEFAULT '{"mode":"full_scheduled_day"}') RETURNS jsonb LANGUAGE sql STABLE SECURITY INVOKER AS $$
  SELECT jsonb_build_object('start_date',starts,'end_date',ends,'duration',duration,'reason','Fictional private reason')

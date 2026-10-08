@@ -17,6 +17,7 @@ export default function LeavePeopleSettings({actorId,member,approvers,calendars,
  useSetupUnsaved(hasUnsaved())
  const dirty=hasUnsaved();useEffect(()=>{onDirtyChange?.(dirty);return()=>onDirtyChange?.(false)},[dirty,onDirtyChange])
  const own=actorId===member.id, base={employeeId:member.id,expectedVersion:version,reason}
+ const allowedApproverKinds=member.allowedApproverKinds??(member.memberKind==='manager'?['director']:member.memberKind==='employee'?['manager']:[])
  const edit=(action:()=>void)=>{action();setSaved(false)}
  async function save(command:LeaveSetupCommand){if(submitting.current||own||!authorityReady)return;submitting.current=true;setBusy(true);setError('');setSaved(false)
   try{const result=await send(command);setVersion(result.version)
@@ -42,7 +43,7 @@ export default function LeavePeopleSettings({actorId,member,approvers,calendars,
   <button type="button" disabled={busy||own||!kind||!reason.trim()} onClick={()=>kind&&void save({...base,operation:'set_member',memberKind:kind,active,employmentStart:start||null,eligibilityDate:eligible||null,calendarId:kind==='director'?null:calendar||null})}>Simpan anggota</button>
   <fieldset className="space-y-2 border-t pt-3" disabled={busy||own}>
    <legend>Penyetuju dan kelompok efektif</legend><p className="text-sm">Batas tanggal menggunakan zona waktu kalender yang dikonfirmasi. Batas akhir tidak termasuk.</p>
-   <label className="block">Penyetuju<select aria-label="Penyetuju" value={approver} onChange={e=>edit(()=>setApprover(e.target.value))}><option value="">Pilih secara eksplisit</option>{approvers.filter(a=>a.active&&a.id!==actorId&&a.id!==member.id&&a.memberKind===(member.memberKind==='manager'?'director':'manager')).map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
+   <label className="block">Penyetuju<select aria-label="Penyetuju" value={approver} onChange={e=>edit(()=>setApprover(e.target.value))}><option value="">Pilih secara eksplisit</option>{approvers.filter(a=>a.active&&a.id!==actorId&&a.id!==member.id&&allowedApproverKinds.includes(a.memberKind)).map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
    <label className="block">Berlaku mulai<input aria-label="Berlaku mulai" type="date" value={from} onChange={e=>edit(()=>setFrom(e.target.value))}/></label>
    <label className="block">Berlaku sampai (eksklusif)<input aria-label="Berlaku sampai (eksklusif)" type="date" value={to} onChange={e=>edit(()=>setTo(e.target.value))}/></label>
    <label className="block">Penugasan yang diubah<select aria-label="Penugasan yang diubah" value={replacement} onChange={e=>edit(()=>setReplacement(e.target.value))}><option value="">Tidak mengganti interval</option>{member.assignments?.filter(a=>a.approverId!==actorId).map(a=><option key={a.id} value={a.id}>{approvers.find(p=>p.id===a.approverId)?.name??a.approverId} · {a.effectiveFrom}</option>)}</select></label>
