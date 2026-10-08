@@ -199,7 +199,7 @@ export default function PONew() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-brand-canvas">
       {unsaved.dialog}
       <AthelNav />
       {(customerReadError || productReadError) && <ReadFailure onRetry={() => { void retryCustomers(); void retryProducts() }} />}
@@ -210,7 +210,7 @@ export default function PONew() {
         </button>
         <div>
           <h1 className="text-xl font-semibold text-gray-900">PO Baru</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Athel — Manajemen PO</p>
+          <p className="text-sm text-gray-500 mt-0.5">Procurement · Purchase Order</p>
         </div>
       </div>
 
@@ -256,7 +256,7 @@ export default function PONew() {
                 value={poNumber}
                 onChange={e => setPoNumber(e.target.value)}
                 placeholder="mis. PO-2024-001"
-                className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
               />
             </div>
             <div>
@@ -265,7 +265,7 @@ export default function PONew() {
                 type="date"
                 value={orderDate}
                 onChange={e => setOrderDate(e.target.value)}
-                className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
               />
             </div>
             <div>
@@ -275,7 +275,7 @@ export default function PONew() {
                 type="date"
                 value={expectedDelivery}
                 onChange={e => setExpectedDelivery(e.target.value)}
-                className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
               />
               <p className="mt-1 text-xs text-gray-500">Jika PO pelanggan memiliki tanggal kedaluwarsa. Bukan tanggal pengiriman.</p>
             </div>
@@ -286,7 +286,7 @@ export default function PONew() {
                 onChange={e => setNotes(e.target.value)}
                 rows={2}
                 placeholder="Catatan (opsional)..."
-                className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary resize-none"
               />
             </div>
           </div>
@@ -337,7 +337,7 @@ export default function PONew() {
           )}
 
           <div className="flex flex-wrap items-center justify-between gap-3 mt-4 pt-4 border-t border-gray-100">
-            <button type="button" onClick={addLine} className="text-blue-600 hover:text-blue-700 text-sm font-medium">
+            <button type="button" onClick={addLine} className="text-brand-primary hover:text-brand-hover text-sm font-medium">
               + Tambah barang manual
             </button>
             <div className="min-w-0 text-sm text-gray-500 [overflow-wrap:anywhere]">
@@ -361,7 +361,7 @@ export default function PONew() {
             type="button"
             onClick={handleSubmit}
             disabled={mutation.isPending || customerReadError || productReadError || !customers || !products || customersFetching || productsFetching}
-            className="px-5 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 transition-colors"
+            className="px-5 py-2 text-sm font-medium bg-brand-primary hover:bg-brand-hover text-white rounded-lg disabled:opacity-50 transition-colors"
           >
             {mutation.isPending ? 'Menyimpan...' : 'Simpan PO'}
           </button>

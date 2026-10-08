@@ -253,10 +253,10 @@ export default function ManagerSchedule() {
   // Group dates by week for the date picker tabs
   const weekDates = dates.slice(0, 7)
 
-  if (customerReadError || teamReadError || scheduleReadError) return <div className="min-h-screen bg-gray-50"><GirardNav /><ReadFailure onRetry={() => { void retryCustomers(); void retryTeam(); void retrySchedules() }} /></div>
+  if (customerReadError || teamReadError || scheduleReadError) return <div className="min-h-screen bg-brand-canvas"><GirardNav /><ReadFailure onRetry={() => { void retryCustomers(); void retryTeam(); void retrySchedules() }} /></div>
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-brand-canvas">
       <GirardNav />
 
       {/* Header */}
@@ -269,7 +269,7 @@ export default function ManagerSchedule() {
         </div>
         <button
           onClick={openCreate}
-          className="bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+          className="bg-brand-primary hover:bg-brand-hover text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
         >
           + Kunjungan
         </button>
@@ -288,7 +288,7 @@ export default function ManagerSchedule() {
                 onClick={() => setSelectedDate(date)}
                 className={`flex flex-col items-center px-4 py-3 border-b-2 transition-colors whitespace-nowrap min-w-[70px] ${
                   isSelected
-                    ? 'border-green-600 text-green-600'
+                    ? 'border-brand-accent text-brand-primary underline decoration-brand-primary underline-offset-4'
                     : 'border-transparent text-gray-500 hover:text-gray-700'
                 }`}
               >
@@ -307,7 +307,7 @@ export default function ManagerSchedule() {
             <select
               value={weekDates.includes(selectedDate) ? '' : selectedDate}
               onChange={e => e.target.value && setSelectedDate(e.target.value)}
-              className="text-xs text-gray-500 border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-green-500"
+              className="text-xs text-gray-500 border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-brand-primary"
             >
               <option value="">Tanggal lainnya...</option>
               {dates.slice(7).map(date => (
@@ -330,7 +330,7 @@ export default function ManagerSchedule() {
         <p className="text-gray-400 text-sm">Tidak ada kunjungan yang dijadwalkan untuk hari ini.</p>
         <button
         onClick={openCreate}
-        className="mt-3 text-green-600 text-sm font-medium hover:text-green-800"
+        className="mt-3 text-brand-primary text-sm font-medium hover:text-brand-hover"
         >
         Tambahkan jadwal kunjungan baru +
         </button>
@@ -378,7 +378,7 @@ export default function ManagerSchedule() {
                           <>
                             <button
                               onClick={() => openEdit(s)}
-                              className="text-blue-600 hover:text-blue-800 text-xs font-medium mr-3"
+                              className="text-brand-primary hover:text-brand-hover text-xs font-medium mr-3"
                             >
                               Ubah
                             </button>
@@ -428,7 +428,7 @@ export default function ManagerSchedule() {
                     <div className="flex gap-2 pt-3 border-t border-gray-100">
                       <button
                         onClick={() => openEdit(s)}
-                        className="flex-1 text-center text-blue-600 text-xs font-medium py-2 rounded-lg bg-blue-50"
+                        className="flex-1 text-center text-brand-primary text-xs font-medium py-2 rounded-lg bg-blue-50"
                       >
                         Ubah
                       </button>
@@ -468,7 +468,7 @@ export default function ManagerSchedule() {
                   value={form.outlet_id}
                   onChange={e => setForm(p => ({ ...p, outlet_id: e.target.value }))}
                   disabled={!!editingId}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 disabled:bg-gray-50 disabled:text-gray-400"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary disabled:bg-gray-50 disabled:text-gray-400"
                 >
                   <option value="">Pilih Pelanggan...</option>
                   {customers?.map(c => (
@@ -487,7 +487,7 @@ export default function ManagerSchedule() {
                 <select
                   value={form.sales_person_id}
                   onChange={e => setForm(p => ({ ...p, sales_person_id: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                 >
                   <option value="">Pilih anggota team sales anda...</option>
                   {team?.map(sp => (
@@ -507,7 +507,7 @@ export default function ManagerSchedule() {
                   value={form.scheduled_date}
                   onChange={e => setForm(p => ({ ...p, scheduled_date: e.target.value }))}
                   disabled={!!editingId}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 disabled:bg-gray-50 disabled:text-gray-400"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary disabled:bg-gray-50 disabled:text-gray-400"
                 >
                 {dateOptions.map(d => (
                 <option key={d.value} value={d.value}>{d.label}</option>
@@ -527,7 +527,7 @@ export default function ManagerSchedule() {
                   onChange={e => setForm(p => ({ ...p, notes: e.target.value }))}
                   rows={2}
                   placeholder="contoh: Fokus pada pengenalan produk precut untuk visit kali ini guna menaikkan penjualan. Jangan lupa follow up soal PO bulan lalu yang belum keluar2."
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 resize-none"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary resize-none"
                 />
               </div>
             </div>
@@ -541,7 +541,7 @@ export default function ManagerSchedule() {
               <button
                 onClick={handleSave}
                 disabled={createMutation.isPending || updateMutation.isPending}
-                className="px-4 py-2 text-sm font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                className="px-4 py-2 text-sm font-medium bg-brand-primary text-white rounded-lg hover:bg-brand-hover disabled:opacity-50"
               >
                 {createMutation.isPending || updateMutation.isPending
                   ? 'Saving...'

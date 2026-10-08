@@ -180,7 +180,7 @@ export default function CustomerList() {
   const deleteTarget = customers.find(c => c.id === deleteId)
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-brand-canvas">
       <AthelNav />
 
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center justify-between">
@@ -191,7 +191,7 @@ export default function CustomerList() {
         <button
           onClick={() => { saveMutation.reset(); setOriginalCustomer(null); setEditingId(null); setForm(EMPTY_FORM); setShowForm(true) }}
           disabled={readError}
-          className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+          className="bg-brand-primary hover:bg-brand-hover text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
         >
           + Tambah Pelanggan
         </button>
@@ -203,7 +203,7 @@ export default function CustomerList() {
           placeholder="Cari pelanggan..."
           value={search}
           onChange={e => handleSearch(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full sm:w-80 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full sm:w-80 focus:outline-none focus:ring-2 focus:ring-brand-primary"
         />
       </div>
 
@@ -252,7 +252,7 @@ export default function CustomerList() {
                       <td className="px-5 py-4 text-right">
                         <button
                           onClick={() => openEdit(c)}
-                          className="text-blue-600 hover:text-blue-800 text-xs font-medium mr-3"
+                          className="text-brand-primary hover:text-brand-hover text-xs font-medium mr-3"
                         >
                           Ubah
                         </button>
@@ -297,7 +297,7 @@ export default function CustomerList() {
                   <div className="flex gap-2 pt-3 border-t border-gray-100">
                     <button
                       onClick={() => openEdit(c)}
-                      className="flex-1 text-center text-blue-600 text-xs font-medium py-2 rounded-lg bg-blue-50"
+                      className="flex-1 text-center text-brand-primary text-xs font-medium py-2 rounded-lg bg-blue-50"
                     >
                       Ubah
                     </button>
@@ -360,7 +360,7 @@ export default function CustomerList() {
                   value={form.name}
                   onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
                   placeholder="mis. Toko Bangunan Maju"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                 />
               </div>
               <div>
@@ -370,7 +370,7 @@ export default function CustomerList() {
                   value={form.address}
                   onChange={e => setForm(p => ({ ...p, address: e.target.value }))}
                   placeholder="mis. Jl. Sudirman No. 12"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                 />
               </div>
               <div>
@@ -380,7 +380,7 @@ export default function CustomerList() {
                   value={form.city}
                   onChange={e => setForm(p => ({ ...p, city: e.target.value }))}
                   placeholder="mis. Jakarta"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                 />
               </div>
               <div>
@@ -390,7 +390,7 @@ export default function CustomerList() {
                   value={form.phone}
                   onChange={e => setForm(p => ({ ...p, phone: e.target.value }))}
                   placeholder="mis. 021-5551234"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                 />
               </div>
               <div>
@@ -400,7 +400,7 @@ export default function CustomerList() {
                   value={form.email}
                   onChange={e => setForm(p => ({ ...p, email: e.target.value }))}
                   placeholder="mis. toko@example.com"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                 />
               </div>
               <div>
@@ -408,7 +408,7 @@ export default function CustomerList() {
                 <select
                   value={form.pricing_tier}
                   onChange={e => setForm(p => ({ ...p, pricing_tier: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                 >
                   <option value="harga_pokok">Harga Pokok</option>
                   <option value="luar_kota">Luar Kota</option>
@@ -428,7 +428,7 @@ export default function CustomerList() {
               <button
                 onClick={handleSave}
                 disabled={saveMutation.isPending || readError}
-                className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                className="px-4 py-2 text-sm font-medium bg-brand-primary text-white rounded-lg hover:bg-brand-hover disabled:opacity-50"
               >
                 {saveMutation.isPending ? 'Menyimpan...' : 'Simpan'}
               </button>

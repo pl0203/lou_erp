@@ -276,7 +276,7 @@ export default function UserManagement() {
   const needsManager = ['sales_person', 'sales_manager', 'sales_head'].includes(form.role)
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-brand-canvas">
       <IHRNav />
 
       <div className="px-4 md:px-8 py-6 max-w-6xl mx-auto">
@@ -289,7 +289,7 @@ export default function UserManagement() {
           </div>
           <button
             onClick={openCreate}
-            className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+            className="bg-brand-primary hover:bg-brand-hover text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
           >
             + Invite User
           </button>
@@ -302,12 +302,12 @@ export default function UserManagement() {
             placeholder="Search by name or email..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full md:w-72 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full md:w-72 focus:outline-none focus:ring-2 focus:ring-brand-primary"
           />
           <select
             value={roleFilter}
             onChange={e => setRoleFilter(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
           >
             <option value="all">All roles</option>
             {ROLES.map(r => (
@@ -386,7 +386,7 @@ export default function UserManagement() {
                       <td className="px-5 py-4 text-right">
                         <button
                           onClick={() => openEdit(u)}
-                          className="text-blue-600 hover:text-blue-800 text-xs font-medium mr-3"
+                          className="text-brand-primary hover:text-brand-hover text-xs font-medium mr-3"
                         >
                           Edit
                         </button>
@@ -400,7 +400,7 @@ export default function UserManagement() {
                         ) : (
                           <button
                             onClick={() => reactivateMutation.mutate(u.id)}
-                            className="text-green-600 hover:text-green-800 text-xs font-medium"
+                            className="text-brand-primary hover:text-brand-hover text-xs font-medium"
                           >
                             Reactivate
                           </button>
@@ -438,7 +438,7 @@ export default function UserManagement() {
                   value={form.full_name}
                   onChange={e => setForm(p => ({ ...p, full_name: e.target.value }))}
                   placeholder="e.g. Budi Santoso"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                 />
               </div>
 
@@ -450,7 +450,7 @@ export default function UserManagement() {
                   onChange={e => setForm(p => ({ ...p, email: e.target.value }))}
                   placeholder="budi@company.com"
                   disabled={!!editingUser}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-400"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary disabled:bg-gray-50 disabled:text-gray-400"
                 />
                 {editingUser && (
                   <p className="text-xs text-gray-400 mt-1">Email cannot be changed after invitation.</p>
@@ -462,7 +462,7 @@ export default function UserManagement() {
                 <select
                   value={form.role}
                   onChange={e => setForm(p => ({ ...p, role: e.target.value, manager_id: '' }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                 >
                   {ROLES.map(r => (
                     <option key={r.value} value={r.value}>{r.label}</option>
@@ -478,7 +478,7 @@ export default function UserManagement() {
                   <select
                     value={form.manager_id}
                     onChange={e => setForm(p => ({ ...p, manager_id: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                   >
                     <option value="">No manager assigned</option>
                     {managers.map(m => (
@@ -498,7 +498,7 @@ export default function UserManagement() {
                     value={form.phone}
                     onChange={e => setForm(p => ({ ...p, phone: e.target.value }))}
                     placeholder="e.g. 0812-3456-7890"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                   />
                 </div>
                 <div>
@@ -509,7 +509,7 @@ export default function UserManagement() {
                     type="date"
                     value={form.birth_date}
                     onChange={e => setForm(p => ({ ...p, birth_date: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                   />
                 </div>
               </div>
@@ -525,7 +525,7 @@ export default function UserManagement() {
               <button
                 onClick={handleSave}
                 disabled={saving || !!reviewRequired}
-                className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                className="px-4 py-2 text-sm font-medium bg-brand-primary text-white rounded-lg hover:bg-brand-hover disabled:opacity-50"
               >
                 {saving
                   ? 'Saving...'

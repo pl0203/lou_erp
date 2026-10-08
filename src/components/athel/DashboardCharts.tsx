@@ -17,7 +17,7 @@ function ChartCard({ title, subtitle, children }: { title: string; subtitle: str
 
 function SeriesControls({ items, selected, onToggle }: { items: { name: string; color: string; line?: boolean }[]; selected: Record<string, boolean>; onToggle: (name: string) => void }) {
   return <div className="mt-4 flex flex-wrap gap-2" aria-label="Tampilkan seri grafik">
-    {items.map(item => <button key={item.name} type="button" aria-pressed={selected[item.name]} onClick={() => onToggle(item.name)} className={`inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${selected[item.name] ? 'border-slate-200 bg-slate-50 text-slate-700' : 'border-dashed border-slate-300 bg-white text-slate-400'}`}>
+    {items.map(item => <button key={item.name} type="button" aria-pressed={selected[item.name]} onClick={() => onToggle(item.name)} className={`inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary ${selected[item.name] ? 'border-slate-200 bg-slate-50 text-slate-700' : 'border-dashed border-slate-300 bg-white text-slate-400'}`}>
       <span aria-hidden="true" className={item.line ? 'h-0.5 w-4' : 'h-2.5 w-2.5 rounded-sm'} style={{ backgroundColor: selected[item.name] ? item.color : '#cbd5e1' }} />
       {item.name}
     </button>)}
@@ -26,7 +26,7 @@ function SeriesControls({ items, selected, onToggle }: { items: { name: string; 
 
 function ChartData({ headers, rows, caption }: { headers: string[]; rows: (string | number)[][]; caption: string }) {
   return <details className="mt-3 border-t border-slate-100 pt-3">
-    <summary className="w-fit cursor-pointer rounded text-xs font-medium text-slate-500 hover:text-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">Lihat data</summary>
+    <summary className="w-fit cursor-pointer rounded text-xs font-medium text-slate-500 hover:text-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary">Lihat data</summary>
     <div className="mt-3 max-h-72 overflow-auto rounded-lg border border-slate-200" tabIndex={0} role="region" aria-label={`Data ${caption}`}>
       <table className="w-full text-left text-xs">
         <caption className="sr-only">{caption}</caption>
@@ -65,12 +65,12 @@ function DailyChart({ series }: { series: DashboardData['dailySeries'] }) {
     <SeriesControls items={[{ name: 'Nilai terkirim', color: CHART_COLORS.delivered }, { name: 'Nomor SJ', color: CHART_COLORS.count, line: true }]} selected={selected} onToggle={name => setSelected(previous => ({ ...previous, [name]: !previous[name as keyof typeof previous] }))} />
     <div className="mt-3"><EChart label="Tren Pengiriman Harian" option={option} height={300} onDataZoom={onDataZoom} /></div>
     {series.length > 14 && <details className="mt-2 rounded-lg bg-slate-50 px-3 py-2">
-      <summary className="cursor-pointer text-xs font-medium text-slate-600 focus-visible:outline-2 focus-visible:outline-blue-600">Atur rentang grafik: {series[start]?.label} – {series[end]?.label}</summary>
+      <summary className="cursor-pointer text-xs font-medium text-slate-600 focus-visible:outline-2 focus-visible:outline-brand-primary">Atur rentang grafik: {series[start]?.label} – {series[end]?.label}</summary>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <label className="text-xs text-slate-600">Mulai: {series[start]?.label}<input type="range" aria-label="Tanggal mulai grafik" aria-valuetext={series[start]?.label} min={0} max={last} value={start} onChange={event => setWindow(previous => ({ ...previous, start: Math.min(Number(event.target.value), end) }))} className="mt-2 block w-full accent-blue-600" /></label>
         <label className="text-xs text-slate-600">Sampai: {series[end]?.label}<input type="range" aria-label="Tanggal akhir grafik" aria-valuetext={series[end]?.label} min={0} max={last} value={end} onChange={event => setWindow(previous => ({ ...previous, end: Math.max(Number(event.target.value), start) }))} className="mt-2 block w-full accent-blue-600" /></label>
       </div>
-      <button type="button" onClick={() => setWindow({ start: 0, end: last })} className="mt-3 min-h-9 rounded-md border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 focus-visible:outline-2 focus-visible:outline-blue-600">Tampilkan semua tanggal</button>
+      <button type="button" onClick={() => setWindow({ start: 0, end: last })} className="mt-3 min-h-9 rounded-md border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 focus-visible:outline-2 focus-visible:outline-brand-primary">Tampilkan semua tanggal</button>
     </details>}
     {series.every(item => moneyToChartNumber(item.deliveredValue) === 0 && item.sjCount === 0) && <p className="mt-2 text-xs text-slate-500">Belum ada pengiriman pada periode ini.</p>}
     <ChartData caption="Tren Pengiriman Harian" headers={['Tanggal', 'Nilai terkirim', 'Nomor SJ']} rows={series.map(item => [item.label, currency(item.deliveredValue), count(item.sjCount)])} />

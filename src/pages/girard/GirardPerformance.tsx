@@ -111,12 +111,12 @@ function InlineSalesTargetEdit({
           }}
           placeholder="0"
           autoFocus
-          className="w-24 border border-green-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-green-500 text-right"
+          className="w-24 border border-green-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-brand-primary text-right"
         />
         <button
           onClick={() => mutation.mutate()}
           disabled={mutation.isPending}
-          className="text-green-600 hover:text-green-800 text-xs font-medium"
+          className="text-brand-primary hover:text-brand-hover text-xs font-medium"
         >
           {mutation.isPending ? '...' : '✓'}
         </button>
@@ -135,7 +135,7 @@ function InlineSalesTargetEdit({
       onClick={() => { setValue(currentTarget?.toString() ?? ''); setEditing(true) }}
       className="text-right w-full group"
     >
-      <span className="text-gray-400 text-xs group-hover:text-green-600 transition-colors">
+      <span className="text-gray-400 text-xs group-hover:text-brand-primary transition-colors">
         {currentTarget != null ? `Rp ${formatMoney(currentTarget, 'millions')}M` : '+ Set target'}
       </span>
     </button>
@@ -325,7 +325,7 @@ function SummaryCards({
 }
 
 export default function GirardPerformance() {
-  return <div className="min-h-screen bg-gray-50"><GirardNav /><PerformanceContent /></div>
+  return <div className="min-h-screen bg-brand-canvas"><GirardNav /><PerformanceContent /></div>
 }
 
 export function PerformanceContent() {
@@ -341,7 +341,7 @@ export function PerformanceContent() {
   return <div className="px-4 md:px-8 py-6 space-y-6">
     <div className="flex items-center justify-between flex-wrap gap-3">
       <div><h2 className="text-lg font-semibold text-gray-900">Performa Tim Sales</h2><p className="text-sm text-gray-500 mt-0.5">{selectedLabel}</p></div>
-      <select aria-label="Bulan performa sales" value={yearMonth} onChange={event => setFilters({ yearMonth: event.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+      <select aria-label="Bulan performa sales" value={yearMonth} onChange={event => setFilters({ yearMonth: event.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary">
         {monthOptions.map(month => <option key={month.value} value={month.value}>{month.label}</option>)}
       </select>
     </div>

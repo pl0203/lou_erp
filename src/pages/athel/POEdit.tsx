@@ -280,7 +280,7 @@ export default function POEdit() {
 
   if (poLoading || linesLoading || (!initialized && (poFetching || linesFetching))) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-brand-canvas">
         <AthelNav />
         {recovery}
         <div className="p-8 text-gray-400 text-sm text-center">Memuat...</div>
@@ -289,20 +289,20 @@ export default function POEdit() {
   }
 
   if (poError || linesError || !po || !existingLines || !lineState || (initialized && lineState.po_updated_at !== initialVersion)) {
-    return <div className="min-h-screen bg-gray-50"><AthelNav />{recovery}<div role="alert" className="p-8 text-red-600">
+    return <div className="min-h-screen bg-brand-canvas"><AthelNav />{recovery}<div role="alert" className="p-8 text-red-600">
       <p>{isPOConflict(lineError) ? 'PO berubah. Muat ulang sebelum melanjutkan.' : 'Data PO atau riwayat pengiriman belum dapat dimuat. Pengubahan belum tersedia.'}</p>
       <button type="button" onClick={() => void refreshPO()} disabled={refreshingPO} className="mt-2 underline">Coba lagi</button>
     </div></div>
   }
   if (!['confirm', 'in_progress'].includes(po.status)) {
-    return <div className="min-h-screen bg-gray-50"><AthelNav />{recovery}<div className="p-8">
+    return <div className="min-h-screen bg-brand-canvas"><AthelNav />{recovery}<div className="p-8">
       <p>PO {po.status === 'cancelled' ? 'yang dibatalkan' : po.status === 'complete' ? 'yang selesai' : 'dengan status ini'} tidak dapat diubah.</p>
       <button type="button" onClick={() => navigate(`/athel/po/${id}`)} className="mt-2 underline">Kembali ke PO</button>
     </div></div>
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-brand-canvas">
       <AthelNav />
         {recovery}
 
@@ -366,7 +366,7 @@ export default function POEdit() {
                 value={expectedDelivery}
                 aria-label="Tanggal Kedaluwarsa PO (opsional)"
                 onChange={e => setExpectedDelivery(e.target.value)}
-                className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
               />
             </div>
             <div className="sm:col-span-2">
@@ -376,7 +376,7 @@ export default function POEdit() {
                 onChange={e => setNotes(e.target.value)}
                 rows={2}
                 placeholder="Catatan (opsional)..."
-                className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary resize-none"
               />
             </div>
           </div>
@@ -430,7 +430,7 @@ export default function POEdit() {
             <button
               type="button"
               onClick={addLine}
-              className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+              className="text-brand-primary hover:text-brand-hover text-sm font-medium"
             >
               + Tambah barang manual
             </button>
@@ -455,7 +455,7 @@ export default function POEdit() {
             type="button"
             onClick={handleSave}
             disabled={mutation.isPending || isPOConflict(mutation.error) || !readReady || !initialized || !customers || !products || customersError || productsError || customersFetching || productsFetching}
-            className="px-5 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 transition-colors"
+            className="px-5 py-2 text-sm font-medium bg-brand-primary hover:bg-brand-hover text-white rounded-lg disabled:opacity-50 transition-colors"
           >
             {mutation.isPending ? 'Menyimpan...' : 'Simpan Perubahan'}
           </button>

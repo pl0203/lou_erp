@@ -28,7 +28,7 @@ test('available hours lead the balance summary and remain above an opened reques
  const balanceSummary=screen.getByRole('region',{name:'Saldo cuti'})
  expect(within(balanceSummary).getAllByRole('term')[0].textContent).toBe('Tersedia')
  expect(within(balanceSummary).getByText('81j 30m').className).toContain('text-4xl')
- expect(screen.getByRole('button',{name:'Ajukan cuti'}).classList.contains('bg-orange-700')).toBe(true)
+ expect(screen.getByRole('button',{name:'Ajukan cuti'}).classList.contains('bg-brand-primary')).toBe(true)
  fireEvent.click(screen.getByRole('button',{name:'Ajukan cuti'}))
  const form=await screen.findByRole('region',{name:'Formulir pratinjau cuti'})
  expect(balanceSummary.compareDocumentPosition(form)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()

@@ -20,7 +20,7 @@ function ReadError({ message, retry }: { message: string; retry: () => unknown }
   return <div role="alert" className="py-4 text-sm text-red-600"><p>{message}</p><button type="button" onClick={() => retry()} className="mt-2 min-h-10 underline">Coba lagi</button></div>
 }
 const card = 'min-w-0 rounded-xl border border-gray-200 bg-white p-4 sm:p-5'
-const action = 'min-h-11 text-left text-sm font-medium text-green-700'
+const action = 'min-h-11 text-left text-sm font-medium text-brand-primary'
 
 export function NextScheduledVisit({ customerId }: { customerId: string }) {
   const identity = useIdentity(), today = calendarDateKey()

@@ -78,7 +78,7 @@ export default function AthelDashboard() {
   })
 
   return (
-    <div className="min-h-screen bg-[#f4f7fb]">
+    <div className="min-h-screen bg-brand-canvas">
       <AthelNav />
 
       <div className="border-b border-gray-200 bg-gradient-to-r from-slate-100 via-white to-blue-50 px-4 py-6 md:px-8">
@@ -144,7 +144,7 @@ export default function AthelDashboard() {
       <div className="px-4 py-6 md:px-8">
         {isLoading && (
           <div className="rounded-2xl border border-gray-200 bg-white px-6 py-20 text-center text-sm text-gray-400 shadow-sm">
-            Memuat dashboard Athel...
+            Memuat dashboard Procurement...
           </div>
         )}
 

@@ -223,10 +223,10 @@ export default function Promotions() {
 
   const deleteTarget = promotions?.find(p => p.id === deleteId)
 
-  if (productReadError || promotionReadError) return <div className="min-h-screen bg-gray-50"><GirardNav /><ReadFailure onRetry={() => { void retryProducts(); void retryPromotions() }} /></div>
+  if (productReadError || promotionReadError) return <div className="min-h-screen bg-brand-canvas"><GirardNav /><ReadFailure onRetry={() => { void retryProducts(); void retryPromotions() }} /></div>
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-brand-canvas">
       <GirardNav />
 
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center justify-between flex-wrap gap-3">
@@ -247,7 +247,7 @@ export default function Promotions() {
             }
             setShowForm(true)
           }}
-          className="bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+          className="bg-brand-primary hover:bg-brand-hover text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
         >
           + Tambah Promosi
         </button>
@@ -321,7 +321,7 @@ export default function Promotions() {
                         <td className="px-5 py-4 text-right">
                           <button
                             onClick={() => toggleMutation.mutate({ id: promo.id, isActive: !promo.is_active })}
-                            className="text-blue-600 hover:text-blue-800 text-xs font-medium mr-3"
+                            className="text-brand-primary hover:text-brand-hover text-xs font-medium mr-3"
                           >
                             {promo.is_active ? 'Nonaktifkan' : 'Aktifkan'}
                           </button>
@@ -376,7 +376,7 @@ export default function Promotions() {
                     <div className="flex gap-2 pt-3 border-t border-gray-100">
                       <button
                         onClick={() => toggleMutation.mutate({ id: promo.id, isActive: !promo.is_active })}
-                        className="flex-1 text-center text-blue-600 text-xs font-medium py-2 rounded-lg bg-blue-50"
+                        className="flex-1 text-center text-brand-primary text-xs font-medium py-2 rounded-lg bg-blue-50"
                       >
                         {promo.is_active ? 'Nonaktifkan' : 'Aktifkan'}
                       </button>
@@ -409,7 +409,7 @@ export default function Promotions() {
                 <select
                   value={form.product_id}
                   onChange={e => fillFromProduct(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                 >
                   <option value="">Pilih produk...</option>
                   {products?.map(p => (
@@ -427,7 +427,7 @@ export default function Promotions() {
                     type="date"
                     value={form.start_date}
                     onChange={e => setForm(p => ({ ...p, start_date: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                   />
                 </div>
                 <div>
@@ -436,7 +436,7 @@ export default function Promotions() {
                     type="date"
                     value={form.end_date}
                     onChange={e => setForm(p => ({ ...p, end_date: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                   />
                 </div>
               </div>
@@ -455,7 +455,7 @@ export default function Promotions() {
                       value={form.discount}
                       onChange={e => handleDiscount(e.target.value)}
                       placeholder="mis. 10"
-                      className="w-24 border border-blue-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
+                      className="w-24 border border-blue-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-white"
                     />
                     <span className="text-sm text-blue-700 font-medium">%</span>
                     <span className="text-xs text-blue-500">
@@ -463,7 +463,7 @@ export default function Promotions() {
                     </span>
                   </div>
                   {form.discount && !isNaN(parseFloat(form.discount)) && (
-                    <p className="text-xs text-blue-600 mt-2">
+                    <p className="text-xs text-brand-primary mt-2">
                       Diskon {form.discount}% diterapkan ke semua tier. Anda masih bisa mengubah harga secara manual di bawah.
                     </p>
                   )}
@@ -491,7 +491,7 @@ export default function Promotions() {
                         required
                         value={form[field]}
                         onChange={e => setForm(p => ({ ...p, [field]: e.target.value }))}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                         placeholder="Wajib diisi"
                       />
                     </div>
@@ -509,7 +509,7 @@ export default function Promotions() {
               <button
                 onClick={handleSave}
                 disabled={createMutation.isPending}
-                className="px-4 py-2 text-sm font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                className="px-4 py-2 text-sm font-medium bg-brand-primary text-white rounded-lg hover:bg-brand-hover disabled:opacity-50"
               >
                 {createMutation.isPending ? 'Menyimpan...' : 'Simpan'}
               </button>

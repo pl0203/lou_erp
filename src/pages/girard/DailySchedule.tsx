@@ -100,7 +100,7 @@ export default function DailySchedule() {
   const total = todaySchedules.length
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-brand-canvas">
       <GirardNav />
 
       {/* Header */}
@@ -134,7 +134,7 @@ export default function DailySchedule() {
                 onClick={() => setSelectedDate(date)}
                 className={`flex flex-col items-center px-4 py-3 border-b-2 transition-colors whitespace-nowrap ${
                   isSelected
-                    ? 'border-green-600 text-green-600'
+                    ? 'border-brand-accent text-brand-primary underline decoration-brand-primary underline-offset-4'
                     : 'border-transparent text-gray-500 hover:text-gray-700'
                 }`}
               >
@@ -271,7 +271,7 @@ export default function DailySchedule() {
                     {!checkedIn ? (
                       <button
                         onClick={() => navigate(`/girard/visit/${schedule.id}`)}
-                        className="flex-1 bg-green-600 hover:bg-green-700 text-white text-sm font-medium py-2.5 rounded-xl transition-colors"
+                        className="flex-1 bg-brand-primary hover:bg-brand-hover text-white text-sm font-medium py-2.5 rounded-xl transition-colors"
                       >
                         Check In
                       </button>

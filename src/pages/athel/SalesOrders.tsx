@@ -70,7 +70,7 @@ export default function SalesOrders() {
   const pendingCount = data?.status_counts.pending ?? 0
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-brand-canvas">
       <AthelNav />
         <TransactionRecovery send={sendTransaction} onCommitted={(result, operation) => { queryClient.invalidateQueries(); setApprovingOrder(null); setRejectingOrder(null); if (operation === 'approve_sales') navigate(`/athel/po/${result.id}`) }} />
 
@@ -103,7 +103,7 @@ export default function SalesOrders() {
               onClick={() => setStatusFilter(tab.value)}
               className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
                 statusFilter === tab.value
-                  ? 'border-blue-600 text-blue-600'
+                  ? 'border-brand-accent text-brand-primary underline decoration-brand-primary underline-offset-4'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -154,7 +154,7 @@ export default function SalesOrders() {
             </div>
 
             <div className="px-5 py-3">
-              <button type="button" aria-expanded={expanded.includes(order.id)} onClick={() => setExpanded(previous => previous.includes(order.id) ? previous.filter(id => id !== order.id) : [...previous, order.id])} className="text-xs font-medium text-blue-600">{expanded.includes(order.id) ? 'Sembunyikan barang' : 'Lihat barang'}</button>
+              <button type="button" aria-expanded={expanded.includes(order.id)} onClick={() => setExpanded(previous => previous.includes(order.id) ? previous.filter(id => id !== order.id) : [...previous, order.id])} className="text-xs font-medium text-brand-primary">{expanded.includes(order.id) ? 'Sembunyikan barang' : 'Lihat barang'}</button>
               {expanded.includes(order.id) && <SalesOrderItems orderId={order.id} />}
             </div>
 
@@ -175,7 +175,7 @@ export default function SalesOrders() {
                     setPoNumber('')
                     setExpectedDelivery('')
                   }}
-                  className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  className="px-4 py-2 text-sm font-medium bg-brand-primary text-white rounded-lg hover:bg-brand-hover transition-colors"
                 >
                   Setuju & Buat menjadi PO
                 </button>
@@ -192,7 +192,7 @@ export default function SalesOrders() {
             <div className="px-6 py-5 border-b border-gray-100">
               <h3 className="text-base font-semibold text-gray-900">Setuju & Buat menjadi PO</h3>
               <p className="text-xs text-gray-400 mt-0.5">
-                Tindakan ini akan membuat PO baru di Athel untuk {approvingOrder.customers?.name}
+                Tindakan ini akan membuat PO baru di Procurement untuk {approvingOrder.customers?.name}
               </p>
             </div>
             <div className="px-6 py-4 space-y-4">
@@ -203,7 +203,7 @@ export default function SalesOrders() {
                   value={poNumber}
                   onChange={e => setPoNumber(e.target.value)}
                   placeholder="e.g. PO-2024-050"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                 />
               </div>
               <div>
@@ -215,7 +215,7 @@ export default function SalesOrders() {
                   type="date"
                   value={expectedDelivery}
                   onChange={e => setExpectedDelivery(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                 />
               </div>
 
@@ -250,7 +250,7 @@ export default function SalesOrders() {
                   approveMutation.mutate()
                 }}
                 disabled={approvalLines.isPending || approvalLines.isFetching || approvalLines.isError || !approvalLines.data || approveMutation.isPending}
-                className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                className="px-4 py-2 text-sm font-medium bg-brand-primary text-white rounded-lg hover:bg-brand-hover disabled:opacity-50"
               >
                 {approveMutation.isPending ? 'Creating PO...' : 'Confirm & Create PO'}
               </button>

@@ -41,7 +41,7 @@ test('assigned cards show a status badge and collapse daily details without hidi
  expect(breakdown).toBeTruthy();expect(breakdown.hasAttribute('open')).toBe(false)
  expect(within(region).getByRole('region',{name:'Konteks saldo permohonan'}).closest('details')).toBeNull()
  expect(within(region).getByRole('button',{name:'Setujui cuti'}).closest('details')).toBeNull()
- expect(within(region).getByRole('button',{name:'Setujui cuti'}).classList.contains('bg-orange-700')).toBe(true)
+ expect(within(region).getByRole('button',{name:'Setujui cuti'}).classList.contains('bg-brand-primary')).toBe(true)
 })
 test('reject requires a reason, and shared authority suspension hides retained private input',async()=>{
  const {view,element}=mount();fireEvent.click(await screen.findByRole('button',{name:'Tinjau Fictional employee'}));const reason=await screen.findByLabelText('Alasan penolakan');expect((screen.getByRole('button',{name:'Tolak cuti'}) as HTMLButtonElement).disabled).toBe(true)

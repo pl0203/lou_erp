@@ -281,7 +281,7 @@ export default function GirardCustomers() {
       aria-label="Tier Harga"
       value={value}
       onChange={e => onChange(e.target.value)}
-      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
     >
       <option value="harga_pokok">Harga Pokok</option>
       <option value="luar_kota">Luar Kota</option>
@@ -294,7 +294,7 @@ export default function GirardCustomers() {
   const readError = customerReadError || managerReadError || assignmentReadError || hasInvalidCustomerCategories(customers ?? [])
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-brand-canvas">
       <GirardNav />
       {readError && <ReadFailure onRetry={() => { void retryCustomers(); void retryManagers(); void retryAssignments() }} />}
 
@@ -307,7 +307,7 @@ export default function GirardCustomers() {
           {!readError && unassignedCustomers.length > 0 && (
             <button
               onClick={() => { setModalMode('assign-existing'); setShowModal(true) }}
-              className="border border-green-600 text-green-600 hover:bg-green-50 text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+              className="border border-brand-primary text-brand-primary hover:bg-brand-tint text-sm font-medium px-4 py-2 rounded-lg transition-colors"
             >
               Tugaskan yang Ada
             </button>
@@ -315,7 +315,7 @@ export default function GirardCustomers() {
           <button
             onClick={() => { closeModal(); setModalMode('create'); setShowModal(true) }}
             disabled={readError}
-            className="bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+            className="bg-brand-primary hover:bg-brand-hover text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
           >
             + Pelanggan Baru
           </button>
@@ -328,7 +328,7 @@ export default function GirardCustomers() {
           placeholder="Cari berdasarkan nama atau kota..."
           value={search}
           onChange={e => setSearch(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full sm:w-80 mb-4 focus:outline-none focus:ring-2 focus:ring-green-500"
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full sm:w-80 mb-4 focus:outline-none focus:ring-2 focus:ring-brand-primary"
         />
 
         {isLoading && (
@@ -365,7 +365,7 @@ export default function GirardCustomers() {
                   return (
                     <tr key={c.id} className="border-b border-gray-50 hover:bg-gray-50">
                       <td className="px-5 py-4">
-                        <Link to={`/girard/customer/${c.id}`} className="font-medium text-green-700 underline decoration-green-300 underline-offset-2 hover:text-green-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600">{c.name}</Link>
+                        <Link to={`/girard/customer/${c.id}`} className="font-medium text-brand-primary underline decoration-brand-accent underline-offset-2 hover:text-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary">{c.name}</Link>
                         {c.phone && <p className="text-xs text-gray-400 mt-0.5">{c.phone}</p>}
                       </td>
                       <td className="px-5 py-4 text-gray-600 text-xs">
@@ -397,7 +397,7 @@ export default function GirardCustomers() {
                       <td className="px-5 py-4 text-right">
                         <button
                           onClick={() => openEdit(c)}
-                          className="text-green-600 hover:text-green-800 text-xs font-medium"
+                          className="text-brand-primary hover:text-brand-hover text-xs font-medium"
                         >
                           Ubah
                         </button>
@@ -420,12 +420,12 @@ export default function GirardCustomers() {
                 <div key={c.id} className="bg-white rounded-xl border border-gray-200 p-4">
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1 min-w-0">
-                      <Link to={`/girard/customer/${c.id}`} className="font-semibold text-green-700 text-sm underline decoration-green-300 underline-offset-2 hover:text-green-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600 break-words [overflow-wrap:anywhere]">{c.name}</Link>
+                      <Link to={`/girard/customer/${c.id}`} className="font-semibold text-brand-primary text-sm underline decoration-brand-accent underline-offset-2 hover:text-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary break-words [overflow-wrap:anywhere]">{c.name}</Link>
                       {c.city && <p className="text-xs text-gray-400 mt-0.5">{c.city}</p>}
                     </div>
                     <button
                       onClick={() => openEdit(c)}
-                      className="text-green-600 text-xs font-medium ml-3 shrink-0"
+                      className="text-brand-primary text-xs font-medium ml-3 shrink-0"
                     >
                       Ubah
                     </button>
@@ -497,7 +497,7 @@ export default function GirardCustomers() {
                         placeholder={placeholder}
                         value={form[field as keyof CustomerForm] as string}
                         onChange={e => setForm(p => ({ ...p, [field]: e.target.value }))}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                       />
                     </div>
                   ))}
@@ -507,7 +507,7 @@ export default function GirardCustomers() {
                       aria-label="Frekuensi Kunjungan"
                       value={form.visit_frequency_days}
                       onChange={e => setForm(p => ({ ...p, visit_frequency_days: parseInt(e.target.value) }))}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                     >
                       {FREQUENCY_OPTIONS.map(f => (
                         <option key={f.days} value={f.days}>{f.label}</option>
@@ -526,7 +526,7 @@ export default function GirardCustomers() {
                       aria-label="Manajer"
                       value={form.manager_id}
                       onChange={e => setForm(p => ({ ...p, manager_id: e.target.value }))}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                     >
                       <option value="">Belum ada manajer</option>
                       {managers?.map(m => (
@@ -550,7 +550,7 @@ export default function GirardCustomers() {
                         const customer = customers?.find(c => c.id === e.target.value)
                         if (customer) { setExistingFrequency(customer.visit_frequency_days); setExistingPricingTier(customer.pricing_tier) }
                       }}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                     >
                       <option value="">Pilih pelanggan...</option>
                       {(customers ?? []).filter(c => !assignmentMap[c.id] || c.id === selectedExistingId).map(c => (
@@ -567,7 +567,7 @@ export default function GirardCustomers() {
                       aria-label="Frekuensi Kunjungan"
                       value={existingFrequency}
                       onChange={e => setExistingFrequency(parseInt(e.target.value))}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                     >
                       {FREQUENCY_OPTIONS.map(f => (
                         <option key={f.days} value={f.days}>{f.label}</option>
@@ -584,7 +584,7 @@ export default function GirardCustomers() {
                       aria-label="Manajer"
                       value={existingManagerId}
                       onChange={e => setExistingManagerId(e.target.value)}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                     >
                       <option value="">Pilih manajer...</option>
                       {managers?.map(m => (
@@ -604,7 +604,7 @@ export default function GirardCustomers() {
                       aria-label="Frekuensi Kunjungan"
                       value={form.visit_frequency_days}
                       onChange={e => setForm(p => ({ ...p, visit_frequency_days: parseInt(e.target.value) }))}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                     >
                       {FREQUENCY_OPTIONS.map(f => (
                         <option key={f.days} value={f.days}>{f.label}</option>
@@ -621,7 +621,7 @@ export default function GirardCustomers() {
                       aria-label="Manajer"
                       value={form.manager_id}
                       onChange={e => setForm(p => ({ ...p, manager_id: e.target.value }))}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                     >
                       <option value="">Belum ditugaskan</option>
                       {managers?.map(m => (
@@ -654,7 +654,7 @@ export default function GirardCustomers() {
                   }
                 }}
                 disabled={isPending || readError}
-                className="px-4 py-2 text-sm font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                className="px-4 py-2 text-sm font-medium bg-brand-primary text-white rounded-lg hover:bg-brand-hover disabled:opacity-50"
               >
                 {isPending ? 'Menyimpan...'
                   : modalMode === 'create' ? 'Buat'

@@ -172,7 +172,7 @@ function RevenueTable({
 }
 
 export default function GirardRevenue() {
-  return <div className="min-h-screen bg-gray-50"><GirardNav /><RevenueContent /></div>
+  return <div className="min-h-screen bg-brand-canvas"><GirardNav /><RevenueContent /></div>
 }
 export function RevenueContent() {
   const { data, filters, setFilters, setPage, isPending, isError, refetch } = usePagedRead('revenue', { period: '30d' }, (filters, page, signal) => fetchRevenuePage(filters.period, page, signal))

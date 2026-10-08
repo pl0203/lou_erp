@@ -62,7 +62,7 @@ function Tabs({actorId,context,readState,onDirtyChange}:{actorId:string;context:
           const direction=event.key==='ArrowRight'?1:event.key==='ArrowLeft'?-1:0
           const next=event.key==='Home'?tabs[0]:event.key==='End'?tabs.at(-1):direction?tabs[(index+direction+tabs.length)%tabs.length]:undefined
           if(next){event.preventDefault();document.getElementById(`leave-tab-${next.id}`)?.focus()}
-        }} className={`min-h-11 shrink-0 rounded-lg px-4 py-3 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-orange-600 ${tab.id===active?'bg-orange-50 text-orange-800':'text-gray-600 hover:bg-gray-50'}`}>
+        }} className={`min-h-11 shrink-0 rounded-lg px-4 py-3 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-brand-primary ${tab.id===active?'bg-brand-tint text-brand-primary underline decoration-brand-primary underline-offset-4':'text-gray-600 hover:bg-gray-50'}`}>
         {tab.label}{tab.id==='approvals'&&<span className="ml-2"><LeaveApprovalBadge actorId={actorId} context={context}/></span>}
       </button>)}
     </div>

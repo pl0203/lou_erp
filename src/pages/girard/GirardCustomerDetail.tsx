@@ -53,7 +53,7 @@ function CustomerDetailView({ id, identity, enabled }: { id?: string; identity: 
 
   if (isLoading || (!enabled && id)) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-brand-canvas">
         <GirardNav />
         <div className="p-8 text-gray-400 text-sm text-center">Loading...</div>
       </div>
@@ -61,7 +61,7 @@ function CustomerDetailView({ id, identity, enabled }: { id?: string; identity: 
   }
 
   if (customerQuery.isError) {
-    return <div className="min-h-screen bg-gray-50"><GirardNav />
+    return <div className="min-h-screen bg-brand-canvas"><GirardNav />
       <div role="alert" className="p-6 text-sm text-red-600"><p>Gagal memuat pelanggan.</p>
         <button type="button" onClick={() => customerQuery.refetch()} className="mt-2 min-h-10 underline">Coba lagi</button>
       </div>
@@ -70,7 +70,7 @@ function CustomerDetailView({ id, identity, enabled }: { id?: string; identity: 
 
   if (!customer) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-brand-canvas">
         <GirardNav />
         <div className="p-8 text-red-500 text-sm">Pelanggan tidak ditemukan atau Anda tidak memiliki akses.</div>
       </div>
@@ -80,7 +80,7 @@ function CustomerDetailView({ id, identity, enabled }: { id?: string; identity: 
   const overdue = isOverdue(customer.last_visit_date, customer.visit_frequency_days)
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-brand-canvas">
       <GirardNav />
 
       {/* Header */}
@@ -118,7 +118,7 @@ function CustomerDetailView({ id, identity, enabled }: { id?: string; identity: 
               onClick={() => setActiveTab(tab.key as typeof activeTab)}
               className={`shrink-0 px-3 py-3 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === tab.key
-                  ? 'border-green-600 text-green-600'
+                  ? 'border-brand-accent text-brand-primary underline decoration-brand-primary underline-offset-4'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >

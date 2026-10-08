@@ -1,1 +1,22 @@
 @import "tailwindcss";
+
+@theme {
+  --color-brand-primary: #192D43;
+  --color-brand-hover: #243F5B;
+  --color-brand-accent: #C69942;
+  --color-brand-tint: #F5EDD9;
+  --color-brand-canvas: #F8F7F3;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-brand-canvas);
+    color: var(--color-brand-primary);
+  }
+
+  /* Navy remains visible on both white surfaces and the ochre accent. */
+  :where(button, a, input, select, textarea, summary):focus-visible {
+    outline: 2px solid var(--color-brand-primary);
+    outline-offset: 3px;
+  }
+}

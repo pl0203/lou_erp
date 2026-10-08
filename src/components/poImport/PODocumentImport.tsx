@@ -25,7 +25,7 @@ export default function PODocumentImport({ customers, products, actorKey, disabl
     setTab(next); (next === 'document' ? documentTab : reviewTab).current?.focus()
   }
   return <section className="min-w-0 rounded-xl border border-gray-200 bg-white p-4 sm:p-6" aria-label="Impor dokumen PO lokal">
-    <button type="button" disabled={disabled} onClick={() => setOpen(true)} className="rounded-lg border border-blue-300 px-4 py-2 text-sm font-medium text-blue-700 disabled:opacity-50">Import dokumen PO</button>
+    <button type="button" disabled={disabled} onClick={() => setOpen(true)} className="rounded-lg border border-blue-300 px-4 py-2 text-sm font-medium text-brand-primary disabled:opacity-50">Import dokumen PO</button>
     <p className="mt-2 text-xs text-gray-500">Dokumen dibaca di browser ini. Tidak diunggah atau dilampirkan. Hasil wajib diperiksa; Terapkan tidak menyimpan PO.</p>
     {open && <div className="mt-4 min-w-0 space-y-4">
       <div><label htmlFor={`${id}-file`} className="block text-sm font-medium">Dokumen PO</label><input id={`${id}-file`} type="file" accept="application/pdf,image/jpeg,image/png,image/webp" disabled={disabled} className="block max-w-full w-full text-sm" onChange={event => {

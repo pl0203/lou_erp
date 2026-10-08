@@ -68,7 +68,7 @@ function Picker<T extends Option>({ items, label, placeholder, selectedLabel = '
         const exactMatches = exact ? matches.filter(item => exact(item, normalized)) : []
         if (exactMatches.length === 1) select(exactMatches[0])
       }}
-      className="min-w-0 max-w-full w-full border border-blue-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-blue-50 disabled:bg-gray-50 disabled:text-gray-500"
+      className="min-w-0 max-w-full w-full border border-blue-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-blue-50 disabled:bg-gray-50 disabled:text-gray-500"
     />
     {expanded && <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
       <div id={`${id}-list`} role="listbox" aria-label={label}>

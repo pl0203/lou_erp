@@ -139,7 +139,7 @@ function SKULookup({ products, onSelect }: {
         onChange={e => { setQuery(e.target.value); setOpen(true) }}
         onFocus={() => setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
-        className="w-full border border-blue-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-blue-50"
+        className="w-full border border-blue-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-blue-50"
       />
       {open && results.length > 0 && (
         <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
@@ -266,7 +266,7 @@ function LiveCamera({ onCapture }: { onCapture: (blob: Blob, preview: string) =>
       {error && <div className="absolute inset-0 bg-gray-100 flex flex-col items-center justify-center gap-2 p-4">
         <span className="text-3xl" aria-hidden="true">📷</span>
         <p role="alert" className="text-sm text-red-500 text-center">{error}</p>
-        <button onClick={startCamera} disabled={starting} className="text-xs text-blue-600 font-medium underline mt-1">Coba lagi</button>
+        <button onClick={startCamera} disabled={starting} className="text-xs text-brand-primary font-medium underline mt-1">Coba lagi</button>
       </div>}
     </div>
   )
@@ -334,7 +334,7 @@ function VisitOrderHistory({ customerId, visitId }: { customerId: string; visitI
         <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${ORDER_STATUS_STYLES[order.status] ?? 'bg-gray-100 text-gray-600'}`}>{order.status === 'pending' ? 'Menunggu' : order.status === 'approved' ? 'Disetujui' : order.status === 'rejected' ? 'Ditolak' : order.status}</span>
         <span className="text-xs text-gray-400">{new Date(order.created_at).toLocaleString('id-ID')}</span>
       </div>
-      <div className="flex justify-between text-sm"><button disabled={orders.isPending} className="text-blue-600" onClick={() => setSelectedId(selectedId === order.id ? null : order.id)}>{selectedId === order.id ? 'Tutup barang' : 'Lihat barang'}</button><span>Rp {formatMoney(order.total_value, 'full')}</span></div>
+      <div className="flex justify-between text-sm"><button disabled={orders.isPending} className="text-brand-primary" onClick={() => setSelectedId(selectedId === order.id ? null : order.id)}>{selectedId === order.id ? 'Tutup barang' : 'Lihat barang'}</button><span>Rp {formatMoney(order.total_value, 'full')}</span></div>
       {selectedId === order.id && (lines.isError ? <p role="alert" className="text-sm text-red-600">Barang pesanan gagal dimuat. <button onClick={() => lines.refetch()}>Coba lagi</button></p>
         : lines.isPending ? <p role="status">Memuat barang…</p> : <table className="w-full mt-3 text-xs"><thead><tr><th className="text-left">Barang</th><th>Jml</th><th>Harga</th><th>Total</th></tr></thead><tbody>
           {lines.data?.map(item => <tr key={item.id}><td>{item.product_name}</td><td>{item.quantity}</td><td>Rp {item.unit_price.toLocaleString('id-ID')}</td><td>{formatLineAmount(item.quantity, item.unit_price)}</td></tr>)}
@@ -507,7 +507,7 @@ export default function VisitPage() {
 
   if (scheduleLoading || visitLoading) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-brand-canvas">
         {unsaved.dialog}
         <GirardNav />
         <TransactionRecovery send={sendVisit} onCommitted={() => { queryClient.invalidateQueries(); setShowCamera(false); setPhotoPreview(null); setPhotoBlob(null); window.localStorage.removeItem(uploadKey) }} />
@@ -519,7 +519,7 @@ export default function VisitPage() {
 
   if (!schedule || !schedule.customers) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-brand-canvas">
         {unsaved.dialog}
         <GirardNav />
         <TransactionRecovery send={sendVisit} onCommitted={() => { queryClient.invalidateQueries(); setShowCamera(false); setPhotoPreview(null); setPhotoBlob(null); window.localStorage.removeItem(uploadKey) }} />
@@ -535,7 +535,7 @@ export default function VisitPage() {
   const customer = schedule.customers
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-brand-canvas">
       {unsaved.dialog}
       <GirardNav />
         <TransactionRecovery send={sendVisit} onCommitted={() => { queryClient.invalidateQueries(); setShowCamera(false); setPhotoPreview(null); setPhotoBlob(null); window.localStorage.removeItem(uploadKey) }} />
@@ -668,7 +668,7 @@ export default function VisitPage() {
                   {locationStatus === 'unavailable' && (
                     <div className="flex items-center gap-3">
                       <span className="text-xs text-gray-400">Lokasi tidak tersedia — Anda tetap bisa check-in tanpa lokasi.</span>
-                      <button onClick={() => setLocationStatus('idle')} className="text-xs text-blue-600 underline">
+                      <button onClick={() => setLocationStatus('idle')} className="text-xs text-brand-primary underline">
                         Coba lagi
                       </button>
                     </div>
@@ -681,7 +681,7 @@ export default function VisitPage() {
                   <button
                     onClick={handleCheckIn}
                     disabled={!photoBlob || checkInMutation.isPending}
-                    className="w-full bg-green-600 hover:bg-green-700 text-white font-medium py-3 rounded-xl transition-colors disabled:opacity-50 text-sm"
+                    className="w-full bg-brand-primary hover:bg-brand-hover text-white font-medium py-3 rounded-xl transition-colors disabled:opacity-50 text-sm"
                   >
                     {checkInMutation.isPending ? 'Memproses check-in...' : 'Konfirmasi Check-in'}
                   </button>
@@ -725,7 +725,7 @@ export default function VisitPage() {
               {!showOrderForm && (
                 <button
                   onClick={() => setShowOrderForm(true)}
-                  className="text-sm text-blue-600 font-medium hover:text-blue-800"
+                  className="text-sm text-brand-primary font-medium hover:text-brand-hover"
                 >
                   + Pesanan Baru
                 </button>
@@ -804,7 +804,7 @@ export default function VisitPage() {
                             value={item.product_name}
                             onChange={e => updateOrderItem(i, 'product_name', e.target.value)}
                             placeholder="Nama produk"
-                            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                           />
                         </div>
                         <div>
@@ -813,7 +813,7 @@ export default function VisitPage() {
                             type="text"
                             value={item.sku}
                             onChange={e => updateOrderItem(i, 'sku', e.target.value)}
-                            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-brand-primary"
                           />
                         </div>
                         <div>
@@ -822,7 +822,7 @@ export default function VisitPage() {
                             type="number" min={1}
                             value={Number.isNaN(item.quantity) ? '' : item.quantity}
                             onChange={e => updateOrderItem(i, 'quantity', e.target.valueAsNumber)}
-                            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                           />
                         </div>
                         <div className="col-span-4">
@@ -843,8 +843,8 @@ export default function VisitPage() {
                             readOnly={item.is_promo}
                             className={`w-full border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 ${
                               item.is_promo
-                                ? 'border-orange-200 bg-orange-50 text-orange-700 cursor-not-allowed focus:ring-orange-200'
-                                : 'border-gray-200 focus:ring-blue-500'
+                                ? 'border-orange-200 bg-orange-50 text-orange-700 cursor-not-allowed focus:ring-brand-primary'
+                                : 'border-gray-200 focus:ring-brand-primary'
                             }`}
                           />
                         </div>
@@ -858,7 +858,7 @@ export default function VisitPage() {
                     </div>
                   ))}
                 </div>
-                <button onClick={addOrderItem} className="text-blue-600 text-sm font-medium hover:text-blue-800">
+                <button onClick={addOrderItem} className="text-brand-primary text-sm font-medium hover:text-brand-hover">
                   + Tambah barang
                 </button>
                 <div className="flex items-center justify-between pt-2 border-t border-gray-100">
@@ -880,7 +880,7 @@ export default function VisitPage() {
                     <button
                       onClick={handleSubmitOrder}
                       disabled={orderMutation.isPending}
-                      className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                      className="px-4 py-2 text-sm font-medium bg-brand-primary text-white rounded-lg hover:bg-brand-hover disabled:opacity-50"
                     >
                       {orderMutation.isPending ? 'Mengirim...' : 'Kirim Pesanan'}
                     </button>

@@ -319,7 +319,7 @@ export default function PODetail() {
   const deletingSJ = sjList?.find(s => s.id === deletingSJId)
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-brand-canvas">
       <AthelNav />
         <TransactionRecovery send={sendTransaction} onCommitted={() => { invalidate(); closeSJModal(); setDeletingSJId(null); setShowDeleteConfirm(false) }} />
 
@@ -346,7 +346,7 @@ export default function PODetail() {
           {!isComplete && !isCancelled && (
             <button
               onClick={() => navigate(`/athel/po/${po.id}/edit`)}
-              className="text-sm font-medium text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 px-3 py-1.5 rounded-lg transition-colors"
+              className="text-sm font-medium text-brand-primary hover:text-brand-hover border border-blue-200 hover:border-blue-400 px-3 py-1.5 rounded-lg transition-colors"
             >
               Ubah PO
             </button>
@@ -393,7 +393,7 @@ export default function PODetail() {
               <button
                 disabled={!lineReady || preparingSJ}
                   onClick={openNewSJModal}
-                className="ml-auto bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+                className="ml-auto bg-brand-primary hover:bg-brand-hover text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
               >
                 + Surat Jalan
               </button>
@@ -512,9 +512,9 @@ export default function PODetail() {
                   {sj.sj_date_received && <p className="text-xs text-gray-400">Diterima Toko: {sj.sj_date_received}</p>}
                   {sj.sj_date_returned && <p className="text-xs text-gray-400">SJ Kembali: {sj.sj_date_returned}</p>}
                 </div><div className="flex flex-wrap gap-3">
-                  <button disabled={deliveries.isPending} onClick={() => setSelectedSJId(selectedSJId === sj.id ? null : sj.id)} className="text-blue-600 text-xs">{selectedSJId === sj.id ? 'Tutup barang' : 'Lihat barang'}</button>
+                  <button disabled={deliveries.isPending} onClick={() => setSelectedSJId(selectedSJId === sj.id ? null : sj.id)} className="text-brand-primary text-xs">{selectedSJId === sj.id ? 'Tutup barang' : 'Lihat barang'}</button>
                   {canAddSJ && !sj.voided_at && <>
-                    <button disabled={!lineReady || preparingSJ || deliveries.isPending} onClick={() => openEditSJModal(sj)} className="text-blue-600 text-xs">Ubah</button>
+                    <button disabled={!lineReady || preparingSJ || deliveries.isPending} onClick={() => openEditSJModal(sj)} className="text-brand-primary text-xs">Ubah</button>
                     <button disabled={deliveries.isPending} onClick={() => { setActionVersion(po.updated_at); setActionReason(''); setDeletingSJId(sj.id) }} className="text-red-500 text-xs">Batalkan</button>
                   </>}
                 </div></div>
@@ -586,7 +586,7 @@ export default function PODetail() {
                     value={sjNumber}
                     onChange={e => setSjNumber(e.target.value)}
                     placeholder="e.g. SJ-2024-001"
-                    className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                   />
                 </div>
                 <div>
@@ -595,7 +595,7 @@ export default function PODetail() {
                     type="date"
                     value={sjDate}
                     onChange={e => setSjDate(e.target.value)}
-                    className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                   />
                 </div>
                 <div>
@@ -606,7 +606,7 @@ export default function PODetail() {
                     type="date"
                     value={sjDateReceived}
                     onChange={e => setSjDateReceived(e.target.value)}
-                    className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                   />
                 </div>
                 <div>
@@ -617,7 +617,7 @@ export default function PODetail() {
                     type="date"
                     value={sjDateReturned}
                     onChange={e => setSjDateReturned(e.target.value)}
-                    className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                   />
                 </div>
               </div>
@@ -658,7 +658,7 @@ export default function PODetail() {
                               value={line.quantity_to_deliver}
                               onChange={e => updateSJLine(i, parseInt(e.target.value) || 0)}
                               disabled={line.quantity_outstanding === 0}
-                              className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-300"
+                              className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-brand-primary disabled:bg-gray-50 disabled:text-gray-300"
                             />
                           </div>
                         </div>
@@ -678,7 +678,7 @@ export default function PODetail() {
               <button
                 onClick={handleSaveSJ}
                 disabled={sjMutation.isPending || updateSJMutation.isPending || !lineReady || editVersion !== lineState?.po_updated_at}
-                className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                className="px-4 py-2 text-sm font-medium bg-brand-primary text-white rounded-lg hover:bg-brand-hover disabled:opacity-50"
               >
                 {sjMutation.isPending || updateSJMutation.isPending
                   ? 'Menyimpan...'

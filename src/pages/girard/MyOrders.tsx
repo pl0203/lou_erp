@@ -33,7 +33,7 @@ export default function MyOrders() {
   const rejectedCount = data?.status_counts.rejected ?? 0
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-brand-canvas">
       <GirardNav />
 
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5">
@@ -71,7 +71,7 @@ export default function MyOrders() {
               onClick={() => setStatusFilter(tab.value)}
               className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
                 statusFilter === tab.value
-                  ? 'border-green-600 text-green-600'
+                  ? 'border-brand-accent text-brand-primary underline decoration-brand-primary underline-offset-4'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -154,7 +154,7 @@ export default function MyOrders() {
             </div>
 
             <div className="px-5 py-3">
-              <button type="button" aria-expanded={expanded.includes(order.id)} onClick={() => setExpanded(previous => previous.includes(order.id) ? previous.filter(id => id !== order.id) : [...previous, order.id])} className="text-xs font-medium text-green-600">{expanded.includes(order.id) ? 'Sembunyikan barang' : 'Lihat barang'}</button>
+              <button type="button" aria-expanded={expanded.includes(order.id)} onClick={() => setExpanded(previous => previous.includes(order.id) ? previous.filter(id => id !== order.id) : [...previous, order.id])} className="text-xs font-medium text-brand-primary">{expanded.includes(order.id) ? 'Sembunyikan barang' : 'Lihat barang'}</button>
               {expanded.includes(order.id) && <SalesOrderItems orderId={order.id} />}
             </div>
           </div>

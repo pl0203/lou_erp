@@ -61,8 +61,8 @@ export default function POImportReview({ parsed, decision, customers, products, 
               const chosen = candidates[0]
               rowSet(source.id, { productId: chosen.id, name: chosen.name, sku: chosen.sku, manual: false, unitConfirmed: false })
               setSelectingRow(null); productButtons.current[source.id]?.focus()
-            }} className="mt-2 mr-2 rounded-lg border border-blue-300 px-3 py-2 text-sm text-blue-700 disabled:opacity-50">Gunakan saran barang {index + 1}</button>}
-            <button type="button" ref={node => { productButtons.current[source.id] = node }} disabled={row.manual} onClick={() => setSelectingRow(selectingRow === source.id ? null : source.id)} className="mt-2 rounded-lg border border-blue-300 px-3 py-2 text-sm text-blue-700 disabled:opacity-50">Pilih produk barang {index + 1}</button>
+            }} className="mt-2 mr-2 rounded-lg border border-blue-300 px-3 py-2 text-sm text-brand-primary disabled:opacity-50">Gunakan saran barang {index + 1}</button>}
+            <button type="button" ref={node => { productButtons.current[source.id] = node }} disabled={row.manual} onClick={() => setSelectingRow(selectingRow === source.id ? null : source.id)} className="mt-2 rounded-lg border border-blue-300 px-3 py-2 text-sm text-brand-primary disabled:opacity-50">Pilih produk barang {index + 1}</button>
             {selectingRow === source.id && <div className="mt-2"><POProductLookup products={products} label={`Cari produk hasil impor ${index + 1}`} disabled={disabled || row.manual} onSelect={chosen => {
               rowSet(source.id, { productId: chosen.id, name: chosen.name, sku: chosen.sku, manual: false, unitConfirmed: false })
               setSelectingRow(null); productButtons.current[source.id]?.focus()
@@ -95,6 +95,6 @@ export default function POImportReview({ parsed, decision, customers, products, 
       {sourceIssues.filter(issue => !['missing-price', 'zero-price'].includes(issue.code) && !isFinancialReviewIssue(issue)).map(issue => <div key={issue.id} className="rounded bg-amber-50 p-3 text-sm text-amber-800"><p>{issue.message}</p></div>)}
     </fieldset>
     {!!issues.length && <div role="alert" className="rounded bg-red-50 p-3 text-sm text-red-700"><p>Periksa sebelum menerapkan:</p><ul className="list-disc pl-5">{issues.map(issue => <li key={issue.id}>{issue.message}</li>)}</ul></div>}
-    <button type="button" disabled={disabled || fallback} onClick={onApply} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Terapkan ke formulir</button>
+    <button type="button" disabled={disabled || fallback} onClick={onApply} className="rounded-lg bg-brand-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Terapkan ke formulir</button>
   </div>
 }

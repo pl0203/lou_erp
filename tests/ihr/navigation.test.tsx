@@ -34,9 +34,9 @@ test('inactive identity remains denied', () => { mocks.auth.profile.is_active = 
 test.each(['sales_person', 'sales_manager', 'po_admin'])('%s iHR switch offers only their module home', role => {
   mocks.auth.profile.role = role; mount(<IHRNav />)
   expect(screen.queryByText('Manajemen Pengguna')).toBeNull()
-  fireEvent.click(screen.getByRole('button', { name: 'iHR' }))
-  expect(screen.getByRole('button', { name: 'iHR' }).getAttribute('aria-expanded')).toBe('true')
-  fireEvent.click(screen.getByRole('button', { name: role === 'po_admin' ? /Athel/ : /Girard/ }))
+  fireEvent.click(screen.getByRole('button', { name: 'HR' }))
+  expect(screen.getByRole('button', { name: 'HR' }).getAttribute('aria-expanded')).toBe('true')
+  fireEvent.click(screen.getByRole('button', { name: role === 'po_admin' ? /Procurement/ : /Sales/ }))
   expect(screen.getByText(role === 'po_admin' ? '/athel/po' : '/girard/schedule')).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: 'Menu pengguna' })); fireEvent.click(screen.getByRole('button', { name: 'Kembali ke modul' }))
   expect(screen.queryByText('/landing')).toBeNull()
@@ -44,12 +44,12 @@ test.each(['sales_person', 'sales_manager', 'po_admin'])('%s iHR switch offers o
 test('executive retains existing user-management entry', () => { mocks.auth.profile.role = 'executive'; mount(<IHRNav />); expect(screen.getAllByRole('link', { name: 'Manajemen Pengguna' })[0].getAttribute('href')).toBe('/ihr/users') })
 test.each(['sales_person', 'sales_manager'])('%s has an independent iHR module entry opening Ajukan Cuti without PO access', role => {
   mocks.auth.profile.role = role; mount(<GirardNav />)
-  expect(screen.getAllByRole('link', { name: 'iHR' })[0].getAttribute('href')).toBe('/ihr/leave?tab=mine')
-  fireEvent.click(screen.getByRole('button', { name: 'Girard' }))
-  expect(screen.getByRole('button', { name: 'Girard' }).getAttribute('aria-expanded')).toBe('true')
-  fireEvent.click(screen.getByRole('button', { name: /iHR/ }))
+  expect(screen.getAllByRole('link', { name: 'HR' })[0].getAttribute('href')).toBe('/ihr/leave?tab=mine')
+  fireEvent.click(screen.getByRole('button', { name: 'Sales' }))
+  expect(screen.getByRole('button', { name: 'Sales' }).getAttribute('aria-expanded')).toBe('true')
+  fireEvent.click(screen.getByRole('button', { name: /HR/ }))
   expect(screen.getByText('/ihr/leave')).toBeTruthy()
-  expect(screen.queryByRole('button', { name: /Athel/ })).toBeNull()
+  expect(screen.queryByRole('button', { name: /Procurement/ })).toBeNull()
 })
 test.each(['sales_person', 'sales_manager'])('%s iHR page navigation labels the default leave page Ajukan Cuti', role => {
   mocks.auth.profile.role = role; mount(<IHRNav />)
@@ -59,8 +59,17 @@ test.each(['sales_person', 'sales_manager'])('%s iHR page navigation labels the 
 test('PO admin has a direct leave entry without sales access', () => {
   mocks.auth.profile.role = 'po_admin'; mount(<AthelNav />)
   expect(screen.getAllByRole('link', { name: 'Cuti' })[0].getAttribute('href')).toBe('/ihr/leave')
-  expect(screen.queryByRole('button', { name: /Girard/ })).toBeNull()
+  expect(screen.queryByRole('button', { name: /Sales/ })).toBeNull()
 })
 const director: LeaveContext = { scopeVersion: '1', memberKind: 'director', timezone: null, balances: [], setup: { ready: false, blockers: [] }, capabilities: { request: false, approve: true, configure: false, adjust: false, readPrivate: false, manageAccess: false } }
 test('director gets only assigned approval navigation', () => { mount(<LeaveTabs context={director} />); expect(screen.getByRole('tab', { name: 'Persetujuan' })).toBeTruthy(); expect(screen.queryByRole('tab', { name: 'Ajukan Cuti' })).toBeNull(); expect(screen.queryByRole('tab', { name: 'Pengaturan' })).toBeNull() })
 test('application role grants no HR tabs', () => { mocks.auth.profile.role = 'executive'; mount(<LeaveTabs context={{ ...director, memberKind: null, capabilities: { ...director.capabilities, approve: false } }} />); expect(screen.queryByRole('tab')).toBeNull() })
+
+test('selected leave tabs use a navy underline rather than color alone', () => {
+  const context: LeaveContext = { scopeVersion: 'theme', memberKind: 'employee', capabilities: { request: true, approve: false, configure: false, adjust: false, readPrivate: false, manageAccess: false }, setup: { ready: true, blockers: [] }, balances: [], timezone: 'Asia/Jakarta' }
+  mount(<LeaveTabs context={context} />)
+  const active = screen.getByRole('tab', { name: 'Ajukan Cuti' })
+  expect(active.getAttribute('aria-selected')).toBe('true')
+  expect(active.classList.contains('underline')).toBe(true)
+  expect(active.classList.contains('decoration-brand-primary')).toBe(true)
+})

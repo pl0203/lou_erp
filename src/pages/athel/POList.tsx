@@ -34,7 +34,7 @@ export default function POList() {
   const isLoading = !data && isPending
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-brand-canvas">
       <AthelNav />
 
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex flex-wrap items-center justify-between gap-3">
@@ -44,7 +44,7 @@ export default function POList() {
         </div>
         <button
           onClick={() => navigate('/athel/po/new')}
-          className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+          className="bg-brand-primary hover:bg-brand-hover text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
         >
           + PO Baru
         </button>
@@ -56,12 +56,12 @@ export default function POList() {
           placeholder="Cari nomor PO, pelanggan, atau SJ..."
           value={search}
           onChange={e => setSearch(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full sm:w-80 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full sm:w-80 focus:outline-none focus:ring-2 focus:ring-brand-primary"
         />
         <select
           value={filters.status}
           onChange={e => setFilters(previous => ({ ...previous, status: e.target.value as POStatusFilter }))}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
         >
           <option value="all">Semua status</option>
           <option value="confirm">Dikonfirmasi</option>
@@ -116,7 +116,7 @@ export default function POList() {
                       <td className="px-5 py-4 text-right">
                         <button
                           onClick={() => navigate(`/athel/po/${po.id}`)}
-                          className="text-blue-600 hover:text-blue-800 text-xs font-medium mr-3"
+                          className="text-brand-primary hover:text-brand-hover text-xs font-medium mr-3"
                         >
                           Lihat
                         </button>
@@ -166,7 +166,7 @@ export default function POList() {
                   <div className="flex gap-2 pt-3 border-t border-gray-100">
                     <button
                       onClick={() => navigate(`/athel/po/${po.id}`)}
-                      className="flex-1 text-center text-blue-600 text-xs font-medium py-2 rounded-lg bg-blue-50 hover:bg-blue-100 transition-colors"
+                      className="flex-1 text-center text-brand-primary text-xs font-medium py-2 rounded-lg bg-brand-tint hover:bg-brand-canvas transition-colors"
                     >
                       Lihat
                     </button>

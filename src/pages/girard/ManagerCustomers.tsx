@@ -175,7 +175,7 @@ function SummaryCards({ total, onTrack, overdue }: {
 }
 
 export default function ManagerCustomers() {
-  return <div className="min-h-screen bg-gray-50"><GirardNav /><ManagerCustomersContent /></div>
+  return <div className="min-h-screen bg-brand-canvas"><GirardNav /><ManagerCustomersContent /></div>
 }
 export function ManagerCustomersContent() {
   const { profile } = useAuth()

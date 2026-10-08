@@ -2,7 +2,7 @@ import type { Ref } from 'react'
 import { formatLineAmount } from '../lib/catalogPricing'
 
 const COLUMNS = 'sm:grid-cols-[minmax(0,1.2fr)_minmax(0,2.4fr)_minmax(0,.8fr)_minmax(0,1.5fr)_2.5rem]'
-const INPUT = 'min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-500'
+const INPUT = 'min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary disabled:bg-gray-50 disabled:text-gray-500'
 const LABEL = 'block text-xs text-gray-500 mb-1 sm:hidden'
 type Line = { sku: string; product_name: string; quantity: number; unit_price: number }
 type LineField = keyof Line

@@ -1,3 +1,4 @@
+import BrandLogo from '../components/BrandLogo'
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
@@ -46,8 +47,9 @@ export default function ForgotPassword() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+    <div className="min-h-screen bg-brand-canvas flex items-center justify-center px-4 py-8">
       <div className="bg-white rounded-2xl border border-gray-200 p-8 w-full max-w-sm shadow-sm">
+        <BrandLogo className="mb-8" />
         <button onClick={() => navigate('/login')} className="text-gray-400 hover:text-gray-600 text-sm mb-6 block">
           ← Kembali ke halaman masuk
         </button>
@@ -84,14 +86,14 @@ export default function ForgotPassword() {
                 onChange={e => setEmail(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleReset()}
                 placeholder="anda@perusahaan.com"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
               />
             </div>
             {error && <p id="reset-error" role="alert" className="text-red-500 text-xs">{error}</p>}
             <button
               onClick={handleReset}
               disabled={loading}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2.5 rounded-lg transition-colors disabled:opacity-50"
+              className="w-full bg-brand-primary hover:bg-brand-hover text-white text-sm font-medium py-2.5 rounded-lg transition-colors disabled:opacity-50"
             >
               {loading ? 'Mengirim...' : 'Kirim tautan reset'}
             </button>

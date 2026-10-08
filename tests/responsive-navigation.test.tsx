@@ -9,15 +9,12 @@ import AthelNav from '../src/components/AthelNav'
 import PaginationControls from '../src/components/PaginationControls'
 afterEach(cleanup)
 
-test('Athel navigation keeps a shrinkable scrolling link strip through tablet widths', () => {
+test('Procurement navigation has one sidebar link set rather than duplicate scrolling strips', () => {
   render(<MemoryRouter><AthelNav /></MemoryRouter>)
-  const links = screen.getAllByRole('link', { name: 'Dashboard' })
-  const desktop = links[0].parentElement!
-  const compact = links[1].parentElement!
-  expect(desktop.classList.contains('lg:flex')).toBe(true)
-  expect(compact.classList.contains('lg:hidden')).toBe(true)
-  expect(compact.classList.contains('min-w-0')).toBe(true)
-  expect(compact.classList.contains('overflow-x-auto')).toBe(true)
+  const nav = screen.getByRole('navigation', { name: 'Navigasi Procurement' })
+  expect(screen.getAllByRole('link', { name: 'Dashboard' })).toHaveLength(1)
+  expect(nav.classList.contains('navigation-links')).toBe(true)
+  expect(screen.getByRole('button', { name: 'Minimalkan menu' })).toBeTruthy()
 })
 
 test('pagination can wrap inside narrow detail cards and retains both page actions', () => {

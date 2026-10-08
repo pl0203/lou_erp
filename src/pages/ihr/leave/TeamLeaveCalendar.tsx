@@ -34,13 +34,13 @@ function CalendarPanel({actorId,context,readState='ready'}:Props){
   <p className="text-sm text-gray-600">Hanya cuti disetujui dan pembatalan yang masih menunggu keputusan. Sebagian jadwal menunjukkan menit cuti; waktu mulai dan selesai tidak dicatat.</p>
   <p className="text-sm text-gray-600">Label seluruh jadwal mengacu pada kapasitas jadwal saat cuti disetujui. Kalender ini tidak memastikan cakupan petugas.</p>
   <form onSubmit={apply} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1.3fr_1fr_1fr_auto]">
-   <label>Cakupan kalender<select aria-label="Cakupan kalender" value={audience} disabled={!controls} onChange={e=>{if(controls){setAudience(e.target.value as CalendarAudience);if(!manual){setRange(null);setFrom('');setTo('')}}}} className="mt-1 block min-h-11 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 focus-visible:outline-2 focus-visible:outline-orange-600">
+   <label>Cakupan kalender<select aria-label="Cakupan kalender" value={audience} disabled={!controls} onChange={e=>{if(controls){setAudience(e.target.value as CalendarAudience);if(!manual){setRange(null);setFrom('');setTo('')}}}} className="mt-1 block min-h-11 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 focus-visible:outline-2 focus-visible:outline-brand-primary">
     {controls&&!authorized&&<option value={audience} disabled>Cakupan belum tersedia</option>}
     {(access.data?.calendarAudiences??[audience]).map(value=><option key={value} value={value}>{audienceLabels[value]}</option>)}
    </select></label>
-   <label>Dari<input aria-label="Dari tanggal" type="date" value={from} disabled={!controls||!authorized} onChange={e=>setFrom(e.target.value)} className="mt-1 block min-h-11 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 focus-visible:outline-2 focus-visible:outline-orange-600"/></label>
-   <label>Sampai<input aria-label="Sampai tanggal" type="date" value={to} disabled={!controls||!authorized} onChange={e=>setTo(e.target.value)} className="mt-1 block min-h-11 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 focus-visible:outline-2 focus-visible:outline-orange-600"/></label>
-   <button type="submit" disabled={!controls||!authorized} className="min-h-11 self-end rounded-lg border border-gray-200 px-4 py-2 font-medium hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-orange-600 disabled:opacity-50">Tampilkan</button>
+   <label>Dari<input aria-label="Dari tanggal" type="date" value={from} disabled={!controls||!authorized} onChange={e=>setFrom(e.target.value)} className="mt-1 block min-h-11 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 focus-visible:outline-2 focus-visible:outline-brand-primary"/></label>
+   <label>Sampai<input aria-label="Sampai tanggal" type="date" value={to} disabled={!controls||!authorized} onChange={e=>setTo(e.target.value)} className="mt-1 block min-h-11 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 focus-visible:outline-2 focus-visible:outline-brand-primary"/></label>
+   <button type="submit" disabled={!controls||!authorized} className="min-h-11 self-end rounded-lg border border-gray-200 px-4 py-2 font-medium hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-brand-primary disabled:opacity-50">Tampilkan</button>
   </form>
   {error&&<p role="alert">{error}</p>}
   {access.available&&authorized&&access.data?.defaultRange===null&&<p role="status">Zona waktu perusahaan belum dikonfirmasi atau berbeda untuk cakupan ini. Pilih rentang tanggal secara manual; tanggal ditampilkan sesuai permohonan.</p>}

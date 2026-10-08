@@ -12,7 +12,7 @@ test('Vercel serves the SPA entry point for fresh client-side deep links', () =>
 })
 
 test('SPA routing preserves database preview deployment and backend guard configuration', () => {
-  expect(config.git).toEqual({ deploymentEnabled: { 'fix/pilot-database': true, 'fix/po-admin-director': false, 'fix/pilot-scale-sql': false, 'ci/customer-categories-postgres': false, 'ci/ihr-leave-postgres': false } })
+  expect(config.git).toEqual({ deploymentEnabled: { 'fix/pilot-database': true, 'fix/po-admin-director': false, 'fix/padiwan-sidebar-theme': false, 'fix/pilot-scale-sql': false, 'ci/customer-categories-postgres': false, 'ci/ihr-leave-postgres': false } })
   const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
   expect(pkg.scripts.build).toBe('node scripts/verify-preview-backend.mjs && vite build')
 })
@@ -23,4 +23,8 @@ test('known checkpoint branches have exact disabled flags without an overlapping
   expect(flags['ci/ihr-leave-postgres']).toBe(false)
   expect(Object.entries(flags).filter(([, enabled]) => enabled)).toEqual([['fix/pilot-database', true]])
   expect(Object.keys(flags).some(rule => /[*?\[\]{}]/.test(rule))).toBe(false)
+})
+
+test('sidebar/theme candidate branch cannot deploy before the staging gate', () => {
+  expect(config.git.deploymentEnabled['fix/padiwan-sidebar-theme']).toBe(false)
 })

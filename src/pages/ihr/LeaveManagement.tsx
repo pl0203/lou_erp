@@ -28,10 +28,10 @@ export default function LeaveManagement() {
   },[client,identity,readState])
   const errorPanel = useRef<HTMLDivElement>(null)
   useEffect(() => { if (readState === 'error') errorPanel.current?.focus() }, [readState])
-  return <div className="min-h-screen bg-gray-50">
+  return <div className="min-h-screen bg-brand-canvas">
     <IHRNav beforeSignOut={()=>!dirty||window.confirm(discardLeaveDraftMessage)} />
     <main className="mx-auto max-w-5xl space-y-5 px-4 py-6 sm:py-8 md:px-8">
-      <header><p className="mb-1 text-xs font-semibold uppercase tracking-wider text-orange-700">iHR</p><h1 className="text-2xl font-semibold tracking-tight text-gray-900">{context.data?.capabilities.request&&['employee','manager'].includes(context.data.memberKind??'')?'Ajukan Cuti':'Manajemen Cuti'}</h1></header>
+      <header><p className="mb-1 text-xs font-semibold uppercase tracking-wider text-brand-primary">HR</p><h1 className="text-2xl font-semibold tracking-tight text-gray-900">{context.data?.capabilities.request&&['employee','manager'].includes(context.data.memberKind??'')?'Ajukan Cuti':'Manajemen Cuti'}</h1></header>
       {readState === 'pending' || !identity ? <p role="status">Memuat akses cuti...</p> : readState === 'error' ?
         <div role="alert" ref={errorPanel} tabIndex={-1} className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900"><p>Akses cuti belum dapat dikonfirmasi. Silakan coba lagi.</p><button type="button" onClick={() => void context.refetch()} className="mt-2 underline">Coba lagi</button></div> : null}
       {/* Keep only the same actor/scope's ephemeral owner through read failures. Its

@@ -176,7 +176,7 @@ export default function ProductList() {
   const deleteTarget = products.find(p => p.id === deleteId)
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-brand-canvas">
       <AthelNav />
 
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center justify-between">
@@ -186,7 +186,7 @@ export default function ProductList() {
         </div>
         <button
           onClick={() => { setEditingId(null); setForm(EMPTY_FORM); setShowForm(true) }}
-          className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+          className="bg-brand-primary hover:bg-brand-hover text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
         >
           + Tambah Barang
         </button>
@@ -198,7 +198,7 @@ export default function ProductList() {
           placeholder="Cari berdasarkan nama atau SKU..."
           value={search}
           onChange={e => handleSearch(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full sm:w-80 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full sm:w-80 focus:outline-none focus:ring-2 focus:ring-brand-primary"
         />
       </div>
 
@@ -252,7 +252,7 @@ export default function ProductList() {
                       <td className="px-5 py-4 text-right">
                         <button
                           onClick={() => openEdit(p)}
-                          className="text-blue-600 hover:text-blue-800 text-xs font-medium mr-3"
+                          className="text-brand-primary hover:text-brand-hover text-xs font-medium mr-3"
                         >
                           Ubah
                         </button>
@@ -282,7 +282,7 @@ export default function ProductList() {
                     <div className="flex gap-2">
                       <button
                         onClick={() => openEdit(p)}
-                        className="text-blue-600 text-xs font-medium"
+                        className="text-brand-primary text-xs font-medium"
                       >
                         Ubah
                       </button>
@@ -297,7 +297,7 @@ export default function ProductList() {
 
                   <button
                     onClick={() => setExpandedId(expandedId === p.id ? null : p.id)}
-                    className="text-xs text-blue-600 mb-2"
+                    className="text-xs text-brand-primary mb-2"
                   >
                     {expandedId === p.id ? 'Sembunyikan harga ▲' : 'Lihat semua harga ▼'}
                   </button>
@@ -365,7 +365,7 @@ export default function ProductList() {
                     type="text"
                     value={form.sku}
                     onChange={e => setForm(p => ({ ...p, sku: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-brand-primary"
                     placeholder="mis. MPA035"
                   />
                 </div>
@@ -375,7 +375,7 @@ export default function ProductList() {
                     type="text"
                     value={form.size}
                     onChange={e => setForm(p => ({ ...p, size: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                     placeholder="mis. 30x60"
                   />
                 </div>
@@ -387,7 +387,7 @@ export default function ProductList() {
                   type="text"
                   value={form.name}
                   onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                   placeholder="mis. Granit Putih Polos 60x60"
                 />
               </div>
@@ -409,7 +409,7 @@ export default function ProductList() {
                         step="0.01"
                         value={form[field]}
                         onChange={e => setForm(p => ({ ...p, [field]: e.target.value }))}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                         placeholder="Belum diisi"
                       />
                     </div>
@@ -428,7 +428,7 @@ export default function ProductList() {
               <button
                 onClick={handleSave}
                 disabled={saveMutation.isPending}
-                className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                className="px-4 py-2 text-sm font-medium bg-brand-primary text-white rounded-lg hover:bg-brand-hover disabled:opacity-50"
               >
                 {saveMutation.isPending ? 'Menyimpan...' : 'Simpan'}
               </button>

@@ -156,7 +156,7 @@ test('loading and query errors remain unavailable instead of showing fabricated 
   state.data = undefined
   state.loading = true
   const view = render(<Dashboard />)
-  expect(screen.getByText('Memuat dashboard Athel...')).toBeTruthy()
+  expect(screen.getByText('Memuat dashboard Procurement...')).toBeTruthy()
   expect(screen.queryByRole('img')).toBeNull()
   state.loading = false
   state.error = true

@@ -63,7 +63,7 @@ export default function OwnRequestActions({actorId,scopeVersion,requestId,reques
      <p>Pembatalan berlaku untuk seluruh pengajuan. Pemakaian saldo tetap berlaku sampai penyetuju menerima pembatalan.</p>
      <label className="block">Alasan pembatalan<textarea ref={first} maxLength={1000} disabled={busy} value={reason} onChange={event=>setReason(event.target.value)} className="block w-full rounded border p-2"/></label>
      <p className="text-sm">Kewajiban mengisi alasan mengikuti aturan HR. Isian disimpan hanya selama rincian ini terbuka.</p>
-     <div className="flex gap-3"><button type="submit" disabled={busy} className="rounded bg-orange-600 px-3 py-2 text-white">Kirim permintaan pembatalan</button><button type="button" disabled={busy} onClick={close}>Tutup pembatalan</button></div>
+     <div className="flex gap-3"><button type="submit" disabled={busy} className="rounded bg-brand-primary px-3 py-2 text-white">Kirim permintaan pembatalan</button><button type="button" disabled={busy} onClick={close}>Tutup pembatalan</button></div>
     </form>}
    </>}
   </>}
