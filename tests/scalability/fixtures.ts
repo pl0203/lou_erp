@@ -96,13 +96,14 @@ export function supportingReadFixture(): Fixture {
   const u = fixtureId(2)
   const customers = Array.from({ length: 1001 }, (_, i) => ({ id: fixtureId(10000 + i), name: `Customer ${String(i).padStart(4, '0')}`, address: null, city: null, phone: null, email: null, pricing_tier: 'luar_kota', customer_category: null, visit_frequency_days: 7, last_visit_date: null }))
   const products = customers.map((_, i) => ({ id: fixtureId(30000 + i), name: `Product ${String(i).padStart(4, '0')}`, sku: `SYN-${i}`, size: null, unit_price: 1, harga_pokok: 1, luar_kota: 1, dalam_kota: 1, depo_bangunan: 1 }))
-  return { tables: {
+  const tables = {
     customers, products,
     users: [{ id: u, full_name: 'Manager', role: 'sales_manager', manager_id: u, is_active: true }, ...customers.map((_, i) => ({ id: fixtureId(40000 + i), full_name: `Sales ${i}`, role: 'sales_person', manager_id: u, is_active: true }))],
     customer_manager_assignments: customers.map((c, i) => ({ id: fixtureId(50000 + i), customer_id: c.id, manager_id: u, customers: c, managers: { id: u, full_name: 'Manager' } })),
     sales_schedules: customers.map((c, i) => ({ id: fixtureId(60000 + i), outlet_id: c.id, sales_person_id: u, scheduled_date: '2026-10-01', created_at: AS_OF, status: 'pending', notes: null, customers: c, users: { id: u, full_name: 'Manager' }, outlet_visits: [] })),
     promotions: products.map((p, i) => ({ id: fixtureId(70000 + i), product_id: p.id, start_date: '2026-09-01', end_date: '2026-12-01', is_active: false, created_at: AS_OF, products: p })),
-  } }
+  }
+  return { tables, rpc: { pilot_promotions_v1: () => ({ version: 1, as_of: AS_OF, items: tables.promotions.map(p => ({ id: p.id, product_id: p.product_id, product_name: p.products.name, sku: p.products.sku, size: p.products.size, start_date: p.start_date, end_date: p.end_date, is_active: p.is_active, stock_managed: false, remaining_quantity: null, stock_version: 0, image_path: null, harga_pokok: p.products.harga_pokok, luar_kota: p.products.luar_kota, dalam_kota: p.products.dalam_kota, depo_bangunan: p.products.depo_bangunan })) }) } }
 }
 
 /** Small complete fixture pinning existing populations, including deliberate asymmetries. */

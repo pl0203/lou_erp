@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 const state = vi.hoisted(() => ({ tier: 'others', send: vi.fn(), prices: null as number | null }))
 vi.mock('../src/lib/supabase', () => ({ supabase: {} }))
-vi.mock('../src/lib/AuthContext', () => ({ useAuth: () => ({ user: { id: 'u' }, profile: { id: 'u', role: 'sales_person' } }) }))
+vi.mock('../src/lib/AuthContext', () => ({ useAuth: () => ({ user: { id: 'u' }, profile: { id: 'u', role: 'sales_person', is_active: true } }) }))
 vi.mock('../src/components/AthelNav', () => ({ default: () => null }))
 vi.mock('../src/components/GirardNav', () => ({ default: () => null }))
 vi.mock('../src/components/TransactionRecovery', () => ({ default: () => null }))
@@ -18,7 +18,7 @@ vi.mock('@tanstack/react-query', async original => ({ ...await original<any>(), 
  : queryKey[0] === 'visit' ? { id: 'v', checked_in_at: '2026-10-01T00:00:00Z', visit_photos: [] }
  : queryKey[0] === 'active_promos' ? [{ id: 'promo', product_id: 'p', products: product, luar_kota: 100, dalam_kota: null, harga_pokok: 0 }]
  : queryKey[0] === 'po' ? { id: 'po', customer_id: 'c', status: 'confirm', updated_at: 'v1' }
- : queryKey[0] === 'po_line_state' ? { po_updated_at: 'v1', po_has_delivery_history: false, items: [{ id: 'line', product_name: 'Historical', sku: 'SKU', quantity: 2, unit_price: 123.45, delivered_quantity: 0, has_delivery_history: false }] } : []
+ : queryKey[0] === 'po_line_state' ? { po_updated_at: 'v1', po_has_delivery_history: false, items: [{ id: 'line', product_id:null,product_name: 'Historical', sku: 'SKU', quantity: 2, unit_price: 123.45, delivered_quantity: 0, has_delivery_history: false }] } : []
  return { data }
 } }))
 import PONew from '../src/pages/athel/PONew'
@@ -43,7 +43,7 @@ function selectProduct(kind: 'po' | 'visit') {
  if (kind === 'po') fireEvent.click(screen.getByRole('option', { name: /Unknown-price product/ }))
  else fireEvent.mouseDown(screen.getByRole('button', { name: /Unknown-price product/ }))
 }
-for (const kind of ['po','visit'] as const) test(`${kind}: missing tier requires an explicit price; zero is valid and a newly selected line does not inherit manual price`, async () => {
+for (const kind of ['po'] as const) test(`${kind}: missing tier requires an explicit price; zero is valid and a newly selected line does not inherit manual price`, async () => {
  mount(kind); selectProduct(kind)
  let price = screen.getByLabelText('Harga satuan') as HTMLInputElement
  expect(price.value).toBe('')
@@ -67,10 +67,10 @@ test('PO edit preserves historical line price despite Others and null catalog, i
  selectCustomer('Different tier customer')
  expect((screen.getByLabelText('Harga satuan') as HTMLInputElement).value).toBe('123.45')
 })
-test('promotion selection is disabled without its explicit matching tier, even when catalog tier exists', () => {
+test('Sales visit has no promotion selection or new ordering for a missing tier', () => {
  state.tier = 'dalam_kota'; state.prices = 100
- mount('visit')
- expect((screen.getByRole('button', { name: 'Harga belum diisi' }) as HTMLButtonElement).disabled).toBe(true)
+ const client = new QueryClient(); clients.push(client); render(<QueryClientProvider client={client}><VisitPage /></QueryClientProvider>)
+ expect(screen.queryByRole('button', { name: '+ Pesanan Baru' })).toBeNull(); expect(screen.queryByRole('button', { name: 'Harga belum diisi' })).toBeNull(); expect(state.send).not.toHaveBeenCalled()
 })
 
 test('new manual line starts with no implied free price', async () => {
@@ -81,7 +81,9 @@ test('new manual line starts with no implied free price', async () => {
  await screen.findByText(/Harga wajib diisi/); expect(state.send).not.toHaveBeenCalled()
 })
 
-test('Others promotion explains group ineligibility instead of suggesting a nonexistent tier field', () => {
- mount('visit')
- expect(screen.getByText('Promosi tidak tersedia untuk kelompok pelanggan ini.')).toBeTruthy()
+test('Sales visit has no order tier or price controls for Others', () => {
+ const client = new QueryClient(); clients.push(client); render(<QueryClientProvider client={client}><VisitPage /></QueryClientProvider>)
+ expect(screen.queryByLabelText('Harga satuan')).toBeNull(); expect(screen.queryByRole('button', { name: '+ Pesanan Baru' })).toBeNull(); expect(state.send).not.toHaveBeenCalled()
 })
+vi.mock('../src/components/StorePOContext', () => ({ default: () => null }))
+vi.mock('../src/lib/reads/usePagedRead', () => ({ usePagedRead: () => ({ data: { items: [], total: 0 }, page: 1, isPending: false, setPage: vi.fn() }) }))

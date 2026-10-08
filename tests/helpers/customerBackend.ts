@@ -64,7 +64,7 @@ export function customerBackend() {
     const q: any = { abortSignal: () => q, then: (resolve: any) => {
       state.rpcReads++
       return Promise.resolve({ data: { version: 1, as_of: '2026-10-01T00:00:00Z', page: args.p_page, page_size: 100, total: 1, po_updated_at: '2026-10-01T00:00:00Z', po_has_delivery_history: true,
-        items: [{ id: 'historical', product_name: 'Historical', sku: 'OLD', quantity: 2, unit_price: '123.45', line_total: '246.90', delivered_quantity: 1, has_delivery_history: true }] }, error: null }).then(resolve)
+        items: [{ id: 'historical', product_id:null,product_name: 'Historical', sku: 'OLD', quantity: 2, unit_price: '123.45', line_total: '246.90', delivered_quantity: 1, has_delivery_history: true }] }, error: null }).then(resolve)
     } }
     return q
   }

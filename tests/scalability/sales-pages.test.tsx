@@ -6,7 +6,7 @@ vi.mock('../../src/lib/AuthContext', () => ({ useAuth: () => ({ profile: { id: '
 vi.mock('../../src/components/AthelNav', () => ({ default: () => null }))
 vi.mock('../../src/components/GirardNav', () => ({ default: () => null }))
 vi.mock('../../src/components/TransactionRecovery', () => ({ default: () => null }))
-vi.mock('../../src/lib/orderTransactions', () => ({ useTransactionSender: () => vi.fn() }))
+vi.mock('../../src/lib/orderTransactions', () => ({ useTransactionSender: () => Object.assign(vi.fn(), { hasUnresolved: () => false }) }))
 vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }))
 vi.mock('../../src/lib/reads/detailReads', () => ({ fetchSalesOrderLines: (...args: any[]) => state.lines(...args) }))
 vi.mock('../../src/lib/reads/orders', () => ({ fetchSalesOrderPage: async (filters: any, page: number) => {

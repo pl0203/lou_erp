@@ -183,3 +183,5 @@ test('closing and reopening a visit obtains a fresh signed photo URL', async () 
   fireEvent.click(screen.getAllByRole('button', { name: 'Lihat catatan & foto' })[0]); await screen.findByRole('img', { name: 'Foto check-in' })
   expect(state.photoRequests).toHaveLength(2)
 })
+
+vi.mock('../src/components/StorePOContext', () => ({ default: () => null }))

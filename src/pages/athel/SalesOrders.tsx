@@ -1,7 +1,9 @@
 import TransactionRecovery from '../../components/TransactionRecovery'
 import { useTransactionSender } from '../../lib/orderTransactions'
 import type { TransactionSender } from '../../lib/orderTransactions'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import PromoStockWarning, { usePromoStockSubmission } from '../../components/PromoStockWarning'
+import ReturnedDateDialog from '../../components/ReturnedDateDialog'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { usePagedRead } from '../../lib/reads/usePagedRead'
 import { fetchSalesOrderPage } from '../../lib/reads/orders'
@@ -22,9 +24,7 @@ const STATUS_STYLES: Record<string, string> = {
   cancelled: 'bg-gray-100 text-gray-700',
 }
 
-async function approveOrder(orderId: string, poNumber: string, expectedDelivery: string, send: TransactionSender) {
-  return send('approve_sales', { order_id: orderId, po_number: poNumber, expected_delivery_date: expectedDelivery || null })
-}
+type ApprovalDraft = { order_id: string; po_number: string; expected_delivery_date: string | null; promo_stock_ack?: Record<string, unknown> }
 async function rejectOrder(orderId: string, note: string, send: TransactionSender) {
   return send('reject_sales', { order_id: orderId, reason: note.trim() })
 }
@@ -33,6 +33,8 @@ export default function SalesOrders() {
   const queryClient = useQueryClient()
   const sendTransaction = useTransactionSender('review-sales')
   const navigate = useNavigate()
+  const approvalTrigger = useRef<HTMLElement | null>(null)
+  const approvalBackground = useRef<HTMLDivElement>(null)
   const [expanded, setExpanded] = useState<string[]>([])
   const { data, filters, setFilters, setPage, isPending, isError, refetch } = usePagedRead('girard_orders', { status: 'pending' as SalesStatusFilter, ownOnly: false }, fetchSalesOrderPage)
   const statusFilter = filters.status
@@ -48,7 +50,7 @@ export default function SalesOrders() {
   const approvalLines = useQuery({ queryKey: ['sales_order_lines', approvingOrder?.id], queryFn: ({ signal }) => fetchSalesOrderLines(approvingOrder!.id, signal), enabled: !!approvingOrder })
 
   const approveMutation = useMutation({
-    mutationFn: () => approveOrder(approvingOrder!.id, poNumber, expectedDelivery, sendTransaction),
+    mutationFn: (draft: ApprovalDraft) => sendTransaction('approve_sales', draft),
     onSuccess: (po) => {
       queryClient.invalidateQueries()
       setApprovingOrder(null)
@@ -57,6 +59,10 @@ export default function SalesOrders() {
       navigate(`/athel/po/${po.id}`)
     },
   })
+
+  const stockSubmission = usePromoStockSubmission<ApprovalDraft>(draft => approveMutation.mutateAsync(draft))
+  const closeApproval = () => { if (approveMutation.isPending) return; stockSubmission.cancel(); setApprovingOrder(null); setPoNumber(''); setExpectedDelivery('') }
+  const recoverApproval = (result: { id: string }, operation?: string) => { queryClient.invalidateQueries(); stockSubmission.cancel(); setApprovingOrder(null); setRejectingOrder(null); if (operation === 'approve_sales') navigate(`/athel/po/${result.id}`) }
 
   const rejectMutation = useMutation({
     mutationFn: () => rejectOrder(rejectingOrder!.id, rejectionNote, sendTransaction),
@@ -71,14 +77,15 @@ export default function SalesOrders() {
 
   return (
     <div className="min-h-screen bg-brand-canvas">
+      <div ref={approvalBackground} inert={!!approvingOrder || !!stockSubmission.warning} aria-hidden={approvingOrder || stockSubmission.warning ? true : undefined}>
       <AthelNav />
-        <TransactionRecovery send={sendTransaction} onCommitted={(result, operation) => { queryClient.invalidateQueries(); setApprovingOrder(null); setRejectingOrder(null); if (operation === 'approve_sales') navigate(`/athel/po/${result.id}`) }} />
+      {!approvingOrder && <TransactionRecovery send={sendTransaction} onCommitted={recoverApproval} />}
 
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Pesanan dari Sales</h1>
+          <h1 className="text-xl font-semibold text-gray-900">Antrean pesanan Sales lama</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Pesanan yang diajukan tim Sales dari lapangan
+            Tinjau pengajuan lama yang masih menunggu. Pesanan baru dibuat melalui Purchase Order di Procurement.
           </p>
         </div>
         {!isLoading && !isError && pendingCount > 0 && statusFilter !== 'pending' && (
@@ -170,7 +177,10 @@ export default function SalesOrders() {
                 </button>
                 <button
                   disabled={isPending}
-                  onClick={() => {
+                  onClick={event => {
+                    approvalTrigger.current = event.currentTarget
+                    approveMutation.reset()
+                    stockSubmission.cancel()
                     setApprovingOrder(order)
                     setPoNumber('')
                     setExpectedDelivery('')
@@ -185,21 +195,26 @@ export default function SalesOrders() {
         ))}
       </div>
 
-      {/* Approve modal */}
-      {approvingOrder && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      </div>
+      {/* Only one active modal: the exact approval draft stays in memory during stock review. */}
+      {stockSubmission.warning && <PromoStockWarning warning={stockSubmission.warning} pending={approveMutation.isPending} onContinue={stockSubmission.continue} onCancel={stockSubmission.cancel} />}
+      {approvingOrder && !stockSubmission.warning && (
+        <ReturnedDateDialog labelledBy="legacy-approval-title" pending={approveMutation.isPending} onClose={closeApproval} returnFocus={approvalTrigger.current} fallbackFocus={() => approvalBackground.current?.querySelector<HTMLElement>('button, a[href]') ?? null}>
           <div className="bg-white rounded-xl w-full max-w-md shadow-xl">
             <div className="px-6 py-5 border-b border-gray-100">
-              <h3 className="text-base font-semibold text-gray-900">Setuju & Buat menjadi PO</h3>
+              <h3 id="legacy-approval-title" className="text-base font-semibold text-gray-900">Setuju & Buat menjadi PO</h3>
+              <TransactionRecovery send={sendTransaction} onCommitted={recoverApproval} />
               <p className="text-xs text-gray-400 mt-0.5">
                 Tindakan ini akan membuat PO baru di Procurement untuk {approvingOrder.customers?.name}
               </p>
             </div>
             <div className="px-6 py-4 space-y-4">
               <div>
-                <label className="block text-sm text-gray-600 mb-1">Nomor PO *</label>
+                <label htmlFor="legacy-approval-po-number" className="block text-sm text-gray-600 mb-1">Nomor PO *</label>
                 <input
+                  id="legacy-approval-po-number"
                   type="text"
+                  disabled={approveMutation.isPending || sendTransaction.hasUnresolved()}
                   value={poNumber}
                   onChange={e => setPoNumber(e.target.value)}
                   placeholder="e.g. PO-2024-050"
@@ -207,12 +222,15 @@ export default function SalesOrders() {
                 />
               </div>
               <div>
-                <label className="block text-sm text-gray-600 mb-1">
+                <label htmlFor="legacy-approval-po-expiry" className="block text-sm text-gray-600 mb-1">
                   Tanggal Kedaluwarsa PO (opsional)
                 </label>
-                <p className="text-xs text-gray-400 mb-1">Jika PO pelanggan memiliki tanggal kedaluwarsa. Bukan tanggal pengiriman.</p>
+                <p id="legacy-approval-po-expiry-help" className="text-xs text-gray-400 mb-1">Jika PO pelanggan memiliki tanggal kedaluwarsa. Bukan tanggal pengiriman.</p>
                 <input
+                  id="legacy-approval-po-expiry"
+                  aria-describedby="legacy-approval-po-expiry-help"
                   type="date"
+                  disabled={approveMutation.isPending || sendTransaction.hasUnresolved()}
                   value={expectedDelivery}
                   onChange={e => setExpectedDelivery(e.target.value)}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
@@ -238,18 +256,19 @@ export default function SalesOrders() {
             </div>
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
               <button
-                onClick={() => { setApprovingOrder(null); setPoNumber('') }}
+                disabled={approveMutation.isPending}
+                onClick={closeApproval}
                 className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
               >
                 Batal
               </button>
               <button
                 onClick={() => {
-                  if (!approvalLines.data || approvalLines.isPending || approvalLines.isFetching || approvalLines.isError) return
+                  if (sendTransaction.hasUnresolved() || !approvalLines.data || approvalLines.isPending || approvalLines.isFetching || approvalLines.isError) return
                   if (!poNumber.trim()) return alert('PO number is required.')
-                  approveMutation.mutate()
+                  stockSubmission.run({ order_id: approvingOrder.id, po_number: poNumber, expected_delivery_date: expectedDelivery || null })
                 }}
-                disabled={approvalLines.isPending || approvalLines.isFetching || approvalLines.isError || !approvalLines.data || approveMutation.isPending}
+                disabled={sendTransaction.hasUnresolved() || approvalLines.isPending || approvalLines.isFetching || approvalLines.isError || !approvalLines.data || approveMutation.isPending}
                 className="px-4 py-2 text-sm font-medium bg-brand-primary text-white rounded-lg hover:bg-brand-hover disabled:opacity-50"
               >
                 {approveMutation.isPending ? 'Creating PO...' : 'Confirm & Create PO'}
@@ -261,7 +280,7 @@ export default function SalesOrders() {
               </p>
             )}
           </div>
-        </div>
+        </ReturnedDateDialog>
       )}
 
       {/* Reject modal */}

@@ -10,6 +10,8 @@ export function fetchPOPage(filters: POFilters, page: number, signal?: AbortSign
 export function fetchSalesOrderPage(filters: SalesOrderFilters, page: number, signal?: AbortSignal) {
   return callRead('pilot_sales_order_page_v1', { p_status: filters.status, p_own_only: filters.ownOnly, p_customer_id: filters.customerId ?? null, p_visit_id: filters.visitId ?? null, p_page: page, p_page_size: ORDER_PAGE_SIZE }, signal)
 }
-export function fetchPOLinePage(poId: string, page: number, expectedUpdatedAt?: string, signal?: AbortSignal) {
-  return callRead('pilot_po_lines_v1', { p_po_id: poId, p_page: page, p_page_size: 100, p_expected_updated_at: expectedUpdatedAt ?? null }, signal)
+export async function fetchPOLinePage(poId: string, page: number, expectedUpdatedAt?: string, signal?: AbortSignal) {
+  const result = await callRead('pilot_po_lines_v1', { p_po_id: poId, p_page: page, p_page_size: 100, p_expected_updated_at: expectedUpdatedAt ?? null }, signal)
+  if (result.items.some(line => line.product_id !== null && (typeof line.product_id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(line.product_id)))) throw new Error('Identitas produk PO belum lengkap atau tidak valid. Muat ulang sebelum mengubah PO.')
+  return result
 }

@@ -1,5 +1,6 @@
+import PromoStockWarning, { usePromoStockSubmission } from '../../components/PromoStockWarning'
 import { POCustomerLookup, POProductLookup } from '../../components/POLookup'
-import { POLineItemsHeader, POLineRow } from '../../components/POLineItems'
+import { POLineItemsHeader, POLineRow, exactCatalogIdentity } from '../../components/POLineItems'
 import { resolveCatalogPrice } from '../../lib/catalogPricing'
 import { fetchCompletePOLines, fetchCompleteRows, priceForEdit } from '../../lib/reads/detailReads'
 import TransactionRecovery from '../../components/TransactionRecovery'
@@ -35,6 +36,7 @@ type Product = {
 type LineItemRow = {
   _key?: string
   id: string | null
+  product_id: string | null
   product_name: string
   sku: string
   quantity: number
@@ -81,11 +83,11 @@ async function fetchProducts(signal?: AbortSignal): Promise<Product[]> {
 }
 
 export async function saveEdits(poId: string, payload: {
-  customer_id: string; expected_delivery_date: string | null; notes: string | null; expected_updated_at: string; lineItems: LineItemRow[]
+  customer_id: string; expected_delivery_date: string | null; notes: string | null; expected_updated_at: string; lineItems: LineItemRow[]; promo_stock_ack?: Record<string, unknown>
 }, send: TransactionSender = createTransactionSender()) {
-  const items = payload.lineItems.filter(line => !line._deleted).map(({ _key, ...line }) => line)
+  const items = payload.lineItems.filter(line => !line._deleted).map(({ _key, _deleted, ...line }) => ({ ...line, product_id: line.product_id ?? null }))
   validateOrderLines(items)
-  return send('edit_po', { po_id: poId, customer_id: payload.customer_id, expected_delivery_date: payload.expected_delivery_date, notes: payload.notes, expected_updated_at: payload.expected_updated_at, items })
+  return send('edit_po', { po_id: poId, customer_id: payload.customer_id, expected_delivery_date: payload.expected_delivery_date, notes: payload.notes, expected_updated_at: payload.expected_updated_at, items, ...(payload.promo_stock_ack ? { promo_stock_ack: payload.promo_stock_ack } : {}) })
 }
 
 export default function POEdit() {
@@ -151,6 +153,7 @@ export default function POEdit() {
       setLineItems(existingLines.map(l => ({
         _key: l.id,
         id: l.id,
+        product_id: l.product_id ?? null,
         product_name: l.product_name,
         sku: l.sku ?? '',
         quantity: l.quantity,
@@ -162,22 +165,18 @@ export default function POEdit() {
 
   const mutation = useMutation({
     retry: false,
-    mutationFn: () => {
+    mutationFn: (draft: Parameters<typeof saveEdits>[1]) => {
       if (!readReady || !initialized || !lineState || lineState.po_updated_at !== initialVersion) throw new Error('Data PO berubah atau belum lengkap. Muat ulang sebelum menyimpan.')
       if (lineItems.some(line => !line._deleted && line.quantity < (deliveredByLine[line.id ?? ''] ?? 0))) throw new Error('Jumlah tidak boleh kurang dari jumlah terkirim aktif.')
-      return saveEdits(id!, {
-      customer_id: customerId,
-      expected_delivery_date: expectedDelivery || null,
-      notes: notes || null,
-      lineItems,
-      expected_updated_at: initialVersion,
-    }, sendTransaction)
+      return saveEdits(id!, draft, sendTransaction)
     },
     onSuccess: () => {
       queryClient.invalidateQueries()
       navigate(`/athel/po/${id}`)
     },
   })
+
+  const stockSubmission = usePromoStockSubmission((draft: Parameters<typeof saveEdits>[1]) => mutation.mutateAsync(draft))
 
   useEffect(() => {
     refreshSequence.current++; setRefreshingPO(false); mutation.reset()
@@ -212,14 +211,14 @@ export default function POEdit() {
   const pricingTier = selectedCustomer?.pricing_tier ?? 'others'
 
   const updateLine = (index: number, field: keyof LineItemRow, value: string | number) => {
-    setLineItems(prev => prev.map((item, i) => i === index ? { ...item, [field]: value } : item))
+    setLineItems(prev => prev.map((item, i) => i === index ? { ...item, [field]: value, ...(field === 'sku' ? { product_id: exactCatalogIdentity(String(value), products ?? []) } : {}) } : item))
   }
 
   const addLine = () => {
     const key = crypto.randomUUID()
     pendingFocus.current = { key, field: 'name' }
     setEntryError(null); setEntryNotice('')
-    setLineItems(prev => [...prev, { _key: key, id: null, product_name: '', sku: '', quantity: 1, unit_price: Number.NaN }])
+    setLineItems(prev => [...prev, { _key: key, id: null, product_id: null, product_name: '', sku: '', quantity: 1, unit_price: Number.NaN }])
   }
 
   const removeLine = (index: number) => {
@@ -244,7 +243,7 @@ export default function POEdit() {
       return
     }
     setEntryNotice(''); setEntryError(null)
-    setLineItems(prev => [...prev, { id: null, _key: crypto.randomUUID(), product_name: product.name, sku: product.sku, quantity: 1, unit_price: resolveCatalogPrice(product, pricingTier) ?? Number.NaN }])
+    setLineItems(prev => [...prev, { id: null, product_id: product.id, _key: crypto.randomUUID(), product_name: product.name, sku: product.sku, quantity: 1, unit_price: resolveCatalogPrice(product, pricingTier) ?? Number.NaN }])
     productSearch.current?.focus()
   }
   const validateLine = (item: LineItemRow) => {
@@ -273,7 +272,7 @@ export default function POEdit() {
     }
     if (!visibleLines.every(validateLine)) return
     setEntryError(null)
-    mutation.mutate()
+    void stockSubmission.run({ customer_id: customerId, expected_delivery_date: expectedDelivery || null, notes: notes || null, lineItems, expected_updated_at: initialVersion })
   }
 
   const recovery = <TransactionRecovery send={sendTransaction} onCommitted={result => { queryClient.invalidateQueries(); navigate(`/athel/po/${result.id}`) }} />
@@ -305,6 +304,7 @@ export default function POEdit() {
     <div className="min-h-screen bg-brand-canvas">
       <AthelNav />
         {recovery}
+        {stockSubmission.warning && <PromoStockWarning warning={stockSubmission.warning} pending={mutation.isPending} onContinue={() => void stockSubmission.continue()} onCancel={() => { stockSubmission.cancel(); mutation.reset() }} />}
 
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center gap-4">
         <button

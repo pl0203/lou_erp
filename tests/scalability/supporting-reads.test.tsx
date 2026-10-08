@@ -7,10 +7,10 @@ vi.mock('../../src/components/AthelNav', () => ({ default: () => null }))
 vi.mock('../../src/components/GirardNav', () => ({ default: () => null }))
 vi.mock('../../src/components/TransactionRecovery', () => ({ default: () => null }))
 vi.mock('../../src/components/ActivePromotionsBanner', () => ({ default: () => null }))
-vi.mock('../../src/lib/orderTransactions', () => ({ createTransactionSender: () => vi.fn(), useTransactionSender: () => vi.fn() }))
-vi.mock('../../src/lib/useUnsavedChanges', () => ({ hasOrderItemChanges: () => false, useUnsavedChanges: () => ({ dialog: null, runWithoutPrompt: (fn: any) => fn() }) }))
+vi.mock('../../src/lib/orderTransactions', () => ({ createTransactionSender: () => Object.assign(vi.fn(), { hasUnresolved: () => false }), useTransactionSender: () => vi.fn() }))
+vi.mock('../../src/lib/useUnsavedChanges', () => ({ hasOrderItemChanges: () => false, useUnsavedChanges: () => ({ dialog: null, runWithoutPrompt: (fn: any) => fn(), confirmDiscard: (fn: any) => fn() }) }))
 vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }))
-vi.mock('../../src/lib/AuthContext', () => ({ useAuth: () => ({ profile: { id: '00000000-0000-4000-8000-000000000002', role: 'sales_manager' } }) }))
+vi.mock('../../src/lib/AuthContext', () => ({ useAuth: () => ({ user: { id: '00000000-0000-4000-8000-000000000002' }, profile: { id: '00000000-0000-4000-8000-000000000002', role: 'executive', is_active: true }, loading: false }) }))
 vi.mock('@tanstack/react-query', () => ({ useQuery: (options: any) => { state.queries.set(options.queryKey[0], options); return { isLoading: true } }, useQueryClient: () => ({ invalidateQueries: vi.fn() }), useMutation: () => ({ mutate: vi.fn() }) }))
 vi.mock('../../src/lib/supabase', async () => { const { fixtureClient } = await import('./fixtures'); return { supabase: fixtureClient(() => state.fixture) } })
 import PONew from '../../src/pages/athel/PONew'
@@ -19,7 +19,7 @@ import MyVisits from '../../src/pages/girard/MyVisits'
 import GirardCustomers from '../../src/pages/girard/GirardCustomers'
 import GirardManagers from '../../src/pages/girard/GirardManagers'
 import ManagerSchedule from '../../src/pages/girard/ManagerSchedule'
-import Promotions from '../../src/pages/girard/Promotions'
+import Promotions from '../../src/pages/athel/Promotions'
 import { fetchPromotions } from '../../src/lib/promotions'
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-01T12:00:00Z')); state.fixture = supportingReadFixture(); state.queries.clear() })
 afterEach(() => { cleanup(); vi.useRealTimers() })
@@ -52,3 +52,5 @@ test('manager cards use complete child assignments and team lists', async () => 
 test('active-promotion source does not silently omit later metadata rows', async () => {
   expect(await fetchPromotions()).toHaveLength(1001)
 })
+
+vi.mock('../../src/components/VisitRequestInbox', () => ({ default: () => null, VisitProposalForm: () => null }))

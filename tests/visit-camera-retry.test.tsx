@@ -6,11 +6,12 @@ import { cacheProbe } from './scalability/cache-probe'
 const state = vi.hoisted(() => ({ checkIn: vi.fn(), imageFailure: false }))
 vi.mock('react-router-dom', () => ({ useNavigate: () => () => {}, useParams: () => ({ scheduleId: 's' }) }))
 vi.mock('../src/lib/useUnsavedChanges', () => ({ hasOrderItemChanges: () => false, useUnsavedChanges: () => ({ dialog: null, runWithoutPrompt: (action: () => void) => action() }) }))
+vi.mock('../src/components/StorePOContext', () => ({ default: () => null }))
 vi.mock('../src/components/GirardNav', () => ({ default: () => null }))
 vi.mock('../src/lib/AuthContext', () => ({ useAuth: () => ({ profile: { id: 'u' } }) }))
 vi.mock('../src/lib/supabase', () => ({ supabase: {} }))
 vi.mock('../src/lib/visitCheckIn', () => ({ createVisitCheckIn: () => state.checkIn }))
-vi.mock('@tanstack/react-query', async original => ({ ...await original<any>(), useQuery: ({ queryKey }: any) => ({ data: queryKey[0] === 'schedule' ? { id: 's', customers: { id: 'c', name: 'Customer', pricing_tier: 'luar_kota' } } : queryKey[0] === 'visit' ? null : [] }) }))
+vi.mock('@tanstack/react-query', async original => ({ ...await original<any>(), useQuery: ({ queryKey }: any) => ({ data: queryKey[0] === 'schedule' ? { id: 's', version: 1, status: 'pending', sales_person_id: 'u', scheduled_date: '2026-10-08', customers: { id: 'c', name: 'Customer', pricing_tier: 'luar_kota' } } : queryKey[0] === 'visit' ? null : [] }) }))
 import VisitPage from '../src/pages/girard/VisitPage'
 const media = vi.fn()
 const stop = vi.fn()
@@ -155,4 +156,14 @@ test('repeated capture while compression is pending processes only one photo', a
   await act(async () => finishCompression(new Blob(['photo'], { type: 'image/webp' })))
   expect(await screen.findByText('Foto berhasil diambil')).toBeTruthy()
   expect(stop).toHaveBeenCalledTimes(1)
+})
+
+test('stale schedule refusal discards the old capture and keeps entered notes for a new capture',async()=>{
+ state.checkIn.mockRejectedValueOnce(new Error('VISIT_SCHEDULE_CHANGED: changed'))
+ mount();await openCamera();fireEvent.click(screen.getByRole('button',{name:'Ambil foto'}));await screen.findByText('Foto berhasil diambil')
+ fireEvent.change(screen.getByLabelText('Catatan kunjungan'),{target:{value:'Keep this note'}})
+ fireEvent.click(screen.getByRole('button',{name:'Konfirmasi Check-in'}));await screen.findByText('Jadwal berubah. Periksa toko dan tanggal terbaru, lalu ambil foto baru.')
+ expect(screen.queryByAltText('Foto check-in')).toBeNull();expect((screen.getByLabelText('Catatan kunjungan') as HTMLTextAreaElement).value).toBe('Keep this note')
+ expect((screen.getByRole('button',{name:'Konfirmasi Check-in'}) as HTMLButtonElement).disabled).toBe(true)
+ expect(state.checkIn.mock.calls[0][0]).toMatchObject({expected_schedule_version:1,customer_id:'c',scheduled_date:'2026-10-08',notes:'Keep this note'})
 })

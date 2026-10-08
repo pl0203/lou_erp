@@ -114,13 +114,15 @@ async function pendingSale() {
 async function countOrders(suffix) {
   return Number(await sql(`SELECT count(*) FROM public.purchase_orders WHERE po_number LIKE ${quote(`${prefix}-${suffix}%`)};`))
 }
+let composedVisitFamily = false
 let visitSequence = 0
 async function visitFixture() {
   const schedule = randomUUID()
   const paths = [`visits/${schedule}/synthetic-a.webp`, `visits/${schedule}/synthetic-b.webp`]
   await sql(`INSERT INTO public.sales_schedules(id,outlet_id,sales_person_id,assigned_by,scheduled_date) VALUES (${quote(schedule)},${quote(customer)},${quote(sales)},${quote(admin)},current_date+${++visitSequence});
     INSERT INTO storage.objects(bucket_id,name,owner_id) VALUES ('visits',${quote(paths[0])},${quote(sales)}),('visits',${quote(paths[1])},${quote(sales)});`)
-  return { schedule, paths, payload: { schedule_id: schedule, storage_path: paths[0], lat: -6.2, lng: 106.8 } }
+  const date = await sql(`SELECT scheduled_date FROM public.sales_schedules WHERE id=${quote(schedule)}`)
+  return { schedule, paths, payload: { schedule_id: schedule, storage_path: paths[0], lat: -6.2, lng: 106.8, ...(composedVisitFamily ? { expected_schedule_version: 1, customer_id: customer, scheduled_date: date, notes: null } : {}) } }
 }
 async function assertProvenVisit(fixture, result) {
   assert.equal(await sql(`SELECT status FROM public.sales_schedules WHERE id=${quote(fixture.schedule)};`), 'completed')
@@ -138,6 +140,7 @@ try {
   assert.equal(await sql("SELECT purpose FROM public.pilot_fixture_marker;"), 'disposable-pilot-ci', 'Sanitized disposable fixture marker is required')
   assert.equal(await sql("SELECT rolbypassrls FROM pg_roles WHERE rolname='authenticated';"), 'f', 'authenticated must not bypass RLS')
   assert.equal(await sql("BEGIN; SET LOCAL ROLE authenticated; SELECT row_security_active('public.users'); ROLLBACK;"), 't', 'Requires normal PostgreSQL with effective RLS')
+  composedVisitFamily = await sql("SELECT to_regclass('private.pilot_visit_requests') IS NOT NULL") === 't'
   initialized = true
   await sql(`INSERT INTO auth.users(id) VALUES (${quote(admin)}),(${quote(sales)}); INSERT INTO public.users(id,full_name,email,role) VALUES (${quote(admin)},'Concurrency admin',${quote(`${admin}@race.invalid`)},'po_admin'),(${quote(sales)},'Concurrency sales',${quote(`${sales}@race.invalid`)},'sales_person'); INSERT INTO public.customers(id,name) VALUES (${quote(customer)},'Synthetic concurrency customer');`)
 
@@ -212,7 +215,7 @@ try {
   console.log('PASS reconciliation waits for committed original instead of abandoning it')
 
   const sameVisit = await visitFixture(), sameVisitRequest = randomUUID()
-  const sameVisitResults = await race(requestLock(sameVisitRequest, sales), [
+  const sameVisitResults = await race(composedVisitFamily ? `SELECT pg_advisory_xact_lock(hashtextextended(${quote(`visit:${sales}:${sameVisitRequest}`)},0))` : requestLock(sameVisitRequest, sales), [
     finalizeVisit(sameVisit.payload, sameVisitRequest), finalizeVisit(sameVisit.payload, sameVisitRequest),
   ], sales)
   assert.deepEqual(resultJson(sameVisitResults[0]), resultJson(sameVisitResults[1]))
@@ -223,7 +226,7 @@ try {
   const visitWinner = oneWinner(await race(rowLock('sales_schedules', competingVisit.schedule), [
     finalizeVisit(competingVisit.payload),
     finalizeVisit({ ...competingVisit.payload, storage_path: competingVisit.paths[1] }),
-  ], sales), '55000')
+  ], sales), composedVisitFamily ? 'PVS01' : '55000')
   await assertProvenVisit(competingVisit, visitWinner)
   console.log('PASS different request keys cannot finalize the same schedule twice')
 
@@ -231,21 +234,22 @@ try {
   const visitController = await gate(`${actorFor(sales)} ${finalizeVisit(recoveringVisit.payload, visitRequest)}`)
   const wrongRecovery = start(transaction(reconcile(visitRequest), sales))
   try {
-    await waitBlocked([wrongRecovery.applicationName])
+    if (composedVisitFamily) assert.equal(resultJson(await wrongRecovery.result).state, 'abandoned')
+    else await waitBlocked([wrongRecovery.applicationName])
     // A separate observer must see neither completion nor a partial proof before commit.
     assert.equal(await sql(`SELECT status FROM public.sales_schedules WHERE id=${quote(recoveringVisit.schedule)};`), 'pending')
     assert.equal(await sql(`SELECT count(*) FROM public.outlet_visits WHERE schedule_id=${quote(recoveringVisit.schedule)};`), '0')
   } finally { await release(visitController) }
   const wrongRecoveryResult = await wrongRecovery.result
-  assert.notEqual(wrongRecoveryResult.code, 0)
-  assert.match(wrongRecoveryResult.stderr, /ERROR:\s+22023:/)
+  if (!composedVisitFamily) { assert.notEqual(wrongRecoveryResult.code, 0); assert.match(wrongRecoveryResult.stderr, /ERROR:\s+22023:/) }
+  else { const wrongKnown = await start(transaction(reconcile(visitRequest), sales)).result; assert.notEqual(wrongKnown.code, 0); assert.match(wrongKnown.stderr, /ERROR:\s+22023:/) }
   const finalizedResult = resultJson(await visitController.result)
   await assertProvenVisit(recoveringVisit, finalizedResult)
-  assert.equal(await sql(`SELECT operation='finalize_visit' AND NOT abandoned AND result->>'id'=${quote(finalizedResult.id)} FROM private.pilot_order_requests WHERE actor_id=${quote(sales)} AND request_id=${quote(visitRequest)};`), 't')
+  assert.equal(await sql(`SELECT operation='finalize_visit' AND NOT abandoned AND result->>'id'=${quote(finalizedResult.id)} FROM private.${composedVisitFamily ? 'pilot_visit_requests' : 'pilot_order_requests'} WHERE actor_id=${quote(sales)} AND request_id=${quote(visitRequest)};`), 't')
   const correctRecovery = resultJson(await start(transaction(reconcileVisit(visitRequest), sales)).result)
   assert.equal(correctRecovery.state, 'committed')
   assert.deepEqual(correctRecovery.result, finalizedResult)
-  console.log('PASS wrong recovery endpoint waits then rejects without replacing finalized visit')
+  console.log(composedVisitFamily ? 'PASS wrong-family unknown tombstone cannot fence bound visit; known committed receipt rejects wrong-family recovery' : 'PASS wrong recovery endpoint waits then rejects without replacing finalized visit')
 
   const properRecoveryVisit = await visitFixture(), properRequest = randomUUID()
   const properController = await gate(`${actorFor(sales)} ${finalizeVisit(properRecoveryVisit.payload, properRequest)}`)
@@ -294,6 +298,7 @@ try {
     }
     // Suppress business audit triggers only while deleting exact synthetic accounts' records.
     await sql(`BEGIN; SET LOCAL session_replication_role=replica;
+      ${composedVisitFamily ? `DELETE FROM private.pilot_visit_requests WHERE actor_id IN (${quote(admin)},${quote(sales)});` : ''}
       DELETE FROM private.pilot_order_requests WHERE actor_id IN (${quote(admin)},${quote(sales)});
       DELETE FROM public.sj_line_items WHERE surat_jalan_id IN (SELECT id FROM public.surat_jalan WHERE purchase_order_id IN (SELECT id FROM public.purchase_orders WHERE created_by=${quote(admin)}));
       DELETE FROM public.surat_jalan WHERE purchase_order_id IN (SELECT id FROM public.purchase_orders WHERE created_by=${quote(admin)});

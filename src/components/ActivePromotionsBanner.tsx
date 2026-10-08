@@ -1,35 +1,27 @@
 import { useQuery } from '@tanstack/react-query'
-import { fetchPromotions, isCurrentlyActive } from '../lib/promotions'
+import { fetchPromotions, isCurrentlyActive, promotionStatus } from '../lib/promotions'
+import { useAuth } from '../lib/AuthContext'
+import PromotionImage from './PromotionImage'
 
 export default function ActivePromotionsBanner() {
-  const { data: promotions } = useQuery({
-    queryKey: ['promotions', 'highlights'],
-    queryFn: ({ signal }) => fetchPromotions(signal),
-  })
-
-  const activePromotions = promotions?.filter(isCurrentlyActive) ?? []
-
-  if (activePromotions.length === 0) return null
-
-  return (
-    <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
-      <p className="text-sm font-medium text-orange-800 mb-3">
-        🔥 Product Highlight Aktif Sekarang
-      </p>
-      <div className="flex flex-wrap gap-3">
-        {activePromotions.map(promo => (
-          <div key={promo.id} className="bg-white border border-orange-200 rounded-lg px-3 py-2 text-xs">
-            <p className="font-semibold text-gray-900">{promo.products?.name}</p>
-            <p className="text-gray-400 mt-0.5">
-              s/d {new Date(promo.end_date).toLocaleDateString('id-ID', {
-                day: 'numeric',
-                month: 'short',
-                year: 'numeric',
-              })}
-            </p>
-          </div>
-        ))}
-      </div>
+  const { user, profile, loading, error } = useAuth()
+  const actorKey = !loading && !error && user && profile?.id === user.id && profile.is_active ? `${user.id}:${profile.role}` : ''
+  const promotions = useQuery({ queryKey: ['promotions', 'highlights', actorKey], queryFn: ({ signal }) => fetchPromotions(signal), enabled: !!actorKey, retry: false })
+  if (!actorKey) return null
+  if (promotions.isError) return <div role="alert" className="rounded-xl border border-brand-accent bg-brand-tint p-4 text-sm text-brand-primary">Highlight belum dapat dimuat. <button type="button" className="underline" onClick={() => void promotions.refetch()}>Coba lagi</button></div>
+  if (promotions.isPending || promotions.isFetching) return <p role="status" className="text-sm text-gray-500">Memuat highlight…</p>
+  const visible = (promotions.data ?? []).filter(promo => promo.is_active && (promo.stock_managed || isCurrentlyActive(promo)))
+  if (!visible.length) return <p className="text-sm text-gray-500">Belum ada product highlight aktif.</p>
+  return <section aria-label="Product highlight" className="rounded-xl border border-brand-accent bg-brand-tint p-4">
+    <h2 className="mb-3 text-sm font-medium text-brand-primary">Product Highlight</h2>
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {visible.map(promo => <article key={promo.id} className="min-w-0 rounded-lg border border-gray-200 bg-white p-3">
+        <PromotionImage key={promo.image_path} promotion={promo} />
+        <h3 className="mt-2 text-sm font-semibold text-brand-primary">{promo.product_name}</h3>
+        <p className="text-xs text-gray-500">{promo.sku}{promo.size ? ` · ${promo.size}` : ''}</p>
+        <p className="mt-2 text-sm text-brand-primary">{promo.stock_managed ? `Stok tersedia: ${promo.remaining_quantity}` : 'Legacy · stok belum ditetapkan'}</p>
+        <p className="mt-1 text-xs text-gray-500">{promotionStatus(promo)}</p>
+      </article>)}
     </div>
-  )
+  </section>
 }

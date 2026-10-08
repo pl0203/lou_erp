@@ -25,3 +25,7 @@ test('category constraint failures require their exact SQLSTATE and constraint m
 test('psql connection errors cannot be hidden alongside an expected SQL refusal',()=>{
  expect(isExpectedImportRefusal('psql: error: connection refused\nERROR:  P0001: Schema fingerprint changed\n','Schema fingerprint changed')).toBe(false)
 })
+test('historical import companion includes only its reviewed pre-demo baseline migrations', async () => {
+ const { selectImportBaselineMigrations } = await import('../scripts/test-po-import-ci.mjs')
+ expect(selectImportBaselineMigrations(['202610081101_demo_order_promotions.sql','202610081102_demo_visit_workflow.sql','202610081103_demo_sales_reporting.sql','202610081104_demo_sales_assignment_cardinality.sql','202610081001_ihr_po_admin_director.sql','202610021008_ihr_leave_context.sql','202609300001_pilot_security.sql'])).toEqual(['202609300001_pilot_security.sql','202610021008_ihr_leave_context.sql','202610081001_ihr_po_admin_director.sql'])
+})

@@ -1,7 +1,8 @@
+import PromoStockWarning, { usePromoStockSubmission } from '../../components/PromoStockWarning'
 import PODocumentImport from '../../components/poImport/PODocumentImport'
 import { useAuth } from '../../lib/AuthContext'
 import { POCustomerLookup, POProductLookup } from '../../components/POLookup'
-import { POLineItemsHeader, POLineRow } from '../../components/POLineItems'
+import { POLineItemsHeader, POLineRow, exactCatalogIdentity } from '../../components/POLineItems'
 import { resolveCatalogPrice } from '../../lib/catalogPricing'
 import ReadFailure from '../../components/ReadFailure'
 import { readCompleteQuery } from '../../lib/reads/completeQuery'
@@ -80,12 +81,13 @@ async function fetchProducts(signal?: AbortSignal): Promise<Product[]> {
 }
 
 export async function createPO(payload: {
-  customer_id: string; po_number: string; order_date: string; expected_delivery_date: string; notes: string; lineItems: LineItem[]
+  customer_id: string; po_number: string; order_date: string; expected_delivery_date: string; notes: string; lineItems: LineItem[]; promo_stock_ack?: Record<string, unknown>
 }, send: TransactionSender = createTransactionSender()) {
   validateOrderLines(payload.lineItems)
   return send('create_po', {
     customer_id: payload.customer_id, po_number: payload.po_number, order_date: payload.order_date,
     expected_delivery_date: payload.expected_delivery_date || null, notes: payload.notes || null, items: payload.lineItems.map(({ _key, ...line }) => line),
+    ...(payload.promo_stock_ack ? { promo_stock_ack: payload.promo_stock_ack } : {}),
   })
 }
 
@@ -127,12 +129,14 @@ export default function PONew() {
     onSuccess: onCommitted,
   })
 
+  const stockSubmission = usePromoStockSubmission((draft: Parameters<typeof createPO>[0]) => mutation.mutateAsync(draft))
+
   // Get selected customer's pricing tier
   const selectedCustomer = customers?.find(c => c.id === customerId)
   const pricingTier = selectedCustomer?.pricing_tier ?? 'others'
 
   const updateLine = (index: number, field: keyof LineItem, value: string | number | null) => {
-    setLineItems(prev => prev.map((item, i) => i === index ? { ...item, [field]: value } : item))
+    setLineItems(prev => prev.map((item, i) => i === index ? { ...item, [field]: value, ...(field === 'sku' ? { product_id: exactCatalogIdentity(String(value), products ?? []) } : {}) } : item))
   }
 
   const addLine = () => {
@@ -188,7 +192,7 @@ export default function PONew() {
     }
     if (!lineItems.every(validateLine)) return
     setEntryError(null)
-    mutation.mutate({
+    void stockSubmission.run({
       customer_id: customerId,
       po_number: poNumber,
       order_date: orderDate,
@@ -201,6 +205,7 @@ export default function PONew() {
   return (
     <div className="min-h-screen bg-brand-canvas">
       {unsaved.dialog}
+      {stockSubmission.warning && <PromoStockWarning warning={stockSubmission.warning} pending={mutation.isPending} onContinue={() => void stockSubmission.continue()} onCancel={() => { stockSubmission.cancel(); mutation.reset() }} />}
       <AthelNav />
       {(customerReadError || productReadError) && <ReadFailure onRetry={() => { void retryCustomers(); void retryProducts() }} />}
         <TransactionRecovery send={sendTransaction} onCommitted={onCommitted} />
@@ -223,7 +228,7 @@ export default function PONew() {
             const draft = accept ? accept() : proposed
             if (!draft) return
             setCustomerId(draft.customerId); setPoNumber(draft.poNumber); setOrderDate(draft.orderDate)
-            setExpectedDelivery(draft.expectedDelivery); setNotes(draft.notes); setLineItems(draft.lineItems)
+            setExpectedDelivery(draft.expectedDelivery); setNotes(draft.notes); setLineItems(draft.lineItems.map(line => ({ ...line, product_id: line.product_id ?? exactCatalogIdentity(line.sku, products ?? []) })))
             setEntryError(null); setEntryNotice(''); setImportDirty(false)
           }, { when: formDirty, message: 'Ganti detail PO dan semua barang dengan hasil dokumen yang sudah diperiksa? Dokumen tidak disimpan dan PO belum dikirim.' })} />
 

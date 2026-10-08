@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 const state=vi.hoisted(()=>({fail:false}))
 vi.mock('react-router-dom',()=>({useNavigate:()=>()=>{},useParams:()=>({scheduleId:'s'}),useBlocker:()=>({state:'unblocked'}),useBeforeUnload:()=>{}}))
+vi.mock('../../src/components/StorePOContext',()=>({default:()=>null}))
 vi.mock('../../src/components/GirardNav',()=>({default:()=>null}))
 vi.mock('../../src/lib/AuthContext',()=>({useAuth:()=>({profile:{id:'u',role:'sales_person'}})}))
 vi.mock('../../src/lib/supabase',()=>({supabase:{
@@ -15,7 +16,7 @@ const clients:QueryClient[]=[]
 function mount(){const c=new QueryClient({defaultOptions:{queries:{retry:false}}});clients.push(c);render(<QueryClientProvider client={c}><VisitPage/></QueryClientProvider>)}
 afterEach(()=>{cleanup();clients.splice(0).forEach(c=>c.clear());state.fail=false})
 test('visit history pages summaries and fetches lines only when selected',async()=>{
- mount();await screen.findByText('+ Pesanan Baru');expect(screen.queryByText('History item 10')).toBeNull()
+ mount();await screen.findByText('Riwayat pesanan kunjungan');expect(screen.queryByText('History item 10')).toBeNull()
  const details=await screen.findAllByRole('button',{name:'Lihat barang'});expect(details).toHaveLength(10)
  fireEvent.click(details[0]);expect(await screen.findByText('Selected item')).toBeTruthy()
  fireEvent.click(screen.getByRole('button',{name:'Berikutnya'}));expect(await screen.findByText('11–11 dari 11')).toBeTruthy()

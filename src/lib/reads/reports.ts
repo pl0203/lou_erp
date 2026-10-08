@@ -101,3 +101,15 @@ export async function fetchManagerCustomerPage(managerId: string, page = 1, sign
   const response = await callRead('pilot_manager_customers_v1', { p_manager_id: managerId, p_visit_from: from.toISOString(), p_as_of: referenceInstant, p_page: page, p_page_size: REPORT_PAGE_SIZE }, signal)
   return { ...response, referenceInstant }
 }
+
+/** Single authorized aggregate, including credited creation months without schedules. */
+export async function fetchEarliestSalesPerformanceMonth(managerId: string, role: string, signal?: AbortSignal): Promise<string | null> {
+  const response = await callRead('pilot_sales_report_months_v1', { p_manager_id: role === 'sales_manager' ? managerId : null }, signal)
+  const months: string[] = []
+  if (response.earliest_schedule_date) months.push(response.earliest_schedule_date.slice(0, 7))
+  if (response.earliest_order_at) {
+    const created = new Date(response.earliest_order_at)
+    months.push(`${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, '0')}`)
+  }
+  return months.sort()[0] ?? null
+}

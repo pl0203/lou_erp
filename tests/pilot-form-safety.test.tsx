@@ -8,7 +8,7 @@ import { cacheProbe } from './scalability/cache-probe'
 
 const state = vi.hoisted(() => ({ send: vi.fn(), reconcile: vi.fn(), unresolved: false, visit: true }))
 vi.mock('../src/lib/supabase', () => ({ supabase: {} }))
-vi.mock('../src/lib/AuthContext', () => ({ useAuth: () => ({ user: { id: 'actor' }, profile: { id: 'actor' } }) }))
+vi.mock('../src/lib/AuthContext', () => ({ useAuth: () => ({ user: { id: 'actor' }, profile: { id: 'actor', role: 'sales_person' } }) }))
 vi.mock('../src/lib/orderTransactions', async original => ({ ...await original<any>(), useTransactionSender: () => Object.assign(state.send, {
   hasUnresolved: () => state.unresolved, reconcile: state.reconcile, acknowledgeRecovered: () => { state.unresolved = false },
 }) }))
@@ -17,7 +17,7 @@ vi.mock('../src/components/GirardNav', () => ({ default: () => <Link to="/elsewh
 vi.mock('@tanstack/react-query', async original => ({ ...await original<any>(), useQuery: ({ queryKey }: any) => ({ data:
   queryKey[0] === 'customers' ? [{ id: 'a', name: 'Customer A', pricing_tier: 'luar_kota' }, { id: 'b', name: 'Customer B', pricing_tier: 'dalam_kota' }]
     : queryKey[0] === 'schedule' ? { id: 's', customers: { id: 'a', name: 'Customer A', pricing_tier: 'luar_kota' } }
-    : queryKey[0] === 'visit' ? (state.visit ? { id: 'v', checked_in_at: '2026-09-30T10:00:00Z', visit_photos: [] } : null) : [],
+    : queryKey[0] === 'visit' ? (state.visit ? { id: 'v', sales_person_id: 'actor', note_version: 1, notes: 'Original note', checked_in_at: '2026-09-30T10:00:00Z', visit_photos: [] } : null) : [],
 }) }))
 import PONew from '../src/pages/athel/PONew'
 import VisitPage from '../src/pages/girard/VisitPage'
@@ -92,6 +92,7 @@ test('browser-style Back can be cancelled then accepted and Forward still works'
   await act(() => router.navigate(-1))
   fireEvent.click(await screen.findByRole('button', { name: 'Buang perubahan' }))
   await waitFor(() => expect(router.state.location.pathname).toBe('/elsewhere'))
+  await waitFor(() => expect(router.state.blockers.size).toBe(0))
   await act(() => router.navigate(1))
   await waitFor(() => expect(router.state.location.pathname).toBe('/athel/po/new'))
   expect(await screen.findByText('PO Baru')).toBeTruthy()
@@ -131,41 +132,40 @@ test('unknown save outcomes remain recoverable and recovered success does not le
   probe.stop()
 })
 
-test('dirty visit orders can keep editing on Cancel and warn again before leaving', async () => {
+test('dirty visit notes can keep editing on Cancel and warn again before leaving', async () => {
   const router = mount('visit')
-  fireEvent.click(screen.getByRole('button', { name: '+ Pesanan Baru' }))
-  fireEvent.change(screen.getByPlaceholderText('Nama produk'), { target: { value: 'Barang kunjungan' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Edit catatan' }))
+  fireEvent.change(screen.getByLabelText('Catatan kunjungan'), { target: { value: 'Barang kunjungan' } })
   fireEvent.click(screen.getByRole('button', { name: 'Batal' }))
   expect(screen.getByRole('dialog')).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: 'Tetap mengedit' }))
-  expect((screen.getByPlaceholderText('Nama produk') as HTMLInputElement).value).toBe('Barang kunjungan')
+  expect((screen.getByLabelText('Catatan kunjungan') as HTMLTextAreaElement).value).toBe('Barang kunjungan')
   fireEvent.click(screen.getByRole('link', { name: 'Jadwal' }))
   fireEvent.click(await screen.findByRole('button', { name: 'Tetap mengedit' }))
   expect(router.state.location.pathname).toBe('/girard/visit/s')
   fireEvent.click(screen.getByRole('button', { name: 'Batal' }))
   fireEvent.click(screen.getByRole('button', { name: 'Buang perubahan' }))
-  expect(screen.queryByPlaceholderText('Nama produk')).toBeNull()
+  expect(screen.queryByLabelText('Catatan kunjungan')).toBeNull()
   fireEvent.click(screen.getByRole('link', { name: 'Jadwal' }))
   await waitFor(() => expect(router.state.location.pathname).toBe('/elsewhere'))
 })
 
-test.each(['navigate', 'cancel'])('a visit order committed while a %s dialog is open clears it and guards later new drafts', async action => {
+test.each(['navigate', 'cancel'])('a visit note committed while a %s dialog is open clears it and guards later new drafts', async action => {
   let resolve!: (value: { id: string }) => void
   state.send.mockReturnValueOnce(new Promise(done => { resolve = done }))
   const router = mount('visit')
-  fireEvent.click(screen.getByRole('button', { name: '+ Pesanan Baru' }))
-  fireEvent.change(screen.getByPlaceholderText('Nama produk'), { target: { value: 'Pending item' } })
-  fireEvent.change(screen.getByLabelText('Harga satuan'), { target: { value: '0' } })
-  fireEvent.click(screen.getByRole('button', { name: 'Kirim Pesanan' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Edit catatan' }))
+  fireEvent.change(screen.getByLabelText('Catatan kunjungan'), { target: { value: 'Pending item' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Simpan catatan' }))
   await waitFor(() => expect(state.send).toHaveBeenCalledTimes(1))
-  fireEvent.click(action === 'navigate' ? screen.getByRole('link', { name: 'Jadwal' }) : screen.getByRole('button', { name: 'Batal' }))
-  await screen.findByRole('dialog')
+  if (action === 'navigate') { fireEvent.click(screen.getByRole('link', { name: 'Jadwal' })); await screen.findByRole('dialog') }
+  else expect((screen.getByRole('button', { name: 'Batal' }) as HTMLButtonElement).disabled).toBe(true)
   await act(async () => resolve({ id: 'saved' }))
-  await waitFor(() => expect(screen.queryByPlaceholderText('Nama produk')).toBeNull())
+  await waitFor(() => expect(screen.queryByLabelText('Catatan kunjungan')).toBeNull())
   expect(screen.queryByRole('dialog')).toBeNull()
   expect(router.state.location.pathname).toBe('/girard/visit/s')
-  fireEvent.click(screen.getByRole('button', { name: '+ Pesanan Baru' }))
-  fireEvent.change(screen.getByPlaceholderText('Nama produk'), { target: { value: 'Another item' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Edit catatan' }))
+  fireEvent.change(screen.getByLabelText('Catatan kunjungan'), { target: { value: 'Another item' } })
   fireEvent.click(screen.getByRole('link', { name: 'Jadwal' }))
   expect(await screen.findByRole('dialog')).toBeTruthy()
 })
@@ -195,3 +195,7 @@ test('new PO line fields stack on phones without narrowing SKU to one desktop co
   expect(sku.classList.contains('min-w-0')).toBe(true)
   for (const input of grid.querySelectorAll('input')) expect(input.classList.contains('min-w-0')).toBe(true)
 })
+
+vi.mock('../src/lib/visitTransactions', () => ({ useVisitPlanningSender: () => Object.assign(state.send, { hasUnresolved: () => state.unresolved, reconcile: state.reconcile, acknowledgeRecovered: () => { state.unresolved = false } }) }))
+vi.mock('../src/components/StorePOContext', () => ({ default: () => null }))
+vi.mock('../src/lib/reads/usePagedRead', () => ({ usePagedRead: () => ({ data: { items: [], total: 0 }, page: 1, isPending: false, setPage: vi.fn() }) }))

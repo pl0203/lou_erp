@@ -10,7 +10,7 @@ vi.mock('../src/lib/supabase', () => ({ supabase: {
   from: (table: string) => ({ select: (projection: string) => {
     const po = { id: 'dummy-po', po_number: 'DUMMY-PO', status: 'confirm', order_date: '2026-09-30', expected_delivery_date: null, total_value: 20, notes: null, customer_id: 'dummy-customer', customers: { name: 'Dummy customer' }, updated_at: '2026-09-30T00:00:00Z', ...(projection.includes('completed_at') ? { completed_at: null } : {}) }
     const data = table === 'purchase_orders' ? po
-      : table === 'po_line_items' ? [{ id: 'dummy-line', product_name: 'Dummy product', sku: 'DUMMY', quantity: 2, unit_price: 10, ...(projection.includes('line_total') ? { line_total: 20 } : {}) }]
+      : table === 'po_line_items' ? [{ id: 'dummy-line', product_id:null,product_name: 'Dummy product', sku: 'DUMMY', quantity: 2, unit_price: 10, ...(projection.includes('line_total') ? { line_total: 20 } : {}) }]
       : table === 'customers' ? [{ id: 'dummy-customer', name: 'Dummy customer', pricing_tier: 'luar_kota' }] : []
     const result = Promise.resolve({ data, count: Array.isArray(data) ? data.length : 1, error: null })
     const query = { eq: () => query, order: () => query, range: () => query, abortSignal: () => query, single: () => result, then: result.then.bind(result) }
@@ -30,7 +30,7 @@ class Boundary extends Component<React.PropsWithChildren, { failed: boolean }> {
 afterEach(() => { cleanup(); localStorage.clear(); vi.clearAllMocks() })
 
 test('canceling an invalid edit renders complete detail data without leaking the edit projection into its cache', async () => {
-  mocks.rpc.mockImplementation((name,args)=>({abortSignal(){return this},then(resolve:any){return Promise.resolve({data:{version:1,as_of:'2026-09-30T00:00:00Z',page:args.p_page,page_size:100,total:1,po_updated_at:'2026-09-30T00:00:00Z',po_has_delivery_history:false,items:[{id:'dummy-line',product_name:'Dummy product',sku:'DUMMY',quantity:2,unit_price:'10.00',line_total:'20.00',delivered_quantity:0,has_delivery_history:false}]},error:null}).then(resolve)}}))
+  mocks.rpc.mockImplementation((name,args)=>({abortSignal(){return this},then(resolve:any){return Promise.resolve({data:{version:1,as_of:'2026-09-30T00:00:00Z',page:args.p_page,page_size:100,total:1,po_updated_at:'2026-09-30T00:00:00Z',po_has_delivery_history:false,items:[{id:'dummy-line',product_id:null,product_name:'Dummy product',sku:'DUMMY',quantity:2,unit_price:'10.00',line_total:'20.00',delivered_quantity:0,has_delivery_history:false}]},error:null}).then(resolve)}}))
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/athel/po/dummy-po/edit']}><Boundary><Routes>
     <Route path="/athel/po/:id/edit" element={<POEdit />} />

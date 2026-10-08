@@ -19,3 +19,6 @@ for(const [name,Page] of [['schedule',DailySchedule],['own orders',MyOrders],['s
  test(`${name} shows loading without a false empty state`,()=>{state.error=false;state.loading=true;render(<Page/>);expect(screen.getAllByText(/Memuat/)[0]).toBeTruthy();expect(screen.queryByText(/\d+ (?:visits?|kunjungan)/)).toBeNull();expect(screen.queryByText(/Tidak ada/)).toBeNull()})
  test(`${name} only shows empty state after successful load`,()=>{state.error=false;render(<Page/>);expect(screen.getByText(/Tidak ada/)).toBeTruthy();expect(screen.queryByRole('alert')).toBeNull()})
 }
+
+vi.mock('../src/components/VisitRequestInbox', () => ({ default: () => null, VisitProposalForm: () => null }))
+vi.mock('../src/lib/useUnsavedChanges', () => ({ useUnsavedChanges: () => ({ dialog: null, confirmDiscard: (fn: any) => fn() }) }))

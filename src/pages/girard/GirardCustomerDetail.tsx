@@ -1,3 +1,4 @@
+import StorePOContext from '../../components/StorePOContext'
 import { formatMoney, moneyToChartNumber } from '../../lib/reads/money'
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
@@ -134,6 +135,7 @@ function CustomerDetailView({ id, identity, enabled }: { id?: string; identity: 
         {activeTab === 'overview' && (
           <>
             <NextScheduledVisit customerId={customer.id} />
+            <StorePOContext customerId={customer.id} />
             <div className="bg-white rounded-xl border border-gray-200 p-5">
               <h2 className="text-base font-medium text-gray-900 mb-4">Contact</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm break-words [overflow-wrap:anywhere]">

@@ -14,6 +14,7 @@ const bool: Check = (value, path) => { if (typeof value !== 'boolean') fail(path
 const timestamp: Check = (value, path) => { if (typeof value !== 'string' || !value.includes('T') || !Number.isFinite(Date.parse(value))) fail(path) }
 const date: Check = (value, path) => { if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(Date.parse(value)) || new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) !== value) fail(path) }
 const month: Check = (value, path) => { if (typeof value !== 'string' || !/^\d{4}-(?:0[1-9]|1[0-2])$/.test(value)) fail(path) }
+const optional = (check: Check): Check => (value, path) => { if (value !== undefined) check(value, path) }
 const nullable = (check: Check): Check => (value, path) => { if (value !== null) check(value, path) }
 const oneOf = (values: readonly string[]): Check => (value, path) => { if (typeof value !== 'string' || !values.includes(value)) fail(path) }
 function object(shape: Record<string, Check>): Check {
@@ -33,6 +34,7 @@ const manager = object({ id, name: text, address: nullable(text), city: nullable
 const customerStat = object({ customer_id: id, first_order_date: nullable(date), order_count: count, total_sales: money, top_items: array(object({ name: text, revenue: money }), 10) })
 const activity = object({ sales_person_id: id, total_scheduled: count, total_visited: count, total_orders: count, weekly_visits: count })
 const schema: Record<ReadRpcName, Check> = {
+  pilot_sales_report_months_v1: object({ earliest_schedule_date: nullable(date), earliest_order_at: nullable(timestamp) }),
   pilot_po_page_v1: object({ items: array(po) }),
   pilot_sales_order_page_v1: object({ items: array(sales), status_counts: object({ pending: count, approved: count, rejected: count, cancelled: count }) }),
   pilot_po_lines_v1: object({ items: array(line), po_updated_at: timestamp, po_has_delivery_history: bool }),
@@ -48,7 +50,7 @@ const schema: Record<ReadRpcName, Check> = {
   pilot_customer_stats_v1: object({ items: array(customerStat, 100) }),
   pilot_customer_performance_v1: object({ items: array(customer), summary: object({ total_sales: money, active_customers: count, total_customers: count, total_visits: count, total_target_visits: count, visit_percent: number, top_customer: nullable(customer) }) }),
   pilot_revenue_v1: object({ items: array(revenue), summary: object({ total_sales: money, total_orders: count, active_customers: count, top_customer: nullable(revenue) }) }),
-  pilot_sales_performance_v1: object({ items: array(performance), summary: object({ total_visited: count, total_scheduled: count, total_orders: count, total_sales: money, average_visit_rate: number }) }),
+  pilot_sales_performance_v1: object({ items: array(performance), summary: object({ total_visited: count, total_scheduled: count, total_orders: count, total_sales: money, average_visit_rate: number, unassigned_orders: optional(count), unassigned_sales: optional(money) }) }),
   pilot_team_activity_v1: object({ items: array(activity, 100) }),
   pilot_manager_customers_v1: object({ items: array(manager), summary: object({ on_track: count, overdue: count, total: count }) }),
 }
@@ -81,6 +83,7 @@ export function decodeRead<N extends ReadRpcName>(name: N, args: RpcArgsMap[N], 
       if (item.top_items && item.top_items.length > requested.p_top_limit!) fail(`${name}.top_items`)
     }
   }
+  if (name === 'pilot_sales_performance_v1' && ((result.summary.unassigned_orders === undefined) !== (result.summary.unassigned_sales === undefined) || (result.summary.unassigned_orders ?? 0) > result.summary.total_orders)) fail(`${name}.unassigned summary`)
   if (name === 'pilot_athel_summary_v1' && (result.monthlySeries.length !== 12 || new Set(result.monthlySeries.map((month: any) => month.key)).size !== 12)) fail(`${name}.monthlySeries`)
   return data as RpcResultMap[N]
 }

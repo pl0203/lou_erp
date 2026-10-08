@@ -13,3 +13,6 @@ afterEach(()=>{cleanup();vi.useRealTimers()})
 for(const [name,Page] of [['own visits',MyVisits],['daily schedule',DailySchedule]] as const)test(`${name} displays September30 as September30`,()=>{
  render(<Page/>);expect(screen.getByText(/30 September/)).toBeTruthy()
 })
+
+vi.mock('../src/components/VisitRequestInbox', () => ({ default: () => null, VisitProposalForm: () => null }))
+vi.mock('../src/lib/useUnsavedChanges', () => ({ useUnsavedChanges: () => ({ dialog: null, confirmDiscard: (fn: any) => fn() }) }))

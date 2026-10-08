@@ -15,6 +15,8 @@ INSERT INTO public.users(id,full_name,email,role) VALUES
 INSERT INTO public.customers(id,name) VALUES ('20000000-0000-0000-0000-000000000001','Synthetic customer');
 INSERT INTO public.sales_schedules(id,outlet_id,sales_person_id,assigned_by,scheduled_date) VALUES ('30000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000002','10000000-0000-0000-0000-000000000001',CURRENT_DATE);
 INSERT INTO public.outlet_visits(id,outlet_id,sales_person_id,schedule_id) VALUES ('40000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000002','30000000-0000-0000-0000-000000000001');
+INSERT INTO public.girard_orders(id,customer_id,visit_id,submitted_by,status,total_value) VALUES ('50000000-0000-0000-0000-000000000001','20000000-0000-0000-0000-000000000001','40000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000002','pending',10);
+INSERT INTO public.girard_order_items(order_id,product_name,quantity,unit_price) VALUES('50000000-0000-0000-0000-000000000001','A',1,10);
 CREATE FUNCTION public.pilot_test_fail_line() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.product_name='FAULT_INJECT' THEN RAISE EXCEPTION 'injected write failure'; END IF; RETURN NEW; END $$;
 CREATE TRIGGER pilot_test_fail_line BEFORE INSERT ON public.po_line_items FOR EACH ROW EXECUTE FUNCTION public.pilot_test_fail_line();
 CREATE FUNCTION public.pilot_test_fail_delivery() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF EXISTS(SELECT 1 FROM public.surat_jalan WHERE id=NEW.surat_jalan_id AND sj_number='FAULT-SJ') THEN RAISE EXCEPTION 'injected delivery failure'; END IF; RETURN NEW; END $$;
@@ -106,8 +108,13 @@ BEGIN
     RAISE EXCEPTION 'Other sales actor submitted another visit';
   EXCEPTION WHEN insufficient_privilege THEN NULL; END;
   PERFORM set_config('request.jwt.claim.sub','10000000-0000-0000-0000-000000000002',true);
-  result := public.pilot_order_transaction(gen_random_uuid(),'submit_sales',jsonb_build_object('customer_id','20000000-0000-0000-0000-000000000001','visit_id','40000000-0000-0000-0000-000000000001','items',jsonb_build_array(jsonb_build_object('product_name','A','quantity',1,'unit_price',10))));
-  sales := (result->>'id')::uuid;
+  IF EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='po_line_items' AND column_name='product_id') THEN
+    BEGIN PERFORM public.pilot_order_transaction(gen_random_uuid(),'submit_sales',jsonb_build_object('customer_id','20000000-0000-0000-0000-000000000001','visit_id','40000000-0000-0000-0000-000000000001','items',jsonb_build_array(jsonb_build_object('product_name','A','quantity',1,'unit_price',10)))); RAISE EXCEPTION 'Retired sales submission succeeded'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+    sales := '50000000-0000-0000-0000-000000000001';
+  ELSE
+    result := public.pilot_order_transaction(gen_random_uuid(),'submit_sales',jsonb_build_object('customer_id','20000000-0000-0000-0000-000000000001','visit_id','40000000-0000-0000-0000-000000000001','items',jsonb_build_array(jsonb_build_object('product_name','A','quantity',1,'unit_price',10))));
+    sales := (result->>'id')::uuid;
+  END IF;
   PERFORM set_config('request.jwt.claim.sub','10000000-0000-0000-0000-000000000001',true);
   result := public.pilot_order_transaction(gen_random_uuid(),'approve_sales',jsonb_build_object('order_id',sales,'po_number','TEST-APPROVED'));
   BEGIN

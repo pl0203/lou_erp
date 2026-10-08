@@ -240,9 +240,12 @@ test.each(['missing', 'partial', 'suffixed', 'failed-before', 'failed-after'])('
   expect(result.runnerCalls).toBe('scripts/test-ihr-db.mjs --suite quote\n')
 })
 
-test('the composition preserves every category-staging workflow byte outside the explicit HR envelope', () => {
+test('the composition preserves every category-staging workflow byte outside the explicit HR and demo envelopes', () => {
   // Reviewed category staging: d1593520a4afde7e66b590d814062eba92bee03f.
   const preserved = workflow
+    .replace('      PGTZ: UTC\n', '')
+    .replace(/      - name: Complete demo revision composition and real races\n[\s\S]*?(?=      - )/, '')
+    .replace(/      - name: Atomic demo rollout safety lifecycle\n[\s\S]*?(?=      - )/, '')
     .replace('            if [[ "$file" > supabase/migrations/202610021001_ihr_leave_foundation.sql || "$file" == supabase/migrations/202610021001_ihr_leave_foundation.sql ]]; then continue; fi\n', '')
     .replace(/      - name: Guarded iHR foundation SQL suite\n[\s\S]*?(?=      - )/, '')
     .replace(/      - name: Guarded iHR calendar and accounts SQL suites\n[\s\S]*?(?=      - )/, '')

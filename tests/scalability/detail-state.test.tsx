@@ -25,7 +25,7 @@ import POEdit from '../../src/pages/athel/POEdit'
 import PODetail from '../../src/pages/athel/PODetail'
 const clients:QueryClient[]=[]
 function mount(Page:React.ComponentType){const client=new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}});clients.push(client);return render(<QueryClientProvider client={client}><Page/></QueryClientProvider>)}
-beforeEach(()=>{state.failLines=false;state.stale=false;state.failDeliveryLines=false;state.audit=[];state.writes=[];state.history=[];state.lines=[{id:'l0',product_name:'Item 0',sku:'SKU0',quantity:10,unit_price:'10.00',line_total:'100.00',delivered_quantity:4,has_delivery_history:true}]})
+beforeEach(()=>{state.failLines=false;state.stale=false;state.failDeliveryLines=false;state.audit=[];state.writes=[];state.history=[];state.lines=[{id:'l0',product_id:null,product_name:'Item 0',sku:'SKU0',quantity:10,unit_price:'10.00',line_total:'100.00',delivered_quantity:4,has_delivery_history:true}]})
 afterEach(()=>{cleanup();clients.splice(0).forEach(c=>c.clear());localStorage.clear()})
 test('edit locks historical identity and delivered minimum even when displayed delivery history is empty',async()=>{
  mount(POEdit);const name=await screen.findByDisplayValue('Item 0');expect((name as HTMLInputElement).disabled).toBe(true)

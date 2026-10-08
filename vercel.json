@@ -7,7 +7,8 @@
       "fix/pilot-scale-sql": false,
       "ci/customer-categories-postgres": false,
       "ci/ihr-leave-postgres": false,
-      "fix/padiwan-sidebar-theme": false
+      "fix/padiwan-sidebar-theme": false,
+      "fix/demo-revisions": false
     }
   },
   "rewrites": [

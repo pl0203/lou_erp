@@ -19,7 +19,7 @@ test('every approved read endpoint has one canonical name and parameter list', (
     'pilot_athel_daily_v1', 'pilot_athel_summary_v1', 'pilot_customer_performance_v1',
     'pilot_customer_stats_v1', 'pilot_manager_customers_v1', 'pilot_po_lines_v1',
     'pilot_po_page_v1', 'pilot_revenue_v1', 'pilot_sales_order_page_v1',
-    'pilot_sales_performance_v1', 'pilot_team_activity_v1',
+    'pilot_sales_performance_v1', 'pilot_sales_report_months_v1', 'pilot_team_activity_v1',
   ])
   expect(contracts.READ_RPC_DEFINITIONS?.pilot_po_page_v1.params).toEqual(['p_status', 'p_search', 'p_page', 'p_page_size'])
   expect(contracts.READ_RPC_DEFINITIONS?.pilot_manager_customers_v1.params).toEqual(['p_manager_id', 'p_visit_from', 'p_as_of', 'p_page', 'p_page_size'])

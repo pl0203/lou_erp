@@ -1,9 +1,13 @@
+import VisitRequestInbox from '../../components/VisitRequestInbox'
+import TransactionRecovery from '../../components/TransactionRecovery'
+import { useVisitPlanningSender } from '../../lib/visitTransactions'
+import { useUnsavedChanges } from '../../lib/useUnsavedChanges'
 import ReadFailure from '../../components/ReadFailure'
 import { readCompleteQuery } from '../../lib/reads/completeQuery'
 import { chunkIds } from '../../lib/reads/completeReads'
 import { calendarDateKey, parseCalendarDate, calendarDayOptions } from '../../lib/calendarDate'
 import { singleRelation } from '../../lib/relations'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import { useNavigate } from 'react-router-dom'
@@ -25,6 +29,7 @@ type SalesPerson = {
 }
 
 type Schedule = {
+  version: number
   id: string
   outlet_id: string
   sales_person_id: string
@@ -49,26 +54,8 @@ const EMPTY_FORM: ScheduleForm = {
   notes: '',
 }
 
-function getDateOptions(): { value: string; label: string }[] {
-    const options = []
-    const today = new Date()
-    for (let i = 0; i <= 30; i++) {
-      const d = new Date(today)
-      d.setDate(d.getDate() + i)
-      const value = calendarDateKey(d)
-      const label = d.toLocaleDateString('id-ID', {
-        weekday: 'long', day: 'numeric', month: 'long'
-      })
-      options.push({ value, label })
-    }
-    return options
-  }
-
-export function isEditable(scheduledDate: string): boolean {
-  const today = new Date()
-  const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)
-  // Preserve the rule: editing starts the day after tomorrow, independent of DST length.
-  return scheduledDate > calendarDateKey(tomorrow)
+export function isEditable(_scheduledDate: string, status = 'pending'): boolean {
+  return status !== 'completed'
 }
 
 async function fetchMyCustomers(managerId: string, role: string, signal?: AbortSignal): Promise<Customer[]> {
@@ -103,7 +90,7 @@ async function fetchMyTeam(managerId: string, role: string, signal?: AbortSignal
 async function fetchSchedules(managerId: string, role: string, dates: string[], signal?: AbortSignal): Promise<Schedule[]> {
   const read = (ids?: string[]) => readCompleteQuery((offset, limit) => {
     let query = supabase.from('sales_schedules')
-      .select('id, outlet_id, sales_person_id, scheduled_date, status, notes, created_at, customers!sales_schedules_outlet_id_fkey(id, name, city), users!sales_schedules_sales_person_id_fkey(id, full_name)', { count: 'exact' })
+      .select('id, version, outlet_id, sales_person_id, scheduled_date, status, notes, created_at, customers!sales_schedules_outlet_id_fkey(id, name, city), users!sales_schedules_sales_person_id_fkey(id, full_name)', { count: 'exact' })
       .in('scheduled_date', dates).order('scheduled_date').order('created_at').order('id').range(offset, offset + limit - 1)
     if (ids) query = query.in('outlet_id', ids)
     return query
@@ -119,54 +106,36 @@ async function fetchSchedules(managerId: string, role: string, dates: string[], 
   return rows.map(row => ({ ...row, customers: singleRelation(row.customers), users: singleRelation(row.users) }))
 }
 
-async function createSchedule(form: ScheduleForm, assignedBy: string) {
-  const { error } = await supabase
-    .from('sales_schedules')
-    .insert({
-      outlet_id: form.outlet_id,
-      sales_person_id: form.sales_person_id,
-      assigned_by: assignedBy,
-      scheduled_date: form.scheduled_date,
-      notes: form.notes || null,
-      status: 'pending',
-    })
-  if (error) throw error
-}
-
-async function updateSchedule(id: string, form: Partial<ScheduleForm>) {
-  const { error } = await supabase
-    .from('sales_schedules')
-    .update({
-      sales_person_id: form.sales_person_id,
-      notes: form.notes || null,
-    })
-    .eq('id', id)
-  if (error) throw error
-}
-
-async function deleteSchedule(id: string) {
-  const { error } = await supabase
-    .from('sales_schedules')
-    .delete()
-    .eq('id', id)
-  if (error) throw error
-}
-
 export function getNext30Days(): string[] {
   return calendarDayOptions(31)
 }
 
 export default function ManagerSchedule() {
   const { profile } = useAuth()
+  return <ManagerScheduleContent key={`${profile?.id}:${profile?.role}`} />
+}
+function ManagerScheduleContent() {
+  const { profile } = useAuth()
+  const send = useVisitPlanningSender('manager-schedule')
+  const writeBusy = useRef(false)
+  const write = async (operation: string, payload: unknown) => {
+    if (writeBusy.current) throw new Error('Permintaan masih diproses.')
+    writeBusy.current = true
+    try { return await send(operation, payload) } finally { writeBusy.current = false }
+  }
   const queryClient = useQueryClient()
-  const dateOptions = getDateOptions()
-  const dates = getNext30Days()
+  const dateRange = getNext30Days()
 
-  const [selectedDate, setSelectedDate] = useState(dates[0])
+  const [selectedDate, setSelectedDate] = useState(dateRange[0])
+  const dates = dateRange.includes(selectedDate) ? dateRange : [...dateRange, selectedDate]
   const [showForm, setShowForm] = useState(false)
+  const [editingVersion, setEditingVersion] = useState<number | null>(null)
+  const [initialForm, setInitialForm] = useState<ScheduleForm>(EMPTY_FORM)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState<ScheduleForm>(EMPTY_FORM)
+  const [deleteVersion, setDeleteVersion] = useState<number | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const unsaved = useUnsavedChanges(showForm && JSON.stringify(form) !== JSON.stringify(initialForm))
 
   const { data: customers, isError: customerReadError, refetch: retryCustomers } = useQuery({
     queryKey: ['manager_customers', profile?.id, profile?.role],
@@ -191,7 +160,7 @@ export default function ManagerSchedule() {
   const navigate = useNavigate()
 
   const createMutation = useMutation({
-    mutationFn: () => createSchedule(form, profile!.id),
+    mutationFn: () => write('create_schedule', { customer_id: form.outlet_id, sales_person_id: form.sales_person_id, scheduled_date: form.scheduled_date, notes: form.notes }),
     onSuccess: () => {
       queryClient.invalidateQueries()
       setShowForm(false)
@@ -203,7 +172,7 @@ export default function ManagerSchedule() {
   })
 
   const updateMutation = useMutation({
-    mutationFn: () => updateSchedule(editingId!, form),
+    mutationFn: () => write('edit_schedule', { schedule_id: editingId, expected_version: editingVersion, customer_id: form.outlet_id, sales_person_id: form.sales_person_id, scheduled_date: form.scheduled_date, notes: form.notes }),
     onSuccess: () => {
       queryClient.invalidateQueries()
       setShowForm(false)
@@ -213,7 +182,7 @@ export default function ManagerSchedule() {
   })
 
   const deleteMutation = useMutation({
-    mutationFn: () => deleteSchedule(deleteId!),
+    mutationFn: () => write('delete_schedule', { schedule_id: deleteId, expected_version: deleteVersion }),
     onSuccess: () => {
       queryClient.invalidateQueries()
       setDeleteId(null)
@@ -222,12 +191,15 @@ export default function ManagerSchedule() {
 
   const openCreate = () => {
     setEditingId(null)
+    setInitialForm({ ...EMPTY_FORM, scheduled_date: selectedDate })
     setForm({ ...EMPTY_FORM, scheduled_date: selectedDate })
     setShowForm(true)
   }
 
   const openEdit = (s: Schedule) => {
     setEditingId(s.id)
+    setEditingVersion(s.version)
+    setInitialForm({ outlet_id: s.outlet_id, sales_person_id: s.sales_person_id, scheduled_date: s.scheduled_date, notes: s.notes ?? '' })
     setForm({
       outlet_id: s.outlet_id,
       sales_person_id: s.sales_person_id,
@@ -238,6 +210,7 @@ export default function ManagerSchedule() {
   }
 
   const handleSave = () => {
+    if (createMutation.isPending || updateMutation.isPending || send.hasUnresolved()) return
     if (!form.outlet_id) return alert('Please select a customer.')
     if (!form.sales_person_id) return alert('Please select a sales person.')
     if (!form.scheduled_date) return alert('Please select a date.')
@@ -258,6 +231,9 @@ export default function ManagerSchedule() {
   return (
     <div className="min-h-screen bg-brand-canvas">
       <GirardNav />
+      {unsaved.dialog}
+      <TransactionRecovery send={send} onCommitted={() => { queryClient.invalidateQueries(); setShowForm(false); setDeleteId(null) }} />
+      <div className="px-4 md:px-8 pt-4"><VisitRequestInbox /></div>
 
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center justify-between">
@@ -275,6 +251,7 @@ export default function ManagerSchedule() {
         </button>
       </div>
 
+      <label className="block px-4 pt-4">Lihat tanggal <input type="date" value={selectedDate} onChange={e => { if (e.target.value) setSelectedDate(e.target.value) }} /></label>
       {/* Date tabs — next 7 days */}
       <div className="bg-white border-b border-gray-100 px-4 md:px-8">
         <div className="flex gap-1 overflow-x-auto">
@@ -351,7 +328,7 @@ export default function ManagerSchedule() {
               </thead>
               <tbody>
                 {schedules.map(s => {
-                  const editable = isEditable(s.scheduled_date)
+                  const editable = isEditable(s.scheduled_date, s.status)
                   return (
                     <tr key={s.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                       <td className="px-5 py-4">
@@ -383,7 +360,7 @@ export default function ManagerSchedule() {
                               Ubah
                             </button>
                             <button
-                              onClick={() => setDeleteId(s.id)}
+                              onClick={() => { setDeleteId(s.id); setDeleteVersion(s.version) }}
                               className="text-red-400 hover:text-red-600 text-xs font-medium"
                             >
                               Hapus
@@ -405,7 +382,7 @@ export default function ManagerSchedule() {
         {!isLoading && schedules.length > 0 && (
           <div className="md:hidden space-y-3 mt-4">
             {schedules.map(s => {
-              const editable = isEditable(s.scheduled_date)
+              const editable = isEditable(s.scheduled_date, s.status)
               return (
                 <div key={s.id} className="bg-white rounded-xl border border-gray-200 p-4">
                   <div className="flex items-start justify-between mb-2">
@@ -433,7 +410,7 @@ export default function ManagerSchedule() {
                         Ubah
                       </button>
                       <button
-                        onClick={() => setDeleteId(s.id)}
+                        onClick={() => { setDeleteId(s.id); setDeleteVersion(s.version) }}
                         className="flex-1 text-center text-red-500 text-xs font-medium py-2 rounded-lg bg-red-50"
                       >
                         Hapus
@@ -461,13 +438,13 @@ export default function ManagerSchedule() {
                 {editingId ? 'Edit Schedule' : 'Assign Visit'}
               </h3>
             </div>
-            <div className="px-6 py-4 space-y-4">
+            <fieldset disabled={createMutation.isPending || updateMutation.isPending || send.hasUnresolved()} className="px-6 py-4 space-y-4">
               <div>
                 <label className="block text-sm text-gray-600 mb-1">Pelanggan *</label>
                 <select
                   value={form.outlet_id}
                   onChange={e => setForm(p => ({ ...p, outlet_id: e.target.value }))}
-                  disabled={!!editingId}
+                  disabled={createMutation.isPending || updateMutation.isPending || send.hasUnresolved()}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary disabled:bg-gray-50 disabled:text-gray-400"
                 >
                   <option value="">Pilih Pelanggan...</option>
@@ -503,19 +480,12 @@ export default function ManagerSchedule() {
 
               <div>
                 <label className="block text-sm text-gray-600 mb-1">Date *</label>
-                <select
+                <input type="date" aria-label="Tanggal jadwal"
                   value={form.scheduled_date}
                   onChange={e => setForm(p => ({ ...p, scheduled_date: e.target.value }))}
-                  disabled={!!editingId}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary disabled:bg-gray-50 disabled:text-gray-400"
-                >
-                {dateOptions.map(d => (
-                <option key={d.value} value={d.value}>{d.label}</option>
-                ))}
-                </select>
-                <p className="text-xs text-gray-400 mt-1">
-                    Penjadwalan untuk hari ini dan besok tidak bisa diubah setelah berhasil dibuat.
-                </p>
+                  disabled={createMutation.isPending || updateMutation.isPending || send.hasUnresolved()}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+                />
               </div>
 
               <div>
@@ -523,6 +493,7 @@ export default function ManagerSchedule() {
                   Notes <span className="text-gray-400">(optional)</span>
                 </label>
                 <textarea
+                  maxLength={2000}
                   value={form.notes}
                   onChange={e => setForm(p => ({ ...p, notes: e.target.value }))}
                   rows={2}
@@ -530,17 +501,17 @@ export default function ManagerSchedule() {
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary resize-none"
                 />
               </div>
-            </div>
+            </fieldset>
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
               <button
-                onClick={() => { setShowForm(false); setEditingId(null); setForm(EMPTY_FORM) }}
+                onClick={() => unsaved.confirmDiscard(() => { setShowForm(false); setEditingId(null); setForm(EMPTY_FORM) })}
                 className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSave}
-                disabled={createMutation.isPending || updateMutation.isPending}
+                disabled={createMutation.isPending || updateMutation.isPending || send.hasUnresolved()}
                 className="px-4 py-2 text-sm font-medium bg-brand-primary text-white rounded-lg hover:bg-brand-hover disabled:opacity-50"
               >
                 {createMutation.isPending || updateMutation.isPending
@@ -576,7 +547,7 @@ export default function ManagerSchedule() {
               </button>
               <button
                 onClick={() => deleteMutation.mutate()}
-                disabled={deleteMutation.isPending}
+                disabled={deleteMutation.isPending || send.hasUnresolved()}
                 className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
               >
                 {deleteMutation.isPending ? 'Menghapus...' : 'Hapus'}

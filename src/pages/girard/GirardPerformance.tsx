@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import { usePagedRead } from '../../lib/reads/usePagedRead'
-import { fetchSalesPerformancePage } from '../../lib/reads/reports'
+import { fetchSalesPerformancePage, fetchEarliestSalesPerformanceMonth } from '../../lib/reads/reports'
 import type { SalesPerformanceRow } from '../../lib/reads/contracts'
 import { formatMoney } from '../../lib/reads/money'
 import PaginationControls from '../../components/PaginationControls'
@@ -14,18 +14,6 @@ type PerformanceData = SalesPerformanceRow
 function currentYearMonth(): string {
   const now = new Date()
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-}
-
-async function fetchEarliestScheduleMonth(): Promise<string> {
-  const { data, error } = await supabase
-    .from('sales_schedules')
-    .select('scheduled_date')
-    .order('scheduled_date', { ascending: true }).order('id')
-    .limit(1)
-  if (error) throw error
-  if (!data || data.length === 0) return currentYearMonth()
-  const d = new Date(data[0].scheduled_date)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
 function buildMonthOptions(earliest: string): { value: string; label: string }[] {
@@ -332,7 +320,7 @@ export function PerformanceContent() {
   const { profile } = useAuth()
   const queryClient = useQueryClient()
   const { data, filters, setFilters, setPage, isPending, isError, refetch } = usePagedRead('performance', { yearMonth: currentYearMonth() }, (filters, page, signal) => fetchSalesPerformancePage(profile!.id, profile!.role, filters.yearMonth, page, signal))
-  const { data: earliest, isError: monthError, refetch: refetchMonths } = useQuery({ queryKey: ['earliest_schedule_month'], queryFn: fetchEarliestScheduleMonth })
+  const { data: earliest, isError: monthError, refetch: refetchMonths } = useQuery({ queryKey: ['earliest_sales_report_month', profile?.id, profile?.role], queryFn: ({ signal }) => fetchEarliestSalesPerformanceMonth(profile!.id, profile!.role, signal), enabled: !!profile })
   const monthOptions = buildMonthOptions(earliest ?? currentYearMonth())
   const yearMonth = filters.yearMonth
   const selectedLabel = monthOptions.find(month => month.value === yearMonth)?.label ?? yearMonth
@@ -347,6 +335,7 @@ export function PerformanceContent() {
     </div>
     {isError || monthError ? <div role="alert" className="text-red-600">{monthError ? 'Daftar bulan tidak tersedia.' : 'Data performa tidak tersedia.'} <button onClick={() => { refetch(); refetchMonths() }} className="underline">Coba lagi</button></div> : !data ? <p className="text-center text-gray-400 text-sm py-12">Memuat data performa...</p> : <>
       <PaginationControls page={data.page} total={data.total} pageSize={data.page_size} pending={isPending} onPageChange={setPage} />
+      {(data.summary.unassigned_orders ?? 0) > 0 && <div className="bg-white rounded-xl border border-gray-200 p-4"><p className="font-medium text-gray-900">Unassigned</p><p className="text-sm text-gray-500">{data.summary.unassigned_orders} pesanan belum memiliki kredit salesperson. Rp {formatMoney(data.summary.unassigned_sales!, 'millions')}M termasuk dalam total penjualan.</p></div>}
       <SummaryCards avgVisitRate={data.summary.average_visit_rate} totalVisited={data.summary.total_visited} totalScheduled={data.summary.total_scheduled} totalOrders={data.summary.total_orders} totalSales={data.summary.total_sales} />
       {data.items.length === 0 ? <p className="text-center text-gray-400 text-sm py-12">Tidak ada data performa untuk bulan ini.</p> : <PerformanceTable performance={data.items} yearMonth={yearMonth} canEdit={canEdit && !isPending} onSaved={invalidate} />}
     </>}

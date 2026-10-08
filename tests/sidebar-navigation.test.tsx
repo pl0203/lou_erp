@@ -27,8 +27,8 @@ test('desktop has a single semantic navigation and preserves nested Purchase Ord
   const nav = screen.getByRole('navigation', { name: 'Navigasi Procurement' })
   expect(within(nav).getAllByRole('link', { name: 'Purchase Order' })).toHaveLength(1)
   expect(within(nav).getByRole('link', { name: 'Purchase Order' }).getAttribute('aria-current')).toBe('page')
-  expect(within(nav).getByRole('link', { name: /PO dari Sales/ }).textContent).toContain('99+')
-  expect(within(nav).getByRole('link', { name: /PO dari Sales/ }).getAttribute('aria-label')).toContain('100')
+  expect(within(nav).getByRole('link', { name: /Antrean Sales lama/ }).textContent).toContain('99+')
+  expect(within(nav).getByRole('link', { name: /Antrean Sales lama/ }).getAttribute('aria-label')).toContain('100')
 })
 
 test('hamburger collapses to named icons, offers keyboard tooltips and restores the preference after remount', () => {
@@ -70,7 +70,9 @@ test.each(['sales_person', 'sales_manager', 'sales_head', 'po_admin', 'executive
 test.each(['sales_person', 'sales_manager'])('%s retains HR own-leave link query string', role => {
   state.role = role; mount(<GirardNav />, '/girard/schedule')
   expect(screen.getByRole('link', { name: 'HR' }).getAttribute('href')).toBe('/ihr/leave?tab=mine')
-  expect(screen.queryByRole('link', { name: 'Promosi' })).toBeNull()
+  expect(screen.getByRole('link', { name: 'Promosi' }).getAttribute('href')).toBe('/girard/promotions')
+  expect(screen.getByRole('link', { name: 'Riwayat Kunjungan' }).getAttribute('href')).toBe('/girard/visit-history')
+  expect(screen.getByRole('link', { name: 'Riwayat Pesanan' }).getAttribute('href')).toBe('/girard/my-orders')
 })
 
 test('mobile drawer closes with Escape and returns focus to its opener', () => {

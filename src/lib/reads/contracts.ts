@@ -34,7 +34,7 @@ export type SalesOrderSummary = {
 }
 export type SalesOrderPage = Page<SalesOrderSummary> & { status_counts: StatusCounts }
 export type POLineState = {
-  id: UUID; product_name: string; sku: string | null; quantity: number;
+  id: UUID; product_id: UUID | null; product_name: string; sku: string | null; quantity: number;
   unit_price: Money; line_total: Money; delivered_quantity: number;
   has_delivery_history: boolean;
 }
@@ -81,10 +81,12 @@ export type SalesPerformanceRow = {
   orders: number; total_sales: Money; visit_rate: number; sales_target: Money | null;
 }
 export type SalesPerformanceSummary = {
+  unassigned_orders?: number; unassigned_sales?: Money;
   total_visited: number; total_scheduled: number; total_orders: number;
   total_sales: Money; average_visit_rate: number;
 }
 export type SalesPerformancePage = Page<SalesPerformanceRow> & { summary: SalesPerformanceSummary }
+export type SalesReportMonths = ReadEnvelope & { earliest_schedule_date: CalendarDate | null; earliest_order_at: Timestamp | null }
 export type TeamActivity = {
   sales_person_id: UUID; total_scheduled: number; total_visited: number;
   total_orders: number; weekly_visits: number;
@@ -99,6 +101,7 @@ export type ManagerCustomerPage = Page<ManagerCustomer> & { summary: { on_track:
 type PageArgs = { p_page: number; p_page_size: number }
 export type DashboardArgs = { p_from: CalendarDate; p_to: CalendarDate; p_rolling_from: CalendarDate; p_status: POStatusFilter; p_fulfillment: FulfillmentFilter }
 export type RpcArgsMap = {
+  pilot_sales_report_months_v1: { p_manager_id: UUID | null };
   pilot_po_page_v1: PageArgs & { p_status: POStatusFilter; p_search: string };
   pilot_sales_order_page_v1: PageArgs & { p_status: SalesStatusFilter; p_own_only: boolean; p_customer_id?: UUID | null; p_visit_id?: UUID | null };
   pilot_po_lines_v1: PageArgs & { p_po_id: UUID; p_expected_updated_at?: Timestamp | null };
@@ -112,6 +115,7 @@ export type RpcArgsMap = {
   pilot_manager_customers_v1: PageArgs & { p_manager_id: UUID; p_visit_from: Timestamp; p_as_of: Timestamp };
 }
 export type RpcResultMap = {
+  pilot_sales_report_months_v1: SalesReportMonths;
   pilot_po_page_v1: Page<POSummary>;
   pilot_sales_order_page_v1: SalesOrderPage;
   pilot_po_lines_v1: POLinePage;
@@ -127,6 +131,7 @@ export type RpcResultMap = {
 export type ReadRpcName = keyof RpcArgsMap
 
 export const READ_RPC_DEFINITIONS = {
+  pilot_sales_report_months_v1: { params: ['p_manager_id'], result: 'summary', pageLimit: null },
   pilot_po_page_v1: { params: ['p_status', 'p_search', 'p_page', 'p_page_size'], result: 'page', pageLimit: 100 },
   pilot_sales_order_page_v1: { params: ['p_status', 'p_own_only', 'p_page', 'p_page_size', 'p_customer_id', 'p_visit_id'], result: 'page', pageLimit: 100 },
   pilot_po_lines_v1: { params: ['p_po_id', 'p_page', 'p_page_size', 'p_expected_updated_at'], result: 'page', pageLimit: 100 },

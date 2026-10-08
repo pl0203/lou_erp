@@ -5,7 +5,7 @@ import { afterEach, expect, test, vi } from 'vitest'
 vi.mock('../../src/components/AthelNav', () => ({ default: () => null }))
 vi.mock('../../src/components/GirardNav', () => ({ default: () => null }))
 vi.mock('../../src/components/TransactionRecovery', () => ({ default: () => null }))
-vi.mock('../../src/lib/AuthContext', () => ({ useAuth: () => ({ user: { id: 'u' }, profile: { id: 'u', role: 'executive' } }) }))
+vi.mock('../../src/lib/AuthContext', () => ({ useAuth: () => ({ user: { id: 'u' }, profile: { id: 'u', role: 'executive', is_active: true } }) }))
 vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn(), useBlocker: () => ({ state: 'unblocked' }), useBeforeUnload: () => {} }))
 vi.mock('../../src/lib/supabase', () => ({ supabase: { from(table: string) {
   const rows: Record<string, unknown>[] = table === 'products'
@@ -18,7 +18,7 @@ vi.mock('../../src/lib/supabase', () => ({ supabase: { from(table: string) {
   q.range = (a: number, b: number) => { from = a; to = b; return q }
   return q
 } } }))
-import Promotions from '../../src/pages/girard/Promotions'
+import Promotions from '../../src/pages/athel/Promotions'
 import PONew from '../../src/pages/athel/PONew'
 afterEach(cleanup)
 

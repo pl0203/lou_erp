@@ -20,10 +20,10 @@ test('schedule today keys follow local calendar even close to UTC day boundary',
  const d=new Date();const expected=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
  expect(getNext30Days()[0]).toBe(expected)
 })
-test('schedule edit cutoff locks today and tomorrow but permits day after tomorrow',()=>{
- expect(isEditable('2026-09-30')).toBe(false);expect(isEditable('2026-10-01')).toBe(false);expect(isEditable('2026-10-02')).toBe(true)
+test('schedule editing allows today and tomorrow',()=>{
+ expect(isEditable('2026-09-30')).toBe(true);expect(isEditable('2026-10-01')).toBe(true);expect(isEditable('2026-10-02')).toBe(true)
 })
-test('schedule edit cutoff is calendar-based across daylight-saving boundary',()=>{
+test('schedule editing remains allowed across daylight-saving boundary',()=>{
  vi.setSystemTime(new Date('2026-11-01T12:00:00Z'))
- expect(isEditable('2026-11-01')).toBe(false);expect(isEditable('2026-11-02')).toBe(false);expect(isEditable('2026-11-03')).toBe(true)
+ expect(isEditable('2026-11-01')).toBe(true);expect(isEditable('2026-11-02')).toBe(true);expect(isEditable('2026-11-03')).toBe(true)
 })

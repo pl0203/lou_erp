@@ -15,6 +15,8 @@ import AthelDashboard from './pages/athel/Dashboard'
 import CustomerList from './pages/athel/CustomerList'
 import ProductList from './pages/athel/ProductList'
 import SalesOrders from './pages/athel/SalesOrders'
+import AthelPromotions from './pages/athel/Promotions'
+import OwnVisitHistory from './pages/girard/OwnVisitHistory'
 
 import DailySchedule from './pages/girard/DailySchedule'
 import ManagerSchedule from './pages/girard/ManagerSchedule'
@@ -96,7 +98,10 @@ export default function App() {
         <ProtectedRoute allowedRoles={ATHEL_ROLES}><SalesOrders /></ProtectedRoute>
       } />
 
+      <Route path="/athel/promotions" element={<ProtectedRoute allowedRoles={ATHEL_ROLES}><AthelPromotions /></ProtectedRoute>} />
+
       {/* Girard — all roles */}
+      <Route path="/girard/visit-history" element={<ProtectedRoute allowedRoles={GIRARD_ROLES}><OwnVisitHistory /></ProtectedRoute>} />
       <Route path="/girard/schedule" element={
         <ProtectedRoute allowedRoles={GIRARD_ROLES}>
           <RoleBasedSchedule />
@@ -137,7 +142,7 @@ export default function App() {
         <ProtectedRoute allowedRoles={HEAD_UP}><GirardManagers /></ProtectedRoute>
       } />
       <Route path="/girard/promotions" element={
-        <ProtectedRoute allowedRoles={HEAD_UP}><Promotions /></ProtectedRoute>
+        <ProtectedRoute allowedRoles={GIRARD_ROLES}><Promotions /></ProtectedRoute>
       } />
 
       {/* User administration stays executive-only; leave authority is server-controlled. */}

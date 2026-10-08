@@ -47,3 +47,7 @@ test('customer summary keeps full large amounts wrappable and stacks item revenu
   expect(amount.classList.contains('[overflow-wrap:anywhere]')).toBe(true)
   expect(amount.parentElement?.classList.contains('flex-col')).toBe(true)
 })
+
+vi.mock('../../src/components/VisitRequestInbox', () => ({ default: () => null, VisitProposalForm: () => null }))
+vi.mock('../../src/components/StorePOContext', () => ({ default: () => null }))
+vi.mock('../../src/lib/useUnsavedChanges', () => ({ useUnsavedChanges: () => ({ dialog: null, confirmDiscard: (fn: any) => fn() }) }))

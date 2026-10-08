@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 const state = vi.hoisted(() => ({ handler: null as any }))
 vi.mock('../../src/lib/AuthContext', () => ({ useAuth: () => ({ profile: { id: 'executive', role: 'executive' } }) }))
-vi.mock('../../src/lib/reads/reports', () => ({ fetchCustomerPerformancePage: (...args: any[]) => state.handler('customer', ...args), fetchSalesPerformancePage: (...args: any[]) => state.handler('sales', ...args) }))
+vi.mock('../../src/lib/reads/reports', () => ({ fetchEarliestSalesPerformanceMonth: async () => '2026-09-01', fetchCustomerPerformancePage: (...args: any[]) => state.handler('customer', ...args), fetchSalesPerformancePage: (...args: any[]) => state.handler('sales', ...args) }))
 vi.mock('../../src/lib/supabase', () => ({ supabase: { from() { const q: any = { then: (resolve: any) => Promise.resolve({ data: [{ order_date: '2026-09-01', scheduled_date: '2026-09-01' }], error: null }).then(resolve) }; for (const key of ['select','order','limit']) q[key] = () => q; return q } } }))
 import { CustomerPerformanceContent } from '../../src/pages/girard/CustomerPerformance'
 import { PerformanceContent } from '../../src/pages/girard/GirardPerformance'

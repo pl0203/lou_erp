@@ -4,7 +4,14 @@ import { formatLineAmount } from '../lib/catalogPricing'
 const COLUMNS = 'sm:grid-cols-[minmax(0,1.2fr)_minmax(0,2.4fr)_minmax(0,.8fr)_minmax(0,1.5fr)_2.5rem]'
 const INPUT = 'min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary disabled:bg-gray-50 disabled:text-gray-500'
 const LABEL = 'block text-xs text-gray-500 mb-1 sm:hidden'
-type Line = { sku: string; product_name: string; quantity: number; unit_price: number }
+export function exactCatalogIdentity(sku: string, products: { id: string; sku: string }[]): string | null {
+  const normalized = sku.trim().toLocaleLowerCase()
+  if (!normalized) return null
+  const matches = products.filter(product => product.sku.trim().toLocaleLowerCase() === normalized)
+  return matches.length === 1 ? matches[0].id : null
+}
+
+type Line = { product_id?: string | null; sku: string; product_name: string; quantity: number; unit_price: number }
 type LineField = keyof Line
 
 export function POLineItemsHeader() {
@@ -47,6 +54,8 @@ export function POLineRow({ lineKey, item, onChange, onRemove, historical = fals
         title={historical ? 'Barang dengan riwayat pengiriman tidak dapat dihapus.' : 'Hapus barang'}
         className="h-10 w-10 justify-self-end rounded-lg text-xl text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-gray-400">×</button>
     </div>
+    {item.product_id === null && <p className="text-xs text-amber-700">Identitas katalog belum terhubung. SKU harus cocok tepat dan unik untuk alokasi stok promosi; barang manual tetap dapat disimpan.</p>}
+    {item.product_id && <p className="text-xs text-gray-500">Produk katalog terhubung</p>}
     {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
     {historical && <p className="text-xs text-gray-500">Riwayat pengiriman mengunci produk, SKU, harga, dan penghapusan barang. Jumlah minimal {minimumQuantity} (terkirim aktif: {deliveredQuantity}).</p>}
     {Number.isNaN(item.unit_price) && <p className="text-xs text-amber-700">Isi harga satuan sebelum menyimpan. Nol hanya untuk barang gratis.</p>}

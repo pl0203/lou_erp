@@ -5,10 +5,10 @@ import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { cacheProbe } from './cache-probe'
 
-const state = vi.hoisted(() => ({ data: {} as Record<string, unknown>, write: vi.fn(), navigate: vi.fn() }))
+const state = vi.hoisted(() => ({ send: vi.fn(), data: {} as Record<string, unknown>, write: vi.fn(), navigate: vi.fn() }))
 vi.mock('../../src/components/GirardNav', () => ({ default: () => null }))
 vi.mock('../../src/lib/AuthContext', () => ({ useAuth: () => ({ profile: { id: 'actor', role: 'executive' } }) }))
-vi.mock('react-router-dom', async original => ({ ...await original<any>(), useNavigate: () => state.navigate }))
+vi.mock('react-router-dom', async original => ({ ...await original<any>(), useNavigate: () => state.navigate, useBlocker: () => ({ state: 'unblocked' }), useBeforeUnload: () => {} }))
 vi.mock('@tanstack/react-query', async original => ({ ...await original<any>(), useQuery: ({ queryKey }: any) => ({ data: state.data[queryKey[0]], isLoading: false }) }))
 vi.mock('../../src/lib/supabase', () => ({ supabase: {
   auth: { getUser: async () => ({ data: { user: { id: 'actor' } } }) },
@@ -27,6 +27,7 @@ const clients: QueryClient[] = []
 const stops: (() => void)[] = []
 beforeEach(() => {
   state.write.mockReset().mockImplementation(async (table, _operation, payload) => ({ data: [table === 'customers' ? { id: payload?.id ?? 'customer' } : { customer_id: payload?.customer_id ?? 'customer', manager_id: payload?.manager_id }], error: null }))
+  state.send.mockReset().mockResolvedValue({ id: 'schedule', version: 2 })
   state.navigate.mockReset()
   const customers = [{ id: 'customer', name: 'Customer A', city: null, address: null, last_visit_date: null, visit_frequency_days: 7, pricing_tier: 'luar_kota', customer_category: null }]
   state.data = {
@@ -34,7 +35,7 @@ beforeEach(() => {
     manager_team: [{ id: 'sales', full_name: 'Sales A' }],
     managers_list: [{ id: 'manager-a', full_name: 'Manager A' }, { id: 'manager-b', full_name: 'Manager B' }],
     assignments: [],
-    manager_schedules: [{ id: 'schedule', outlet_id: 'customer', sales_person_id: 'sales', scheduled_date: getNext30Days()[2], status: 'pending', notes: 'Existing notes', customers: customers[0], users: { id: 'sales', full_name: 'Sales A' } }],
+    manager_schedules: [{ id: 'schedule', version: 1, outlet_id: 'customer', sales_person_id: 'sales', scheduled_date: getNext30Days()[2], status: 'pending', notes: 'Existing notes', customers: customers[0], users: { id: 'sales', full_name: 'Sales A' } }],
   }
 })
 afterEach(() => { cleanup(); stops.splice(0).forEach(stop => stop()); clients.splice(0).forEach(client => client.clear()) })
@@ -90,20 +91,20 @@ function submitSchedule(mode: 'create' | 'update' | 'delete') {
 
 test.each(['create', 'update', 'delete'] as const)('schedule %s refreshes active summaries and invalidates cohorts only after commit', async mode => {
   let commit!: (value: unknown) => void
-  state.write.mockReturnValueOnce(new Promise(resolve => { commit = resolve }))
+  state.send.mockReturnValueOnce(new Promise(resolve => { commit = resolve }))
   const probe = mount(<ManagerSchedule />)
   submitSchedule(mode)
-  await waitFor(() => expect(state.write).toHaveBeenCalledTimes(1))
+  await waitFor(() => expect(state.send).toHaveBeenCalledTimes(1))
   probe.unchanged()
   if (mode !== 'delete') expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('Keep these notes')
-  await act(async () => commit({ data: null, error: null }))
+  await act(async () => commit({ id: 'schedule', version: 2 }))
   await waitFor(() => probe.refreshed())
   expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull()
   expect(screen.queryByText('Hapus jadwal kunjungan?')).toBeNull()
 })
 
 test.each(['create', 'update'] as const)('failed schedule %s keeps the draft and does not report fresh summaries', async mode => {
-  state.write.mockResolvedValueOnce({ error: new Error('Schedule write failed') })
+  state.send.mockRejectedValueOnce(new Error('Schedule write failed'))
   const probe = mount(<ManagerSchedule />)
   submitSchedule(mode)
   await screen.findByText('Schedule write failed')
@@ -173,3 +174,6 @@ test.each([
   if (mode === 'create') expect((screen.getByPlaceholderText('mis. Toko Bangunan Maju') as HTMLInputElement).value).toBe('Keep customer name')
   else expect((screen.getByRole('option', { name: mode === 'assign' ? 'Pilih manajer...' : 'Belum ditugaskan' }).closest('select') as HTMLSelectElement).value).toBe(mode === 'unassign' ? '' : 'manager-b')
 })
+
+vi.mock('../../src/lib/visitTransactions', () => ({ useVisitPlanningSender: () => Object.assign(state.send, { hasUnresolved: () => false }) }))
+vi.mock('../../src/components/VisitRequestInbox', () => ({ default: () => null }))

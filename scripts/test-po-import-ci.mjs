@@ -8,6 +8,8 @@ import { buildPoImportBaselineSql,buildPoImportPackets,hashImportManifest,assert
 import { buildCustomerCategoryBaselineSql,buildCustomerCategoryLegacyAuditSql } from './build-customer-category-review.mjs';
 import { syntheticImportManifest,syntheticImportSizeManifest,syntheticCategoryImportManifest } from '../tests/fixtures/po-import-manifest.mjs';
 export const CATEGORY_MIGRATION='202610020001_customer_categories.sql';
+// Preserve this historical import lifecycle against its reviewed pre-demo baseline.
+export function selectImportBaselineMigrations(files) { return files.filter(f=>f.endsWith('.sql') && f<='202610081001_ihr_po_admin_director.sql').sort(); }
 export function isExpectedImportRefusal(stderr,message,sqlstate='P0001') {
  const errors=String(stderr).split(/\r?\n/).filter(line=>/^(?:psql:(?:[^\n]*?:)?\s*)?(?:ERROR|FATAL|PANIC):/i.test(line));
  if(errors.length!==1||!/^\w{5}$/.test(sqlstate))return false;
@@ -92,7 +94,7 @@ export async function runPoImportCi({env=process.env,execute=execFileSync,repoRo
  if(marker!=='t')throw new Error('Original disposable fixture marker required');
  run('CREATE DATABASE pilot_import_test;','postgres');
  run(readFileSync(`${repoRoot}/tests/database/fixture.sql`,'utf8'));
- const files=readdirSync(`${repoRoot}/supabase/migrations`).filter(f=>f.endsWith('.sql')).sort();
+ const files=selectImportBaselineMigrations(readdirSync(`${repoRoot}/supabase/migrations`));
  for(const file of files.filter(f=>f<'202610010001_scalable_order_reads.sql'))run(readFileSync(`${repoRoot}/supabase/migrations/${file}`,'utf8'));
  const topology=readFileSync(`${repoRoot}/tests/database/hosted-read-policy-fixture.sql`,'utf8');
  if(topology.split("current_database()<>'pilot_test'").length!==2)throw new Error('Unexpected disposable topology guard');

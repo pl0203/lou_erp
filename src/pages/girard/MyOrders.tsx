@@ -37,9 +37,9 @@ export default function MyOrders() {
       <GirardNav />
 
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5">
-        <h1 className="text-xl font-semibold text-gray-900">Pesanan Saya</h1>
+        <h1 className="text-xl font-semibold text-gray-900">Riwayat Pesanan Saya</h1>
         <p className="text-sm text-gray-500 mt-0.5">
-          Pesanan yang Anda ajukan
+          Riwayat pengajuan lama Anda. Pesanan baru dibuat melalui Procurement.
         </p>
       </div>
 
@@ -96,7 +96,7 @@ export default function MyOrders() {
           <div className="text-center py-24">
             <p className="text-gray-400 text-sm">Tidak ada pesanan ditemukan.</p>
             <p className="text-gray-300 text-xs mt-1">
-              Pesanan yang Anda buat saat kunjungan pelanggan akan muncul di sini.
+              Riwayat pesanan dari kunjungan sebelumnya akan muncul di sini.
             </p>
           </div>
         )}

@@ -28,6 +28,7 @@ jobs:
       PGUSER: postgres
       PGPASSWORD: synthetic-ci-only
       PGDATABASE: pilot_test
+      PGTZ: UTC
       VITE_SUPABASE_URL: https://example.invalid
       VITE_SUPABASE_ANON_KEY: synthetic-test-key
     steps:
@@ -208,6 +209,18 @@ jobs:
           [[ "$(grep -Fxc 'IHR_PO_ADMIN_DIRECTOR_APPROVAL_CANCELLATION_PASSED' "$route_log")" == 1 ]]
       - name: Concurrent business operations
         run: node tests/database/concurrency.mjs
+
+      - name: Complete demo revision composition and real races
+        run: node scripts/test-demo-revisions-ci.mjs
+
+      - name: Atomic demo rollout safety lifecycle
+        env:
+          DEMO_ROLLOUT_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          DEMO_ROLLOUT_PERMIT: disposable-demo-rollout-ci
+        run: |
+          set -euo pipefail
+          psql -X -v ON_ERROR_STOP=1 -d postgres -c 'CREATE DATABASE demo_rollout_test;'
+          PGDATABASE=demo_rollout_test node tests/demo/rollout-database.mjs
 
       - name: Atomic read rollout and guarded rollback on companion disposable database
         env:

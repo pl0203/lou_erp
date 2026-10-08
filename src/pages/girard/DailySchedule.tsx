@@ -1,3 +1,5 @@
+import { useUnsavedChanges } from '../../lib/useUnsavedChanges'
+import VisitRequestInbox, { VisitProposalForm } from '../../components/VisitRequestInbox'
 import { readCompleteQuery } from '../../lib/reads/completeQuery'
 import { chunkIds } from '../../lib/reads/completeReads'
 import { formatMoney } from '../../lib/reads/money'
@@ -12,6 +14,7 @@ import { fetchCustomerStatsBatch } from '../../lib/CustomerStats'
 import ActivePromotionsBanner from '../../components/ActivePromotionsBanner'
 
 type Schedule = {
+  version: number
   id: string
   scheduled_date: string
   status: string
@@ -45,7 +48,7 @@ function getDateRange(): string[] {
 
 async function fetchSchedules(userId: string, dates: string[], signal?: AbortSignal): Promise<Schedule[]> {
   const data = await readCompleteQuery((offset, limit) => supabase.from('sales_schedules')
-    .select('id, scheduled_date, status, notes, outlet_id, outlet_visits(id, checked_in_at)', { count: 'exact' })
+    .select('id, version, scheduled_date, status, notes, outlet_id, outlet_visits(id, checked_in_at)', { count: 'exact' })
     .eq('sales_person_id', userId).in('scheduled_date', dates)
     .order('scheduled_date').order('created_at').order('id').range(offset, offset + limit - 1), row => row.id, signal)
   const customerMap = new Map<string, Schedule['customers']>()
@@ -72,13 +75,24 @@ function formatDate(dateStr: string): string {
 
 export default function DailySchedule() {
   const { profile } = useAuth()
+  return <DailyScheduleContent key={`${profile?.id}:${profile?.role}`} />
+}
+function DailyScheduleContent() {
+  const { profile } = useAuth()
   const navigate = useNavigate()
   const dates = getDateRange()
+  const [proposalSchedule, setProposalSchedule] = useState<Schedule | null>(null)
+  const [showProposal, setShowProposal] = useState(false)
+  const [proposalDirty, setProposalDirty] = useState(false)
+  const [proposalRevision, setProposalRevision] = useState(0)
+  const unsaved = useUnsavedChanges(proposalDirty)
+  const replaceProposal = (schedule: Schedule | null) => unsaved.confirmDiscard(() => { setProposalDirty(false); setProposalSchedule(schedule); setProposalRevision(value => value + 1); setShowProposal(true) })
   const [selectedDate, setSelectedDate] = useState(dates[0])
+  const readDates = dates.includes(selectedDate) ? dates : [...dates, selectedDate]
 
   const { data: allSchedules, isLoading, isError, refetch } = useQuery({
-    queryKey: ['schedules', profile?.id, dates],
-    queryFn: ({ signal }) => fetchSchedules(profile!.id, dates, signal),
+    queryKey: ['schedules', profile?.id, profile?.role, readDates],
+    queryFn: ({ signal }) => fetchSchedules(profile!.id, readDates, signal),
     enabled: !!profile?.id,
   })
 
@@ -102,6 +116,7 @@ export default function DailySchedule() {
   return (
     <div className="min-h-screen bg-brand-canvas">
       <GirardNav />
+      {unsaved.dialog}
 
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5">
@@ -122,6 +137,7 @@ export default function DailySchedule() {
         )}
       </div>
 
+      <label className="block px-4 md:px-8 py-3">Lihat tanggal kunjungan <input aria-label="Lihat tanggal kunjungan" type="date" value={selectedDate} onChange={e => { if (e.target.value) setSelectedDate(e.target.value) }} /></label>
       {/* Day tabs */}
       <div className="bg-white border-b border-gray-100 px-4 md:px-8">
         <div className="flex gap-1 overflow-x-auto">
@@ -150,6 +166,9 @@ export default function DailySchedule() {
 
       <div className="px-4 md:px-8 py-6 max-w-2xl mx-auto space-y-4">
         <ActivePromotionsBanner />
+        <div className="flex gap-4"><button onClick={() => replaceProposal(null)}>Ajukan kunjungan baru</button><button onClick={() => navigate('/girard/visit-history')}>Riwayat kunjungan saya</button></div>
+        {showProposal && <VisitProposalForm key={`${proposalSchedule?.id ?? 'new'}:${proposalRevision}`} source={proposalSchedule ?? undefined} onDirtyChange={setProposalDirty} confirmDiscard={unsaved.confirmDiscard} onDone={() => { setProposalDirty(false); setShowProposal(false) }} />}
+        <VisitRequestInbox />
 
         {isLoading && (
           <div className="text-center text-gray-400 text-sm py-24">
@@ -165,7 +184,7 @@ export default function DailySchedule() {
         {!isLoading && !isError && schedules.length === 0 && (
           <div className="text-center py-24">
             <p className="text-gray-400 text-sm">
-              Tidak ada kunjungan dijadwalkan untuk {DAY_LABELS[dates.indexOf(selectedDate)].toLowerCase()}.
+              Tidak ada kunjungan dijadwalkan untuk {(DAY_LABELS[dates.indexOf(selectedDate)] ?? formatDate(selectedDate)).toLowerCase()}.
             </p>
             <p className="text-gray-300 text-xs mt-1">Periksa kembali nanti atau hubungi manajer Anda.</p>
           </div>
@@ -264,6 +283,7 @@ export default function DailySchedule() {
                 </div>
               )}
 
+              {!checkedIn && profile?.role === 'sales_person' && <button className="mx-5 mt-3 text-brand-primary text-sm" onClick={() => replaceProposal(schedule)}>Ajukan perubahan</button>}
               {/* Actions */}
               <div className="px-5 py-4 flex gap-3">
                 {isToday ? (
