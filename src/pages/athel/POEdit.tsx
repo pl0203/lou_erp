@@ -9,6 +9,7 @@ import type { TransactionSender } from '../../lib/orderTransactions'
 import { isPOConflict, retryUnlessPOConflict } from '../../lib/poConflict'
 import { singleRelation } from '../../lib/relations'
 import { validateOrderLines } from '../../lib/orderValidation'
+import { useUnsavedChanges } from '../../lib/useUnsavedChanges'
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -55,6 +56,12 @@ type POData = {
   notes: string | null
   customer_id: string
   customers: { name: string }
+}
+
+// Compare editable values with the loaded draft, excluding UI-only row keys.
+function draftSnapshot(customerId: string, expectedDelivery: string, notes: string, lineItems: LineItemRow[]) {
+  return JSON.stringify([customerId, expectedDelivery, notes, lineItems.filter(line => !line._deleted).map(line =>
+    [line.id, line.product_id, line.product_name, line.sku, line.quantity, line.unit_price])])
 }
 
 const TIER_LABELS: Record<string, string> = {
@@ -110,9 +117,15 @@ export default function POEdit() {
   const [entryError, setEntryError] = useState<{ key: string; message: string } | null>(null)
   const [initializedFor, setInitializedFor] = useState<string | null>(null)
   const initialized = initializedFor === id
+  const [initialDraft, setInitialDraft] = useState('')
+  const snapshot = draftSnapshot(customerId, expectedDelivery, notes, lineItems)
+  const unsaved = useUnsavedChanges(initialized && snapshot !== initialDraft)
   const [refreshingPO, setRefreshingPO] = useState(false)
   const activePO = useRef({ id, generation: 0 })
   if (activePO.current.id !== id) activePO.current = { id, generation: activePO.current.generation + 1 }
+  const editor = activePO.current
+  const mounted = useRef(false)
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
   const refreshSequence = useRef(0)
 
   const { data: po, isLoading: poLoading, isError: poError, isFetching: poFetching, refetch: refetchPO } = useQuery({
@@ -150,7 +163,7 @@ export default function POEdit() {
       setCustomerId(po.customer_id)
       setExpectedDelivery(po.expected_delivery_date ?? '')
       setNotes(po.notes ?? '')
-      setLineItems(existingLines.map(l => ({
+      const loadedLines = existingLines.map(l => ({
         _key: l.id,
         id: l.id,
         product_id: l.product_id ?? null,
@@ -158,21 +171,27 @@ export default function POEdit() {
         sku: l.sku ?? '',
         quantity: l.quantity,
         unit_price: l.unit_price,
-      })))
+      }))
+      setLineItems(loadedLines)
+      setInitialDraft(draftSnapshot(po.customer_id, po.expected_delivery_date ?? '', po.notes ?? '', loadedLines))
       setInitializedFor(id!)
     }
   }, [id, po, lineState, existingLines, initialized, readReady])
 
   const mutation = useMutation({
     retry: false,
+    onMutate: () => activePO.current,
     mutationFn: (draft: Parameters<typeof saveEdits>[1]) => {
       if (!readReady || !initialized || !lineState || lineState.po_updated_at !== initialVersion) throw new Error('Data PO berubah atau belum lengkap. Muat ulang sebelum menyimpan.')
       if (lineItems.some(line => !line._deleted && line.quantity < (deliveredByLine[line.id ?? ''] ?? 0))) throw new Error('Jumlah tidak boleh kurang dari jumlah terkirim aktif.')
       return saveEdits(id!, draft, sendTransaction)
     },
-    onSuccess: () => {
+    onSuccess: (_result, _draft, submittedEditor) => {
       queryClient.invalidateQueries()
-      navigate(`/athel/po/${id}`)
+      // A late result must not leave a newer PO or pull back a departed editor.
+      if (mounted.current && activePO.current === submittedEditor) {
+        unsaved.runWithoutPrompt(() => navigate(`/athel/po/${submittedEditor.id}`))
+      }
     },
   })
 
@@ -275,11 +294,20 @@ export default function POEdit() {
     void stockSubmission.run({ customer_id: customerId, expected_delivery_date: expectedDelivery || null, notes: notes || null, lineItems, expected_updated_at: initialVersion })
   }
 
-  const recovery = <TransactionRecovery send={sendTransaction} onCommitted={result => { queryClient.invalidateQueries(); navigate(`/athel/po/${result.id}`) }} />
+  const recovery = <TransactionRecovery key={id} send={sendTransaction} onCommitted={result => {
+    if (!mounted.current || activePO.current !== editor) { queryClient.invalidateQueries(); return }
+    const showSavedPO = () => {
+      queryClient.invalidateQueries()
+      unsaved.runWithoutPrompt(() => navigate(`/athel/po/${result.id}`))
+    }
+    // Recovery metadata has no draft, so it cannot prove these edits were saved.
+    unsaved.confirmDiscard(showSavedPO, { message: 'Permintaan sebelumnya sudah tersimpan. Isian saat ini mungkin berbeda dari hasil tersebut. Buang isian dan lihat PO tersimpan?' })
+  }} />
 
   if (poLoading || linesLoading || (!initialized && (poFetching || linesFetching))) {
     return (
       <div className="min-h-screen bg-brand-canvas">
+        {unsaved.dialog}
         <AthelNav />
         {recovery}
         <div className="p-8 text-gray-400 text-sm text-center">Memuat...</div>
@@ -288,13 +316,13 @@ export default function POEdit() {
   }
 
   if (poError || linesError || !po || !existingLines || !lineState || (initialized && lineState.po_updated_at !== initialVersion)) {
-    return <div className="min-h-screen bg-brand-canvas"><AthelNav />{recovery}<div role="alert" className="p-8 text-red-600">
+    return <div className="min-h-screen bg-brand-canvas">{unsaved.dialog}<AthelNav />{recovery}<div role="alert" className="p-8 text-red-600">
       <p>{isPOConflict(lineError) ? 'PO berubah. Muat ulang sebelum melanjutkan.' : 'Data PO atau riwayat pengiriman belum dapat dimuat. Pengubahan belum tersedia.'}</p>
       <button type="button" onClick={() => void refreshPO()} disabled={refreshingPO} className="mt-2 underline">Coba lagi</button>
     </div></div>
   }
   if (!['confirm', 'in_progress'].includes(po.status)) {
-    return <div className="min-h-screen bg-brand-canvas"><AthelNav />{recovery}<div className="p-8">
+    return <div className="min-h-screen bg-brand-canvas">{unsaved.dialog}<AthelNav />{recovery}<div className="p-8">
       <p>PO {po.status === 'cancelled' ? 'yang dibatalkan' : po.status === 'complete' ? 'yang selesai' : 'dengan status ini'} tidak dapat diubah.</p>
       <button type="button" onClick={() => navigate(`/athel/po/${id}`)} className="mt-2 underline">Kembali ke PO</button>
     </div></div>
@@ -302,6 +330,7 @@ export default function POEdit() {
 
   return (
     <div className="min-h-screen bg-brand-canvas">
+      {unsaved.dialog}
       <AthelNav />
         {recovery}
         {stockSubmission.warning && <PromoStockWarning warning={stockSubmission.warning} pending={mutation.isPending} onContinue={() => void stockSubmission.continue()} onCancel={() => { stockSubmission.cancel(); mutation.reset() }} />}
@@ -325,7 +354,7 @@ export default function POEdit() {
         {(customersError || productsError) && <div role="alert" className="text-sm text-red-600">Pilihan pelanggan atau produk belum lengkap. <button className="underline" onClick={() => { refetchCustomers(); refetchProducts() }}>Coba lagi</button></div>}
         {(poFetching || linesFetching) && <p role="status" className="text-sm text-blue-600">Memperbarui data PO… Penyimpanan menunggu data lengkap; isian Anda tetap tersimpan di formulir.</p>}
         {/* Detail PO */}
-        <div className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
+        <fieldset disabled={mutation.isPending} className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
           <h2 className="text-base font-medium text-gray-900 mb-4">Detail PO</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -380,10 +409,10 @@ export default function POEdit() {
               />
             </div>
           </div>
-        </div>
+        </fieldset>
 
         {/* Daftar Barang */}
-        <div className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
+        <fieldset disabled={mutation.isPending} className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
           <h2 className="text-base font-medium text-gray-900 mb-1">Daftar Barang</h2>
           <p className="text-xs text-gray-400 mb-4">
             Barang tanpa riwayat pengiriman dapat diganti atau dihapus. Untuk barang yang pernah dikirim, hanya jumlah yang dapat diubah sesuai batas terkirim aktif.
@@ -440,7 +469,7 @@ export default function POEdit() {
               </span>
             </div>
           </div>
-        </div>
+        </fieldset>
 
         {/* Actions */}
         <div className="flex flex-wrap justify-end gap-3 pb-8">

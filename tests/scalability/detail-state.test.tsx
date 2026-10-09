@@ -20,7 +20,7 @@ vi.mock('../../src/lib/supabase', () => ({ supabase: {
 } }))
 vi.mock('../../src/components/AthelNav',()=>({default:()=>null}))
 vi.mock('../../src/lib/AuthContext',()=>({useAuth:()=>({user:{id:'u'},profile:{id:'u',role:'staff'}})}))
-vi.mock('react-router-dom',()=>({useParams:()=>({id:'po'}),useNavigate:()=>vi.fn()}))
+vi.mock('react-router-dom',()=>({useParams:()=>({id:'po'}),useNavigate:()=>vi.fn(),useBlocker:()=>({state:'unblocked'}),useBeforeUnload:()=>{}}))
 import POEdit from '../../src/pages/athel/POEdit'
 import PODetail from '../../src/pages/athel/PODetail'
 const clients:QueryClient[]=[]

@@ -1,8 +1,9 @@
 import React from 'react'
+import { transferableAbortController } from 'node:util'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { Link, MemoryRouter, Route, Routes } from 'react-router-dom'
+import { createMemoryRouter, Link, RouterProvider } from 'react-router-dom'
 const state=vi.hoisted(()=>({version:'2026-10-01T00:00:00Z',name:'Initial item',fail:false,lineGate:null as Promise<void>|null,headerGate:null as Promise<void>|null,deliveryGate:null as Promise<void>|null,conflict:false,failHeader:false,lineVersions:[] as string[],writes:[] as any[]}))
 vi.mock('../../src/lib/AuthContext',()=>({useAuth:()=>({user:{id:'u'},profile:{id:'u',role:'staff'}})}))
 vi.mock('../../src/components/AthelNav',()=>({default:()=>null}))
@@ -17,10 +18,18 @@ vi.mock('../../src/lib/reads/detailReads',async original=>({...await original<an
 import POEdit from '../../src/pages/athel/POEdit'
 import PODetail from '../../src/pages/athel/PODetail'
 const clients:QueryClient[]=[]
-function mount(edit=false,retry:false|number=false,existingClient?:QueryClient){const client=existingClient??new QueryClient({defaultOptions:{queries:{retry,retryDelay:0}}});if(!existingClient)clients.push(client);render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/po/a']}><Link to="/po/a">Go A</Link><Link to="/po/b">Go B</Link><Routes><Route path="/po/:id" element={edit?<POEdit/>:<PODetail/>}/></Routes></MemoryRouter></QueryClientProvider>);return client}
+const routers: ReturnType<typeof createMemoryRouter>[] = []
+function mount(edit=false,retry:false|number=false,existingClient?:QueryClient){
+ const client=existingClient??new QueryClient({defaultOptions:{queries:{retry,retryDelay:0}}})
+ if(!existingClient)clients.push(client)
+ const router=createMemoryRouter([{path:'/po/:id',element:<><Link to="/po/a">Go A</Link><Link to="/po/b">Go B</Link>{edit?<POEdit/>:<PODetail/>}</>}],{initialEntries:['/po/a']})
+ routers.push(router)
+ render(<QueryClientProvider client={client}><RouterProvider router={router}/></QueryClientProvider>)
+ return client
+}
 function deferred(){let resolve!:()=>void;const promise=new Promise<void>(done=>{resolve=done});return {promise,resolve}}
-beforeEach(()=>{state.version='2026-10-01T00:00:00Z';state.name='Initial item';state.fail=false;state.lineGate=null;state.headerGate=null;state.deliveryGate=null;state.conflict=false;state.failHeader=false;state.lineVersions=[];state.writes=[]})
-afterEach(()=>{cleanup();clients.splice(0).forEach(client=>client.clear());localStorage.clear()})
+beforeEach(()=>{vi.stubGlobal('AbortController', class { constructor() { return transferableAbortController() } });state.version='2026-10-01T00:00:00Z';state.name='Initial item';state.fail=false;state.lineGate=null;state.headerGate=null;state.deliveryGate=null;state.conflict=false;state.failHeader=false;state.lineVersions=[];state.writes=[]})
+afterEach(()=>{cleanup();routers.splice(0).forEach(router=>router.dispose());vi.unstubAllGlobals();clients.splice(0).forEach(client=>client.clear());localStorage.clear()})
 test('a single retry waits for fresh header and lines rather than reinitializing from failed cached data',async()=>{
  const client=mount(true);await screen.findByDisplayValue('Initial item');state.fail=true;await act(()=>client.invalidateQueries({queryKey:['po_line_state']}));await screen.findByRole('alert')
  const gate=deferred();state.headerGate=gate.promise;fireEvent.click(screen.getByRole('button',{name:'Coba lagi'}))

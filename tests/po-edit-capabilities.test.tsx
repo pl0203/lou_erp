@@ -5,7 +5,7 @@ const state=vi.hoisted(()=>{const invalidate=vi.fn();return {rpc:vi.fn(),navigat
 vi.mock('../src/lib/supabase',()=>({supabase:{rpc:state.rpc}}))
 vi.mock('../src/lib/AuthContext',()=>({useAuth:()=>({user:{id:'dummy'}})}))
 vi.mock('../src/components/AthelNav',()=>({default:()=>null}))
-vi.mock('react-router-dom',()=>({useNavigate:()=>state.navigate,useParams:()=>({id:'po'})}))
+vi.mock('react-router-dom',()=>({useNavigate:()=>state.navigate,useParams:()=>({id:'po'}),useBlocker:()=>({state:'unblocked'}),useBeforeUnload:()=>{}}))
 const po={id:'po',po_number:'DUMMY',status:'in_progress',customer_id:'c',order_date:'2026-09-30',total_value:30,updated_at:'2026-09-30T00:00:00Z'}
 const lines=[{id:'line',product_name:'Delivered product',sku:'SKU',quantity:3,unit_price:10}]
 vi.mock('@tanstack/react-query',()=>({useQueryClient:()=>state.queryClient,useMutation:()=>({reset:state.reset}),useQuery:({queryKey}:any)=>({isLoading:false,isError:queryKey[0]==='po_line_state'&&state.historyError,refetch:()=>{},data:queryKey[0]==='po'?{...po,status:state.status}:queryKey[0]==='po_line_state'?{po_updated_at:po.updated_at,po_has_delivery_history:state.history.length>0,items:lines.map(line=>({...line,has_delivery_history:state.history.length>0,delivered_quantity:state.history[0]?.voided_at ? 0 : state.history[0]?.sj_line_items[0]?.quantity_delivered ?? 0}))}:queryKey[0]==='po_line_items'?lines:queryKey[0]==='po_edit_deliveries'?state.history:queryKey[0]==='customers'?[{id:'c',name:'Dummy customer'}]:queryKey[0]==='purchase_orders'?{items:[{...po,status:state.status,customers:{name:'Dummy'},surat_jalan:[]}],total:1}:[]})}))

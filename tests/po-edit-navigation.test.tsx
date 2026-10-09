@@ -1,8 +1,9 @@
 import React, { Component } from 'react'
+import { transferableAbortController } from 'node:util'
 import { afterEach, expect, test, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 
 const mocks = vi.hoisted(() => ({ rpc: vi.fn() }))
 vi.mock('../src/lib/supabase', () => ({ supabase: {
@@ -27,25 +28,28 @@ class Boundary extends Component<React.PropsWithChildren, { failed: boolean }> {
   static getDerivedStateFromError() { return { failed: true } }
   render() { return this.state.failed ? <p>Unexpected detail crash</p> : this.props.children }
 }
-afterEach(() => { cleanup(); localStorage.clear(); vi.clearAllMocks() })
+afterEach(() => { cleanup(); localStorage.clear(); vi.clearAllMocks(); vi.unstubAllGlobals() })
 
 test('canceling an invalid edit renders complete detail data without leaking the edit projection into its cache', async () => {
+  vi.stubGlobal('AbortController', class { constructor() { return transferableAbortController() } })
   mocks.rpc.mockImplementation((name,args)=>({abortSignal(){return this},then(resolve:any){return Promise.resolve({data:{version:1,as_of:'2026-09-30T00:00:00Z',page:args.p_page,page_size:100,total:1,po_updated_at:'2026-09-30T00:00:00Z',po_has_delivery_history:false,items:[{id:'dummy-line',product_id:null,product_name:'Dummy product',sku:'DUMMY',quantity:2,unit_price:'10.00',line_total:'20.00',delivered_quantity:0,has_delivery_history:false}]},error:null}).then(resolve)}}))
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
-  render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/athel/po/dummy-po/edit']}><Boundary><Routes>
-    <Route path="/athel/po/:id/edit" element={<POEdit />} />
-    <Route path="/athel/po/:id" element={<PODetail />} />
-  </Routes></Boundary></MemoryRouter></QueryClientProvider>)
+  const router = createMemoryRouter([
+    { path: '/athel/po/:id/edit', element: <Boundary><POEdit /></Boundary> },
+    { path: '/athel/po/:id', element: <Boundary><PODetail /></Boundary> },
+  ], { initialEntries: ['/athel/po/dummy-po/edit'] })
+  render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>)
   await screen.findByDisplayValue('Dummy product')
   fireEvent.change(screen.getAllByRole('spinbutton')[0], { target: { value: '0' } })
   fireEvent.click(screen.getByRole('button', { name: 'Simpan Perubahan' }))
   await screen.findByText('Jumlah barang harus berupa bilangan bulat positif.')
   expect(mocks.rpc.mock.calls.some(([name])=>name==='pilot_order_transaction')).toBe(false)
   fireEvent.click(screen.getByRole('button', { name: 'Batal' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Buang perubahan' }))
   await waitFor(() => expect(screen.getByText('Dummy product')).toBeTruthy())
   expect(screen.queryByText('Unexpected detail crash')).toBeNull()
   expect(client.getQueryData(['po_line_state', 'dummy-po', 'detail', '2026-09-30T00:00:00Z'])).toEqual(expect.objectContaining({items:[expect.objectContaining({quantity:2,line_total:'20.00',unit_price:'10.00'})]}))
   expect(client.getQueryData(['po_line_state', 'dummy-po', 'edit', '2026-09-30T00:00:00Z'])).toEqual(expect.objectContaining({items:[expect.objectContaining({unit_price:10})]}))
   expect(client.getQueryData(['po', 'dummy-po'])).toEqual(expect.objectContaining({ completed_at: null }))
-  client.clear()
+  router.dispose(); client.clear()
 })
