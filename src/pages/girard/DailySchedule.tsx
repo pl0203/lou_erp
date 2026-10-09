@@ -1,5 +1,5 @@
 import { useUnsavedChanges } from '../../lib/useUnsavedChanges'
-import VisitRequestInbox, { VisitProposalForm } from '../../components/VisitRequestInbox'
+import { VisitProposalForm } from '../../components/VisitRequestInbox'
 import { readCompleteQuery } from '../../lib/reads/completeQuery'
 import { chunkIds } from '../../lib/reads/completeReads'
 import { formatMoney } from '../../lib/reads/money'
@@ -166,9 +166,8 @@ function DailyScheduleContent() {
 
       <div className="px-4 md:px-8 py-6 max-w-2xl mx-auto space-y-4">
         <ActivePromotionsBanner />
-        <div className="flex gap-4"><button onClick={() => replaceProposal(null)}>Ajukan kunjungan baru</button><button onClick={() => navigate('/girard/visit-history')}>Riwayat kunjungan saya</button></div>
+        <div className="flex flex-wrap gap-3"><button className="min-h-11 cursor-pointer rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-hover" onClick={() => replaceProposal(null)}>Ajukan kunjungan baru</button><button className="min-h-11 cursor-pointer rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-brand-primary transition-colors hover:bg-brand-tint" onClick={() => navigate('/girard/visit-history')}>Riwayat kunjungan saya</button></div>
         {showProposal && <VisitProposalForm key={`${proposalSchedule?.id ?? 'new'}:${proposalRevision}`} source={proposalSchedule ?? undefined} onDirtyChange={setProposalDirty} confirmDiscard={unsaved.confirmDiscard} onDone={() => { setProposalDirty(false); setShowProposal(false) }} />}
-        <VisitRequestInbox />
 
         {isLoading && (
           <div className="text-center text-gray-400 text-sm py-24">
@@ -283,7 +282,7 @@ function DailyScheduleContent() {
                 </div>
               )}
 
-              {!checkedIn && profile?.role === 'sales_person' && <button className="mx-5 mt-3 text-brand-primary text-sm" onClick={() => replaceProposal(schedule)}>Ajukan perubahan</button>}
+              {!checkedIn && profile?.role === 'sales_person' && <button className="mx-5 mt-3 min-h-11 cursor-pointer rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-brand-primary transition-colors hover:bg-brand-tint" onClick={() => replaceProposal(schedule)}>Ajukan perubahan</button>}
               {/* Actions */}
               <div className="px-5 py-4 flex gap-3">
                 {isToday ? (

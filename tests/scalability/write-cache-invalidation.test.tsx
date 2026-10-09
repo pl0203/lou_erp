@@ -11,6 +11,7 @@ vi.mock('../../src/lib/AuthContext', () => ({ useAuth: () => ({ profile: { id: '
 vi.mock('react-router-dom', async original => ({ ...await original<any>(), useNavigate: () => state.navigate, useBlocker: () => ({ state: 'unblocked' }), useBeforeUnload: () => {} }))
 vi.mock('@tanstack/react-query', async original => ({ ...await original<any>(), useQuery: ({ queryKey }: any) => ({ data: state.data[queryKey[0]], isLoading: false }) }))
 vi.mock('../../src/lib/supabase', () => ({ supabase: {
+  rpc: (_name: string, payload: unknown) => state.write('customer_manager_assignments', 'rpc', payload),
   auth: { getUser: async () => ({ data: { user: { id: 'actor' } } }) },
   from: (table: string) => {
     let operation: string, payload: unknown
@@ -48,8 +49,8 @@ function mount(component: React.ReactNode, customer = false) {
   return probe
 }
 function customerCacheProbe(client: QueryClient) {
-  const keys = ['customers', 'athel_customers', 'all_customers', 'assignments', 'my_customers'].map(key => [key, 'probe'])
-  const unrelated = ['purchase_orders', 'po_line_state', 'products', 'performance', 'revenue', 'today_activity', 'athel_dashboard'].map(key => [key, 'probe'])
+  const keys = ['customers', 'athel_customers', 'all_customers', 'assignments', 'my_customers', 'performance', 'revenue', 'customer_performance', 'manager_schedules'].map(key => [key, 'probe'])
+  const unrelated = ['purchase_orders', 'po_line_state', 'products', 'today_activity', 'athel_dashboard'].map(key => [key, 'probe'])
   ;[...keys, ...unrelated].forEach(key => client.setQueryData(key, { before: true }))
   const activeKey = ['girard_customer', 'actor', 'customer']
   client.setQueryData(activeKey, { before: true })
@@ -118,12 +119,12 @@ function submitCustomer(mode: CustomerMode) {
     fireEvent.click(screen.getByRole('button', { name: '+ Pelanggan Baru' }))
     fireEvent.change(screen.getByPlaceholderText('mis. Toko Bangunan Maju'), { target: { value: 'Keep customer name' } })
     choose('Pilih kategori...', 'perorangan')
-    choose('Belum ada manajer', 'manager-b')
+    choose('Belum ditugaskan', 'manager-b')
     fireEvent.click(screen.getByRole('button', { name: 'Buat' }))
   } else if (mode === 'assign') {
     fireEvent.click(screen.getByRole('button', { name: 'Tugaskan yang Ada' }))
     choose('Pilih pelanggan...', 'customer')
-    choose('Pilih manajer...', 'manager-b')
+    choose('Pilih penanggung jawab toko...', 'manager-b')
     choose('1x per bulan', '30')
     fireEvent.click(screen.getByRole('button', { name: 'Tugaskan' }))
   } else {
@@ -134,11 +135,11 @@ function submitCustomer(mode: CustomerMode) {
   }
 }
 function customerProbe(mode: CustomerMode) {
-  if (mode === 'reassign' || mode === 'unassign') state.data.assignments = [{ customer_id: 'customer', manager_id: 'manager-a', managers: { id: 'manager-a', full_name: 'Manager A' } }]
+  if (mode === 'reassign' || mode === 'unassign') state.data.assignments = [{ id: 'assignment', version: 1, customer_id: 'customer', manager_id: 'manager-a', managers: { id: 'manager-a', full_name: 'Manager A' } }]
   return mount(<GirardCustomers />, true)
 }
 
-test.each(['create', 'assign', 'reassign', 'unassign'] as const)('customer %s refreshes only customer caches after explicit final acknowledgement', async mode => {
+test.each(['create', 'assign', 'reassign', 'unassign'] as const)('customer %s refreshes customer and owner-dependent caches after explicit final acknowledgement', async mode => {
   let commit!: (value: unknown) => void
   state.write.mockImplementationOnce(async (_table, _operation, payload) => ({ data: [{ id: payload?.id ?? 'customer' }], error: null }))
     .mockReturnValueOnce(new Promise(resolve => { commit = resolve }))
@@ -148,11 +149,11 @@ test.each(['create', 'assign', 'reassign', 'unassign'] as const)('customer %s re
   probe.unchanged()
   expect(screen.getByRole('button', { name: 'Menyimpan...' })).toBeTruthy()
   const customerId = mode === 'create' ? state.write.mock.calls[0][2].id : 'customer'
-  await act(async () => commit({ data: [{ customer_id: customerId, manager_id: 'manager-b' }], error: null }))
+  await act(async () => commit({ data: { customer_id: customerId, manager_id: mode === 'unassign' ? null : 'manager-b', id: 'assignment', version: mode === 'unassign' || mode === 'reassign' ? 2 : 1 }, error: null }))
   await waitFor(() => probe.refreshed())
   expect(screen.queryByRole('button', { name: 'Batal' })).toBeNull()
-  expect(state.write.mock.calls[1][1]).toBe(mode === 'create' ? 'insert' : mode === 'unassign' ? 'delete' : 'upsert')
-  if (mode !== 'unassign') expect(state.write.mock.calls[1][2]).toEqual(expect.objectContaining({ manager_id: 'manager-b', assigned_by: 'actor' }))
+  expect(state.write.mock.calls[1][1]).toBe('rpc')
+  expect(state.write.mock.calls[1][2]).toEqual({ p_customer_id: customerId, p_owner_id: mode === 'unassign' ? null : 'manager-b', p_expected_assignment_id: mode === 'reassign' || mode === 'unassign' ? 'assignment' : null, p_expected_version: mode === 'reassign' || mode === 'unassign' ? 1 : null })
 })
 
 test.each([
@@ -172,7 +173,7 @@ test.each([
   expect(state.write).toHaveBeenCalledTimes(failureAt)
   expect(screen.getByRole('button', { name: 'Batal' })).toBeTruthy()
   if (mode === 'create') expect((screen.getByPlaceholderText('mis. Toko Bangunan Maju') as HTMLInputElement).value).toBe('Keep customer name')
-  else expect((screen.getByRole('option', { name: mode === 'assign' ? 'Pilih manajer...' : 'Belum ditugaskan' }).closest('select') as HTMLSelectElement).value).toBe(mode === 'unassign' ? '' : 'manager-b')
+  else expect((screen.getByRole('option', { name: mode === 'assign' ? 'Pilih penanggung jawab toko...' : 'Belum ditugaskan' }).closest('select') as HTMLSelectElement).value).toBe(mode === 'unassign' ? '' : 'manager-b')
 })
 
 vi.mock('../../src/lib/visitTransactions', () => ({ useVisitPlanningSender: () => Object.assign(state.send, { hasUnresolved: () => false }) }))

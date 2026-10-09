@@ -287,7 +287,7 @@ export function CustomerPerformanceContent() {
                 <tr className="bg-gray-50 border-b border-gray-100">
                   <th className="text-left px-5 py-3 font-medium text-gray-500">Pelanggan</th>
                   {showManagerCol && (
-                    <th className="text-left px-5 py-3 font-medium text-gray-500">Manajer</th>
+                    <th className="text-left px-5 py-3 font-medium text-gray-500">Penanggung Jawab Toko</th>
                   )}
                   <th className="text-center px-5 py-3 font-medium text-gray-500">Kunjungan (Aktual/Target)</th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500">Kunjungan Terakhir</th>

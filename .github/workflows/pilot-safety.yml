@@ -213,6 +213,9 @@ jobs:
       - name: Complete demo revision composition and real races
         run: node scripts/test-demo-revisions-ci.mjs
 
+      - name: Unified store owner and credit invariants
+        run: node scripts/test-store-owner-ci.mjs
+
       - name: Atomic demo rollout safety lifecycle
         env:
           DEMO_ROLLOUT_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}

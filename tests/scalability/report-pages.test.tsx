@@ -69,3 +69,10 @@ for (const [name, Component] of [['customer', CustomerPerformanceContent], ['sal
   expect(screen.getByRole('alert').textContent).toMatch(/bulan/i)
   expect(screen.getByRole('button', { name: 'Coba lagi' })).toBeTruthy()
 })
+
+for (const Component of [CustomerPerformanceContent, RevenueContent]) test(`${Component.name}: customer owner column uses the unified store-owner label`, () => {
+  state.response.summary = { total_sales: '0', active_customers: 0, total_customers: 0, total_visits: 0, total_target_visits: 0, visit_percent: 0, top_customer: null, total_orders: 0 }
+  state.response.items = [{ id: 'c', name: 'Store', customer_id: 'c', customer_name: 'Store', manager_name: 'Owner', actual_visits: 0, target_visits: 4, last_visit_date: null, last_order_date: null, order_count: 0, total_sales: '0', sales_target: null }]
+  render(<Component />)
+  expect(screen.getByRole('columnheader', { name: 'Penanggung Jawab Toko' })).toBeTruthy()
+})

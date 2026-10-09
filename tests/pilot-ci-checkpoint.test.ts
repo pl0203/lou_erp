@@ -245,6 +245,7 @@ test('the composition preserves every category-staging workflow byte outside the
   const preserved = workflow
     .replace('      PGTZ: UTC\n', '')
     .replace(/      - name: Complete demo revision composition and real races\n[\s\S]*?(?=      - )/, '')
+    .replace(/      - name: Unified store owner and credit invariants\n[\s\S]*?(?=      - )/, '')
     .replace(/      - name: Atomic demo rollout safety lifecycle\n[\s\S]*?(?=      - )/, '')
     .replace('            if [[ "$file" > supabase/migrations/202610021001_ihr_leave_foundation.sql || "$file" == supabase/migrations/202610021001_ihr_leave_foundation.sql ]]; then continue; fi\n', '')
     .replace(/      - name: Guarded iHR foundation SQL suite\n[\s\S]*?(?=      - )/, '')

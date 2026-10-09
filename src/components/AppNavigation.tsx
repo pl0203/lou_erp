@@ -5,7 +5,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
 import BrandLogo from './BrandLogo'
 import NavigationIcon from './NavigationIcon'
-import { moduleLabels, moduleOptions, roleHome } from './navigationModules'
+import { moduleIcons, moduleLabels, moduleOptions, roleHome } from './navigationModules'
 import type { NavigationLink, NavigationModule } from './navigationModules'
 import './navigation.css'
 
@@ -146,7 +146,7 @@ export default function AppNavigation({ module, links, beforeSignOut }: { module
     </div>
     <div className="navigation-module" ref={switcherRef} onKeyDown={event => onPopoverKeyDown(event, showSwitcher, switcherTrigger, () => setShowSwitcher(false))}>
       {module === 'home' ? <div className="navigation-module-home"><BrandLogo variant="mark" decorative /><span className="navigation-label">Semua modul</span></div> : <button ref={switcherTrigger} type="button" className="navigation-module-button" aria-label={label} aria-expanded={showSwitcher} aria-controls={switcherId} onClick={() => { setShowSwitcher(value => !value); setShowUser(false); setTooltip(null) }} {...tooltipEvents(label)}>
-        <BrandLogo variant="mark" decorative /><span className="navigation-label">{label}</span><NavigationIcon name="chevron" className="navigation-label navigation-chevron" />
+        <NavigationIcon name={moduleIcons[module]} /><span className="navigation-label">{label}</span><NavigationIcon name="chevron" className="navigation-label navigation-chevron" />
       </button>}
       {showSwitcher && <div id={switcherId} role="group" aria-label="Pilihan modul" className="navigation-popover navigation-module-options">
         <p className="navigation-popover-title">Ganti modul</p>

@@ -5,7 +5,7 @@ import { confirmCustomerWrite, refreshCustomerCaches } from '../../lib/customerW
 import ReadFailure from '../../components/ReadFailure'
 import { readCompleteQuery } from '../../lib/reads/completeQuery'
 import { singleRelation } from '../../lib/relations'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
@@ -30,9 +30,11 @@ type Manager = {
 }
 
 type Assignment = {
+  id: string
+  version: number
   customer_id: string
-  manager_id: string
-  managers: { id: string; full_name: string }
+  manager_id: string | null
+  managers: { id: string; full_name: string } | null
 }
 
 type CustomerForm = {
@@ -99,7 +101,7 @@ async function fetchManagers(signal?: AbortSignal): Promise<Manager[]> {
   const data = await readCompleteQuery((offset, limit) => supabase
     .from('users')
     .select('id, full_name', { count: 'exact' })
-    .in('role', ['sales_manager', 'sales_head', 'executive'])
+    .in('role', ['sales_person', 'sales_manager', 'sales_head', 'executive'])
     .eq('is_active', true)
     .order('id')
     .range(offset, offset + limit - 1), row => row.id, signal)
@@ -108,27 +110,35 @@ async function fetchManagers(signal?: AbortSignal): Promise<Manager[]> {
 
 async function fetchAssignments(signal?: AbortSignal): Promise<Assignment[]> {
   const data = await readCompleteQuery((offset, limit) => supabase.from('customer_manager_assignments')
-    .select('id, customer_id, manager_id, managers:users!customer_manager_assignments_manager_id_fkey(id, full_name)', { count: 'exact' })
+    .select('id, version, customer_id, manager_id, managers:users!customer_manager_assignments_manager_id_fkey(id, full_name)', { count: 'exact' })
     .order('id').range(offset, offset + limit - 1), row => row.id, signal)
   return data.map(row => ({ ...row, managers: singleRelation(row.managers) }))
 }
 
-async function saveAssignment(customerId: string, managerId: string, assignedBy: string, previousManagerId: string, create: boolean) {
-  if (managerId === previousManagerId) return
-  if (managerId) {
-    const payload = { customer_id: customerId, manager_id: managerId, assigned_by: assignedBy, assigned_at: new Date().toISOString() }
-    await confirmCustomerWrite(() => (create
-      ? supabase.from('customer_manager_assignments').insert(payload)
-      : supabase.from('customer_manager_assignments').upsert(payload, { onConflict: 'customer_id' })
-    ).select('customer_id, manager_id'), { customer_id: customerId, manager_id: managerId }, 'Penugasan')
-  } else {
-    await confirmCustomerWrite(() => supabase.from('customer_manager_assignments').delete().eq('customer_id', customerId).select('customer_id'), { customer_id: customerId }, 'Penghapusan penugasan')
-  }
+async function saveAssignment(customerId: string, managerId: string, original: Assignment | null) {
+  if (managerId === (original?.manager_id ?? '')) return
+  await confirmCustomerWrite(async () => {
+    if (original && (!original.id || !Number.isSafeInteger(original.version) || original.version < 1)) {
+      throw new Error('Versi penugasan tidak tersedia. Tutup formulir dan muat ulang data.')
+    }
+    const { data, error } = await supabase.rpc('pilot_assign_store_owner_v1', {
+      p_customer_id: customerId,
+      p_owner_id: managerId || null,
+      p_expected_assignment_id: original?.id ?? null,
+      p_expected_version: original?.version ?? null,
+    })
+    if (error?.code === '40001') throw new Error('Penanggung Jawab Toko telah berubah. Tutup formulir dan muat ulang sebelum mencoba lagi.')
+    if (error) throw error
+    const validAssignment = typeof data?.id === 'string' && data.id.length > 0 && Number.isSafeInteger(data.version) &&
+      data.version === (original?.version ?? 0) + 1 && (!original || data.id === original.id)
+    if (!validAssignment || data?.manager_id !== (managerId || null)) throw new Error('Respons tidak mengonfirmasi penugasan yang dituju.')
+    return { data: [data], error: null }
+  }, { customer_id: customerId }, 'Penugasan Penanggung Jawab Toko')
 }
 
 async function saveCustomerAndAssignment(
   customerId: string, payload: Record<string, unknown>, create: boolean,
-  managerId: string, previousManagerId: string, assignedBy: string,
+  managerId: string, originalAssignment: Assignment | null,
 ) {
   const customerChanged = create || Object.keys(payload).length > 0
   if (customerChanged) {
@@ -137,7 +147,7 @@ async function saveCustomerAndAssignment(
       : supabase.from('customers').update(payload).eq('id', customerId).select('id'), { id: customerId })
   }
   try {
-    await saveAssignment(customerId, managerId, assignedBy, previousManagerId, create)
+    await saveAssignment(customerId, managerId, originalAssignment)
   } catch (error) {
     if (!customerChanged) throw error
     throw new Error(`Data pelanggan tersimpan (ID: ${customerId}). ${error instanceof Error ? error.message : 'Penugasan belum terkonfirmasi.'}`)
@@ -161,7 +171,11 @@ export default function GirardCustomers() {
   const [form, setForm] = useState<CustomerForm>(EMPTY_FORM)
   const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null)
   const [originalCustomer, setOriginalCustomer] = useState<Customer | null>(null)
-  const [originalManagerId, setOriginalManagerId] = useState('')
+  const [originalAssignment, setOriginalAssignment] = useState<Assignment | null>(null)
+  const writeBusy = useRef(false)
+  const ownerChanged = useRef(false)
+  const createCustomerId = useRef<string | null>(null)
+  const [createNeedsReview, setCreateNeedsReview] = useState(false)
 
   const [selectedExistingId, setSelectedExistingId] = useState('')
   const [existingFrequency, setExistingFrequency] = useState(7)
@@ -187,20 +201,40 @@ export default function GirardCustomers() {
     (assignments ?? []).map(a => [a.customer_id, a])
   )
 
-  const unassignedCustomers = customers?.filter(c => !assignmentMap[c.id]) ?? []
+  const unassignedCustomers = customers?.filter(c => !assignmentMap[c.id]?.manager_id) ?? []
+
+  const settleWrite = async () => {
+    try {
+      await Promise.all([
+        refreshCustomerCaches(queryClient, true),
+        ...(ownerChanged.current ? ['manager_schedules', 'customer_performance', 'revenue', 'performance']
+          .map(prefix => queryClient.invalidateQueries({ queryKey: [prefix] })) : []),
+      ])
+    } finally {
+      writeBusy.current = false
+      ownerChanged.current = false
+    }
+  }
 
   const createMutation = useMutation({
     mutationFn: async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Tidak terautentikasi')
       const category = parseCustomerCategory(form.customer_category)
-      await saveCustomerAndAssignment(crypto.randomUUID(), {
-        name: form.name, address: form.address || null, city: form.city || null,
-        phone: form.phone || null, email: form.email || null, visit_frequency_days: form.visit_frequency_days,
-        pricing_tier: form.pricing_tier, customer_category: category,
-      }, true, form.manager_id, '', user.id)
+      createCustomerId.current ??= crypto.randomUUID()
+      try {
+        await saveCustomerAndAssignment(createCustomerId.current, {
+          name: form.name, address: form.address || null, city: form.city || null,
+          phone: form.phone || null, email: form.email || null, visit_frequency_days: form.visit_frequency_days,
+          pricing_tier: form.pricing_tier, customer_category: category,
+        }, true, form.manager_id, null)
+      } catch (error) {
+        // Never create another identity or guess whether either write committed.
+        setCreateNeedsReview(true)
+        throw error
+      }
     },
-    onSettled: () => refreshCustomerCaches(queryClient, true),
+    onSettled: settleWrite,
     onSuccess: () => {
       closeModal()
     },
@@ -215,9 +249,9 @@ export default function GirardCustomers() {
       const payload: Record<string, unknown> = {}
       if (existingFrequency !== original.visit_frequency_days) payload.visit_frequency_days = existingFrequency
       if (existingPricingTier !== original.pricing_tier) payload.pricing_tier = existingPricingTier
-      await saveCustomerAndAssignment(selectedExistingId, payload, false, existingManagerId, '', user.id)
+      await saveCustomerAndAssignment(selectedExistingId, payload, false, existingManagerId, originalAssignment)
     },
-    onSettled: () => refreshCustomerCaches(queryClient, true),
+    onSettled: settleWrite,
     onSuccess: () => {
       closeModal()
     },
@@ -229,9 +263,9 @@ export default function GirardCustomers() {
       if (!user) throw new Error('Tidak terautentikasi')
       if (!originalCustomer) throw new Error('Pelanggan tidak tersedia. Muat ulang sebelum melanjutkan.')
       await saveCustomerAndAssignment(editingCustomerId!, customerChanges(form, originalCustomer), false,
-        form.manager_id, originalManagerId, user.id)
+        form.manager_id, originalAssignment)
     },
-    onSettled: () => refreshCustomerCaches(queryClient, true),
+    onSettled: settleWrite,
     onSuccess: () => {
       closeModal()
     },
@@ -241,7 +275,9 @@ export default function GirardCustomers() {
     setShowModal(false)
     createMutation.reset(); assignExistingMutation.reset(); updateMutation.reset()
     setOriginalCustomer(null)
-    setOriginalManagerId('')
+    setOriginalAssignment(null)
+    createCustomerId.current = null
+    setCreateNeedsReview(false)
     setForm(EMPTY_FORM)
     setEditingCustomerId(null)
     setSelectedExistingId('')
@@ -251,10 +287,11 @@ export default function GirardCustomers() {
   }
 
   const openEdit = (c: Customer) => {
+    if (writeBusy.current) return
     const assignment = assignmentMap[c.id]
     createMutation.reset(); assignExistingMutation.reset(); updateMutation.reset()
     setOriginalCustomer(c)
-    setOriginalManagerId(assignment?.manager_id ?? '')
+    setOriginalAssignment(assignment ? { ...assignment } : null)
     setEditingCustomerId(c.id)
     setForm({
       ...EMPTY_FORM,
@@ -306,15 +343,16 @@ export default function GirardCustomers() {
         <div className="flex gap-2">
           {!readError && unassignedCustomers.length > 0 && (
             <button
-              onClick={() => { setModalMode('assign-existing'); setShowModal(true) }}
+              onClick={() => { if (writeBusy.current) return; closeModal(); setModalMode('assign-existing'); setShowModal(true) }}
+              disabled={isPending}
               className="border border-brand-primary text-brand-primary hover:bg-brand-tint text-sm font-medium px-4 py-2 rounded-lg transition-colors"
             >
               Tugaskan yang Ada
             </button>
           )}
           <button
-            onClick={() => { closeModal(); setModalMode('create'); setShowModal(true) }}
-            disabled={readError}
+            onClick={() => { if (writeBusy.current) return; closeModal(); setModalMode('create'); setShowModal(true) }}
+            disabled={readError || isPending}
             className="bg-brand-primary hover:bg-brand-hover text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
           >
             + Pelanggan Baru
@@ -343,7 +381,7 @@ export default function GirardCustomers() {
                 <tr className="bg-gray-50 border-b border-gray-100">
                   <th className="text-left px-5 py-3 font-medium text-gray-500">Pelanggan</th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500">Lokasi</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Manajer</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">Penanggung Jawab Toko</th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500">Tier Harga</th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500">Kategori Pelanggan</th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500">Frekuensi Kunjungan</th>
@@ -372,7 +410,7 @@ export default function GirardCustomers() {
                         {[c.address, c.city].filter(Boolean).join(', ') || '—'}
                       </td>
                       <td className="px-5 py-4">
-                        {assignment
+                        {assignment?.manager_id
                           ? <span className="text-gray-900">{assignment.managers?.full_name}</span>
                           : <span className="text-xs text-gray-300">Belum ditugaskan</span>
                         }
@@ -433,7 +471,7 @@ export default function GirardCustomers() {
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div><p className="text-gray-400">Kategori Pelanggan</p><p className="text-gray-700 mt-0.5">{formatCustomerCategory(c.customer_category)}</p></div>
                     <div>
-                      <p className="text-gray-400">Manajer</p>
+                      <p className="text-gray-400">Penanggung Jawab Toko</p>
                       <p className="text-gray-700 mt-0.5">{assignment?.managers?.full_name ?? '—'}</p>
                     </div>
                     <div>
@@ -475,7 +513,7 @@ export default function GirardCustomers() {
               </h3>
             </div>
 
-            <div className="px-6 py-4 space-y-4">
+            <fieldset disabled={isPending} className="px-6 py-4 space-y-4">
               {modalMode !== 'assign-existing' && <CustomerCategorySelect value={form.customer_category}
                 allowUnclassified={modalMode === 'edit' && originalCustomer?.customer_category === null}
                 onChange={value => setForm(p => ({ ...p, customer_category: value }))} />}
@@ -520,15 +558,15 @@ export default function GirardCustomers() {
                   </div>
                   <div>
                     <label className="block text-sm text-gray-600 mb-1">
-                      Tugaskan ke Manajer <span className="text-gray-400">(opsional)</span>
+                      Tugaskan ke Penanggung Jawab Toko <span className="text-gray-400">(opsional)</span>
                     </label>
                     <select
-                      aria-label="Manajer"
+                      aria-label="Penanggung Jawab Toko"
                       value={form.manager_id}
                       onChange={e => setForm(p => ({ ...p, manager_id: e.target.value }))}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                     >
-                      <option value="">Belum ada manajer</option>
+                      <option value="">Belum ditugaskan</option>
                       {managers?.map(m => (
                         <option key={m.id} value={m.id}>{m.full_name}</option>
                       ))}
@@ -547,18 +585,20 @@ export default function GirardCustomers() {
                       value={selectedExistingId}
                       onChange={e => {
                         setSelectedExistingId(e.target.value)
+                        const assignment = assignmentMap[e.target.value]
+                        setOriginalAssignment(assignment ? { ...assignment } : null)
                         const customer = customers?.find(c => c.id === e.target.value)
                         if (customer) { setExistingFrequency(customer.visit_frequency_days); setExistingPricingTier(customer.pricing_tier) }
                       }}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                     >
                       <option value="">Pilih pelanggan...</option>
-                      {(customers ?? []).filter(c => !assignmentMap[c.id] || c.id === selectedExistingId).map(c => (
+                      {(customers ?? []).filter(c => !assignmentMap[c.id]?.manager_id || c.id === selectedExistingId).map(c => (
                         <option key={c.id} value={c.id}>{c.name}</option>
                       ))}
                     </select>
                     <p className="text-xs text-gray-400 mt-1">
-                      Hanya menampilkan pelanggan yang belum ditugaskan ke manajer.
+                      Hanya menampilkan pelanggan yang belum ditugaskan ke penanggung jawab toko.
                     </p>
                   </div>
                   <div>
@@ -579,14 +619,14 @@ export default function GirardCustomers() {
                     {tierSelect(existingPricingTier, setExistingPricingTier)}
                   </div>
                   <div>
-                    <label className="block text-sm text-gray-600 mb-1">Tugaskan ke Manajer *</label>
+                    <label className="block text-sm text-gray-600 mb-1">Tugaskan ke Penanggung Jawab Toko *</label>
                     <select
-                      aria-label="Manajer"
+                      aria-label="Penanggung Jawab Toko"
                       value={existingManagerId}
                       onChange={e => setExistingManagerId(e.target.value)}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                     >
-                      <option value="">Pilih manajer...</option>
+                      <option value="">Pilih penanggung jawab toko...</option>
                       {managers?.map(m => (
                         <option key={m.id} value={m.id}>{m.full_name}</option>
                       ))}
@@ -616,9 +656,9 @@ export default function GirardCustomers() {
                     {tierSelect(form.pricing_tier, v => setForm(p => ({ ...p, pricing_tier: v })))}
                   </div>
                   <div>
-                    <label className="block text-sm text-gray-600 mb-1">Manajer</label>
+                    <label className="block text-sm text-gray-600 mb-1">Penanggung Jawab Toko</label>
                     <select
-                      aria-label="Manajer"
+                      aria-label="Penanggung Jawab Toko"
                       value={form.manager_id}
                       onChange={e => setForm(p => ({ ...p, manager_id: e.target.value }))}
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
@@ -631,29 +671,37 @@ export default function GirardCustomers() {
                   </div>
                 </>
               )}
-            </div>
+            </fieldset>
 
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
               <button
-                onClick={closeModal}
+                onClick={() => { if (!writeBusy.current) closeModal() }}
+                disabled={isPending}
                 className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
               >
                 Batal
               </button>
               <button
                 onClick={() => {
+                  if (writeBusy.current || (modalMode === 'create' && createNeedsReview)) return
                   if (modalMode === 'create') {
                     if (!form.name.trim()) return alert('Nama pelanggan wajib diisi.')
+                    ownerChanged.current = !!form.manager_id
+                    writeBusy.current = true
                     createMutation.mutate()
                   } else if (modalMode === 'assign-existing') {
                     if (!selectedExistingId) return alert('Pilih pelanggan terlebih dahulu.')
-                    if (!existingManagerId) return alert('Pilih manajer terlebih dahulu.')
+                    if (!existingManagerId) return alert('Pilih penanggung jawab toko terlebih dahulu.')
+                    ownerChanged.current = true
+                    writeBusy.current = true
                     assignExistingMutation.mutate()
                   } else {
+                    ownerChanged.current = form.manager_id !== (originalAssignment?.manager_id ?? '')
+                    writeBusy.current = true
                     updateMutation.mutate()
                   }
                 }}
-                disabled={isPending || readError}
+                disabled={isPending || readError || (modalMode === 'create' && createNeedsReview)}
                 className="px-4 py-2 text-sm font-medium bg-brand-primary text-white rounded-lg hover:bg-brand-hover disabled:opacity-50"
               >
                 {isPending ? 'Menyimpan...'
@@ -663,6 +711,9 @@ export default function GirardCustomers() {
               </button>
             </div>
 
+            {createNeedsReview && (
+              <p className="text-amber-800 text-xs px-6 pb-4">Periksa daftar pelanggan sebelum mencoba lagi. Tutup formulir dan muat ulang data sebelum membuka formulir baru; data isian tetap ditampilkan di sini untuk diperiksa.</p>
+            )}
             {isError && (
               <p role="alert" className="text-red-500 text-xs px-6 pb-4 text-right">{errorMessage}</p>
             )}

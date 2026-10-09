@@ -19,6 +19,7 @@ import AthelPromotions from './pages/athel/Promotions'
 import OwnVisitHistory from './pages/girard/OwnVisitHistory'
 
 import DailySchedule from './pages/girard/DailySchedule'
+import VisitRequests from './pages/girard/VisitRequests'
 import ManagerSchedule from './pages/girard/ManagerSchedule'
 import VisitPage from './pages/girard/VisitPage'
 import GirardCustomerDetail from './pages/girard/GirardCustomerDetail'
@@ -101,6 +102,7 @@ export default function App() {
       <Route path="/athel/promotions" element={<ProtectedRoute allowedRoles={ATHEL_ROLES}><AthelPromotions /></ProtectedRoute>} />
 
       {/* Girard — all roles */}
+      <Route path="/girard/visit-requests" element={<ProtectedRoute allowedRoles={GIRARD_ROLES}><VisitRequests /></ProtectedRoute>} />
       <Route path="/girard/visit-history" element={<ProtectedRoute allowedRoles={GIRARD_ROLES}><OwnVisitHistory /></ProtectedRoute>} />
       <Route path="/girard/schedule" element={
         <ProtectedRoute allowedRoles={GIRARD_ROLES}>

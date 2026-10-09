@@ -67,7 +67,7 @@ function RevenueTable({
             <tr className="bg-gray-50 border-b border-gray-100">
               <th className="text-left px-5 py-3 font-medium text-gray-500">Peringkat</th>
               <th className="text-left px-5 py-3 font-medium text-gray-500">Pelanggan</th>
-              <th className="text-left px-5 py-3 font-medium text-gray-500">Manajer</th>
+              <th className="text-left px-5 py-3 font-medium text-gray-500">Penanggung Jawab Toko</th>
               <th className="text-center px-5 py-3 font-medium text-gray-500">Pesanan</th>
               <th className="text-left px-5 py-3 font-medium text-gray-500">Pesanan Terakhir</th>
               <th className="text-right px-5 py-3 font-medium text-gray-500">Total Penjualan</th>
@@ -145,7 +145,7 @@ function RevenueTable({
                   }`}>#{i + offset + 1}</span>
                   <p className="font-semibold text-gray-900 truncate">{r.customer_name}</p>
                 </div>
-                <p className="text-xs text-gray-400 mt-0.5">{r.manager_name ?? 'Tanpa manajer'}</p>
+                <p className="text-xs text-gray-400 mt-0.5">{r.manager_name ?? 'Belum ditugaskan'}</p>
               </div>
               <p className="font-bold text-gray-900 ml-3 shrink-0">
                 Rp {formatMoney(r.total_sales, 'millions')}M

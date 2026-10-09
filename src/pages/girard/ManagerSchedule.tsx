@@ -1,4 +1,3 @@
-import VisitRequestInbox from '../../components/VisitRequestInbox'
 import TransactionRecovery from '../../components/TransactionRecovery'
 import { useVisitPlanningSender } from '../../lib/visitTransactions'
 import { useUnsavedChanges } from '../../lib/useUnsavedChanges'
@@ -58,7 +57,7 @@ export function isEditable(_scheduledDate: string, status = 'pending'): boolean 
   return status !== 'completed'
 }
 
-async function fetchMyCustomers(managerId: string, role: string, signal?: AbortSignal): Promise<Customer[]> {
+async function fetchMyCustomers(_managerId: string, role: string, signal?: AbortSignal): Promise<Customer[]> {
   if (role === 'sales_head' || role === 'executive') {
     const data = await readCompleteQuery((offset, limit) => supabase.from('customers')
       .select('id, name, city, address, last_visit_date, visit_frequency_days', { count: 'exact' })
@@ -67,7 +66,7 @@ async function fetchMyCustomers(managerId: string, role: string, signal?: AbortS
   }
   const data = await readCompleteQuery((offset, limit) => supabase.from('customer_manager_assignments')
     .select('id, customers(id, name, city, address, last_visit_date, visit_frequency_days)', { count: 'exact' })
-    .eq('manager_id', managerId).order('id').range(offset, offset + limit - 1), row => row.id, signal)
+    .order('id').range(offset, offset + limit - 1), row => row.id, signal)
   return data.map(row => singleRelation(row.customers)).filter((row): row is Customer => row !== null).sort((a, b) => a.name.localeCompare(b.name))
 }
 
@@ -87,7 +86,7 @@ async function fetchMyTeam(managerId: string, role: string, signal?: AbortSignal
   return [self, ...team.filter(row => row.id !== managerId).sort((a, b) => a.full_name.localeCompare(b.full_name))]
 }
 
-async function fetchSchedules(managerId: string, role: string, dates: string[], signal?: AbortSignal): Promise<Schedule[]> {
+async function fetchSchedules(_managerId: string, role: string, dates: string[], signal?: AbortSignal): Promise<Schedule[]> {
   const read = (ids?: string[]) => readCompleteQuery((offset, limit) => {
     let query = supabase.from('sales_schedules')
       .select('id, version, outlet_id, sales_person_id, scheduled_date, status, notes, created_at, customers!sales_schedules_outlet_id_fkey(id, name, city), users!sales_schedules_sales_person_id_fkey(id, full_name)', { count: 'exact' })
@@ -99,7 +98,7 @@ async function fetchSchedules(managerId: string, role: string, dates: string[], 
   if (role === 'sales_head' || role === 'executive') rows = await read()
   else {
     const assignments = await readCompleteQuery((offset, limit) => supabase.from('customer_manager_assignments')
-      .select('id, customer_id', { count: 'exact' }).eq('manager_id', managerId).order('id').range(offset, offset + limit - 1), row => row.id, signal)
+      .select('id, customer_id', { count: 'exact' }).order('id').range(offset, offset + limit - 1), row => row.id, signal)
     for (const ids of chunkIds(assignments.map(row => row.customer_id))) rows.push(...await read(ids))
     rows.sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date) || (a.created_at ?? '').localeCompare(b.created_at ?? '') || a.id.localeCompare(b.id))
   }
@@ -233,7 +232,6 @@ function ManagerScheduleContent() {
       <GirardNav />
       {unsaved.dialog}
       <TransactionRecovery send={send} onCommitted={() => { queryClient.invalidateQueries(); setShowForm(false); setDeleteId(null) }} />
-      <div className="px-4 md:px-8 pt-4"><VisitRequestInbox /></div>
 
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center justify-between">
@@ -307,7 +305,7 @@ function ManagerScheduleContent() {
         <p className="text-gray-400 text-sm">Tidak ada kunjungan yang dijadwalkan untuk hari ini.</p>
         <button
         onClick={openCreate}
-        className="mt-3 text-brand-primary text-sm font-medium hover:text-brand-hover"
+        className="mt-4 min-h-11 cursor-pointer rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-brand-primary transition-colors hover:bg-brand-tint"
         >
         Tambahkan jadwal kunjungan baru +
         </button>
@@ -355,13 +353,13 @@ function ManagerScheduleContent() {
                           <>
                             <button
                               onClick={() => openEdit(s)}
-                              className="text-brand-primary hover:text-brand-hover text-xs font-medium mr-3"
+                              className="min-h-10 cursor-pointer rounded-lg border border-gray-300 px-3 py-2 text-brand-primary hover:bg-brand-tint text-xs font-semibold mr-2"
                             >
                               Ubah
                             </button>
                             <button
                               onClick={() => { setDeleteId(s.id); setDeleteVersion(s.version) }}
-                              className="text-red-400 hover:text-red-600 text-xs font-medium"
+                              className="min-h-10 cursor-pointer rounded-lg border border-red-200 px-3 py-2 text-red-700 hover:bg-red-50 text-xs font-semibold"
                             >
                               Hapus
                             </button>

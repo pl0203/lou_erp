@@ -5,16 +5,19 @@ import type { NavigationLink } from './navigationModules'
 const ROLE_LINKS: Record<string, NavigationLink[]> = {
   sales_person: [
     { to: '/girard/schedule',  label: 'Jadwal Kunjungan', icon: 'calendar' },
+    { to: '/girard/visit-requests', label: 'Permintaan Kunjungan', icon: 'orders' },
     { to: '/girard/my-orders', label: 'Riwayat Pesanan', icon: 'orders' },
   ],
   sales_manager: [
     { to: '/girard/schedule',    label: 'Jadwal', icon: 'calendar' },
+    { to: '/girard/visit-requests', label: 'Permintaan Kunjungan', icon: 'orders' },
     { to: '/girard/my-visits',   label: 'Kunjungan Saya', icon: 'visit' },
     { to: '/girard/team',        label: 'Tim Saya', icon: 'people' },
     { to: '/girard/dashboard',   label: 'Dashboard', icon: 'dashboard' },
   ],
   sales_head: [
     { to: '/girard/schedule',    label: 'Jadwal', icon: 'calendar' },
+    { to: '/girard/visit-requests', label: 'Permintaan Kunjungan', icon: 'orders' },
     { to: '/girard/my-visits',   label: 'Kunjungan Saya', icon: 'visit' },
     { to: '/girard/customers',   label: 'Pelanggan', icon: 'customers' },
     { to: '/girard/managers',    label: 'Manajer', icon: 'manager' },
@@ -23,6 +26,7 @@ const ROLE_LINKS: Record<string, NavigationLink[]> = {
   ],
   executive: [
     { to: '/girard/schedule',    label: 'Jadwal', icon: 'calendar' },
+    { to: '/girard/visit-requests', label: 'Permintaan Kunjungan', icon: 'orders' },
     { to: '/girard/my-visits',   label: 'Kunjungan Saya', icon: 'visit' },
     { to: '/girard/customers',   label: 'Pelanggan', icon: 'customers' },
     { to: '/girard/managers',    label: 'Manajer', icon: 'manager' },

@@ -77,8 +77,8 @@ test.each([
     expect(link.getAttribute('aria-current')).toBe('page')
   }
   const switcher = screen.getByRole('button', { name: module })
-  expect(switcher.querySelector('img')?.getAttribute('src')).toBe('/brand/padiwan-mark.svg')
-  expect(switcher.querySelector('img')?.getAttribute('alt')).toBe('')
+  expect(switcher.querySelector('img')).toBeNull()
+  expect(switcher.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true')
 })
 
 // These desktop/mobile action pairs must not diverge back to module colors.

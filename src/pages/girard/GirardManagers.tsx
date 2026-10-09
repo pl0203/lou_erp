@@ -22,20 +22,25 @@ async function fetchManagersData(signal?: AbortSignal): Promise<ManagerData[]> {
   const customerMap = new Map<string, ManagerData['customers']>()
   const teamMap = new Map<string, ManagerData['team']>()
   for (const ids of chunkIds(managers.map(row => row.id))) {
-    const assignments = await readCompleteQuery((offset, limit) => supabase.from('customer_manager_assignments')
-      .select('id, manager_id, customers!customer_manager_assignments_customer_id_fkey(id, name)', { count: 'exact' })
-      .in('manager_id', ids).order('id').range(offset, offset + limit - 1), row => row.id, signal)
-    const team = await readCompleteQuery((offset, limit) => supabase.from('users').select('id, full_name, manager_id', { count: 'exact' })
+    // A salesperson's current supervisor receives the team view; ownership stays on the salesperson.
+    const team = await readCompleteQuery((offset, limit) => supabase.from('users').select('id, full_name, manager_id, is_active', { count: 'exact' })
       .eq('role', 'sales_person').eq('is_active', true).in('manager_id', ids).order('id').range(offset, offset + limit - 1), row => row.id, signal)
-    for (const assignment of assignments) {
-      const customer = singleRelation(assignment.customers)
-      if (customer) {
-        const group = customerMap.get(assignment.manager_id) ?? []
-        group.push(customer)
-        customerMap.set(assignment.manager_id, group)
+    const supervisorByOwner = new Map([...ids.map(id => [id, id] as const), ...team.map(member => [member.id, member.manager_id] as const)])
+    for (const ownerIds of chunkIds([...supervisorByOwner.keys()])) {
+      const assignments = await readCompleteQuery((offset, limit) => supabase.from('customer_manager_assignments')
+        .select('id, manager_id, customers!customer_manager_assignments_customer_id_fkey(id, name)', { count: 'exact' })
+        .in('manager_id', ownerIds).order('id').range(offset, offset + limit - 1), row => row.id, signal)
+      for (const assignment of assignments) {
+        const customer = singleRelation(assignment.customers)
+        const supervisorId = supervisorByOwner.get(assignment.manager_id)
+        if (customer && supervisorId) {
+          const group = customerMap.get(supervisorId) ?? []
+          if (!group.some(row => row.id === customer.id)) group.push(customer)
+          customerMap.set(supervisorId, group)
+        }
       }
     }
-    for (const member of team) if (member.manager_id) {
+    for (const member of team) if (member.manager_id && member.is_active) {
       const group = teamMap.get(member.manager_id) ?? []
       group.push(member)
       teamMap.set(member.manager_id, group)
