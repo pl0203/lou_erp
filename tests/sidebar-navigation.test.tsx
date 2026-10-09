@@ -1,12 +1,13 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { MemoryRouter, useLocation } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
-const state = vi.hoisted(() => ({ role: 'executive', signOut: vi.fn() }))
-vi.mock('../src/lib/supabase', () => ({ supabase: {} }))
+const state = vi.hoisted(() => ({ role: 'executive', signOut: vi.fn(), from: vi.fn(() => ({ select: () => ({ eq: async () => ({ count: 100, error: null }) }) })) }))
+vi.mock('../src/lib/supabase', () => ({ supabase: { from: state.from } }))
 vi.mock('../src/lib/AuthContext', () => ({ useAuth: () => ({ profile: { role: state.role, full_name: 'Example Executive' }, signOut: state.signOut }) }))
-vi.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: 100 }) }))
 import AthelNav from '../src/components/AthelNav'
+import AppNavigation from '../src/components/AppNavigation'
 import GirardNav from '../src/components/GirardNav'
 import IHRNav from '../src/components/IHRNav'
 import Landing from '../src/pages/Landing'
@@ -17,18 +18,51 @@ function viewport(mobile = false) {
 }
 function Location() { const location = useLocation(); return <output data-testid="location">{location.pathname}{location.search}</output> }
 function mount(component: React.ReactNode = <AthelNav />, path = '/athel/po') {
-  return render(<MemoryRouter initialEntries={[path]}><div className="min-h-screen">{component}<main><button>Page action</button></main></div><Location /></MemoryRouter>)
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
+  return render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[path]}><div className="min-h-screen">{component}<main><button>Page action</button></main></div><Location /></MemoryRouter></QueryClientProvider>)
 }
-beforeEach(() => { state.role = 'executive'; state.signOut.mockReset().mockResolvedValue(undefined); localStorage.clear(); viewport() })
-afterEach(() => { cleanup(); vi.unstubAllGlobals() })
+beforeEach(() => { state.role = 'executive'; state.from.mockClear(); state.signOut.mockReset().mockResolvedValue(undefined); localStorage.clear(); viewport() })
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals() })
 
 test('desktop has a single semantic navigation and preserves nested Purchase Order selection', () => {
   mount(<AthelNav />, '/athel/po/123/edit')
   const nav = screen.getByRole('navigation', { name: 'Navigasi Procurement' })
   expect(within(nav).getAllByRole('link', { name: 'Purchase Order' })).toHaveLength(1)
   expect(within(nav).getByRole('link', { name: 'Purchase Order' }).getAttribute('aria-current')).toBe('page')
-  expect(within(nav).getByRole('link', { name: /Antrean Sales lama/ }).textContent).toContain('99+')
-  expect(within(nav).getByRole('link', { name: /Antrean Sales lama/ }).getAttribute('aria-label')).toContain('100')
+})
+
+test('navigation badges cap visual counts while retaining the accessible count', () => {
+  mount(<AppNavigation module="athel" links={[{ to: '/example', label: 'Example queue', icon: 'orders', badge: 100 }]} />)
+  const link = screen.getByRole('link', { name: /Example queue/ })
+  expect(link.textContent).toContain('99+')
+  expect(link.getAttribute('aria-label')).toContain('100')
+})
+
+test.each(['executive', 'po_admin'].flatMap(role => ['expanded', 'collapsed', 'mobile'].map(layout => [role, layout])))('%s has no legacy sales queue in %s navigation', (role, layout) => {
+  state.role = role
+  viewport(layout === 'mobile')
+  mount()
+  if (layout === 'collapsed') fireEvent.click(screen.getByRole('button', { name: 'Minimalkan menu' }))
+  if (layout === 'mobile') fireEvent.click(screen.getByRole('button', { name: 'Buka menu' }))
+  const nav = screen.getByRole('navigation', { name: 'Navigasi Procurement' })
+  expect(within(nav).queryByRole('link', { name: /Antrean Sales lama/i })).toBeNull()
+  expect(nav.querySelector('a[href="/athel/sales-orders"]')).toBeNull()
+  expect(within(nav).getAllByRole('link').map(link => [link.getAttribute('href'), link.getAttribute('aria-label')])).toEqual([
+    ['/athel/dashboard', 'Dashboard'],
+    ['/athel/po', 'Purchase Order'],
+    ['/athel/customers', 'Daftar Pelanggan'],
+    ['/athel/promotions', 'Promosi'],
+    ['/athel/products', 'Daftar Barang'],
+    ['/ihr/leave', 'Cuti'],
+  ])
+})
+
+test.each(['executive', 'po_admin'])('%s navigation no longer fetches or polls the legacy sales badge', async role => {
+  vi.useFakeTimers()
+  state.role = role
+  mount()
+  await act(async () => { await vi.advanceTimersByTimeAsync(120_000) })
+  expect(state.from).not.toHaveBeenCalled()
 })
 
 test('hamburger collapses to named icons, offers keyboard tooltips and restores the preference after remount', () => {

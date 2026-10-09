@@ -21,7 +21,9 @@ vi.mock('../src/lib/supabase', () => ({ supabase: {
 } }))
 vi.mock('../src/pages/athel/PONew', () => ({ default: () => <p>PO editor route</p> }))
 vi.mock('../src/pages/athel/POList', () => ({ default: () => <p>PO list route</p> }))
+vi.mock('../src/pages/athel/SalesOrders', () => ({ default: () => <p>Legacy sales orders route</p> }))
 vi.mock('../src/pages/girard/DailySchedule', () => ({ default: () => <p>Sales schedule route</p> }))
+vi.mock('../src/pages/girard/ManagerSchedule', () => ({ default: () => <p>Manager schedule route</p> }))
 vi.mock('../src/pages/girard/VisitPage', async () => {
   const { useParams } = await import('react-router-dom')
   return { default: () => <p>Visit route: {useParams().scheduleId}</p> }
@@ -70,4 +72,30 @@ test('existing role-denied redirects stay enforced in the new shell', async () =
   render(state.tree)
   expect(await screen.findByText('Sales schedule route')).toBeTruthy()
   expect(router().state.location.pathname).toBe('/girard/schedule')
+})
+
+test.each(['executive', 'po_admin'])('%s retains the protected direct legacy sales URL', async role => {
+  state.role = role
+  await act(() => router().navigate('/athel/sales-orders'))
+  render(state.tree)
+  expect(await screen.findByText('Legacy sales orders route')).toBeTruthy()
+  expect(router().state.location.pathname).toBe('/athel/sales-orders')
+})
+
+test.each(['sales_person', 'sales_manager', 'sales_head'])('%s still cannot open the legacy Procurement sales route', async role => {
+  state.role = role
+  await act(() => router().navigate('/athel/sales-orders'))
+  render(state.tree)
+  await screen.findByText(role === 'sales_person' ? 'Sales schedule route' : 'Manager schedule route')
+  expect(screen.queryByText('Legacy sales orders route')).toBeNull()
+  expect(router().state.location.pathname).toBe('/girard/schedule')
+})
+
+test('unauthenticated legacy sales links still redirect to login', async () => {
+  state.user = null
+  await act(() => router().navigate('/athel/sales-orders'))
+  render(state.tree)
+  await screen.findByText('Selamat datang')
+  expect(screen.queryByText('Legacy sales orders route')).toBeNull()
+  expect(router().state.location.pathname).toBe('/login')
 })
