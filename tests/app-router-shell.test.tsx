@@ -20,6 +20,7 @@ vi.mock('../src/lib/supabase', () => ({ supabase: {
   rpc: () => ({ single: async () => ({ data: { id: 'actor', full_name: 'Synthetic Actor', role: state.role, is_active: true }, error: null }) }),
 } }))
 vi.mock('../src/pages/athel/PONew', () => ({ default: () => <p>PO editor route</p> }))
+vi.mock('../src/pages/ihr/LeaveManagement', () => ({ default: () => <p>HR leave route</p> }))
 vi.mock('../src/pages/athel/POList', () => ({ default: () => <p>PO list route</p> }))
 vi.mock('../src/pages/athel/SalesOrders', () => ({ default: () => <p>Legacy sales orders route</p> }))
 vi.mock('../src/pages/girard/DailySchedule', () => ({ default: () => <p>Sales schedule route</p> }))
@@ -97,5 +98,24 @@ test('unauthenticated legacy sales links still redirect to login', async () => {
   render(state.tree)
   await screen.findByText('Selamat datang')
   expect(screen.queryByText('Legacy sales orders route')).toBeNull()
+  expect(router().state.location.pathname).toBe('/login')
+})
+
+test.each(['executive', 'po_admin', 'sales_person', 'sales_manager', 'sales_head'])('%s retains authenticated direct access to the HR leave route', async role => {
+  state.role = role
+  const query = ['sales_person', 'sales_manager'].includes(role) ? '?tab=mine' : ''
+  await act(() => router().navigate(`/ihr/leave${query}`))
+  render(state.tree)
+  expect(await screen.findByText('HR leave route')).toBeTruthy()
+  expect(router().state.location.pathname).toBe('/ihr/leave')
+  expect(router().state.location.search).toBe(query)
+})
+
+test('unauthenticated direct HR leave links still redirect to login', async () => {
+  state.user = null
+  await act(() => router().navigate('/ihr/leave?tab=mine'))
+  render(state.tree)
+  await screen.findByText('Selamat datang')
+  expect(screen.queryByText('HR leave route')).toBeNull()
   expect(router().state.location.pathname).toBe('/login')
 })

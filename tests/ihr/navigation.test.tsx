@@ -44,7 +44,7 @@ test.each(['sales_person', 'sales_manager', 'po_admin'])('%s iHR switch offers o
 test('executive retains existing user-management entry', () => { mocks.auth.profile.role = 'executive'; mount(<IHRNav />); expect(screen.getAllByRole('link', { name: 'Manajemen Pengguna' })[0].getAttribute('href')).toBe('/ihr/users') })
 test.each(['sales_person', 'sales_manager'])('%s has an independent iHR module entry opening Ajukan Cuti without PO access', role => {
   mocks.auth.profile.role = role; mount(<GirardNav />)
-  expect(screen.getAllByRole('link', { name: 'HR' })[0].getAttribute('href')).toBe('/ihr/leave?tab=mine')
+  expect(screen.queryByRole('link', { name: 'HR' })).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: 'Sales' }))
   expect(screen.getByRole('button', { name: 'Sales' }).getAttribute('aria-expanded')).toBe('true')
   fireEvent.click(screen.getByRole('button', { name: /HR/ }))
@@ -56,10 +56,13 @@ test.each(['sales_person', 'sales_manager'])('%s iHR page navigation labels the 
   expect(screen.getAllByRole('link', { name: 'Ajukan Cuti' })[0].getAttribute('href')).toBe('/ihr/leave?tab=mine')
   expect(screen.queryByText('Manajemen Pengguna')).toBeNull()
 })
-test('PO admin has a direct leave entry without sales access', () => {
+test('PO admin reaches leave through the HR module switch without sales access', () => {
   mocks.auth.profile.role = 'po_admin'; mount(<AthelNav />)
-  expect(screen.getAllByRole('link', { name: 'Cuti' })[0].getAttribute('href')).toBe('/ihr/leave')
+  expect(screen.queryByRole('link', { name: 'Cuti' })).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'Procurement' }))
   expect(screen.queryByRole('button', { name: /Sales/ })).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: /HR/ }))
+  expect(screen.getByText('/ihr/leave')).toBeTruthy()
 })
 const director: LeaveContext = { scopeVersion: '1', memberKind: 'director', timezone: null, balances: [], setup: { ready: false, blockers: [] }, capabilities: { request: false, approve: true, configure: false, adjust: false, readPrivate: false, manageAccess: false } }
 test('director gets only assigned approval navigation', () => { mount(<LeaveTabs context={director} />); expect(screen.getByRole('tab', { name: 'Persetujuan' })).toBeTruthy(); expect(screen.queryByRole('tab', { name: 'Ajukan Cuti' })).toBeNull(); expect(screen.queryByRole('tab', { name: 'Pengaturan' })).toBeNull() })

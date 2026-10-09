@@ -40,6 +40,5 @@ export default function GirardNav() {
     if (!roleLinks.some(link => link.to === '/girard/promotions')) roleLinks.push({ to: '/girard/promotions', label: 'Promosi', icon: 'promotion' })
     if (!roleLinks.some(link => link.to === '/girard/my-orders')) roleLinks.push({ to: '/girard/my-orders', label: 'Riwayat Pesanan', icon: 'orders' })
   }
-  const links: NavigationLink[] = profile ? [...roleLinks, { to: ['sales_person', 'sales_manager'].includes(profile.role) ? '/ihr/leave?tab=mine' : '/ihr/leave', label: 'HR', icon: 'leave' }] : []
-  return <AppNavigation module="girard" links={links} />
+  return <AppNavigation module="girard" links={roleLinks} />
 }

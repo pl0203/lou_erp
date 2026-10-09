@@ -53,7 +53,6 @@ test.each(['executive', 'po_admin'].flatMap(role => ['expanded', 'collapsed', 'm
     ['/athel/customers', 'Daftar Pelanggan'],
     ['/athel/promotions', 'Promosi'],
     ['/athel/products', 'Daftar Barang'],
-    ['/ihr/leave', 'Cuti'],
   ])
 })
 
@@ -101,9 +100,8 @@ test.each(['sales_person', 'sales_manager', 'sales_head', 'po_admin', 'executive
   expect(screen.getByTestId('location').textContent).toBe(role === 'executive' ? '/ihr/users' : ['sales_person', 'sales_manager'].includes(role) ? '/ihr/leave?tab=mine' : '/ihr/leave')
 })
 
-test.each(['sales_person', 'sales_manager'])('%s retains HR own-leave link query string', role => {
+test.each(['sales_person', 'sales_manager'])('%s retains its Sales operational links', role => {
   state.role = role; mount(<GirardNav />, '/girard/schedule')
-  expect(screen.getByRole('link', { name: 'HR' }).getAttribute('href')).toBe('/ihr/leave?tab=mine')
   expect(screen.getByRole('link', { name: 'Promosi' }).getAttribute('href')).toBe('/girard/promotions')
   expect(screen.getByRole('link', { name: 'Riwayat Kunjungan' }).getAttribute('href')).toBe('/girard/visit-history')
   expect(screen.getByRole('link', { name: 'Riwayat Pesanan' }).getAttribute('href')).toBe('/girard/my-orders')
@@ -190,4 +188,42 @@ test('account actions follow the account trigger in keyboard reading order', () 
   const signOut = screen.getByRole('button', { name: 'Keluar' })
   expect(trigger.compareDocumentPosition(home) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   expect(home.compareDocumentPosition(signOut) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+})
+
+const allRoles = ['sales_person', 'sales_manager', 'sales_head', 'po_admin', 'executive']
+const layouts = ['expanded', 'collapsed', 'mobile']
+const crossModuleCases = allRoles.flatMap(role => ['Procurement', 'Sales'].flatMap(module => layouts.map(layout => [role, module, layout])))
+
+test.each(crossModuleCases)('%s has no leave shortcut in %s %s navigation but can still switch to HR', (role, module, layout) => {
+  state.role = role
+  viewport(layout === 'mobile')
+  mount(module === 'Procurement' ? <AthelNav /> : <GirardNav />, module === 'Procurement' ? '/athel/po' : '/girard/schedule')
+  if (layout === 'collapsed') fireEvent.click(screen.getByRole('button', { name: 'Minimalkan menu' }))
+  if (layout === 'mobile') fireEvent.click(screen.getByRole('button', { name: 'Buka menu' }))
+  const nav = screen.getByRole('navigation', { name: `Navigasi ${module}` })
+  expect(nav.querySelector('a[href^="/ihr/leave"]')).toBeNull()
+  expect(within(nav).queryByRole('link', { name: /Cuti|HR/i })).toBeNull()
+
+  fireEvent.click(screen.getByRole('button', { name: module }))
+  const choices = screen.getByRole('group', { name: 'Pilihan modul' })
+  fireEvent.click(within(choices).getByRole('button', { name: /HR/ }))
+  expect(screen.getByTestId('location').textContent).toBe(role === 'executive' ? '/ihr/users' : ['sales_person', 'sales_manager'].includes(role) ? '/ihr/leave?tab=mine' : '/ihr/leave')
+  if (layout === 'mobile') expect(screen.queryByRole('dialog')).toBeNull()
+})
+
+test.each(allRoles.flatMap(role => layouts.map(layout => [role, layout])))('%s retains its leave link inside HR in %s navigation', (role, layout) => {
+  state.role = role
+  viewport(layout === 'mobile')
+  mount(<IHRNav />, '/ihr/leave')
+  if (layout === 'collapsed') fireEvent.click(screen.getByRole('button', { name: 'Minimalkan menu' }))
+  if (layout === 'mobile') fireEvent.click(screen.getByRole('button', { name: 'Buka menu' }))
+  const nav = screen.getByRole('navigation', { name: 'Navigasi HR' })
+  const personal = ['sales_person', 'sales_manager'].includes(role)
+  const leave = within(nav).getByRole('link', { name: personal ? 'Ajukan Cuti' : 'Manajemen Cuti' })
+  expect(leave.getAttribute('href')).toBe(personal ? '/ihr/leave?tab=mine' : '/ihr/leave')
+  expect(leave.getAttribute('aria-current')).toBe('page')
+  expect(!!within(nav).queryByRole('link', { name: 'Manajemen Pengguna' })).toBe(role === 'executive')
+  fireEvent.click(leave)
+  expect(screen.getByTestId('location').textContent).toBe(personal ? '/ihr/leave?tab=mine' : '/ihr/leave')
+  if (layout === 'mobile') expect(screen.queryByRole('dialog')).toBeNull()
 })

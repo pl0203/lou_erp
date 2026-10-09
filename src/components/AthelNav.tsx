@@ -11,7 +11,6 @@ export default function AthelNav() {
     { to: '/athel/customers', label: 'Daftar Pelanggan', icon: 'customers' },
     { to: '/athel/promotions', label: 'Promosi', icon: 'promotion' },
     { to: '/athel/products', label: 'Daftar Barang', icon: 'products' },
-    { to: '/ihr/leave', label: 'Cuti', icon: 'leave' },
   ] : []
   return <AppNavigation module="athel" links={links} />
 }
