@@ -3,7 +3,7 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useBeforeSignOut } from '../../../lib/AuthContext';
 import { useUnsavedChanges } from '../../../lib/useUnsavedChanges';
 import { parseMonth, parseUUID } from '../../../lib/co/validation';
-import type { COPreview, COReceipt } from '../../../lib/co/contracts';
+import type { COPreview, COReceipt, COReportPreviewPayload } from '../../../lib/co/contracts';
 import { previewCOOperation } from '../../../lib/co/rpc';
 import { sendCOCommand } from '../../../lib/co/transactions';
 import { formatMoney } from '../../../lib/reads/money';
@@ -33,6 +33,7 @@ function ReportReady({ customerId, month, revision }: {
 }) {
     const [previousRevision, setPreviousRevision] = useState<string | null>(null);
     const work = useCOReportWorkspace(customerId, month), [review, setReview] = useState<COReviewSnapshot | null>(null), [zero, setZero] = useState<'remaining' | 'post' | null>(null), [zeroCount, setZeroCount] = useState('0'), [correction, setCorrection] = useState(false), [correctionDirty, setCorrectionDirty] = useState(false);
+    const [reviewRequest, setReviewRequest] = useState<{ payload: COReportPreviewPayload; generation: number } | null>(null);
     const unsaved = useUnsavedChanges(work.dirty || correctionDirty);
     useBeforeSignOut(signal => unsaved.confirmDiscardDecision({ signal }), `${work.actor.scope}:${work.generation}`);
     const version = useRef(0), trigger = useRef<HTMLElement | null>(null);
@@ -45,17 +46,40 @@ function ReportReady({ customerId, month, revision }: {
     useEffect(() => { if (review)
         setReview(null); }, [changeKey]);
     const ignore = (p: Promise<unknown>) => void p.catch(() => { });
-    async function inspect() { setReview(null); try {
-        const h = await work.save();
-        if (!h || !work.current())
+    // A save changes the rendered version and starts new canonical row reads. Keep the
+    // review intent pinned to that acknowledged draft, then enter run from a fresh render.
+    useEffect(() => {
+        if (!reviewRequest) return;
+        const { payload, generation } = reviewRequest, h = work.header;
+        if (!work.isGenerationCurrent(generation) || work.dirty || work.stale || work.root.isError || work.rowsRead.isError
+            || work.evidenceState.dirty || work.evidenceState.pending || work.evidenceState.unresolved
+            || work.sender.hasUnresolved() || work.confirmed || !work.editing || !h || h.consumed || h.context_issue || h.source_context_link
+            || h.draft_id !== payload.draft_id || h.draft_version !== payload.expected_draft_version
+            || h.customer_version !== payload.expected_customer_version || h.eligible_set_fingerprint !== payload.eligible_set_fingerprint) {
+            setReviewRequest(null);
             return;
-        const payload = reportBinding(h);
-        await work.run(async (live) => { const v = version.current; const result = await previewCOOperation('post_report', payload, { isCurrent: live }); if (live() && v === version.current)
-            setReview({ operation: 'post_report', payload: { ...payload }, header: result as COPreview }); });
+        }
+        if (work.frozen) return;
+        setReviewRequest(null);
+        ignore(work.run(async live => {
+            const v = version.current;
+            const result = await previewCOOperation('post_report', payload, { isCurrent: live });
+            if (live() && v === version.current)
+                setReview({ operation: 'post_report', payload: { ...payload }, header: result as COPreview });
+        }));
+    }, [reviewRequest, work]);
+    async function inspect() {
+        setReview(null);
+        setReviewRequest(null);
+        const generation = work.generation;
+        try {
+            const h = await work.save();
+            if (h && work.isGenerationCurrent(generation))
+                setReviewRequest({ payload: reportBinding(h), generation });
+        } catch (e) {
+            if (work.isGenerationCurrent(generation)) work.setError(e);
+        }
     }
-    catch (e) {
-        work.setError(e);
-    } }
     async function publish(confirmedZero = false) { if (!review || !review.header.can_post || work.dirty || work.frozen)
         return; if (work.header?.sold_quantity === '0' && !confirmedZero) {
         trigger.current = document.activeElement as HTMLElement;
