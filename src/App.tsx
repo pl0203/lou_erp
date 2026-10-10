@@ -1,6 +1,13 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './lib/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
+import COMonthlyReports from './pages/athel/co/COMonthlyReports'
+import COMonthlyReport from './pages/athel/co/COMonthlyReport'
+import COCustomerStock from './pages/athel/co/COCustomerStock'
+import COLayout from './pages/athel/co/COLayout'
+import COOrders from './pages/athel/co/COOrders'
+import COForm from './pages/athel/co/COForm'
+import CODetail from './pages/athel/co/CODetail'
 
 import Login from './pages/Login'
 import ForgotPassword from './pages/ForgotPassword'
@@ -15,8 +22,11 @@ import AthelDashboard from './pages/athel/Dashboard'
 import CustomerList from './pages/athel/CustomerList'
 import ProductList from './pages/athel/ProductList'
 import SalesOrders from './pages/athel/SalesOrders'
+import AthelPromotions from './pages/athel/Promotions'
+import OwnVisitHistory from './pages/girard/OwnVisitHistory'
 
 import DailySchedule from './pages/girard/DailySchedule'
+import VisitRequests from './pages/girard/VisitRequests'
 import ManagerSchedule from './pages/girard/ManagerSchedule'
 import VisitPage from './pages/girard/VisitPage'
 import GirardCustomerDetail from './pages/girard/GirardCustomerDetail'
@@ -26,6 +36,7 @@ import GirardManagers from './pages/girard/GirardManagers'
 import GirardTeam from './pages/girard/GirardTeam'
 import ManagerCustomers from './pages/girard/ManagerCustomers'
 import MyOrders from './pages/girard/MyOrders'
+import MySalesSummary from './pages/girard/MySalesSummary'
 import MyVisits from './pages/girard/MyVisits'
 import GirardDashboard from './pages/girard/GirardDashboard'
 import Promotions from './pages/girard/Promotions'
@@ -33,7 +44,9 @@ import Promotions from './pages/girard/Promotions'
 import UserManagement from './pages/ihr/UserManagement'
 import LeaveManagement from './pages/ihr/LeaveManagement'
 
-const ATHEL_ROLES    = ['po_admin', 'executive']
+const PO_ROLES = ['po_admin', 'executive']
+const CO_ROLES = ['co_admin', 'executive']
+const MASTER_ROLES = ['po_admin', 'co_admin', 'executive']
 const GIRARD_ROLES   = ['sales_person', 'sales_manager', 'sales_head', 'executive']
 const EXECUTIVE_ONLY = ['executive']
 const MANAGER_UP     = ['sales_manager', 'sales_head', 'executive']
@@ -72,31 +85,46 @@ export default function App() {
 
       {/* Athel */}
       <Route path="/athel/dashboard" element={
-        <ProtectedRoute allowedRoles={ATHEL_ROLES}><AthelDashboard /></ProtectedRoute>
+        <ProtectedRoute allowedRoles={EXECUTIVE_ONLY}><AthelDashboard /></ProtectedRoute>
       } />
       <Route path="/athel/po" element={
-        <ProtectedRoute allowedRoles={ATHEL_ROLES}><POList /></ProtectedRoute>
+        <ProtectedRoute allowedRoles={PO_ROLES}><POList /></ProtectedRoute>
       } />
       <Route path="/athel/po/new" element={
-        <ProtectedRoute allowedRoles={ATHEL_ROLES}><PONew /></ProtectedRoute>
+        <ProtectedRoute allowedRoles={PO_ROLES}><PONew /></ProtectedRoute>
       } />
       <Route path="/athel/po/:id" element={
-        <ProtectedRoute allowedRoles={ATHEL_ROLES}><PODetail /></ProtectedRoute>
+        <ProtectedRoute allowedRoles={PO_ROLES}><PODetail /></ProtectedRoute>
       } />
       <Route path="/athel/po/:id/edit" element={
-        <ProtectedRoute allowedRoles={ATHEL_ROLES}><POEdit /></ProtectedRoute>
+        <ProtectedRoute allowedRoles={PO_ROLES}><POEdit /></ProtectedRoute>
       } />
       <Route path="/athel/customers" element={
-        <ProtectedRoute allowedRoles={ATHEL_ROLES}><CustomerList /></ProtectedRoute>
+        <ProtectedRoute allowedRoles={MASTER_ROLES}><CustomerList /></ProtectedRoute>
       } />
       <Route path="/athel/products" element={
-        <ProtectedRoute allowedRoles={ATHEL_ROLES}><ProductList /></ProtectedRoute>
+        <ProtectedRoute allowedRoles={MASTER_ROLES}><ProductList /></ProtectedRoute>
       } />
       <Route path="/athel/sales-orders" element={
-        <ProtectedRoute allowedRoles={ATHEL_ROLES}><SalesOrders /></ProtectedRoute>
+        <ProtectedRoute allowedRoles={EXECUTIVE_ONLY}><SalesOrders /></ProtectedRoute>
       } />
 
+      <Route path="/athel/promotions" element={<ProtectedRoute allowedRoles={EXECUTIVE_ONLY}><AthelPromotions /></ProtectedRoute>} />
+
+      {/* Task 8 installs the order screens inside this checked route family. */}
+      <Route path="/athel/co" element={<ProtectedRoute allowedRoles={CO_ROLES}><COLayout /></ProtectedRoute>}>
+        <Route index element={<COOrders />} />
+        <Route path="new" element={<COForm mode="create" />} />
+        <Route path="reports" element={<COMonthlyReports />} />
+        <Route path="reports/:customerId/:month" element={<COMonthlyReport />} />
+        <Route path="stock/*" element={<COCustomerStock />} />
+        <Route path=":id/edit" element={<COForm mode="edit" />} />
+        <Route path=":id" element={<CODetail />} />
+      </Route>
+
       {/* Girard — all roles */}
+      <Route path="/girard/visit-requests" element={<ProtectedRoute allowedRoles={GIRARD_ROLES}><VisitRequests /></ProtectedRoute>} />
+      <Route path="/girard/visit-history" element={<ProtectedRoute allowedRoles={GIRARD_ROLES}><OwnVisitHistory /></ProtectedRoute>} />
       <Route path="/girard/schedule" element={
         <ProtectedRoute allowedRoles={GIRARD_ROLES}>
           <RoleBasedSchedule />
@@ -111,6 +139,7 @@ export default function App() {
       <Route path="/girard/outlet/:id" element={
         <ProtectedRoute allowedRoles={GIRARD_ROLES}><OutletDetail /></ProtectedRoute>
       } />
+      <Route path="/girard/my-sales" element={<ProtectedRoute allowedRoles={['sales_person']}><MySalesSummary /></ProtectedRoute>} />
       <Route path="/girard/my-orders" element={
         <ProtectedRoute allowedRoles={GIRARD_ROLES}><MyOrders /></ProtectedRoute>
       } />
@@ -137,15 +166,15 @@ export default function App() {
         <ProtectedRoute allowedRoles={HEAD_UP}><GirardManagers /></ProtectedRoute>
       } />
       <Route path="/girard/promotions" element={
-        <ProtectedRoute allowedRoles={HEAD_UP}><Promotions /></ProtectedRoute>
+        <ProtectedRoute allowedRoles={GIRARD_ROLES}><Promotions /></ProtectedRoute>
       } />
 
-      {/* iHR — executive only */}
+      {/* User administration stays executive-only; leave authority is server-controlled. */}
       <Route path="/ihr/users" element={
         <ProtectedRoute allowedRoles={EXECUTIVE_ONLY}><UserManagement /></ProtectedRoute>
       } />
       <Route path="/ihr/leave" element={
-        <ProtectedRoute allowedRoles={EXECUTIVE_ONLY}><LeaveManagement /></ProtectedRoute>
+        <ProtectedRoute><LeaveManagement /></ProtectedRoute>
       } />
 
       {/* Default */}

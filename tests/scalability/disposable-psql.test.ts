@@ -1,0 +1,22 @@
+// @vitest-environment node
+import { expect, test, vi } from 'vitest'
+import { runDisposableSql } from '../../scripts/run-disposable-psql.mjs'
+const env={PATH:'/usr/bin:/bin',PGHOST:'127.0.0.1',PGDATABASE:'pilot_test',PGUSER:'postgres',PGPASSWORD:'synthetic-only',SCALE_ROWS:'6000',SCALE_PERMIT:'disposable-pilot-ci',PGHOSTADDR:'production.invalid',PGSERVICE:'production',PGOPTIONS:'-c role=service_role'}
+test('every SQL file uses the same guarded allowlisted connection and no target override arguments',()=>{
+ const execute=vi.fn();runDisposableSql('tests/database/fixture.sql',{env,execute})
+ expect(execute).toHaveBeenCalledTimes(1)
+ const [binary,args,options]=execute.mock.calls[0];expect(binary).toBe('psql');expect(args).toContain('--file=tests/database/fixture.sql');expect(args).toContain('-X');expect(options.env.PGHOST).toBe('127.0.0.1');expect(options.env.PGHOSTADDR).toBeUndefined();expect(options.env.PGSERVICE).toBeUndefined();expect(options.env.PGOPTIONS).toBeUndefined()
+})
+for(const patch of [{PGHOST:'production.invalid'},{PGDATABASE:'postgres'},{SCALE_PERMIT:''},{SCALE_ROWS:'30001'}])test(`refuses connection before executing ${JSON.stringify(patch)}`,()=>{const execute=vi.fn();expect(()=>runDisposableSql('fixture.sql',{env:{...env,...patch},execute})).toThrow();expect(execute).not.toHaveBeenCalled()})
+test('only the fixed comprehensive pooled file receives its measured finite whole-process budget',()=>{
+ for(const [file,minutes] of [['tests/database/scalable-pooled-reads.sql',18],['tests/database/fixture.sql',15],['arbitrary-pooled.sql',15]] as const){
+  const execute=vi.fn();runDisposableSql(file,{env,execute})
+  expect(execute.mock.calls[0][2].timeout).toBe(minutes*60*1000)
+ }
+})
+test('the fixed30k pooled matrix alone gets its reviewed history-growth budget',()=>{
+ for(const [file,minutes] of [['tests/database/scalable-pooled-reads.sql',40],['tests/database/fixture.sql',15],['arbitrary-pooled.sql',15]] as const){
+  const execute=vi.fn();runDisposableSql(file,{env:{...env,SCALE_ROWS:'30000'},execute})
+  expect(execute.mock.calls[0][2].timeout).toBe(minutes*60*1000)
+ }
+})

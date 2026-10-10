@@ -1,3 +1,9 @@
+import { useProcurementAccess } from '../../lib/procurementAccess'
+import { hasInvalidCustomerCategories } from '../../lib/customerCategoryRows'
+import CustomerCategorySelect from '../../components/CustomerCategorySelect'
+import ReadFailure from '../../components/ReadFailure'
+import { parseCustomerCategory, formatCustomerCategory, type CustomerCategory } from '../../lib/customerCategory'
+import { confirmCustomerWrite, refreshCustomerCaches } from '../../lib/customerWrites'
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
@@ -11,6 +17,7 @@ type Customer = {
   phone: string | null
   email: string | null
   pricing_tier: string
+  customer_category: CustomerCategory | null
 }
 
 type CustomerForm = {
@@ -20,6 +27,7 @@ type CustomerForm = {
   phone: string
   email: string
   pricing_tier: string
+  customer_category: CustomerCategory | null | ''
 }
 
 type CustomerListResponse = {
@@ -34,6 +42,7 @@ const EMPTY_FORM: CustomerForm = {
   phone: '',
   email: '',
   pricing_tier: 'luar_kota',
+  customer_category: '',
 }
 
 const TIER_LABELS: Record<string, string> = {
@@ -41,6 +50,7 @@ const TIER_LABELS: Record<string, string> = {
   luar_kota:     'Luar Kota',
   dalam_kota:    'Dalam Kota',
   depo_bangunan: 'Depo Bangunan',
+  others: 'Others',
 }
 
 const PAGE_SIZE = 10
@@ -52,38 +62,41 @@ async function fetchCustomers(search: string, page: number): Promise<CustomerLis
 
   let query = supabase
     .from('customers')
-    .select('id, name, address, city, phone, email, pricing_tier', { count: 'exact' })
+    .select('id, name, address, city, phone, email, pricing_tier, customer_category', { count: 'exact' })
     .order('name')
+    .order('id')
     .range(from, to)
 
   if (trimmedSearch) {
-    query = query.or(`name.ilike.%${trimmedSearch}%,city.ilike.%${trimmedSearch}%`)
+    query = query.or(literalSearchFilter(['name', 'city'], trimmedSearch))
   }
 
   const { data, error, count } = await query
   if (error) throw error
 
   return {
-    items: data ?? [],
+    items: (data ?? []).map(row => ({ ...row, customer_category: parseCustomerCategory(row.customer_category, { allowUnclassified: true }) })),
     total: count ?? 0,
   }
 }
 
-async function saveCustomer(form: CustomerForm, editingId: string | null) {
-  const payload = {
-    name: form.name.trim(),
-    address: form.address.trim() || null,
-    city: form.city.trim() || null,
-    phone: form.phone.trim() || null,
-    email: form.email.trim() || null,
-    pricing_tier: form.pricing_tier,
+async function saveCustomer(form: CustomerForm, original: Customer | null) {
+  const category = parseCustomerCategory(form.customer_category, { allowUnclassified: original !== null })
+  const payload: Record<string, unknown> = {}
+  for (const key of ['name', 'address', 'city', 'phone', 'email'] as const) {
+    if (!original || form[key] !== (original[key] ?? '')) {
+      payload[key] = key === 'name' ? form[key].trim() : form[key].trim() || null
+    }
   }
-  if (editingId) {
-    const { error } = await supabase.from('customers').update(payload).eq('id', editingId)
-    if (error) throw error
+  if (!original || form.pricing_tier !== original.pricing_tier) payload.pricing_tier = form.pricing_tier
+  if (!original || category !== original.customer_category) payload.customer_category = category
+  if (original) {
+    // No intended changes need no write or acknowledgement.
+    if (Object.keys(payload).length === 0) return
+    await confirmCustomerWrite(() => supabase.from('customers').update(payload).eq('id', original.id).select('id'), { id: original.id })
   } else {
-    const { error } = await supabase.from('customers').insert(payload)
-    if (error) throw error
+    const id = crypto.randomUUID()
+    await confirmCustomerWrite(() => supabase.from('customers').insert({ id, ...payload }).select('id'), { id })
   }
 }
 
@@ -94,10 +107,12 @@ async function deleteCustomer(id: string) {
 
 export default function CustomerList() {
   const queryClient = useQueryClient()
+  const access = useProcurementAccess()
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [originalCustomer, setOriginalCustomer] = useState<Customer | null>(null)
   const [form, setForm] = useState<CustomerForm>(EMPTY_FORM)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [page, setPage] = useState(1)
@@ -112,22 +127,23 @@ export default function CustomerList() {
     setPage(1)
   }, [debouncedSearch])
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError: queryReadError, refetch } = useQuery({
     queryKey: ['athel_customers', debouncedSearch, page],
     queryFn: () => fetchCustomers(debouncedSearch, page),
     placeholderData: previousData => previousData,
   })
 
   const customers = data?.items ?? []
+  const readError = queryReadError || hasInvalidCustomerCategories(customers)
   const totalItems = data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE))
   const startItem = totalItems === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
   const endItem = totalItems === 0 ? 0 : Math.min(page * PAGE_SIZE, totalItems)
 
   const saveMutation = useMutation({
-    mutationFn: () => saveCustomer(form, editingId),
+    mutationFn: () => { access.require(originalCustomer ? 'customer_edit' : 'customer_create'); return saveCustomer(form, originalCustomer) },
+    onSettled: () => refreshCustomerCaches(queryClient),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['athel_customers'] })
       setShowForm(false)
       setEditingId(null)
       setForm(EMPTY_FORM)
@@ -135,7 +151,7 @@ export default function CustomerList() {
   })
 
   const deleteMutation = useMutation({
-    mutationFn: () => deleteCustomer(deleteId!),
+    mutationFn: () => { access.require('customer_delete'); return deleteCustomer(deleteId!) },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['athel_customers'] })
       setDeleteId(null)
@@ -143,6 +159,9 @@ export default function CustomerList() {
   })
 
   const openEdit = (c: Customer) => {
+    if (!access.capabilities.customer_edit) return
+    saveMutation.reset()
+    setOriginalCustomer(c)
     setEditingId(c.id)
     setForm({
       name: c.name,
@@ -150,12 +169,14 @@ export default function CustomerList() {
       city: c.city ?? '',
       phone: c.phone ?? '',
       email: c.email ?? '',
-      pricing_tier: c.pricing_tier ?? 'luar_kota',
+      pricing_tier: c.pricing_tier ?? 'others',
+      customer_category: c.customer_category,
     })
     setShowForm(true)
   }
 
   const handleSave = () => {
+    if (!access.capabilities[originalCustomer ? 'customer_edit' : 'customer_create']) return
     if (!form.name.trim()) return alert('Nama pelanggan wajib diisi.')
     saveMutation.mutate()
   }
@@ -163,7 +184,7 @@ export default function CustomerList() {
   const deleteTarget = customers.find(c => c.id === deleteId)
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-brand-canvas">
       <AthelNav />
 
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center justify-between">
@@ -171,12 +192,13 @@ export default function CustomerList() {
           <h1 className="text-xl font-semibold text-gray-900">Daftar Pelanggan</h1>
           <p className="text-sm text-gray-500 mt-0.5">{totalItems} pelanggan</p>
         </div>
-        <button
-          onClick={() => { setEditingId(null); setForm(EMPTY_FORM); setShowForm(true) }}
-          className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+        {access.capabilities.customer_create && <button
+          onClick={() => { if (!access.capabilities.customer_create) return; saveMutation.reset(); setOriginalCustomer(null); setEditingId(null); setForm(EMPTY_FORM); setShowForm(true) }}
+          disabled={readError}
+          className="bg-brand-primary hover:bg-brand-hover text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
         >
           + Tambah Pelanggan
-        </button>
+        </button>}
       </div>
 
       <div className="px-4 md:px-8 py-4 bg-white border-b border-gray-100">
@@ -185,16 +207,17 @@ export default function CustomerList() {
           placeholder="Cari pelanggan..."
           value={search}
           onChange={e => handleSearch(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full sm:w-80 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full sm:w-80 focus:outline-none focus:ring-2 focus:ring-brand-primary"
         />
       </div>
 
       <div className="px-4 md:px-8 py-6">
+        {readError && <ReadFailure onRetry={() => { void refetch() }} />}
         {isLoading && (
           <div className="text-center text-gray-400 text-sm py-24">Memuat data pelanggan...</div>
         )}
 
-        {!isLoading && (
+        {!isLoading && !readError && (
           <>
             {/* Desktop table */}
             <div className="hidden md:block bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -206,13 +229,14 @@ export default function CustomerList() {
                     <th className="text-left px-5 py-3 font-medium text-gray-500">Telepon</th>
                     <th className="text-left px-5 py-3 font-medium text-gray-500">Email</th>
                     <th className="text-left px-5 py-3 font-medium text-gray-500">Tier Harga</th>
+                    <th className="text-left px-5 py-3 font-medium text-gray-500">Kategori Pelanggan</th>
                     <th className="text-right px-5 py-3 font-medium text-gray-500">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
                   {customers.length === 0 && (
                     <tr>
-                      <td colSpan={6} className="text-center text-gray-400 py-12">
+                      <td colSpan={7} className="text-center text-gray-400 py-12">
                         Tidak ada pelanggan ditemukan.
                       </td>
                     </tr>
@@ -228,19 +252,20 @@ export default function CustomerList() {
                           {TIER_LABELS[c.pricing_tier] ?? c.pricing_tier}
                         </span>
                       </td>
+                      <td className="px-5 py-4">{formatCustomerCategory(c.customer_category)}</td>
                       <td className="px-5 py-4 text-right">
-                        <button
+                        {access.capabilities.customer_edit && <button
                           onClick={() => openEdit(c)}
-                          className="text-blue-600 hover:text-blue-800 text-xs font-medium mr-3"
+                          className="text-brand-primary hover:text-brand-hover text-xs font-medium mr-3"
                         >
                           Ubah
-                        </button>
-                        <button
-                          onClick={() => setDeleteId(c.id)}
+                        </button>}
+                        {access.capabilities.customer_delete && <button
+                          onClick={() => access.capabilities.customer_delete && setDeleteId(c.id)}
                           className="text-red-400 hover:text-red-600 text-xs font-medium"
                         >
                           Hapus
-                        </button>
+                        </button>}
                       </td>
                     </tr>
                   ))}
@@ -262,6 +287,8 @@ export default function CustomerList() {
                     </span>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-xs mb-3">
+                    <div><p className="text-gray-400">Kategori Pelanggan</p><p className="text-gray-700 mt-0.5">{formatCustomerCategory(c.customer_category)}</p></div>
+                    <div><p className="text-gray-400">Tier Harga</p><p className="text-gray-700 mt-0.5">{TIER_LABELS[c.pricing_tier] ?? c.pricing_tier}</p></div>
                     <div>
                       <p className="text-gray-400">Telepon</p>
                       <p className="text-gray-700 mt-0.5">{c.phone ?? '—'}</p>
@@ -272,18 +299,18 @@ export default function CustomerList() {
                     </div>
                   </div>
                   <div className="flex gap-2 pt-3 border-t border-gray-100">
-                    <button
+                    {access.capabilities.customer_edit && <button
                       onClick={() => openEdit(c)}
-                      className="flex-1 text-center text-blue-600 text-xs font-medium py-2 rounded-lg bg-blue-50"
+                      className="flex-1 text-center text-brand-primary text-xs font-medium py-2 rounded-lg bg-blue-50"
                     >
                       Ubah
-                    </button>
-                    <button
-                      onClick={() => setDeleteId(c.id)}
+                    </button>}
+                    {access.capabilities.customer_delete && <button
+                      onClick={() => access.capabilities.customer_delete && setDeleteId(c.id)}
                       className="flex-1 text-center text-red-500 text-xs font-medium py-2 rounded-lg bg-red-50"
                     >
                       Hapus
-                    </button>
+                    </button>}
                   </div>
                 </div>
               ))}
@@ -329,6 +356,7 @@ export default function CustomerList() {
               </h3>
             </div>
             <div className="px-6 py-4 space-y-4">
+              <CustomerCategorySelect value={form.customer_category} allowUnclassified={originalCustomer?.customer_category === null} onChange={value => setForm(p => ({ ...p, customer_category: value }))} />
               <div>
                 <label className="block text-sm text-gray-600 mb-1">Nama Pelanggan *</label>
                 <input
@@ -336,7 +364,7 @@ export default function CustomerList() {
                   value={form.name}
                   onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
                   placeholder="mis. Toko Bangunan Maju"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                 />
               </div>
               <div>
@@ -346,7 +374,7 @@ export default function CustomerList() {
                   value={form.address}
                   onChange={e => setForm(p => ({ ...p, address: e.target.value }))}
                   placeholder="mis. Jl. Sudirman No. 12"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                 />
               </div>
               <div>
@@ -356,7 +384,7 @@ export default function CustomerList() {
                   value={form.city}
                   onChange={e => setForm(p => ({ ...p, city: e.target.value }))}
                   placeholder="mis. Jakarta"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                 />
               </div>
               <div>
@@ -366,7 +394,7 @@ export default function CustomerList() {
                   value={form.phone}
                   onChange={e => setForm(p => ({ ...p, phone: e.target.value }))}
                   placeholder="mis. 021-5551234"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                 />
               </div>
               <div>
@@ -376,7 +404,7 @@ export default function CustomerList() {
                   value={form.email}
                   onChange={e => setForm(p => ({ ...p, email: e.target.value }))}
                   placeholder="mis. toko@example.com"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                 />
               </div>
               <div>
@@ -384,12 +412,13 @@ export default function CustomerList() {
                 <select
                   value={form.pricing_tier}
                   onChange={e => setForm(p => ({ ...p, pricing_tier: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                 >
                   <option value="harga_pokok">Harga Pokok</option>
                   <option value="luar_kota">Luar Kota</option>
                   <option value="dalam_kota">Dalam Kota</option>
                   <option value="depo_bangunan">Depo Bangunan</option>
+      <option value="others">Others</option>
                 </select>
               </div>
             </div>
@@ -402,14 +431,14 @@ export default function CustomerList() {
               </button>
               <button
                 onClick={handleSave}
-                disabled={saveMutation.isPending}
-                className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                disabled={!access.capabilities[originalCustomer ? 'customer_edit' : 'customer_create'] || saveMutation.isPending || readError}
+                className="px-4 py-2 text-sm font-medium bg-brand-primary text-white rounded-lg hover:bg-brand-hover disabled:opacity-50"
               >
                 {saveMutation.isPending ? 'Menyimpan...' : 'Simpan'}
               </button>
             </div>
             {saveMutation.isError && (
-              <p className="text-red-500 text-xs px-6 pb-4 text-right">
+              <p role="alert" className="text-red-500 text-xs px-6 pb-4 text-right">
                 {(saveMutation.error as Error).message}
               </p>
             )}
@@ -434,7 +463,7 @@ export default function CustomerList() {
               </button>
               <button
                 onClick={() => deleteMutation.mutate()}
-                disabled={deleteMutation.isPending}
+                disabled={!access.capabilities.customer_delete || deleteMutation.isPending}
                 className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
               >
                 {deleteMutation.isPending ? 'Menghapus...' : 'Hapus'}
@@ -446,3 +475,4 @@ export default function CustomerList() {
     </div>
   )
 }
+import { literalSearchFilter } from '../../lib/reads/literalSearch'

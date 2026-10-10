@@ -1,0 +1,14 @@
+export type Progress = { stage: 'validating'|'loading'|'reading'|'parsing'; page: number; pages: number }
+export type Token = { text: string; x: number; y: number; width: number; height: number; confidence: number|null }
+export type PageText = { page: number; width: number; height: number; source: 'pdf-text'|'ocr'; tokens: Token[] }
+export type LocalDocument = { pages: PageText[]; previews: Blob[]; dispose(): void }
+export type SourceField = { raw: string; value: string|null; page: number|null }
+export type Issue = { id: string; field: string; code: string; message: string; blocking: boolean }
+export type ParsedRow = { id: string; sku: SourceField; barcode: SourceField; name: SourceField; quantity: SourceField; unitPrice: SourceField; uom: SourceField; issues: Issue[] }
+export type ParsedPO = { version: 1; layout: string|null; complete: boolean; buyer: SourceField; supplier: SourceField; poNumber: SourceField; orderDate: SourceField; expiry: SourceField; delivery: SourceField; paymentTerms: SourceField; currency: SourceField; printedTotal: SourceField; priceBasis: 'gross'|'net'|'unknown'; notes: string; rows: ParsedRow[]; issues: Issue[] }
+export type Customer = { id: string; name: string; pricing_tier: string }
+export type Product = { id: string; name: string; sku: string; size: string|null; harga_pokok: number|null; luar_kota: number|null; dalam_kota: number|null; depo_bangunan: number|null }
+export type Matches = { customerIds: string[]; productIdsByRow: Record<string,string[]> }
+export type RowDecision = { productId: string|null; manual: boolean; sku: string; name: string; quantity: string; unitPrice: string|null; unitConfirmed: boolean }
+export type ReviewDecision = { customerId: string; poNumber: string; orderDate: string; expiry: string; notes: string; idrConfirmed: boolean; acknowledgedIssueIds: string[]; rows: Record<string,RowDecision> }
+export type FormDraft = { customerId: string; poNumber: string; orderDate: string; expectedDelivery: string; notes: string; lineItems: { _key: string; product_id: string|null; product_name: string; sku: string; quantity: number; unit_price: number }[] }

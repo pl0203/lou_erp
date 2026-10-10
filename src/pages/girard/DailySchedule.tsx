@@ -1,3 +1,9 @@
+import { useUnsavedChanges } from '../../lib/useUnsavedChanges'
+import { VisitProposalForm } from '../../components/VisitRequestInbox'
+import { readCompleteQuery } from '../../lib/reads/completeQuery'
+import { chunkIds } from '../../lib/reads/completeReads'
+import { formatMoney } from '../../lib/reads/money'
+import { parseCalendarDate, calendarDayOptions } from '../../lib/calendarDate'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -8,6 +14,7 @@ import { fetchCustomerStatsBatch } from '../../lib/CustomerStats'
 import ActivePromotionsBanner from '../../components/ActivePromotionsBanner'
 
 type Schedule = {
+  version: number
   id: string
   scheduled_date: string
   status: string
@@ -36,42 +43,22 @@ const STATUS_STYLES: Record<string, string> = {
 const DAY_LABELS = ['Hari Ini', 'Besok', 'Dalam 2 Hari', 'Dalam 3 Hari']
 
 function getDateRange(): string[] {
-  return Array.from({ length: 4 }, (_, i) => {
-    const d = new Date()
-    d.setDate(d.getDate() + i)
-    return d.toISOString().split('T')[0]
-  })
+  return calendarDayOptions(4)
 }
 
-async function fetchSchedules(userId: string, dates: string[]): Promise<Schedule[]> {
-  const { data, error } = await supabase
-    .from('sales_schedules')
-    .select(`
-      id, scheduled_date, status, notes, outlet_id,
-      outlet_visits(id, checked_in_at)
-    `)
-    .eq('sales_person_id', userId)
-    .in('scheduled_date', dates)
-    .order('scheduled_date')
-    .order('created_at')
-  if (error) throw error
-  if (!data || data.length === 0) return []
-
-  const outletIds = [...new Set(data.map((s: any) => s.outlet_id as string))]
-  if (outletIds.length === 0) return data as Schedule[]
-
-  const { data: customerData, error: customerError } = await supabase
-    .from('customers')
-    .select('id, name, address, city, last_visit_date, visit_frequency_days')
-    .in('id', outletIds)
-  if (customerError) throw customerError
-
-  const customerMap = Object.fromEntries((customerData ?? []).map(c => [c.id, c]))
-
-  return data.map((s: any) => ({
-    ...s,
-    customers: customerMap[s.outlet_id] ?? null,
-  })) as Schedule[]
+async function fetchSchedules(userId: string, dates: string[], signal?: AbortSignal): Promise<Schedule[]> {
+  const data = await readCompleteQuery((offset, limit) => supabase.from('sales_schedules')
+    .select('id, version, scheduled_date, status, notes, outlet_id, outlet_visits(id, checked_in_at)', { count: 'exact' })
+    .eq('sales_person_id', userId).in('scheduled_date', dates)
+    .order('scheduled_date').order('created_at').order('id').range(offset, offset + limit - 1), row => row.id, signal)
+  const customerMap = new Map<string, Schedule['customers']>()
+  for (const ids of chunkIds(data.map(row => row.outlet_id))) {
+    const customers = await readCompleteQuery((offset, limit) => supabase.from('customers')
+      .select('id, name, address, city, last_visit_date, visit_frequency_days', { count: 'exact' })
+      .in('id', ids).order('id').range(offset, offset + limit - 1), row => row.id, signal)
+    for (const customer of customers) customerMap.set(customer.id, customer)
+  }
+  return data.map(row => ({ ...row, customers: customerMap.get(row.outlet_id) ?? null })) as Schedule[]
 }
 
 function isOverdue(lastVisit: string | null, frequencyDays: number): boolean {
@@ -81,20 +68,31 @@ function isOverdue(lastVisit: string | null, frequencyDays: number): boolean {
 }
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('id-ID', {
+  return parseCalendarDate(dateStr).toLocaleDateString('id-ID', {
     weekday: 'long', day: 'numeric', month: 'long'
   })
 }
 
 export default function DailySchedule() {
   const { profile } = useAuth()
+  return <DailyScheduleContent key={`${profile?.id}:${profile?.role}`} />
+}
+function DailyScheduleContent() {
+  const { profile } = useAuth()
   const navigate = useNavigate()
   const dates = getDateRange()
+  const [proposalSchedule, setProposalSchedule] = useState<Schedule | null>(null)
+  const [showProposal, setShowProposal] = useState(false)
+  const [proposalDirty, setProposalDirty] = useState(false)
+  const [proposalRevision, setProposalRevision] = useState(0)
+  const unsaved = useUnsavedChanges(proposalDirty)
+  const replaceProposal = (schedule: Schedule | null) => unsaved.confirmDiscard(() => { setProposalDirty(false); setProposalSchedule(schedule); setProposalRevision(value => value + 1); setShowProposal(true) })
   const [selectedDate, setSelectedDate] = useState(dates[0])
+  const readDates = dates.includes(selectedDate) ? dates : [...dates, selectedDate]
 
-  const { data: allSchedules, isLoading } = useQuery({
-    queryKey: ['schedules', profile?.id, dates],
-    queryFn: () => fetchSchedules(profile!.id, dates),
+  const { data: allSchedules, isLoading, isError, refetch } = useQuery({
+    queryKey: ['schedules', profile?.id, profile?.role, readDates],
+    queryFn: ({ signal }) => fetchSchedules(profile!.id, readDates, signal),
     enabled: !!profile?.id,
   })
 
@@ -116,14 +114,15 @@ export default function DailySchedule() {
   const total = todaySchedules.length
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-brand-canvas">
       <GirardNav />
+      {unsaved.dialog}
 
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5">
         <h1 className="text-xl font-semibold text-gray-900">Jadwal Saya</h1>
         <p className="text-sm text-gray-500 mt-0.5">{formatDate(selectedDate)}</p>
-        {selectedDate === dates[0] && total > 0 && (
+        {!isLoading && !isError && selectedDate === dates[0] && total > 0 && (
           <div className="flex items-center gap-2 mt-3">
             <div className="flex-1 bg-gray-100 rounded-full h-1.5">
               <div
@@ -138,6 +137,7 @@ export default function DailySchedule() {
         )}
       </div>
 
+      <label className="block px-4 md:px-8 py-3">Lihat tanggal kunjungan <input aria-label="Lihat tanggal kunjungan" type="date" value={selectedDate} onChange={e => { if (e.target.value) setSelectedDate(e.target.value) }} /></label>
       {/* Day tabs */}
       <div className="bg-white border-b border-gray-100 px-4 md:px-8">
         <div className="flex gap-1 overflow-x-auto">
@@ -150,13 +150,13 @@ export default function DailySchedule() {
                 onClick={() => setSelectedDate(date)}
                 className={`flex flex-col items-center px-4 py-3 border-b-2 transition-colors whitespace-nowrap ${
                   isSelected
-                    ? 'border-green-600 text-green-600'
+                    ? 'border-brand-accent text-brand-primary underline decoration-brand-primary underline-offset-4'
                     : 'border-transparent text-gray-500 hover:text-gray-700'
                 }`}
               >
                 <span className="text-xs font-medium">{DAY_LABELS[i]}</span>
                 <span className="text-xs text-gray-400 mt-0.5">
-                  {daySchedules.length} visit{daySchedules.length !== 1 ? 's' : ''}
+                  {isLoading ? 'Memuat…' : isError ? 'Belum tersedia' : `${daySchedules.length} kunjungan`}
                 </span>
               </button>
             )
@@ -166,6 +166,8 @@ export default function DailySchedule() {
 
       <div className="px-4 md:px-8 py-6 max-w-2xl mx-auto space-y-4">
         <ActivePromotionsBanner />
+        <div className="flex flex-wrap gap-3"><button className="min-h-11 cursor-pointer rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-hover" onClick={() => replaceProposal(null)}>Ajukan kunjungan baru</button><button className="min-h-11 cursor-pointer rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-brand-primary transition-colors hover:bg-brand-tint" onClick={() => navigate('/girard/visit-history')}>Riwayat kunjungan saya</button></div>
+        {showProposal && <VisitProposalForm key={`${proposalSchedule?.id ?? 'new'}:${proposalRevision}`} source={proposalSchedule ?? undefined} onDirtyChange={setProposalDirty} confirmDiscard={unsaved.confirmDiscard} onDone={() => { setProposalDirty(false); setShowProposal(false) }} />}
 
         {isLoading && (
           <div className="text-center text-gray-400 text-sm py-24">
@@ -173,16 +175,21 @@ export default function DailySchedule() {
           </div>
         )}
 
-        {!isLoading && schedules.length === 0 && (
+        {isError && <div role="alert" className="text-center text-red-600 text-sm py-8">
+          <p>Gagal memuat jadwal. Data belum dapat ditampilkan.</p>
+          <button onClick={() => refetch()} className="mt-2 underline">Coba lagi</button>
+        </div>}
+
+        {!isLoading && !isError && schedules.length === 0 && (
           <div className="text-center py-24">
             <p className="text-gray-400 text-sm">
-              Tidak ada kunjungan dijadwalkan untuk {DAY_LABELS[dates.indexOf(selectedDate)].toLowerCase()}.
+              Tidak ada kunjungan dijadwalkan untuk {(DAY_LABELS[dates.indexOf(selectedDate)] ?? formatDate(selectedDate)).toLowerCase()}.
             </p>
             <p className="text-gray-300 text-xs mt-1">Periksa kembali nanti atau hubungi manajer Anda.</p>
           </div>
         )}
 
-        {schedules.map(schedule => {
+        {!isError && schedules.map(schedule => {
           const customer = schedule.customers
           const stats = statsMap[customer?.id]
           const checkedIn = schedule.outlet_visits.length > 0
@@ -231,21 +238,21 @@ export default function DailySchedule() {
                   <p className="text-xs text-gray-400 mb-0.5">Kunjungan Terakhir</p>
                   <p className="text-sm font-medium text-gray-900">
                     {customer?.last_visit_date
-                      ? new Date(customer.last_visit_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
+                      ? parseCalendarDate(customer.last_visit_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
                       : 'Never'}
                   </p>
                 </div>
                 <div className="px-4 py-3 text-center">
                   <p className="text-xs text-gray-400 mb-0.5">Pesanan (3bl)</p>
                   <p className="text-sm font-medium text-gray-900">
-                    {statsError ? 'Tidak tersedia' : statsLoading || !stats ? 'Memuat...' : stats.order_count}
+                    {statsError || (!statsLoading && !stats) ? 'Tidak tersedia' : statsLoading || !stats ? 'Memuat...' : stats.order_count}
                   </p>
                 </div>
                 <div className="px-4 py-3 text-center">
                   <p className="text-xs text-gray-400 mb-0.5">Penjualan (3bl)</p>
                   <p className="text-sm font-medium text-gray-900">
-                    {statsError ? 'Tidak tersedia' : statsLoading || !stats ? 'Memuat...' : stats.total_sales
-                      ? `Rp ${(stats.total_sales / 1_000_000).toFixed(1)}M`
+                    {statsError || (!statsLoading && !stats) ? 'Tidak tersedia' : statsLoading || !stats ? 'Memuat...' : !/^0(?:\.0+)?$/.test(String(stats.total_sales))
+                      ? `Rp ${formatMoney(String(stats.total_sales), 'millions')}M`
                       : 'Rp 0'}
                   </p>
                 </div>
@@ -275,6 +282,7 @@ export default function DailySchedule() {
                 </div>
               )}
 
+              {!checkedIn && profile?.role === 'sales_person' && <button className="mx-5 mt-3 min-h-11 cursor-pointer rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-brand-primary transition-colors hover:bg-brand-tint" onClick={() => replaceProposal(schedule)}>Ajukan perubahan</button>}
               {/* Actions */}
               <div className="px-5 py-4 flex gap-3">
                 {isToday ? (
@@ -282,7 +290,7 @@ export default function DailySchedule() {
                     {!checkedIn ? (
                       <button
                         onClick={() => navigate(`/girard/visit/${schedule.id}`)}
-                        className="flex-1 bg-green-600 hover:bg-green-700 text-white text-sm font-medium py-2.5 rounded-xl transition-colors"
+                        className="flex-1 bg-brand-primary hover:bg-brand-hover text-white text-sm font-medium py-2.5 rounded-xl transition-colors"
                       >
                         Check In
                       </button>

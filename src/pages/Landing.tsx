@@ -1,32 +1,31 @@
+import { useState } from 'react'
+import BrandLogo from '../components/BrandLogo'
+import AppNavigation from '../components/AppNavigation'
+import NavigationIcon from '../components/NavigationIcon'
+import { moduleOptions } from '../components/navigationModules'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
 
 const modules = [
   {
     key: 'athel',
-    label: 'Athel',
+    label: 'Procurement',
     description: 'Manajemen purchase order, pelanggan, dan pelacakan pemenuhan.',
-    color: '#2563eb',
-    bg: '#eff6ff',
-    letter: 'A',
+    icon: 'purchase' as const,
     path: '/athel/po',
   },
   {
     key: 'girard',
-    label: 'Girard',
+    label: 'Sales',
     description: 'Manajemen tim penjualan, kunjungan pelanggan, dan pencatatan pesanan.',
-    color: '#16a34a',
-    bg: '#f0fdf4',
-    letter: 'G',
+    icon: 'sales' as const,
     path: '/girard/schedule',
   },
   {
     key: 'ihr',
-    label: 'iHR',
+    label: 'HR',
     description: 'Manajemen pengguna, cuti, pendataan pekerja, dan operasional SDM.',
-    color: '#e56d3a',
-    bg: '#fdf0eb',
-    letter: 'i',
+    icon: 'people' as const,
     path: '/ihr/users',
   },
 ]
@@ -34,15 +33,19 @@ const modules = [
 export default function Landing() {
   const navigate = useNavigate()
   const { profile, signOut } = useAuth()
-
+  const [signOutError, setSignOutError] = useState('')
   const handleSignOut = async () => {
-    await signOut()
-    navigate('/login', { replace: true })
+    setSignOutError('')
+    try { if (!await signOut()) return /* ProtectedRoute owns the redirect. */ }
+    catch { setSignOutError('Tidak dapat keluar. Silakan coba lagi.') }
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4">
+    <div className="min-h-screen bg-brand-canvas">
+      <AppNavigation module="home" links={moduleOptions(profile?.role)} />
+      <main className="min-h-screen flex flex-col items-center justify-center px-4 py-8">
       <div className="mb-10 text-center">
+        <BrandLogo className="mx-auto mb-8" />
         <h1 className="text-3xl font-bold text-gray-900">
           Selamat datang, {profile?.full_name?.split(' ')[0]}
         </h1>
@@ -54,15 +57,14 @@ export default function Landing() {
           <button
             key={mod.key}
             onClick={() => navigate(mod.path)}
-            className="bg-white border border-gray-200 hover:shadow-md rounded-2xl p-8 text-left transition-all group"
+            className="bg-white border border-gray-200 hover:border-brand-accent hover:shadow-md rounded-2xl p-8 text-left transition-all group"
           >
             <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center mb-4"
-              style={{ backgroundColor: mod.bg }}
+              className="w-10 h-10 rounded-xl bg-brand-tint flex items-center justify-center mb-4"
             >
-              <span className="font-bold text-sm" style={{ color: mod.color }}>{mod.letter}</span>
+              <span className="font-bold text-sm text-brand-primary"><NavigationIcon name={mod.icon} /></span>
             </div>
-            <h2 className="text-lg font-semibold mb-1 transition-colors" style={{ color: mod.color }}>
+            <h2 className="text-lg font-semibold mb-1 text-brand-primary transition-colors">
               {mod.label}
             </h2>
             <p className="text-sm text-gray-500">{mod.description}</p>
@@ -76,6 +78,8 @@ export default function Landing() {
       >
         Keluar
       </button>
+      {signOutError && <p role="alert">{signOutError}</p>}
+      </main>
     </div>
   )
 }

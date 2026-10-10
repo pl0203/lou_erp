@@ -1,0 +1,134 @@
+name: Disposable scalability SQL validation
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [fix/pilot-database]
+    paths:
+      - .github/workflows/scalability-sql.yml
+      - scripts/verify-scale-target.mjs
+      - scripts/run-disposable-psql.mjs
+      - tests/scalability/measure-reads.mjs
+      - tests/scalability/generate-fixtures.mjs
+      - tests/scalability/diagnostic-packets.mjs
+      - tests/scalability/query-plan-packets.mjs
+      - tests/scalability/summary-ab-packets.mjs
+      - tests/scalability/parent-policy-packet.mjs
+      - tests/scalability/scalar-profile-packet.mjs
+      - tests/database/scalar-profile-policy-setup.sql
+      - tests/database/parent-set-policy-setup.sql
+      - tests/database/parent-set-parity.sql
+      - tests/database/hosted-read-policy-fixture.sql
+      - tests/database/scalable-policy-state.sql
+      - tests/database/scalable-pooled-reads.sql
+      - tests/database/scalable-customer-parity.sql
+      - tests/database/scalable-sales-page-parity.sql
+      - tests/scalability/final-read-checks.mjs
+      - tests/scalability/customer-plan-packets.mjs
+      - tests/scalability/sales-plan-packets.mjs
+      - tests/scalability/read-migration-guards.mjs
+      - tests/database/scalability-ground-truth.sql
+      - supabase/migrations/202610*.sql
+permissions:
+  contents: read
+jobs:
+  disposable-scale:
+    if: ${{ github.event.pull_request.number == 3 && github.event.pull_request.head.ref == 'fix/pilot-scale-sql' && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic-ci-only
+          POSTGRES_DB: pilot_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d pilot_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: synthetic-ci-only
+      PGDATABASE: pilot_test
+      SCALE_ROWS: '30000'
+      SCALE_PERMIT: disposable-pilot-ci
+      PGHOSTADDR: ''
+      PGSERVICE: ''
+      PGSERVICEFILE: /dev/null
+      PGOPTIONS: ''
+      PGPASSFILE: /dev/null
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install official PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Prepare evidence directory and manifest without connecting
+        run: |
+          mkdir -p scale-results
+          git rev-parse HEAD > scale-results/commit.txt
+          node tests/scalability/generate-fixtures.mjs --rows "$SCALE_ROWS" > scale-results/manifest.json
+      - name: Load only fresh synthetic schema and reviewed migrations
+        run: |
+          node scripts/run-disposable-psql.mjs --file tests/database/fixture.sql
+          for file in supabase/migrations/*.sql; do
+            if [[ "$file" == supabase/migrations/202610010001_scalable_order_reads.sql ]]; then
+              node scripts/run-disposable-psql.mjs --file tests/database/hosted-read-policy-fixture.sql
+            fi
+            if [[ "$file" == supabase/migrations/202610010007_read_policy_plans.sql ]]; then
+              node tests/scalability/read-migration-guards.mjs
+              node scripts/run-disposable-psql.mjs --file scale-results/read-migration-guards.sql
+            fi
+            node scripts/run-disposable-psql.mjs --file "$file"
+          done
+      - name: Verify installed policy matrix and rollback
+        run: |
+          node scripts/run-disposable-psql.mjs --file tests/database/scalable-policy-state.sql 2>&1 | tee scale-results/policy-state.log
+          grep -Eq '^[[:space:]]*FINAL_READ_POLICY_MATRIX_VERIFIED[[:space:]]*' scale-results/policy-state.log
+          grep -Eq '^[[:space:]]*FINAL_READ_POLICY_ROLLBACK_VERIFIED[[:space:]]*' scale-results/policy-state.log
+      - name: Verify customer report parity
+        run: |
+          node scripts/run-disposable-psql.mjs --file tests/database/scalable-customer-parity.sql 2>&1 | tee scale-results/customer-parity.log
+          grep -Eq '^[[:space:]]*SCALABLE_CUSTOMER_PARITY_VERIFIED[[:space:]]*' scale-results/customer-parity.log
+      - name: Verify sales page parity
+        run: |
+          node scripts/run-disposable-psql.mjs --file tests/database/scalable-sales-page-parity.sql 2>&1 | tee scale-results/sales-parity.log
+          grep -Eq '^[[:space:]]*SCALABLE_SALES_PAGE_PARITY_VERIFIED[[:space:]]*' scale-results/sales-parity.log
+      - name: Emit and load permitted synthetic fixture with actual SQL marker guard
+        id: fixture
+        run: |
+          node tests/scalability/generate-fixtures.mjs --rows "$SCALE_ROWS" --emit-sql --target local-ci --permit disposable-pilot-ci > scale-results/fixture.sql
+          node scripts/run-disposable-psql.mjs --file scale-results/fixture.sql 2>&1 | tee scale-results/load.log
+          grep -Eq '^[[:space:]]*SYNTHETIC_SCALE_FIXTURE_LOADED[[:space:]]*\|' scale-results/load.log
+      - name: Sales page plan diagnostics
+        run: |
+          node tests/scalability/sales-plan-packets.mjs
+          failed=0
+          for file in scale-results/sales-diagnostics/*.sql; do
+            node scripts/run-disposable-psql.mjs --file "$file" 2>&1 | tee "${file%.sql}.log" || failed=1
+            grep -Eq '^[[:space:]]*SALES_PLAN_DIAGNOSTIC_VERIFIED[[:space:]]*\|' "${file%.sql}.log" || failed=1
+          done
+          exit "$failed"
+      - name: Exact role ground truth and bounded query diagnostics
+        if: ${{ !cancelled() && steps.fixture.outcome == 'success' }}
+        run: |
+          node scripts/run-disposable-psql.mjs --file tests/database/scalability-ground-truth.sql 2>&1 | tee scale-results/ground-truth.log
+          grep -Eq '^[[:space:]]*SCALABILITY_ROLE_GROUND_TRUTH_VERIFIED[[:space:]]*\|' scale-results/ground-truth.log
+      - name: Same-session repeated reads and identity transitions
+        if: ${{ !cancelled() && steps.fixture.outcome == 'success' }}
+        run: |
+          node scripts/run-disposable-psql.mjs --file tests/database/scalable-pooled-reads.sql 2>&1 | tee scale-results/pooled-reads.log
+          grep -Eq '^[[:space:]]*SCALABLE_POOLED_READS_VERIFIED[[:space:]]*' scale-results/pooled-reads.log
+      - name: Preserve synthetic-only evidence, including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scale-sql-30000-validation-${{ github.run_id }}
+          path: scale-results
+          retention-days: 7

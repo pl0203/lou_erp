@@ -1,83 +1,50 @@
-import { singleRelation } from '../../lib/relations'
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { supabase } from '../../lib/supabase'
-import { useAuth } from '../../lib/AuthContext'
+import { usePagedRead } from '../../lib/reads/usePagedRead'
+import { fetchSalesOrderPage } from '../../lib/reads/orders'
+import type { SalesStatusFilter } from '../../lib/reads/contracts'
+import { formatMoney } from '../../lib/reads/money'
+import PaginationControls from '../../components/PaginationControls'
+import SalesOrderItems from '../../components/SalesOrderItems'
 import GirardNav from '../../components/GirardNav'
-
-type MyOrder = {
-  id: string
-  status: string
-  total_value: number
-  created_at: string
-  rejection_note: string | null
-  customers: { name: string }
-  girard_order_items: {
-    id: string
-    product_name: string
-    sku: string | null
-    quantity: number
-    unit_price: number
-  }[]
-}
 
 const STATUS_STYLES: Record<string, string> = {
   pending:  'bg-yellow-100 text-yellow-700',
   approved: 'bg-green-100 text-green-700',
   rejected: 'bg-red-100 text-red-700',
+  cancelled: 'bg-gray-100 text-gray-700',
 }
 
 const STATUS_LABELS: Record<string, string> = {
   pending:  'Menunggu Persetujuan',
   approved: 'Disetujui',
   rejected: 'Ditolak',
-}
-
-async function fetchMyOrders(userId: string, status: string): Promise<MyOrder[]> {
-  let query = supabase
-    .from('girard_orders')
-    .select(`
-      id, status, total_value, created_at, rejection_note,
-      customers!girard_orders_customer_id_fkey(name),
-      girard_order_items(id, product_name, sku, quantity, unit_price)
-    `)
-    .eq('submitted_by', userId)
-    .order('created_at', { ascending: false })
-
-  if (status !== 'all') query = query.eq('status', status)
-
-  const { data, error } = await query
-  if (error) throw error
-  return (data ?? []).map(row => ({ ...row, customers: singleRelation(row.customers) }))
+  cancelled: 'PO Dibatalkan',
 }
 
 export default function MyOrders() {
-  const { profile } = useAuth()
-  const [statusFilter, setStatusFilter] = useState('all')
-
-  const { data: orders, isLoading } = useQuery({
-    queryKey: ['my_orders', profile?.id, statusFilter],
-    queryFn: () => fetchMyOrders(profile!.id, statusFilter),
-    enabled: !!profile?.id,
-  })
-
-  const pendingCount = orders?.filter(o => o.status === 'pending').length ?? 0
-  const approvedCount = orders?.filter(o => o.status === 'approved').length ?? 0
-  const rejectedCount = orders?.filter(o => o.status === 'rejected').length ?? 0
+  const [expanded, setExpanded] = useState<string[]>([])
+  const { data, filters, setFilters, setPage, isPending, isError, refetch } = usePagedRead('my_orders', { status: 'all' as SalesStatusFilter, ownOnly: true }, fetchSalesOrderPage)
+  const statusFilter = filters.status
+  const setStatusFilter = (status: string) => setFilters({ status: status as SalesStatusFilter, ownOnly: true })
+  const orders = data?.items
+  const isLoading = !data && isPending
+  const pendingCount = data?.status_counts.pending ?? 0
+  const approvedCount = data?.status_counts.approved ?? 0
+  const rejectedCount = data?.status_counts.rejected ?? 0
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-brand-canvas">
       <GirardNav />
 
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5">
-        <h1 className="text-xl font-semibold text-gray-900">Pesanan Saya</h1>
+        <h1 className="text-xl font-semibold text-gray-900">Riwayat Pesanan Saya</h1>
         <p className="text-sm text-gray-500 mt-0.5">
-          Pesanan yang Anda ajukan
+          Riwayat pengajuan lama Anda. Pesanan baru dibuat melalui Procurement.
         </p>
       </div>
 
       {/* Summary pills */}
-      <div className="bg-white border-b border-gray-100 px-4 md:px-8 py-3 flex gap-3 flex-wrap">
+      {!isLoading && !isError && <div className="bg-white border-b border-gray-100 px-4 md:px-8 py-3 flex gap-3 flex-wrap">
         <div className="text-xs bg-yellow-100 text-yellow-700 px-3 py-1.5 rounded-full font-medium">
           {pendingCount} menunggu
         </div>
@@ -87,7 +54,7 @@ export default function MyOrders() {
         <div className="text-xs bg-red-100 text-red-600 px-3 py-1.5 rounded-full font-medium">
           {rejectedCount} ditolak
         </div>
-      </div>
+      </div>}
 
       {/* Filter tabs */}
       <div className="bg-white border-b border-gray-100 px-4 md:px-8">
@@ -97,13 +64,14 @@ export default function MyOrders() {
             { value: 'pending',  label: 'Menunggu' },
             { value: 'approved', label: 'Disetujui' },
             { value: 'rejected', label: 'Ditolak' },
+            { value: 'cancelled', label: 'Dibatalkan' },
           ].map(tab => (
             <button
               key={tab.value}
               onClick={() => setStatusFilter(tab.value)}
               className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
                 statusFilter === tab.value
-                  ? 'border-green-600 text-green-600'
+                  ? 'border-brand-accent text-brand-primary underline decoration-brand-primary underline-offset-4'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
@@ -114,20 +82,26 @@ export default function MyOrders() {
       </div>
 
       <div className="px-4 md:px-8 py-6 max-w-2xl mx-auto space-y-4">
+        {!isError && data && <PaginationControls page={data.page} total={data.total} pageSize={data.page_size} pending={isPending} onPageChange={setPage} />}
         {isLoading && (
           <div className="text-center text-gray-400 text-sm py-24">Memuat pesanan...</div>
         )}
 
-        {!isLoading && (!orders || orders.length === 0) && (
+        {isError && <div role="alert" className="text-center text-red-600 text-sm py-8">
+          <p>Gagal memuat pesanan. Data belum dapat ditampilkan.</p>
+          <button onClick={() => refetch()} className="mt-2 underline">Coba lagi</button>
+        </div>}
+
+        {!isLoading && !isError && (!orders || orders.length === 0) && (
           <div className="text-center py-24">
             <p className="text-gray-400 text-sm">Tidak ada pesanan ditemukan.</p>
             <p className="text-gray-300 text-xs mt-1">
-              Pesanan yang Anda buat saat kunjungan pelanggan akan muncul di sini.
+              Riwayat pesanan dari kunjungan sebelumnya akan muncul di sini.
             </p>
           </div>
         )}
 
-        {orders?.map(order => (
+        {!isError && orders?.map(order => (
           <div key={order.id} className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
             {/* Header */}
             <div className="px-5 py-4 border-b border-gray-100">
@@ -147,7 +121,7 @@ export default function MyOrders() {
                     {STATUS_LABELS[order.status] ?? order.status}
                   </span>
                   <p className="text-sm font-semibold text-gray-900">
-                    Rp {order.total_value.toLocaleString('id-ID')}
+                    Rp {formatMoney(order.total_value, 'full')}
                   </p>
                 </div>
               </div>
@@ -179,27 +153,9 @@ export default function MyOrders() {
               )}
             </div>
 
-            {/* Line items */}
             <div className="px-5 py-3">
-              <p className="text-xs text-gray-400 mb-2">Barang dipesan</p>
-              <div className="space-y-1.5">
-                {order.girard_order_items.map(item => (
-                  <div key={item.id} className="flex items-center justify-between text-sm">
-                    <div className="flex-1 min-w-0">
-                      <span className="text-gray-900 truncate block">{item.product_name}</span>
-                      {item.sku && (
-                        <span className="text-xs text-gray-400 font-mono uppercase">{item.sku}</span>
-                      )}
-                    </div>
-                    <div className="text-right ml-4 shrink-0">
-                      <p className="text-gray-600 text-xs">x{item.quantity}</p>
-                      <p className="text-gray-900 font-medium text-xs">
-                        Rp {(item.quantity * item.unit_price).toLocaleString('id-ID')}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <button type="button" aria-expanded={expanded.includes(order.id)} onClick={() => setExpanded(previous => previous.includes(order.id) ? previous.filter(id => id !== order.id) : [...previous, order.id])} className="text-xs font-medium text-brand-primary">{expanded.includes(order.id) ? 'Sembunyikan barang' : 'Lihat barang'}</button>
+              {expanded.includes(order.id) && <SalesOrderItems orderId={order.id} />}
             </div>
           </div>
         ))}

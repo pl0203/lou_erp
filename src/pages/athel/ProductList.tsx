@@ -1,3 +1,5 @@
+import { useProcurementAccess } from '../../lib/procurementAccess'
+import { parseCatalogPrice, formatCatalogPrice } from '../../lib/catalogPricing'
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
@@ -8,11 +10,11 @@ type Product = {
   name: string
   sku: string
   size: string | null
-  unit_price: number
-  harga_pokok: number
-  luar_kota: number
-  dalam_kota: number
-  depo_bangunan: number
+  unit_price: number | null
+  harga_pokok: number | null
+  luar_kota: number | null
+  dalam_kota: number | null
+  depo_bangunan: number | null
 }
 
 type ProductForm = {
@@ -51,10 +53,11 @@ async function fetchProducts(search: string, page: number): Promise<ProductListR
     .from('products')
     .select('id, name, sku, size, unit_price, harga_pokok, luar_kota, dalam_kota, depo_bangunan', { count: 'exact' })
     .order('name')
+    .order('id')
     .range(from, to)
 
   if (trimmedSearch) {
-    query = query.or(`name.ilike.%${trimmedSearch}%,sku.ilike.%${trimmedSearch}%`)
+    query = query.or(literalSearchFilter(['name', 'sku'], trimmedSearch))
   }
 
   const { data, error, count } = await query
@@ -71,11 +74,11 @@ async function saveProduct(form: ProductForm, editingId: string | null) {
     name: form.name.trim(),
     sku: form.sku.trim().toUpperCase(),
     size: form.size.trim() || null,
-    harga_pokok: parseFloat(form.harga_pokok) || 0,
-    luar_kota: parseFloat(form.luar_kota) || 0,
-    dalam_kota: parseFloat(form.dalam_kota) || 0,
-    depo_bangunan: parseFloat(form.depo_bangunan) || 0,
-    unit_price: parseFloat(form.luar_kota) || 0, // default unit_price = luar_kota
+    harga_pokok: parseCatalogPrice(form.harga_pokok),
+    luar_kota: parseCatalogPrice(form.luar_kota),
+    dalam_kota: parseCatalogPrice(form.dalam_kota),
+    depo_bangunan: parseCatalogPrice(form.depo_bangunan),
+    ...(!editingId ? { unit_price: null } : {}), // Preserve the legacy price when editing.
   }
 
   if (editingId) {
@@ -97,10 +100,12 @@ const TIER_LABELS: Record<string, string> = {
   luar_kota:    'Luar Kota',
   dalam_kota:   'Dalam Kota',
   depo_bangunan: 'Depo Bangunan',
+  others: 'Others',
 }
 
 export default function ProductList() {
   const queryClient = useQueryClient()
+  const access = useProcurementAccess()
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
@@ -133,7 +138,7 @@ export default function ProductList() {
   const endItem = totalItems === 0 ? 0 : Math.min(page * PAGE_SIZE, totalItems)
 
   const saveMutation = useMutation({
-    mutationFn: () => saveProduct(form, editingId),
+    mutationFn: () => { access.require(editingId ? 'product_edit' : 'product_create'); return saveProduct(form, editingId) },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] })
       setShowForm(false)
@@ -143,7 +148,7 @@ export default function ProductList() {
   })
 
   const deleteMutation = useMutation({
-    mutationFn: () => deleteProduct(deleteId!),
+    mutationFn: () => { access.require('product_delete'); return deleteProduct(deleteId!) },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] })
       setDeleteId(null)
@@ -151,20 +156,22 @@ export default function ProductList() {
   })
 
   const openEdit = (p: Product) => {
+    if (!access.capabilities.product_edit) return
     setEditingId(p.id)
     setForm({
       name: p.name,
       sku: p.sku,
       size: p.size ?? '',
-      harga_pokok: p.harga_pokok.toString(),
-      luar_kota: p.luar_kota.toString(),
-      dalam_kota: p.dalam_kota.toString(),
-      depo_bangunan: p.depo_bangunan.toString(),
+      harga_pokok: p.harga_pokok?.toString() ?? '',
+      luar_kota: p.luar_kota?.toString() ?? '',
+      dalam_kota: p.dalam_kota?.toString() ?? '',
+      depo_bangunan: p.depo_bangunan?.toString() ?? '',
     })
     setShowForm(true)
   }
 
   const handleSave = () => {
+    if (!access.capabilities[editingId ? 'product_edit' : 'product_create']) return
     if (!form.sku.trim()) return alert('SKU wajib diisi.')
     if (!form.name.trim()) return alert('Nama barang wajib diisi.')
     saveMutation.mutate()
@@ -173,7 +180,7 @@ export default function ProductList() {
   const deleteTarget = products.find(p => p.id === deleteId)
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-brand-canvas">
       <AthelNav />
 
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center justify-between">
@@ -181,12 +188,12 @@ export default function ProductList() {
           <h1 className="text-xl font-semibold text-gray-900">Daftar Barang</h1>
           <p className="text-sm text-gray-500 mt-0.5">{totalItems} barang</p>
         </div>
-        <button
-          onClick={() => { setEditingId(null); setForm(EMPTY_FORM); setShowForm(true) }}
-          className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+        {access.capabilities.product_create && <button
+          onClick={() => { if (!access.capabilities.product_create) return; setEditingId(null); setForm(EMPTY_FORM); setShowForm(true) }}
+          className="bg-brand-primary hover:bg-brand-hover text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
         >
           + Tambah Barang
-        </button>
+        </button>}
       </div>
 
       <div className="px-4 md:px-8 py-4 bg-white border-b border-gray-100">
@@ -195,7 +202,7 @@ export default function ProductList() {
           placeholder="Cari berdasarkan nama atau SKU..."
           value={search}
           onChange={e => handleSearch(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full sm:w-80 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full sm:w-80 focus:outline-none focus:ring-2 focus:ring-brand-primary"
         />
       </div>
 
@@ -235,30 +242,30 @@ export default function ProductList() {
                       <td className="px-5 py-4 font-medium text-gray-900">{p.name}</td>
                       <td className="px-5 py-4 text-gray-500">{p.size ?? '—'}</td>
                       <td className="px-5 py-4 text-right text-gray-700">
-                        Rp {p.harga_pokok.toLocaleString('id-ID')}
+                        {formatCatalogPrice(p.harga_pokok)}
                       </td>
                       <td className="px-5 py-4 text-right text-gray-700">
-                        Rp {p.luar_kota.toLocaleString('id-ID')}
+                        {formatCatalogPrice(p.luar_kota)}
                       </td>
                       <td className="px-5 py-4 text-right text-gray-700">
-                        Rp {p.dalam_kota.toLocaleString('id-ID')}
+                        {formatCatalogPrice(p.dalam_kota)}
                       </td>
                       <td className="px-5 py-4 text-right text-gray-700">
-                        Rp {p.depo_bangunan.toLocaleString('id-ID')}
+                        {formatCatalogPrice(p.depo_bangunan)}
                       </td>
                       <td className="px-5 py-4 text-right">
-                        <button
+                        {access.capabilities.product_edit && <button
                           onClick={() => openEdit(p)}
-                          className="text-blue-600 hover:text-blue-800 text-xs font-medium mr-3"
+                          className="text-brand-primary hover:text-brand-hover text-xs font-medium mr-3"
                         >
                           Ubah
-                        </button>
-                        <button
-                          onClick={() => setDeleteId(p.id)}
+                        </button>}
+                        {access.capabilities.product_delete && <button
+                          onClick={() => access.capabilities.product_delete && setDeleteId(p.id)}
                           className="text-red-400 hover:text-red-600 text-xs font-medium"
                         >
                           Hapus
-                        </button>
+                        </button>}
                       </td>
                     </tr>
                   ))}
@@ -277,24 +284,24 @@ export default function ProductList() {
                       {p.size && <p className="text-xs text-gray-400 mt-0.5">{p.size}</p>}
                     </div>
                     <div className="flex gap-2">
-                      <button
+                      {access.capabilities.product_edit && <button
                         onClick={() => openEdit(p)}
-                        className="text-blue-600 text-xs font-medium"
+                        className="text-brand-primary text-xs font-medium"
                       >
                         Ubah
-                      </button>
-                      <button
-                        onClick={() => setDeleteId(p.id)}
+                      </button>}
+                      {access.capabilities.product_delete && <button
+                        onClick={() => access.capabilities.product_delete && setDeleteId(p.id)}
                         className="text-red-400 text-xs font-medium"
                       >
                         Hapus
-                      </button>
+                      </button>}
                     </div>
                   </div>
 
                   <button
                     onClick={() => setExpandedId(expandedId === p.id ? null : p.id)}
-                    className="text-xs text-blue-600 mb-2"
+                    className="text-xs text-brand-primary mb-2"
                   >
                     {expandedId === p.id ? 'Sembunyikan harga ▲' : 'Lihat semua harga ▼'}
                   </button>
@@ -305,7 +312,7 @@ export default function ProductList() {
                         <div key={tier} className="bg-gray-50 rounded-lg p-2">
                           <p className="text-gray-400 mb-0.5">{TIER_LABELS[tier]}</p>
                           <p className="font-medium text-gray-900">
-                            Rp {p[tier].toLocaleString('id-ID')}
+                            {formatCatalogPrice(p[tier])}
                           </p>
                         </div>
                       ))}
@@ -362,7 +369,7 @@ export default function ProductList() {
                     type="text"
                     value={form.sku}
                     onChange={e => setForm(p => ({ ...p, sku: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-brand-primary"
                     placeholder="mis. MPA035"
                   />
                 </div>
@@ -372,7 +379,7 @@ export default function ProductList() {
                     type="text"
                     value={form.size}
                     onChange={e => setForm(p => ({ ...p, size: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                     placeholder="mis. 30x60"
                   />
                 </div>
@@ -384,7 +391,7 @@ export default function ProductList() {
                   type="text"
                   value={form.name}
                   onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                   placeholder="mis. Granit Putih Polos 60x60"
                 />
               </div>
@@ -403,10 +410,11 @@ export default function ProductList() {
                       <input
                         type="number"
                         min={0}
+                        step="0.01"
                         value={form[field]}
                         onChange={e => setForm(p => ({ ...p, [field]: e.target.value }))}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="0"
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                        placeholder="Belum diisi"
                       />
                     </div>
                   ))}
@@ -423,8 +431,8 @@ export default function ProductList() {
               </button>
               <button
                 onClick={handleSave}
-                disabled={saveMutation.isPending}
-                className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                disabled={!access.capabilities[editingId ? 'product_edit' : 'product_create'] || saveMutation.isPending}
+                className="px-4 py-2 text-sm font-medium bg-brand-primary text-white rounded-lg hover:bg-brand-hover disabled:opacity-50"
               >
                 {saveMutation.isPending ? 'Menyimpan...' : 'Simpan'}
               </button>
@@ -455,7 +463,7 @@ export default function ProductList() {
               </button>
               <button
                 onClick={() => deleteMutation.mutate()}
-                disabled={deleteMutation.isPending}
+                disabled={!access.capabilities.product_delete || deleteMutation.isPending}
                 className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
               >
                 {deleteMutation.isPending ? 'Menghapus...' : 'Hapus'}
@@ -467,3 +475,4 @@ export default function ProductList() {
     </div>
   )
 }
+import { literalSearchFilter } from '../../lib/reads/literalSearch'

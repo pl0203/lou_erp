@@ -14,7 +14,7 @@ export default function GirardDashboard() {
   ]
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-brand-canvas">
       <GirardNav />
 
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5">
@@ -30,7 +30,7 @@ export default function GirardDashboard() {
               onClick={() => setActiveTab(tab.key)}
               className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 activeTab === tab.key
-                  ? 'border-green-600 text-green-600'
+                  ? 'border-brand-accent text-brand-primary underline decoration-brand-primary underline-offset-4'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >

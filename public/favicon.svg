@@ -1,14 +1,5 @@
-<svg width="120" height="120" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="louGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#1E3A8A"></stop>
-      <stop offset="100%" stop-color="#22C55E"></stop>
-    </linearGradient>
-  </defs>
-
-  <!-- Icon -->
-  <g transform="translate(20,20)">
-    <circle cx="40" cy="40" r="38" stroke="url(#louGradient)" stroke-width="10" fill="none"></circle>
-    <path d="M20 55 L35 40 L50 55 L65 30" stroke="url(#louGradient)" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"></path>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" role="img" aria-labelledby="title desc">
+<title id="title">Padiwan small favicon</title>
+<desc id="desc">A continuous umbrella canopy above five rice grains, two on the left and three on the right, representing the five family members in the business.</desc>
+<rect width="16" height="16" fill="#FFFFFF"/><path id="umbrella" fill="#192D43" d="M1 4.7 L8 1.5 L15 4.7 H8.5 V14.5 H7.5 V4.7 Z"/><g id="five-family-grains" fill="#192D43"><path id="grain-right-1" data-side="right" d="M10 7.2 C10 6.1 10.8 5.3 12 5.2 C12 6.4 11.2 7.2 10 7.2 Z"/><path id="grain-right-2" data-side="right" d="M10 7.2 C10 6.1 10.8 5.3 12 5.2 C12 6.4 11.2 7.2 10 7.2 Z" transform="translate(0,3)"/><path id="grain-right-3" data-side="right" d="M10 7.2 C10 6.1 10.8 5.3 12 5.2 C12 6.4 11.2 7.2 10 7.2 Z" transform="translate(0,6)"/><path id="grain-left-1" data-side="left" d="M10 7.2 C10 6.1 10.8 5.3 12 5.2 C12 6.4 11.2 7.2 10 7.2 Z" transform="translate(15.5,1.5) scale(-1,1)"/><path id="grain-left-2" data-side="left" d="M10 7.2 C10 6.1 10.8 5.3 12 5.2 C12 6.4 11.2 7.2 10 7.2 Z" transform="translate(15.5,4.5) scale(-1,1)"/></g>
 </svg>

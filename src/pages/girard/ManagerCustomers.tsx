@@ -1,19 +1,9 @@
-import { useQuery } from '@tanstack/react-query'
-import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/AuthContext'
+import { usePagedRead } from '../../lib/reads/usePagedRead'
+import { fetchManagerCustomerPage } from '../../lib/reads/reports'
+import type { ManagerCustomer as CustomerWithStats } from '../../lib/reads/contracts'
+import PaginationControls from '../../components/PaginationControls'
 import GirardNav from '../../components/GirardNav'
-
-type CustomerWithStats = {
-  id: string
-  name: string
-  address: string | null
-  city: string | null
-  last_visit_date: string | null
-  visit_frequency_days: number
-  visits_this_period: number
-  target_visits: number
-  on_track: boolean
-}
 
 const FREQUENCY_OPTIONS = [
   { days: 3,  label: '2x per minggu' },
@@ -27,61 +17,13 @@ function frequencyLabel(days: number): string {
   return FREQUENCY_OPTIONS.find(f => f.days === days)?.label ?? `Setiap ${days} hari`
 }
 
-function calcTargetVisits(frequencyDays: number, periodDays: number): number {
-  return Math.ceil(periodDays / frequencyDays)
-}
-
-function isOverdue(lastVisit: string | null, frequencyDays: number): boolean {
+function isOverdue(lastVisit: string | null, frequencyDays: number, referenceInstant: string): boolean {
   if (!lastVisit) return true
-  const diff = (Date.now() - new Date(lastVisit).getTime()) / (1000 * 60 * 60 * 24)
+  const diff = (new Date(referenceInstant).getTime() - new Date(lastVisit).getTime()) / (1000 * 60 * 60 * 24)
   return diff > frequencyDays
 }
 
-async function fetchMyCustomersWithStats(managerId: string): Promise<CustomerWithStats[]> {
-  const { data: assignments, error: aError } = await supabase
-    .from('customer_manager_assignments')
-    .select('customer_id')
-    .eq('manager_id', managerId)
-  if (aError) throw aError
-  if (!assignments || assignments.length === 0) return []
-
-  const customerIds = assignments.map(a => a.customer_id)
-
-  const { data: customers, error: cError } = await supabase
-    .from('customers')
-    .select('id, name, address, city, last_visit_date, visit_frequency_days')
-    .in('id', customerIds)
-    .order('name')
-  if (cError) throw cError
-
-  const thirtyDaysAgo = new Date()
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
-
-  const { data: visits, error: vError } = await supabase
-    .from('outlet_visits')
-    .select('outlet_id, checked_in_at')
-    .in('outlet_id', customerIds)
-    .gte('checked_in_at', thirtyDaysAgo.toISOString())
-  if (vError) throw vError
-
-  const visitCounts: Record<string, number> = {}
-  for (const v of visits ?? []) {
-    visitCounts[v.outlet_id] = (visitCounts[v.outlet_id] ?? 0) + 1
-  }
-
-  return (customers ?? []).map(c => {
-    const target = calcTargetVisits(c.visit_frequency_days, 30)
-    const actual = visitCounts[c.id] ?? 0
-    return {
-      ...c,
-      visits_this_period: actual,
-      target_visits: target,
-      on_track: actual >= target,
-    }
-  })
-}
-
-function CustomerTable({ customers }: { customers: CustomerWithStats[] }) {
+function CustomerTable({ customers, referenceInstant }: { customers: CustomerWithStats[]; referenceInstant: string }) {
   return (
     <div className="hidden md:block bg-white rounded-xl border border-gray-200 overflow-hidden">
       <table className="w-full text-sm">
@@ -98,7 +40,7 @@ function CustomerTable({ customers }: { customers: CustomerWithStats[] }) {
         </thead>
         <tbody>
           {customers.map(c => {
-            const overdue = isOverdue(c.last_visit_date, c.visit_frequency_days)
+            const overdue = isOverdue(c.last_visit_date, c.visit_frequency_days, referenceInstant)
             return (
               <tr key={c.id} className="border-b border-gray-50 hover:bg-gray-50">
                 <td className="px-5 py-4 font-medium text-gray-900">{c.name}</td>
@@ -138,11 +80,11 @@ function CustomerTable({ customers }: { customers: CustomerWithStats[] }) {
   )
 }
 
-function CustomerCards({ customers }: { customers: CustomerWithStats[] }) {
+function CustomerCards({ customers, referenceInstant }: { customers: CustomerWithStats[]; referenceInstant: string }) {
   return (
     <div className="md:hidden space-y-3">
       {customers.map(c => {
-        const overdue = isOverdue(c.last_visit_date, c.visit_frequency_days)
+        const overdue = isOverdue(c.last_visit_date, c.visit_frequency_days, referenceInstant)
         return (
           <div key={c.id} className="bg-white rounded-xl border border-gray-200 p-4">
             <div className="flex items-start justify-between mb-3">
@@ -233,90 +175,17 @@ function SummaryCards({ total, onTrack, overdue }: {
 }
 
 export default function ManagerCustomers() {
-  const { profile } = useAuth()
-
-  const { data: customers, isLoading } = useQuery({
-    queryKey: ['my_customers', profile?.id],
-    queryFn: () => fetchMyCustomersWithStats(profile!.id),
-    enabled: !!profile?.id,
-  })
-
-  const onTrack = customers?.filter(c => c.on_track).length ?? 0
-  const total   = customers?.length ?? 0
-  const overdue = customers?.filter(c => isOverdue(c.last_visit_date, c.visit_frequency_days)).length ?? 0
-
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <GirardNav />
-
-      <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5">
-        <h1 className="text-xl font-semibold text-gray-900">Pelanggan Saya</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Kepatuhan target kunjungan — 30 hari terakhir</p>
-      </div>
-
-      <div className="px-4 md:px-8 py-6 space-y-6">
-        {!isLoading && total > 0 && (
-          <SummaryCards total={total} onTrack={onTrack} overdue={overdue} />
-        )}
-        {isLoading && (
-          <div className="text-center text-gray-400 text-sm py-24">Memuat data pelanggan...</div>
-        )}
-        {!isLoading && total === 0 && (
-          <div className="text-center py-24">
-            <p className="text-gray-400 text-sm">Belum ada pelanggan yang ditugaskan.</p>
-            <p className="text-gray-300 text-xs mt-1">Hubungi kepala penjualan untuk menugaskan pelanggan.</p>
-          </div>
-        )}
-        {!isLoading && total > 0 && customers && (
-          <>
-            <CustomerTable customers={customers} />
-            <CustomerCards customers={customers} />
-          </>
-        )}
-      </div>
-    </div>
-  )
+  return <div className="min-h-screen bg-brand-canvas"><GirardNav /><ManagerCustomersContent /></div>
 }
-
-// ─── Named export for Dashboard ───────────────────────────────────────────────
 export function ManagerCustomersContent() {
   const { profile } = useAuth()
-
-  const { data: customers, isLoading } = useQuery({
-    queryKey: ['my_customers', profile?.id],
-    queryFn: () => fetchMyCustomersWithStats(profile!.id),
-    enabled: !!profile?.id,
-  })
-
-  const onTrack = customers?.filter(c => c.on_track).length ?? 0
-  const total   = customers?.length ?? 0
-  const overdue = customers?.filter(c => isOverdue(c.last_visit_date, c.visit_frequency_days)).length ?? 0
-
-  return (
-    <div className="px-4 md:px-8 py-6 space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold text-gray-900">Pelanggan Saya</h2>
-        <p className="text-sm text-gray-500 mt-0.5">Kepatuhan target kunjungan — 30 hari terakhir</p>
-      </div>
-
-      {!isLoading && total > 0 && (
-        <SummaryCards total={total} onTrack={onTrack} overdue={overdue} />
-      )}
-      {isLoading && (
-        <div className="text-center text-gray-400 text-sm py-24">Memuat data pelanggan...</div>
-      )}
-      {!isLoading && total === 0 && (
-        <div className="text-center py-24">
-          <p className="text-gray-400 text-sm">Belum ada pelanggan yang ditugaskan.</p>
-          <p className="text-gray-300 text-xs mt-1">Hubungi kepala penjualan untuk menugaskan pelanggan.</p>
-        </div>
-      )}
-      {!isLoading && total > 0 && customers && (
-        <>
-          <CustomerTable customers={customers} />
-          <CustomerCards customers={customers} />
-        </>
-      )}
-    </div>
-  )
+  const { data, setPage, isPending, isError, refetch } = usePagedRead('my_customers', {}, (_filters, page, signal) => fetchManagerCustomerPage(profile!.id, page, signal))
+  return <div className="px-4 md:px-8 py-6 space-y-6">
+    <div><h2 className="text-lg font-semibold text-gray-900">Pelanggan Saya</h2><p className="text-sm text-gray-500 mt-0.5">Kepatuhan target kunjungan — 30 hari terakhir</p></div>
+    {isError ? <div role="alert" className="text-red-600">Data pelanggan tidak tersedia. <button onClick={() => refetch()} className="underline">Coba lagi</button></div> : !data ? <p className="text-center text-gray-400 text-sm py-24">Memuat data pelanggan...</p> : <>
+      <PaginationControls page={data.page} total={data.total} pageSize={data.page_size} pending={isPending} onPageChange={setPage} />
+      <SummaryCards total={data.summary.total} onTrack={data.summary.on_track} overdue={data.summary.overdue} />
+      {data.items.length === 0 ? <div className="text-center py-24"><p className="text-gray-400 text-sm">Belum ada pelanggan yang ditugaskan.</p><p className="text-gray-300 text-xs mt-1">Hubungi kepala penjualan untuk menugaskan pelanggan.</p></div> : <><CustomerTable customers={data.items} referenceInstant={data.referenceInstant} /><CustomerCards customers={data.items} referenceInstant={data.referenceInstant} /></>}
+    </>}
+  </div>
 }
