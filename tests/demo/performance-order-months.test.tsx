@@ -8,7 +8,7 @@ vi.mock('../../src/lib/supabase', () => ({ supabase: {
   rpc: (name: string, args: unknown) => { state.calls.push({ name, args }); const result = Promise.resolve({ data: { version: 1, as_of: '2026-11-01T12:00:00Z', earliest_schedule_date: null, earliest_order_at: state.profile.id === 'manager-a' ? '2026-10-03T12:00:00Z' : null }, error: null }); return Object.assign(result, { abortSignal: () => result }) },
 } }))
 vi.mock('../../src/lib/reads/usePagedRead', () => ({ usePagedRead: (_key: string, filters: any) => ({ data: { version: 1, as_of: '2026-11-01T12:00:00Z', items: [], total: 0, page: 1, page_size: 50, summary: { total_visited: 0, total_scheduled: 0, total_orders: state.unassigned ? 1 : 0, total_sales: state.unassigned ? '75000000' : '0', average_visit_rate: 0, unassigned_orders: state.unassigned ? 1 : 0, unassigned_sales: state.unassigned ? '75000000' : '0' } }, filters, setFilters: vi.fn(), setPage: vi.fn(), isPending: false, isError: false, refetch: vi.fn() }) }))
-import { PerformanceContent } from '../../src/pages/girard/GirardPerformance'
+import { PerformanceActivityContent as PerformanceContent } from '../../src/pages/girard/GirardPerformance'
 beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-11-01T12:00:00Z')); state.profile = { id: 'manager-a', role: 'sales_manager' }; state.calls = []; state.unassigned = false })
 afterEach(() => { cleanup(); vi.useRealTimers() })
 function view(client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) { return render(<QueryClientProvider client={client}><PerformanceContent /></QueryClientProvider>) }

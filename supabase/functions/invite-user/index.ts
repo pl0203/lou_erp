@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
-const allowedRoles = ['executive', 'po_admin', 'sales_head', 'sales_manager', 'sales_person']
+const allowedRoles = ['executive', 'po_admin', 'co_admin', 'sales_head', 'sales_manager', 'sales_person']
 const managerRoles = ['executive', 'sales_head', 'sales_manager']
 const reply = (status: number, body: Record<string, unknown>) => new Response(JSON.stringify(body), {
   status, headers: { ...corsHeaders, 'Content-Type': 'application/json' },

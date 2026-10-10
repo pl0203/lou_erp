@@ -5,8 +5,8 @@ const state = vi.hoisted(() => ({ handler: null as any }))
 vi.mock('../../src/lib/AuthContext', () => ({ useAuth: () => ({ profile: { id: 'executive', role: 'executive' } }) }))
 vi.mock('../../src/lib/reads/reports', () => ({ fetchEarliestSalesPerformanceMonth: async () => '2026-09-01', fetchCustomerPerformancePage: (...args: any[]) => state.handler('customer', ...args), fetchSalesPerformancePage: (...args: any[]) => state.handler('sales', ...args) }))
 vi.mock('../../src/lib/supabase', () => ({ supabase: { from() { const q: any = { then: (resolve: any) => Promise.resolve({ data: [{ order_date: '2026-09-01', scheduled_date: '2026-09-01' }], error: null }).then(resolve) }; for (const key of ['select','order','limit']) q[key] = () => q; return q } } }))
-import { CustomerPerformanceContent } from '../../src/pages/girard/CustomerPerformance'
-import { PerformanceContent } from '../../src/pages/girard/GirardPerformance'
+import { CustomerActivityContent as CustomerPerformanceContent } from '../../src/pages/girard/CustomerPerformance'
+import { PerformanceActivityContent as PerformanceContent } from '../../src/pages/girard/GirardPerformance'
 const clients: QueryClient[] = []
 beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-01T12:00:00Z')) })
 afterEach(() => { cleanup(); clients.splice(0).forEach(client => client.clear()); vi.useRealTimers() })
@@ -24,7 +24,7 @@ for (const [kind, Component] of [['customer', CustomerPerformanceContent], ['sal
   await waitFor(() => expect(screen.getAllByRole('button', { name: 'Rp 0.0M' }).length).toBeGreaterThan(0))
   fireEvent.click(screen.getAllByRole('button', { name: 'Rp 0.0M' })[0])
   fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '999' } })
-  fireEvent.change(screen.getByRole('combobox'), { target: { value: '2026-09' } })
+  fireEvent.change(kind === 'customer' ? screen.getByLabelText('Bulan aktivitas pelanggan') : screen.getByRole('combobox'), { target: { value: '2026-09' } })
   await waitFor(() => expect(screen.queryByRole('spinbutton')).toBeNull())
   await act(async () => resolve(result(kind, '200.00')))
   await waitFor(() => expect(screen.queryByRole('status')).toBeNull())

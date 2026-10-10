@@ -21,7 +21,7 @@ function mount(component: React.ReactNode = <AthelNav />, path = '/athel/po') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
   return render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[path]}><div className="min-h-screen">{component}<main><button>Page action</button></main></div><Location /></MemoryRouter></QueryClientProvider>)
 }
-beforeEach(() => { state.role = 'executive'; state.from.mockClear(); state.signOut.mockReset().mockResolvedValue(undefined); localStorage.clear(); viewport() })
+beforeEach(() => { state.role = 'executive'; state.from.mockClear(); state.signOut.mockReset().mockResolvedValue(true); localStorage.clear(); viewport() })
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals() })
 
 test('desktop has a single semantic navigation and preserves nested Purchase Order selection', () => {
@@ -38,7 +38,7 @@ test('navigation badges cap visual counts while retaining the accessible count',
   expect(link.getAttribute('aria-label')).toContain('100')
 })
 
-test.each(['executive', 'po_admin'].flatMap(role => ['expanded', 'collapsed', 'mobile'].map(layout => [role, layout])))('%s has no legacy sales queue in %s navigation', (role, layout) => {
+test.each(['executive', 'po_admin', 'co_admin'].flatMap(role => ['expanded', 'collapsed', 'mobile'].map(layout => [role, layout])))('%s has no legacy sales queue in %s navigation', (role, layout) => {
   state.role = role
   viewport(layout === 'mobile')
   mount()
@@ -48,10 +48,11 @@ test.each(['executive', 'po_admin'].flatMap(role => ['expanded', 'collapsed', 'm
   expect(within(nav).queryByRole('link', { name: /Antrean Sales lama/i })).toBeNull()
   expect(nav.querySelector('a[href="/athel/sales-orders"]')).toBeNull()
   expect(within(nav).getAllByRole('link').map(link => [link.getAttribute('href'), link.getAttribute('aria-label')])).toEqual([
-    ['/athel/dashboard', 'Dashboard'],
-    ['/athel/po', 'Purchase Order'],
+    ...(role === 'executive' ? [['/athel/dashboard', 'Dashboard']] : []),
+    ...(role !== 'co_admin' ? [['/athel/po', 'Purchase Order']] : []),
+    ...(role !== 'po_admin' ? [['/athel/co', 'Consignment Order']] : []),
     ['/athel/customers', 'Daftar Pelanggan'],
-    ['/athel/promotions', 'Promosi'],
+    ...(role === 'executive' ? [['/athel/promotions', 'Promosi']] : []),
     ['/athel/products', 'Daftar Barang'],
   ])
 })
@@ -148,7 +149,8 @@ test('HR sign-out still respects the unsaved-draft safeguard', async () => {
   beforeSignOut.mockReturnValue(true); fireEvent.click(screen.getByRole('button', { name: 'Keluar' }))
   expect(state.signOut).toHaveBeenCalledOnce()
   await act(async () => {})
-  expect(screen.getByTestId('location').textContent).toBe('/login')
+  // Mocked auth does not change identity; the real provider/ProtectedRoute redirect is covered by co/signout.
+  expect(screen.getByTestId('location').textContent).toBe('/ihr/leave')
 })
 
 test('module chooser uses the same collapsible sidebar and all approved module names', () => {

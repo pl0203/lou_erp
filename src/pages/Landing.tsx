@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import BrandLogo from '../components/BrandLogo'
 import AppNavigation from '../components/AppNavigation'
 import NavigationIcon from '../components/NavigationIcon'
@@ -32,10 +33,11 @@ const modules = [
 export default function Landing() {
   const navigate = useNavigate()
   const { profile, signOut } = useAuth()
-
+  const [signOutError, setSignOutError] = useState('')
   const handleSignOut = async () => {
-    await signOut()
-    navigate('/login', { replace: true })
+    setSignOutError('')
+    try { if (!await signOut()) return /* ProtectedRoute owns the redirect. */ }
+    catch { setSignOutError('Tidak dapat keluar. Silakan coba lagi.') }
   }
 
   return (
@@ -76,6 +78,7 @@ export default function Landing() {
       >
         Keluar
       </button>
+      {signOutError && <p role="alert">{signOutError}</p>}
       </main>
     </div>
   )

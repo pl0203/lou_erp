@@ -113,3 +113,11 @@ export async function fetchEarliestSalesPerformanceMonth(managerId: string, role
   }
   return months.sort()[0] ?? null
 }
+
+/** Calendar-month v2 metrics. Authority is resolved only by the server. */
+export function fetchSalesMetricsPage(args: import('./contracts').SalesMetricsArgs, signal?: AbortSignal) {
+  return callRead('pilot_sales_metrics_v2', args, signal)
+}
+export function fetchSalesMetricMonths(args: import('./contracts').SalesMetricMonthsArgs, signal?: AbortSignal) {
+  return callRead('pilot_sales_metric_months_v2', args, signal)
+}

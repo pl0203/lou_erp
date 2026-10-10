@@ -1,3 +1,4 @@
+import { useProcurementAccess } from '../../lib/procurementAccess'
 import { hasInvalidCustomerCategories } from '../../lib/customerCategoryRows'
 import CustomerCategorySelect from '../../components/CustomerCategorySelect'
 import ReadFailure from '../../components/ReadFailure'
@@ -106,6 +107,7 @@ async function deleteCustomer(id: string) {
 
 export default function CustomerList() {
   const queryClient = useQueryClient()
+  const access = useProcurementAccess()
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
@@ -139,7 +141,7 @@ export default function CustomerList() {
   const endItem = totalItems === 0 ? 0 : Math.min(page * PAGE_SIZE, totalItems)
 
   const saveMutation = useMutation({
-    mutationFn: () => saveCustomer(form, originalCustomer),
+    mutationFn: () => { access.require(originalCustomer ? 'customer_edit' : 'customer_create'); return saveCustomer(form, originalCustomer) },
     onSettled: () => refreshCustomerCaches(queryClient),
     onSuccess: () => {
       setShowForm(false)
@@ -149,7 +151,7 @@ export default function CustomerList() {
   })
 
   const deleteMutation = useMutation({
-    mutationFn: () => deleteCustomer(deleteId!),
+    mutationFn: () => { access.require('customer_delete'); return deleteCustomer(deleteId!) },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['athel_customers'] })
       setDeleteId(null)
@@ -157,6 +159,7 @@ export default function CustomerList() {
   })
 
   const openEdit = (c: Customer) => {
+    if (!access.capabilities.customer_edit) return
     saveMutation.reset()
     setOriginalCustomer(c)
     setEditingId(c.id)
@@ -173,6 +176,7 @@ export default function CustomerList() {
   }
 
   const handleSave = () => {
+    if (!access.capabilities[originalCustomer ? 'customer_edit' : 'customer_create']) return
     if (!form.name.trim()) return alert('Nama pelanggan wajib diisi.')
     saveMutation.mutate()
   }
@@ -188,13 +192,13 @@ export default function CustomerList() {
           <h1 className="text-xl font-semibold text-gray-900">Daftar Pelanggan</h1>
           <p className="text-sm text-gray-500 mt-0.5">{totalItems} pelanggan</p>
         </div>
-        <button
-          onClick={() => { saveMutation.reset(); setOriginalCustomer(null); setEditingId(null); setForm(EMPTY_FORM); setShowForm(true) }}
+        {access.capabilities.customer_create && <button
+          onClick={() => { if (!access.capabilities.customer_create) return; saveMutation.reset(); setOriginalCustomer(null); setEditingId(null); setForm(EMPTY_FORM); setShowForm(true) }}
           disabled={readError}
           className="bg-brand-primary hover:bg-brand-hover text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
         >
           + Tambah Pelanggan
-        </button>
+        </button>}
       </div>
 
       <div className="px-4 md:px-8 py-4 bg-white border-b border-gray-100">
@@ -250,18 +254,18 @@ export default function CustomerList() {
                       </td>
                       <td className="px-5 py-4">{formatCustomerCategory(c.customer_category)}</td>
                       <td className="px-5 py-4 text-right">
-                        <button
+                        {access.capabilities.customer_edit && <button
                           onClick={() => openEdit(c)}
                           className="text-brand-primary hover:text-brand-hover text-xs font-medium mr-3"
                         >
                           Ubah
-                        </button>
-                        <button
-                          onClick={() => setDeleteId(c.id)}
+                        </button>}
+                        {access.capabilities.customer_delete && <button
+                          onClick={() => access.capabilities.customer_delete && setDeleteId(c.id)}
                           className="text-red-400 hover:text-red-600 text-xs font-medium"
                         >
                           Hapus
-                        </button>
+                        </button>}
                       </td>
                     </tr>
                   ))}
@@ -295,18 +299,18 @@ export default function CustomerList() {
                     </div>
                   </div>
                   <div className="flex gap-2 pt-3 border-t border-gray-100">
-                    <button
+                    {access.capabilities.customer_edit && <button
                       onClick={() => openEdit(c)}
                       className="flex-1 text-center text-brand-primary text-xs font-medium py-2 rounded-lg bg-blue-50"
                     >
                       Ubah
-                    </button>
-                    <button
-                      onClick={() => setDeleteId(c.id)}
+                    </button>}
+                    {access.capabilities.customer_delete && <button
+                      onClick={() => access.capabilities.customer_delete && setDeleteId(c.id)}
                       className="flex-1 text-center text-red-500 text-xs font-medium py-2 rounded-lg bg-red-50"
                     >
                       Hapus
-                    </button>
+                    </button>}
                   </div>
                 </div>
               ))}
@@ -427,7 +431,7 @@ export default function CustomerList() {
               </button>
               <button
                 onClick={handleSave}
-                disabled={saveMutation.isPending || readError}
+                disabled={!access.capabilities[originalCustomer ? 'customer_edit' : 'customer_create'] || saveMutation.isPending || readError}
                 className="px-4 py-2 text-sm font-medium bg-brand-primary text-white rounded-lg hover:bg-brand-hover disabled:opacity-50"
               >
                 {saveMutation.isPending ? 'Menyimpan...' : 'Simpan'}
@@ -459,7 +463,7 @@ export default function CustomerList() {
               </button>
               <button
                 onClick={() => deleteMutation.mutate()}
-                disabled={deleteMutation.isPending}
+                disabled={!access.capabilities.customer_delete || deleteMutation.isPending}
                 className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
               >
                 {deleteMutation.isPending ? 'Menghapus...' : 'Hapus'}

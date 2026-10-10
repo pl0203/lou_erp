@@ -4,6 +4,7 @@ import type { NavigationLink } from './navigationModules'
 
 const ROLE_LINKS: Record<string, NavigationLink[]> = {
   sales_person: [
+    { to: '/girard/my-sales', label: 'Penjualan Saya', icon: 'dashboard' },
     { to: '/girard/schedule',  label: 'Jadwal Kunjungan', icon: 'calendar' },
     { to: '/girard/visit-requests', label: 'Permintaan Kunjungan', icon: 'orders' },
     { to: '/girard/my-orders', label: 'Riwayat Pesanan', icon: 'orders' },

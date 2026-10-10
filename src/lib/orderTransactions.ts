@@ -5,13 +5,24 @@ import { isPOConflict, POConflictError } from './poConflict'
 import { parsePromoStockWarning, PromoStockWarningError } from './promotionStock'
 
 export type TransactionResult = { id: string; po_id?: string; updated_at?: string; stock_version?: number }
-type Recovery = { state: 'committed' | 'abandoned' | 'unknown'; result?: TransactionResult; operation?: string }
+export type Recovery = { state: 'committed' | 'abandoned' | 'unknown'; result?: TransactionResult; operation?: string }
 export type TransactionSender = ((operation: string, payload: unknown) => Promise<TransactionResult>) & {
   hasUnresolved: () => boolean
   reconcile: () => Promise<Recovery>
   acknowledgeRecovered: () => void
 }
-export type TransactionOptions = { validateResult?: (result: TransactionResult, expectedOperation?: string, expectedPayload?: unknown) => boolean; storage?: () => Storage; storageKey?: string; rpcName?: 'pilot_order_transaction' | 'pilot_finalize_visit' | 'leave_transaction_v1' | 'pilot_promotion_transaction_v1' | 'pilot_schedule_transaction_v1'; recoveryRpcName?: 'pilot_reconcile_request' | 'pilot_reconcile_visit' | 'leave_reconcile_request_v1' | 'pilot_reconcile_promotion_v1' | 'pilot_reconcile_schedule_v1' }
+export type TransactionOptions = {
+  /** Opt-in UI import contract. Keep exact success metadata until the owner accepts canonical state. */
+  retainCommitted?: boolean
+  validateResult?: (result: TransactionResult, expectedOperation?: string, expectedPayload?: unknown) => boolean | Promise<boolean>
+  decodeRecovery?: (data: unknown) => Recovery
+  /** Opt-in domain errors, applied only after the existing refusal/ambiguity bookkeeping. */
+  mapError?: (error: { code?: string; message: string; details?: string }) => Error
+  storage?: () => Storage
+  storageKey?: string
+  rpcName?: 'pilot_co_evidence_transaction_v1' | 'pilot_co_transaction_v1' | 'pilot_order_transaction' | 'pilot_finalize_visit' | 'leave_transaction_v1' | 'pilot_promotion_transaction_v1' | 'pilot_schedule_transaction_v1'
+  recoveryRpcName?: 'pilot_reconcile_co_evidence_v1' | 'pilot_reconcile_co_v1' | 'pilot_reconcile_request' | 'pilot_reconcile_visit' | 'leave_reconcile_request_v1' | 'pilot_reconcile_promotion_v1' | 'pilot_reconcile_schedule_v1'
+}
 type Pending = { key: string; id: string; uncertain: boolean; committed?: TransactionResult }
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical)
@@ -50,10 +61,10 @@ export function createTransactionSender(options: TransactionOptions = {}): Trans
     pending = value
   }
   // Opt-in semantic receipt checks must run before any confirmation consumes recovery identity.
-  function validateReceipt(value: TransactionResult, request: Pending, operation?: string, payload?: unknown) {
+  async function validateReceipt(value: TransactionResult, request: Pending, operation?: string, payload?: unknown) {
     if (!options.validateResult) return
     try {
-      if (!options.validateResult(value, operation, payload)) throw new Error('Respons penyimpanan tidak valid. Pulihkan hasil sebelum mencoba kembali.')
+      if (!await options.validateResult(value, operation, payload)) throw new Error('Respons penyimpanan tidak valid. Pulihkan hasil sebelum mencoba kembali.')
     } catch (error) {
       if (read()?.id === request.id) save({ key: request.key, id: request.id, uncertain: true })
       throw error
@@ -62,7 +73,7 @@ export function createTransactionSender(options: TransactionOptions = {}): Trans
   const send = async (operation: string, payload: unknown) => {
     const key = await fingerprint(operation, payload)
     const current = read()
-    if (current?.committed && current.key === key) { validateReceipt(current.committed, current, operation, payload); save(null); return current.committed }
+    if (current?.committed && current.key === key) { await validateReceipt(current.committed, current, operation, payload); if (read()?.id === current.id && !options.retainCommitted) save(null); return current.committed }
     if ((current?.uncertain || current?.committed) && current.key !== key) throw new Error('Hasil penyimpanan sebelumnya belum terkonfirmasi. Pulihkan hasilnya sebelum mengubah pesanan.')
     const request = current?.key === key ? current : { key, id: crypto.randomUUID(), uncertain: true }
     save({ ...request, uncertain: true }) // before the request: survives reload while HTTP is in flight
@@ -75,11 +86,11 @@ export function createTransactionSender(options: TransactionOptions = {}): Trans
         if (warning) { save(null); throw new PromoStockWarningError(warning) }
         save({ ...request, uncertain: false })
       }
-      throw compatibilityError(error)
+      throw (options.mapError ?? compatibilityError)(error)
     }
     if (!data || (typeof data.id !== 'string' || !data.id.trim())) throw new Error('Respons penyimpanan tidak valid. Pulihkan hasil sebelum mencoba kembali.')
-    validateReceipt(data as TransactionResult, request, operation, payload)
-    if (read()?.id === request.id) save(null)
+    await validateReceipt(data as TransactionResult, request, operation, payload)
+    if (read()?.id === request.id) save(options.retainCommitted ? { ...request, uncertain: false, committed: data as TransactionResult } : null)
     return data as TransactionResult
   }
   return Object.assign(send, {
@@ -88,11 +99,12 @@ export function createTransactionSender(options: TransactionOptions = {}): Trans
     async reconcile(): Promise<Recovery> {
       const request = read()
       if (!request) return { state: 'unknown' }
-      const { data, error } = await supabase.rpc(options.recoveryRpcName ?? 'pilot_reconcile_request', { p_request_id: request.id, p_abandon: true })
-      if (error) throw compatibilityError(error)
+      const { data: raw, error } = await supabase.rpc(options.recoveryRpcName ?? 'pilot_reconcile_request', { p_request_id: request.id, p_abandon: true })
+      if (error) throw (options.mapError ?? compatibilityError)(error)
+      const data = options.decodeRecovery ? options.decodeRecovery(raw) : raw
       if (!data || !['committed', 'abandoned'].includes(data.state)) throw new Error('Hasil belum dapat dipastikan. Jangan buat permintaan baru.')
       if (data.state === 'committed' && (typeof data.result?.id !== 'string' || !data.result.id.trim())) throw new Error('Hasil pemulihan tidak valid. Jangan buat permintaan baru.')
-      if (data.state === 'committed') validateReceipt(data.result as TransactionResult, request)
+      if (data.state === 'committed') await validateReceipt(data.result as TransactionResult, request)
       // The server either found the committed result or recorded a terminal cancellation tombstone.
       if (read()?.id === request.id) save(data.state === 'committed' ? { ...request, uncertain: false, committed: data.result } : null)
       return data as Recovery

@@ -38,18 +38,18 @@ function ChartData({ headers, rows, caption }: { headers: string[]; rows: (strin
 }
 
 function MonthlyChart({ series }: { series: DashboardData['monthlySeries'] }) {
-  const [selected, setSelected] = useState({ 'Total PO': true, Terkirim: true })
+  const [selected, setSelected] = useState({ 'Total PO': true, 'PO terkirim': true })
   const option = useMemo(() => monthlyOptions(series, selected), [series, selected])
-  return <ChartCard title="PO vs Pengiriman Bulanan" subtitle="Rolling 12 bulan · bulan berjalan di sisi kanan">
-    <SeriesControls items={[{ name: 'Total PO', color: CHART_COLORS.po }, { name: 'Terkirim', color: CHART_COLORS.delivered }]} selected={selected} onToggle={name => setSelected(previous => ({ ...previous, [name]: !previous[name as keyof typeof previous] }))} />
-    <div className="mt-3"><EChart label="PO vs Pengiriman Bulanan" option={option} height={300} /></div>
+  return <ChartCard title="Nilai PO vs Pengiriman PO Bulanan" subtitle="Khusus PO · rolling 12 bulan · bulan berjalan di sisi kanan">
+    <SeriesControls items={[{ name: 'Total PO', color: CHART_COLORS.po }, { name: 'PO terkirim', color: CHART_COLORS.delivered }]} selected={selected} onToggle={name => setSelected(previous => ({ ...previous, [name]: !previous[name as keyof typeof previous] }))} />
+    <div className="mt-3"><EChart label="Nilai PO vs Pengiriman PO Bulanan" option={option} height={300} /></div>
     {series.every(item => moneyToChartNumber(item.poValue) === 0 && moneyToChartNumber(item.deliveredValue) === 0) && <p className="mt-1 text-xs text-slate-500">Belum ada nilai PO atau pengiriman pada periode ini.</p>}
-    <ChartData caption="PO vs Pengiriman Bulanan" headers={['Bulan', 'Total PO', 'Terkirim']} rows={series.map(item => [item.label, currency(item.poValue), currency(item.deliveredValue)])} />
+    <ChartData caption="Nilai PO vs Pengiriman PO Bulanan" headers={['Bulan', 'Total PO', 'PO terkirim']} rows={series.map(item => [item.label, currency(item.poValue), currency(item.deliveredValue)])} />
   </ChartCard>
 }
 
 function DailyChart({ series }: { series: DashboardData['dailySeries'] }) {
-  const [selected, setSelected] = useState({ 'Nilai terkirim': true, 'Nomor SJ': true })
+  const [selected, setSelected] = useState({ 'Nilai PO terkirim': true, 'Jumlah SJ PO': true })
   const last = Math.max(0, series.length - 1)
   const [window, setWindow] = useState({ start: 0, end: last })
   const start = Math.min(window.start, last)
@@ -61,9 +61,9 @@ function DailyChart({ series }: { series: DashboardData['dailySeries'] }) {
       setWindow({ start: Math.max(0, Math.round(zoom.start / 100 * last)), end: Math.min(last, Math.round(zoom.end / 100 * last)) })
     }
   }
-  return <ChartCard title="Tren Pengiriman Harian" subtitle="Tanggal SJ · nilai item terkirim dan jumlah surat jalan per hari">
-    <SeriesControls items={[{ name: 'Nilai terkirim', color: CHART_COLORS.delivered }, { name: 'Nomor SJ', color: CHART_COLORS.count, line: true }]} selected={selected} onToggle={name => setSelected(previous => ({ ...previous, [name]: !previous[name as keyof typeof previous] }))} />
-    <div className="mt-3"><EChart label="Tren Pengiriman Harian" option={option} height={300} onDataZoom={onDataZoom} /></div>
+  return <ChartCard title="Tren Pengiriman PO Harian" subtitle="Tanggal SJ PO · nilai item PO terkirim dan jumlah surat jalan PO per hari; tidak mencakup CO">
+    <SeriesControls items={[{ name: 'Nilai PO terkirim', color: CHART_COLORS.delivered }, { name: 'Jumlah SJ PO', color: CHART_COLORS.count, line: true }]} selected={selected} onToggle={name => setSelected(previous => ({ ...previous, [name]: !previous[name as keyof typeof previous] }))} />
+    <div className="mt-3"><EChart label="Tren Pengiriman PO Harian" option={option} height={300} onDataZoom={onDataZoom} /></div>
     {series.length > 14 && <details className="mt-2 rounded-lg bg-slate-50 px-3 py-2">
       <summary className="cursor-pointer text-xs font-medium text-slate-600 focus-visible:outline-2 focus-visible:outline-brand-primary">Atur rentang grafik: {series[start]?.label} – {series[end]?.label}</summary>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -72,8 +72,8 @@ function DailyChart({ series }: { series: DashboardData['dailySeries'] }) {
       </div>
       <button type="button" onClick={() => setWindow({ start: 0, end: last })} className="mt-3 min-h-9 rounded-md border border-slate-200 bg-white px-3 text-xs font-medium text-slate-600 focus-visible:outline-2 focus-visible:outline-brand-primary">Tampilkan semua tanggal</button>
     </details>}
-    {series.every(item => moneyToChartNumber(item.deliveredValue) === 0 && item.sjCount === 0) && <p className="mt-2 text-xs text-slate-500">Belum ada pengiriman pada periode ini.</p>}
-    <ChartData caption="Tren Pengiriman Harian" headers={['Tanggal', 'Nilai terkirim', 'Nomor SJ']} rows={series.map(item => [item.label, currency(item.deliveredValue), count(item.sjCount)])} />
+    {series.every(item => moneyToChartNumber(item.deliveredValue) === 0 && item.sjCount === 0) && <p className="mt-2 text-xs text-slate-500">Belum ada pengiriman PO pada periode ini.</p>}
+    <ChartData caption="Tren Pengiriman PO Harian" headers={['Tanggal', 'Nilai PO terkirim', 'Jumlah SJ PO']} rows={series.map(item => [item.label, currency(item.deliveredValue), count(item.sjCount)])} />
   </ChartCard>
 }
 

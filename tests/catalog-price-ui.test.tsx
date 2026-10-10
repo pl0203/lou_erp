@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, expect, test, vi } from 'vitest'
 const state = vi.hoisted(() => ({ write: vi.fn(), product: { id: 'p', name: 'Unset product', sku: 'TEST', size: null, unit_price: 17, harga_pokok: null, luar_kota: null, dalam_kota: null, depo_bangunan: 0 } }))
+vi.mock('../src/lib/procurementAccess', () => ({ useProcurementAccess: () => ({ready:true,capabilities:{customer_create:true,customer_edit:true,customer_delete:false,product_create:true,product_edit:true,product_delete:true},require:()=>{}}) }))
 vi.mock('../src/components/AthelNav', () => ({ default: () => null }))
 vi.mock('../src/lib/supabase', () => ({ supabase: { from: () => {
  const q: any = { then: (resolve: any) => Promise.resolve({ data: [state.product], count: 1, error: null }).then(resolve) }

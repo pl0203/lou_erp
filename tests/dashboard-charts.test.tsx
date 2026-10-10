@@ -39,8 +39,8 @@ test('status composition exposes counts and percentages rather than rupiah', asy
 
 test('daily chart has zero-height revenue, distinct count axis and a visible single-day count point', async () => {
   render(<Dashboard />)
-  await screen.findByRole('img', { name: 'Tren Pengiriman Harian' })
-  const option = state.charts['Tren Pengiriman Harian']
+  await screen.findByRole('img', { name: 'Tren Pengiriman PO Harian' })
+  const option = state.charts['Tren Pengiriman PO Harian']
   expect(option.series[0].data).toEqual([0])
   expect(option.series[0].barMinHeight ?? 0).toBe(0)
   expect(option.series[1].data).toEqual([2])
@@ -53,21 +53,21 @@ test('daily chart has zero-height revenue, distinct count axis and a visible sin
 
 test('series controls are keyboard-accessible and affect only chart visibility', async () => {
   render(<Dashboard />)
-  const region = await screen.findByRole('region', { name: 'PO vs Pengiriman Bulanan' })
-  const control = within(region).getByRole('button', { name: 'Terkirim' })
+  const region = await screen.findByRole('region', { name: 'Nilai PO vs Pengiriman PO Bulanan' })
+  const control = within(region).getByRole('button', { name: 'PO terkirim' })
   expect(control.getAttribute('aria-pressed')).toBe('true')
   fireEvent.click(control)
-  await waitFor(() => expect(state.charts['PO vs Pengiriman Bulanan'].legend.selected.Terkirim).toBe(false))
+  await waitFor(() => expect(state.charts['Nilai PO vs Pengiriman PO Bulanan'].legend.selected['PO terkirim']).toBe(false))
   expect(control.getAttribute('aria-pressed')).toBe('false')
   expect(state.data.metrics.totalPOValue).toBe('1000000')
-  expect(state.charts['PO vs Pengiriman Bulanan'].series[1].data).toEqual([0])
+  expect(state.charts['Nilai PO vs Pengiriman PO Bulanan'].series[1].data).toEqual([0])
 })
 
 test('all daily values remain in the chart with date zoom and an accessible data table', async () => {
   state.data.dailySeries = Array.from({ length: 40 }, (_, index) => ({ key: `day-${index}`, label: `Day ${index}`, deliveredValue: String(index), sjCount: index % 3 }))
   render(<Dashboard />)
-  const region = await screen.findByRole('region', { name: 'Tren Pengiriman Harian' })
-  const option = state.charts['Tren Pengiriman Harian']
+  const region = await screen.findByRole('region', { name: 'Tren Pengiriman PO Harian' })
+  const option = state.charts['Tren Pengiriman PO Harian']
   expect(option.series[0].data).toHaveLength(40)
   expect(option.series[0].data[17]).toBe(17)
   expect(option.dataZoom.some((zoom: any) => zoom.type === 'slider')).toBe(true)
@@ -81,11 +81,11 @@ test('daily zoom controls update the plotted range and can restore all dates wit
   render(<Dashboard />)
   const slider = await screen.findByRole('slider', { name: 'Tanggal mulai grafik' })
   fireEvent.change(slider, { target: { value: '12' } })
-  await waitFor(() => expect(state.charts['Tren Pengiriman Harian'].dataZoom[0].startValue).toBe(12))
+  await waitFor(() => expect(state.charts['Tren Pengiriman PO Harian'].dataZoom[0].startValue).toBe(12))
   expect(slider.getAttribute('aria-valuetext')).toBe('Day 12')
   fireEvent.click(screen.getByRole('button', { name: 'Tampilkan semua tanggal' }))
-  await waitFor(() => expect(state.charts['Tren Pengiriman Harian'].dataZoom[0].startValue).toBe(0))
-  expect(state.charts['Tren Pengiriman Harian'].series[0].data).toHaveLength(40)
+  await waitFor(() => expect(state.charts['Tren Pengiriman PO Harian'].dataZoom[0].startValue).toBe(0))
+  expect(state.charts['Tren Pengiriman PO Harian'].series[0].data).toHaveLength(40)
 })
 
 test('filter data replacement clears old marks and resets daily zoom', async () => {
@@ -95,8 +95,8 @@ test('filter data replacement clears old marks and resets daily zoom', async () 
   fireEvent.change(slider, { target: { value: '12' } })
   state.data = { ...state.data, dailySeries: [{ key: '2026-10-01', label: '1 Okt', deliveredValue: '0', sjCount: 0 }] }
   view.rerender(<Dashboard />)
-  await waitFor(() => expect(state.charts['Tren Pengiriman Harian'].series[0].data).toEqual([0]))
-  expect(state.charts['Tren Pengiriman Harian'].xAxis.data).toEqual(['2026-10-01'])
+  await waitFor(() => expect(state.charts['Tren Pengiriman PO Harian'].series[0].data).toEqual([0]))
+  expect(state.charts['Tren Pengiriman PO Harian'].xAxis.data).toEqual(['2026-10-01'])
   expect(screen.queryByRole('slider', { name: 'Tanggal mulai grafik' })).toBeNull()
 })
 
@@ -105,8 +105,8 @@ test('empty composition and all-zero deliveries have explicit honest messages', 
   state.data.statusBreakdown = []
   state.data.dailySeries[0].sjCount = 0
   render(<Dashboard />)
-  const region = await screen.findByRole('region', { name: 'Tren Pengiriman Harian' })
-  expect(within(region).getByText('Belum ada pengiriman pada periode ini.')).toBeTruthy()
+  const region = await screen.findByRole('region', { name: 'Tren Pengiriman PO Harian' })
+  expect(within(region).getByText('Belum ada pengiriman PO pada periode ini.')).toBeTruthy()
   expect(screen.getAllByText('Belum ada data pada filter ini.')).toHaveLength(2)
 })
 

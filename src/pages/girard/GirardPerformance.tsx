@@ -1,3 +1,4 @@
+import { SalesMetricsPanel } from '../../components/sales/SalesMetricSummary'
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
@@ -142,7 +143,7 @@ function PerformanceTable({
     <>
       <div className="hidden md:block bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100">
-          <h2 className="text-base font-medium text-gray-900">Per Sales</h2>
+          <h2 className="text-base font-medium text-gray-900">Tim aktif saat ini</h2>
         </div>
         <table className="w-full text-sm">
           <thead>
@@ -152,7 +153,7 @@ function PerformanceTable({
               <th className="text-center px-5 py-3 font-medium text-gray-500">Dikunjungi</th>
               <th className="text-center px-5 py-3 font-medium text-gray-500">Tingkat Kunjungan</th>
               <th className="text-center px-5 py-3 font-medium text-gray-500">Pesanan</th>
-              <th className="text-right px-5 py-3 font-medium text-gray-500">Penjualan</th>
+              <th className="text-right px-5 py-3 font-medium text-gray-500">Nilai pembanding target</th>
               <th className="text-right px-5 py-3 font-medium text-gray-500">
                 Target
                 {canEdit && <span className="text-gray-300 ml-1 font-normal">(klik untuk ubah)</span>}
@@ -252,7 +253,7 @@ function PerformanceTable({
                 <p className="font-semibold text-gray-900">{p.orders}</p>
               </div>
               <div className="bg-gray-50 rounded-lg p-3 text-center">
-                <p className="text-xs text-gray-400 mb-1">Total Penjualan</p>
+                <p className="text-xs text-gray-400 mb-1">Nilai pembanding target</p>
                 <p className="font-semibold text-gray-900">
                   Rp {formatMoney(p.total_sales, 'millions')}M
                 </p>
@@ -299,14 +300,14 @@ function SummaryCards({
       <div className="bg-white rounded-xl border border-gray-200 p-4">
         <p className="text-xs text-gray-400 mb-1">Pesanan Dibuat</p>
         <p className="text-2xl font-bold text-gray-900">{totalOrders}</p>
-        <p className="text-xs text-gray-400 mt-1">dari tim sales lapangan</p>
+        <p className="text-xs text-gray-400 mt-1">basis aktivitas saat ini</p>
       </div>
       <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <p className="text-xs text-gray-400 mb-1">Total Penjualan</p>
+        <p className="text-xs text-gray-400 mb-1">Nilai pembanding target</p>
         <p className="text-2xl font-bold text-gray-900">
           Rp {formatMoney(totalSales, 'millions')}M
         </p>
-        <p className="text-xs text-gray-400 mt-1">dari tim sales lapangan</p>
+        <p className="text-xs text-gray-400 mt-1">basis aktivitas saat ini</p>
       </div>
     </div>
   )
@@ -317,9 +318,14 @@ export default function GirardPerformance() {
 }
 
 export function PerformanceContent() {
+  return <div className="min-w-0"><div className="px-4 pt-6 md:px-8"><SalesMetricsPanel group="person" /></div><PerformanceActivityContent /></div>
+}
+
+export function PerformanceActivityContent() {
   const { profile } = useAuth()
   const queryClient = useQueryClient()
-  const { data, filters, setFilters, setPage, isPending, isError, refetch } = usePagedRead('performance', { yearMonth: currentYearMonth() }, (filters, page, signal) => fetchSalesPerformancePage(profile!.id, profile!.role, filters.yearMonth, page, signal))
+  const { data: receivedPage, filters, setFilters, setPage, isPending, isError, refetch } = usePagedRead('performance', { yearMonth: currentYearMonth() }, (filters, page, signal) => fetchSalesPerformancePage(profile!.id, profile!.role, filters.yearMonth, page, signal))
+  const data = isPending ? undefined : receivedPage
   const { data: earliest, isError: monthError, refetch: refetchMonths } = useQuery({ queryKey: ['earliest_sales_report_month', profile?.id, profile?.role], queryFn: ({ signal }) => fetchEarliestSalesPerformanceMonth(profile!.id, profile!.role, signal), enabled: !!profile })
   const monthOptions = buildMonthOptions(earliest ?? currentYearMonth())
   const yearMonth = filters.yearMonth
@@ -328,14 +334,15 @@ export function PerformanceContent() {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['performance'] })
   return <div className="px-4 md:px-8 py-6 space-y-6">
     <div className="flex items-center justify-between flex-wrap gap-3">
-      <div><h2 className="text-lg font-semibold text-gray-900">Performa Tim Sales</h2><p className="text-sm text-gray-500 mt-0.5">{selectedLabel}</p></div>
+      <div><h2 className="text-lg font-semibold text-gray-900">Aktivitas dan Target Tim</h2><p className="text-sm text-gray-500 mt-0.5">{selectedLabel}</p></div>
       <select aria-label="Bulan performa sales" value={yearMonth} onChange={event => setFilters({ yearMonth: event.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary">
         {monthOptions.map(month => <option key={month.value} value={month.value}>{month.label}</option>)}
       </select>
     </div>
+    <p className="text-xs text-gray-500">Kohort tim aktif, jadwal, dan target tetap memakai basis laporan aktivitas yang ada. Nilai pembanding memakai sumber pesanan kanonis menurut waktu pembuatan, termasuk riwayat Girard yang belum dikonversi; tidak digabung dengan metrik Sales di atas. Filter Sales tidak mengubah bulan atau kohort aktivitas ini.</p>
     {isError || monthError ? <div role="alert" className="text-red-600">{monthError ? 'Daftar bulan tidak tersedia.' : 'Data performa tidak tersedia.'} <button onClick={() => { refetch(); refetchMonths() }} className="underline">Coba lagi</button></div> : !data ? <p className="text-center text-gray-400 text-sm py-12">Memuat data performa...</p> : <>
       <PaginationControls page={data.page} total={data.total} pageSize={data.page_size} pending={isPending} onPageChange={setPage} />
-      {(data.summary.unassigned_orders ?? 0) > 0 && <div className="bg-white rounded-xl border border-gray-200 p-4"><p className="font-medium text-gray-900">Unassigned</p><p className="text-sm text-gray-500">{data.summary.unassigned_orders} pesanan belum memiliki kredit salesperson. Rp {formatMoney(data.summary.unassigned_sales!, 'millions')}M termasuk dalam total penjualan.</p></div>}
+      {(data.summary.unassigned_orders ?? 0) > 0 && <div className="bg-white rounded-xl border border-gray-200 p-4"><p className="font-medium text-gray-900">Unassigned</p><p className="text-sm text-gray-500">{data.summary.unassigned_orders} pesanan belum memiliki kredit salesperson. Rp {formatMoney(data.summary.unassigned_sales!, 'millions')}M termasuk dalam nilai pembanding aktivitas.</p></div>}
       <SummaryCards avgVisitRate={data.summary.average_visit_rate} totalVisited={data.summary.total_visited} totalScheduled={data.summary.total_scheduled} totalOrders={data.summary.total_orders} totalSales={data.summary.total_sales} />
       {data.items.length === 0 ? <p className="text-center text-gray-400 text-sm py-12">Tidak ada data performa untuk bulan ini.</p> : <PerformanceTable performance={data.items} yearMonth={yearMonth} canEdit={canEdit && !isPending} onSaved={invalidate} />}
     </>}

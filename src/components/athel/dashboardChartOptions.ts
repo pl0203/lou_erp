@@ -54,7 +54,7 @@ export function monthlyOptions(series: DashboardData['monthlySeries'], selected:
     yAxis: { ...valueAxis, name: 'Nilai PO / terkirim', nameTextStyle: { align: 'left', color: CHART_COLORS.text } },
     series: [
       { name: 'Total PO', type: 'bar', data: series.map(item => moneyToChartNumber(item.poValue)), barMaxWidth: 24, itemStyle: { ...barStyle, color: CHART_COLORS.po }, emphasis: { focus: 'series' } },
-      { name: 'Terkirim', type: 'bar', data: series.map(item => moneyToChartNumber(item.deliveredValue)), barMaxWidth: 24, itemStyle: { ...barStyle, color: CHART_COLORS.delivered }, emphasis: { focus: 'series' } },
+      { name: 'PO terkirim', type: 'bar', data: series.map(item => moneyToChartNumber(item.deliveredValue)), barMaxWidth: 24, itemStyle: { ...barStyle, color: CHART_COLORS.delivered }, emphasis: { focus: 'series' } },
     ],
   }
 }
@@ -68,11 +68,11 @@ export function dailyOptions(series: DashboardData['dailySeries'], selected: Rec
     legend: { show: false, selected },
     tooltip: { ...base.tooltip, trigger: 'axis', axisPointer: { type: 'line', lineStyle: { color: '#94a3b8', type: 'dashed' } }, formatter: params => {
       const rows = Array.isArray(params) ? params : [params]
-      return [labels.get(String(rows[0]?.name)) ?? '', ...rows.map(row => `${row.seriesName}: ${row.seriesName === 'Nomor SJ' ? `${count(Number(row.value))} SJ` : currency(series[Number(row.dataIndex)]?.deliveredValue ?? Number(row.value))}`)].join('\n')
+      return [labels.get(String(rows[0]?.name)) ?? '', ...rows.map(row => `${row.seriesName}: ${row.seriesName === 'Jumlah SJ PO' ? `${count(Number(row.value))} SJ` : currency(series[Number(row.dataIndex)]?.deliveredValue ?? Number(row.value))}`)].join('\n')
     } },
     xAxis: { ...categoryAxis, data: series.map(item => item.key), axisLabel: { ...categoryAxis.axisLabel, formatter: key => labels.get(key) ?? key } },
     yAxis: [
-      { ...valueAxis, name: 'Nilai terkirim', nameTextStyle: { align: 'left', color: CHART_COLORS.text } },
+      { ...valueAxis, name: 'Nilai PO terkirim', nameTextStyle: { align: 'left', color: CHART_COLORS.text } },
       { ...valueAxis, name: 'Jumlah SJ', minInterval: 1, nameTextStyle: { align: 'right', color: CHART_COLORS.text }, position: 'right', axisLabel: { color: CHART_COLORS.text, formatter: count }, splitLine: { show: false } },
     ],
     dataZoom: zoom ? [
@@ -80,8 +80,8 @@ export function dailyOptions(series: DashboardData['dailySeries'], selected: Rec
       { type: 'inside', startValue: start, endValue: end, filterMode: 'none', zoomOnMouseWheel: false, moveOnMouseWheel: false, moveOnMouseMove: false },
     ] : [],
     series: [
-      { name: 'Nilai terkirim', type: 'bar', data: series.map(item => moneyToChartNumber(item.deliveredValue)), barMaxWidth: 24, barMinHeight: 0, itemStyle: { ...barStyle, color: CHART_COLORS.delivered }, emphasis: { focus: 'series' } },
-      { name: 'Nomor SJ', type: 'line', yAxisIndex: 1, data: series.map(item => item.sjCount), showSymbol: series.length <= 31, symbol: 'circle', symbolSize: 6, smooth: false, itemStyle: { color: CHART_COLORS.count }, lineStyle: { color: CHART_COLORS.count, width: 2 }, emphasis: { focus: 'series' } },
+      { name: 'Nilai PO terkirim', type: 'bar', data: series.map(item => moneyToChartNumber(item.deliveredValue)), barMaxWidth: 24, barMinHeight: 0, itemStyle: { ...barStyle, color: CHART_COLORS.delivered }, emphasis: { focus: 'series' } },
+      { name: 'Jumlah SJ PO', type: 'line', yAxisIndex: 1, data: series.map(item => item.sjCount), showSymbol: series.length <= 31, symbol: 'circle', symbolSize: 6, smooth: false, itemStyle: { color: CHART_COLORS.count }, lineStyle: { color: CHART_COLORS.count, width: 2 }, emphasis: { focus: 'series' } },
     ],
   }
 }

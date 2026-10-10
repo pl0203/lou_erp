@@ -1,7 +1,11 @@
 // @vitest-environment node
 import { readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
-import { expect, test } from 'vitest'
+import { afterAll, beforeAll, expect, test } from 'vitest'
+import { createHistoricalProtectedRoot } from './historical-protected-root.mjs'
+let historical: ReturnType<typeof createHistoricalProtectedRoot>
+beforeAll(() => { historical = createHistoricalProtectedRoot() })
+afterAll(() => historical?.cleanup())
 import { DEMO_MIGRATIONS, DEMO_TABLES, DEMO_NEW_TABLES, buildDemoRollout } from '../../scripts/build-demo-rollout.mjs'
 const pins = [
  ['supabase/migrations/202610081101_demo_order_promotions.sql','bef3867ce095f66f6a63399551478d0e4ee27895e521e183db3e728a7aca1938','c3bad6b2ee20e6b71de74243f0f9040bd07712d0'],
@@ -19,7 +23,7 @@ test('the final four migration bodies remain exact and packet assembly loads tho
  const baseline = { database: 'demo_rollout_test', operator: 'postgres', data_md5: '1'.repeat(32), schema_md5: '2'.repeat(32), pending_girard: 2, unresolved_requests: 0, promotion_bucket: null,
   new_tables: Object.fromEntries(Object.keys(DEMO_NEW_TABLES).map(key => [key,{ present: false, rows: null, unresolved_requests: null }])),
   columns: Object.fromEntries(DEMO_TABLES.map(key => [key,key==='public.users'?['id','role','is_active','manager_id']:['id']])), schema: {} }
- const packet = buildDemoRollout({ repoRoot: process.cwd(), target: { kind: 'fixture', host: '127.0.0.1', port: 65485, database: 'demo_rollout_test', operator: 'postgres', permit: 'disposable-demo-rollout' }, manifest, manifestSha256: hash(JSON.stringify(manifest)), baseline, schemaChanges: [] })
+ const packet = buildDemoRollout({ repoRoot: historical.root, target: { kind: 'fixture', host: '127.0.0.1', port: 65485, database: 'demo_rollout_test', operator: 'postgres', permit: 'disposable-demo-rollout' }, manifest, manifestSha256: hash(JSON.stringify(manifest)), baseline, schemaChanges: [] })
  expect(packet.fragments.map(fragment => fragment.sourceSha256)).toEqual(pins.map(([,sha256]) => sha256))
  expect(packet.fragments.map(fragment => fragment.path)).toEqual(pins.map(([path]) => path))
  expect(packet.transactionSql.match(/^BEGIN;$/gm)).toHaveLength(1)

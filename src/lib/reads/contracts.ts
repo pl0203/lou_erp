@@ -98,9 +98,44 @@ export type ManagerCustomer = {
 }
 export type ManagerCustomerPage = Page<ManagerCustomer> & { summary: { on_track: number; overdue: number; total: number } }
 
+/** Additive Sales v2: protocol version is numeric; every aggregate stays exact text. */
+export type SalesMetricOrderType = 'po' | 'co' | 'all'
+export type SalesMetricGroup = 'customer' | 'person'
+export type SalesMetricScope = 'own' | 'team' | 'leadership'
+export type SalesMetricCount = string
+export type SalesMetricValues = {
+  po_order_value: Money; po_order_count: SalesMetricCount;
+  po_delivered_revenue: Money; po_delivered_order_count: SalesMetricCount;
+  co_sold_revenue: Money; co_sold_order_count: SalesMetricCount;
+}
+export type SalesMetricSummary = SalesMetricValues & { co_report_event_count: SalesMetricCount }
+export type SalesMetricCustomer = SalesMetricSummary & { customer_id: UUID; customer_name: string }
+export type SalesMetricPerson = SalesMetricValues & {
+  person_id: UUID | null; person_name: string; is_unassigned: boolean;
+  /** Distinct contributing heads for this person; nonadditive across people. */
+  co_contributing_report_count: SalesMetricCount;
+}
+export type SalesMetricMonthsArgs = { p_manager_id: UUID | null; p_order_type: SalesMetricOrderType }
+export type SalesMetricsArgs = SalesMetricMonthsArgs & {
+  p_month_from: CalendarDate; p_month_until: CalendarDate;
+  p_group_by: SalesMetricGroup; p_page: number; p_page_size: number;
+}
+export type SalesMetricEnvelope = {
+  version: 2; as_of: Timestamp; scope: SalesMetricScope;
+  manager_id: UUID | null; order_type: SalesMetricOrderType;
+}
+export type SalesMetricMonths = SalesMetricEnvelope & { earliest_month: CalendarDate | null }
+export type SalesMetricsPage = SalesMetricEnvelope & {
+  month_from: CalendarDate; month_until: CalendarDate;
+  page: number; page_size: number; total: SalesMetricCount; summary: SalesMetricSummary;
+} & ({ group_by: 'customer'; items: SalesMetricCustomer[] } | { group_by: 'person'; items: SalesMetricPerson[] })
+export type SalesMetricRpcName = 'pilot_sales_metrics_v2' | 'pilot_sales_metric_months_v2'
+
 type PageArgs = { p_page: number; p_page_size: number }
 export type DashboardArgs = { p_from: CalendarDate; p_to: CalendarDate; p_rolling_from: CalendarDate; p_status: POStatusFilter; p_fulfillment: FulfillmentFilter }
 export type RpcArgsMap = {
+  pilot_sales_metrics_v2: SalesMetricsArgs;
+  pilot_sales_metric_months_v2: SalesMetricMonthsArgs;
   pilot_sales_report_months_v1: { p_manager_id: UUID | null };
   pilot_po_page_v1: PageArgs & { p_status: POStatusFilter; p_search: string };
   pilot_sales_order_page_v1: PageArgs & { p_status: SalesStatusFilter; p_own_only: boolean; p_customer_id?: UUID | null; p_visit_id?: UUID | null };
@@ -115,6 +150,8 @@ export type RpcArgsMap = {
   pilot_manager_customers_v1: PageArgs & { p_manager_id: UUID; p_visit_from: Timestamp; p_as_of: Timestamp };
 }
 export type RpcResultMap = {
+  pilot_sales_metrics_v2: SalesMetricsPage;
+  pilot_sales_metric_months_v2: SalesMetricMonths;
   pilot_sales_report_months_v1: SalesReportMonths;
   pilot_po_page_v1: Page<POSummary>;
   pilot_sales_order_page_v1: SalesOrderPage;
@@ -131,6 +168,8 @@ export type RpcResultMap = {
 export type ReadRpcName = keyof RpcArgsMap
 
 export const READ_RPC_DEFINITIONS = {
+  pilot_sales_metrics_v2: { params: ['p_manager_id', 'p_month_from', 'p_month_until', 'p_group_by', 'p_order_type', 'p_page', 'p_page_size'], result: 'page', pageLimit: 100 },
+  pilot_sales_metric_months_v2: { params: ['p_manager_id', 'p_order_type'], result: 'summary', pageLimit: null },
   pilot_sales_report_months_v1: { params: ['p_manager_id'], result: 'summary', pageLimit: null },
   pilot_po_page_v1: { params: ['p_status', 'p_search', 'p_page', 'p_page_size'], result: 'page', pageLimit: 100 },
   pilot_sales_order_page_v1: { params: ['p_status', 'p_own_only', 'p_page', 'p_page_size', 'p_customer_id', 'p_visit_id'], result: 'page', pageLimit: 100 },

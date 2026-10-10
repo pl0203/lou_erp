@@ -16,6 +16,6 @@ function mount(role: string, path: string) { state.role = role; render(<MemoryRo
 test.each(['sales_person','sales_manager','sales_head','executive'])('%s reaches read-only highlights and own visit history', role => {
  mount(role, '/girard/promotions'); expect(screen.getByText('Sales highlights')).toBeTruthy(); cleanup(); mount(role, '/girard/visit-history'); expect(screen.getByText('Own visit history')).toBeTruthy()
 })
-test.each(['po_admin','executive'])('%s reaches Procurement promotion administration', role => { mount(role, '/athel/promotions'); expect(screen.getByText('Admin promotions')).toBeTruthy() })
+test.each(['executive'])('%s reaches Procurement promotion administration', role => { mount(role, '/athel/promotions'); expect(screen.getByText('Admin promotions')).toBeTruthy() })
 test('a salesperson cannot enter administration or the separate manager-only visits route', () => { mount('sales_person','/athel/promotions'); expect(screen.queryByText('Admin promotions')).toBeNull(); cleanup(); mount('sales_person','/girard/my-visits'); expect(screen.queryByText('Manager visits')).toBeNull() })
 test('the separate manager visit route remains reachable', () => { mount('sales_manager','/girard/my-visits'); expect(screen.getByText('Manager visits')).toBeTruthy() })

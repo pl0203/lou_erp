@@ -1,0 +1,246 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Consignment Order design for review
+
+Consignment Order design for review
+Padiwan   Version 1   9 October 2026
+This proposal adds familiar PO-style operations for Consignment Orders, customer-wide monthly sell-through reporting, and a clear record of company-owned stock held by customers. Review the proposed defaults below as one bundle before implementation planning.
+Confirmed requirements
+Separate operations. Add Consignment Order under Procurement with familiar PO-style workflows. Admin CO gets Consignment Order, Customer List, and Item List; Admin PO gets Purchase Order, Customer List, and Item List. Both retain separate HR/Cuti access.
+Ownership and returns. Goods at a customer remain company stock until sold. Unsold goods can be returned. Show stock by customer and item.
+Monthly sales. Enter one sold quantity per SKU across all of a customer’s COs. Allocate to the oldest delivered stock first, preserving each source CO’s agreed price and salesperson credit.
+Revenue. PO reports show Order Value and Delivered Revenue separately. CO revenue comes only from sold quantities.
+Proposed defaults for approval
+Use the recorded Surat Jalan date as the eligible stock date, matching the current sent-based PO workflow. Keep receipt date visible separately. This is recorded stock, not independently verified on-site inventory.
+Attribute sales to the report month; retain received and posted timestamps separately. Post in chronological order per customer, with explicit zero-sales reports for zero months.
+Snapshot the credited salesperson when each CO is created. Use the access matrix on page 5: read/select-only customer and item access for Admin CO, preserved authorized master-data operations for Admin PO, and scoped sales summaries.
+Proposed controls keep drafts without stock or revenue effects, block duplicates and overselling, preserve revisions and downstream correction previews, and distinguish explicit zero from missing. Pages 2–4 describe daily work; pages 5–7 cover reporting, controls, and acceptance.
+Review decision
+Do you approve this design, including using the recorded SJ delivery date to add eligible consignment stock and the proposed posting and access rules, so we can prepare the implementation plan?
+Approval is for the design only. It does not authorize live data changes, access grants, implementation, or deployment.
+
+
+Order workflow and screens
+Navigation: Procurement → Consignment Order, with Orders, Monthly Sales Reports, and Customer Stock tabs. Keep the PO interaction patterns so the new area feels familiar, while CO stock and revenue follow their own rules.
+Find and create an order
+The Orders list uses familiar search, customer and status filters, pagination, and explicit View and Edit actions. Show CO number and date, customer, delivery progress, sold quantity and sold value, recorded stock balance, and latest report month.
+Create a CO with the existing customer and product lookups, SKU and quantity entry, agreed unit price, and notes. Use CO number and CO date labels, plus an optional end date. Show planned CO value separately from revenue.
+Work from the order detail
+The detail page summarizes delivered, sold, unsold-returned, and remaining quantities. Include an item grid, delivery history, linked monthly reports, movement history, and audit trail. Display the credited salesperson as read-only historical attribution.
+	Action
+	What the user records
+	Recorded effect
+
+	Add Surat Jalan
+	Source CO items, sent quantity, SJ date and reference; receipt date separately
+	Adds eligible customer stock on the proposed SJ date; no revenue
+
+	Record monthly sales
+	Customer and report month, with all eligible COs included
+	Posted FIFO allocations reduce stock and produce sold revenue
+
+	Record goods return
+	Original CO item and delivered source, actual date, quantity and reason
+	Reduces the selected unsold stock; no revenue reversal
+
+
+
+Separate order state from delivery progress
+Show Active, Closed, or Cancelled as the CO lifecycle state. Show delivery progress independently, including partial and fully delivered. A fully delivered CO can still hold unsold customer stock and must remain active.
+Allow closure only when remaining customer stock is zero, the final required monthly report is completed, and any undelivered remainder has been explicitly resolved. Do not copy PO automatic completion behavior. Preserve the reason and actor for closure, cancellation, or resolution of a remainder.
+Keep common safeguards
+Reuse unsaved-change warnings, conflict recovery, lookup and line-entry components, and transaction-sender patterns. A stale edit must show the current record and preserve the user’s work for review rather than silently overwriting another person’s change.
+
+
+Monthly sales entry and review
+Each report covers one customer and one month across all that customer’s COs. The operator enters sold quantities by SKU, not by order. The system proposes the delivery-batch allocations and calculates revenue from source prices.
+Entry screen
+Header fields: Customer, Report month, reference, received date, and optional original report attachment. Evidence remains private to the authorized CO roles; this version does not add OCR or automatic import.
+	Item
+	Eligible quantity
+	Sold quantity
+	Closing recorded balance
+	Calculated revenue
+
+	Example SKU
+	100
+	70 entered
+	30
+	Rp720,000
+
+	Another SKU
+	20
+	Unfilled
+	Not final
+	Not final
+
+
+
+One row represents one stable SKU across all source COs. Eligible quantity is the remaining quantity available for the report period after the applicable earlier movements. A draft preview can change when another authorized posting changes that stock.
+Expand a row to show source SJ and CO, delivery date, allocated quantity, agreed unit price, and credited salesperson. Mixed prices stay visible in this breakdown. Do not show an editable settlement price or silently average the source prices.
+Four steps to a posted report
+1. Select the customer and report month. Load the eligible SKUs and flag earlier missing months or stale source data.
+2. Enter sold quantities. Each expected SKU row needs a value, including an explicit zero when none sold. An unfilled row remains missing, not zero. For sold-items-only reports, offer an explicit reviewed action to mark all remaining eligible rows zero.
+3. Review FIFO allocations, sold revenue, and closing recorded stock. Confirm that the statement is complete; use an explicit zero-sales confirmation for a zero month.
+4. Save draft or Post. A draft has no stock, revenue, or sales-credit effect. Post validates the whole report and commits one outcome only.
+Report history and revisions
+History displays Draft, Posted, and Revised states, with the current effective revision unmistakable. There is one effective report for a customer and month. A revision replaces that period’s effective totals; it never adds the same period a second time.
+A posted report cannot be quietly edited. Corrections require a reason and an impact preview, including later affected months. Preserve the original report, prior allocations, evidence, and audit history. A conflicting or stale preview blocks posting and keeps the draft available for review.
+
+
+Customer stock and corrections
+Show recorded balances with their freshness
+Customer Stock shows quantities by customer and SKU, with month-end and current recorded balances. Include the latest reported-through month, missing-report warnings, and drill-down to source COs and immutable movements.
+Opening quantity + eligible deliveries − reported sold quantity − unsold goods returns = closing recorded quantity.
+Between reports, actual stock is unknown to the system because additional sales may be unreported. Label these figures recorded or book quantities. Monthly totals do not establish precise daily historical balances; do not imply that they do.
+Record unsold goods returns
+Select the original CO item and remaining delivered source stock. Require a positive quantity, actual return date, reference or reason, and confirmation. The return consumes that source’s remaining quantity and future FIFO capacity. It does not reverse revenue because the returned goods were unsold.
+“SJ Kembali” refers to return of the delivery document, not returned goods. A refund of goods already reported sold needs a separate design and is outside this version.
+Allocate sales consistently
+FIFO uses the oldest eligible delivered batch first. Order batches by SJ date, then creation order and stable ID for a deterministic tie-break. Carry the source CO line’s agreed price and creation-time salesperson snapshot into each allocation. Future deliveries cannot cover sales in an earlier report month.
+Returns consume the selected source stock and never rewrite delivery history. Draft reports may be prepared ahead. The proposed posting rule settles required customer months chronologically; an explicit zero report closes a zero-sales month.
+Required reporting starts with opening or first eligible consigned stock. It covers each month with stock or stock movements through the final settlement report. It ends once all COs are closed and stock is zero; chronological and zero-report rules apply only to required months.
+Review all consequences before a correction
+For any posted correction, preview the affected month and all subsequent changes to stock, FIFO allocations, sold revenue, and salesperson credit. Revalidate the entire affected chronology, then append revisions and movements atomically while retaining originals. Never silently reallocate past sales.
+If the change leaves stock on a closed CO, include controlled reopening in the same reviewed preview and commit. An edit or void of a delivery that touches already-settled quantity must use this correction mechanism or be blocked. Backdated returns must also pass chronology validation; they cannot create negative remaining stock.
+Scope of this version
+This design adds quantity tracking and sold-revenue reporting. It does not add cost valuation, warehouse accounting, losses or write-offs, purchasing or invoicing, payment collection, or a customer portal.
+
+
+Reporting and proposed access
+Keep value and revenue distinct
+	Measure
+	Amount included
+	Proposed time and status basis
+
+	PO Order Value
+	Committed PO quantity × agreed price
+	order_date; active committed POs; cancelled excluded from active totals, retained in history
+
+	PO Delivered Revenue
+	Delivered PO quantities at the applicable agreed prices
+	sj_date, matching the existing sent-based delivery convention
+
+	CO Sold Revenue
+	Effective posted sold allocations × source CO prices
+	Report month; received and posted timestamps retained separately
+
+
+
+Show PO Delivered Revenue and CO Sold Revenue as separate labeled amounts, with an optional combined total. CO dispatch never enters revenue. Keep distinct order counts separate from report or revision events, so monthly reporting cannot create extra orders. Exact historical status and date treatment remains a proposed reporting default for approval.
+Snapshot the CO credit owner at creation. A later customer-owner change must not rewrite prior CO attribution. Missing ownership is Unassigned, with no automatic later reassignment. The person entering a monthly report receives no credit merely for that entry.
+Proposed access matrix
+	Role
+	Proposed CO scope
+	Boundary
+
+	Admin CO
+	Procurement: Consignment Order, Customer List and Item List only. Manage CO operations; proposed customer/item read and select only
+	No PO, Dashboard or Promotions; no master edits, ownership assignment, user or HR administration
+
+	Executive
+	Proposed unrestricted CO and Procurement access, including all CO reports
+	Explicit and auditable authorization
+
+	Admin PO
+	Procurement: Purchase Order, Customer List and Item List only. Preserve existing authorized customer/item create, edit and delete operations
+	No CO, Dashboard or Promotions; update existing Procurement scope accordingly
+
+	Salesperson
+	Authorized own credited-sales summaries
+	No raw CO operations, full source reports, or evidence
+
+	Sales manager
+	Authorized own and team sales summaries
+	Same summary-only boundary
+
+	Sales head and leadership
+	Existing leadership summary scope; executive has the CO scope above
+	Summary reads do not grant operational or evidence access
+
+
+
+The three-module Procurement limits and continued HR/Cuti access for both admins are confirmed. Enforce them in routes and backend read/write APIs, not just menus. No access changes have been applied. Other scopes and the Admin CO read/select default remain proposed.
+Preserve existing Admin PO leave behavior. Admin CO needs explicitly configured HR membership, leave balance and approver setup before using leave features. Show an HR setup-required state until configured; CO operations need not wait. Do not invent balances or permissions, or inherit the PO Admin-to-Director special path automatically.
+
+
+Technical design appendix
+Separate data with reusable interface components
+Use new consignment headers and stable lines, delivery batches and lines, customer-month reports with immutable revisions, report SKU lines, delivery-batch allocations, unsold-return lines, and an audit and movement ledger. Store actor and request idempotency receipts. Do not insert COs into purchase_orders merely to reuse PO behavior.
+Persist each delivered source’s stable SKU and product identity, agreed price, and creation-time credit snapshot. Later catalog changes or ordinary CO edits cannot silently rewrite delivered sources; historical corrections use the reviewed correction path. Compute stock from authoritative movements and effective revisions on the server, with paginated queries. A freehand mutable balance is never the source of truth.
+Conceptual operations
+	Reads
+	Writes and transitions
+
+	Scoped CO list and detail; stock by customer and SKU; reports and revisions; source allocations; movement and audit history
+	Create or edit CO; save or revise delivery; save report draft; preview settlement; post report or revision with preview version; record goods return; close CO
+
+
+
+Reuse PO lookup and line-entry components, navigation, pagination, unsaved warnings, conflict recovery, and transaction-sender patterns. Keep current PO behavior compatible except for separately reviewed dual-metric reporting changes.
+Make posting one verified transaction
+Authorize every attempt. Validate the caller’s role and customer or record scope on every read and mutation, including retries. Hiding a button is not an authorization control.
+Bind the preview. The preview token covers the submitted payload and every affected source and downstream version. Posting recomputes allocations under locks and refuses a stale token, while preserving the draft.
+Commit atomically. Effective revision, allocations, stock movements, revenue and credit effects, audit events, and any controlled reopening become one result. Keep previous versions traceable.
+Reconcile retries. Idempotent requests return one outcome. After an uncertain network result, query that request’s outcome before resubmitting. Concurrent operators must receive a safe conflict rather than duplicate stock or sales effects.
+Enforce invariants on the server
+Require same-customer source links and stable SKU identity; integer nonnegative sold quantities; positive return quantities; exact-decimal monetary calculations; eligible-as-of dates; no overselling or over-return; and nonnegative affected source balances throughout the revalidated chronology. Decimal precision and rounding must be explicit in the implementation plan.
+Separate source-kind revenue events from distinct-order counts. Every reported amount must drill back to its effective report revision and allocated source delivery. A revision changes effective totals without erasing the original record of what was posted and by whom.
+
+
+Acceptance and implementation readiness
+Worked example
+CO A delivers 60 units at Rp10,000. CO B later delivers 40 at Rp12,000. Both batches are eligible in the same report month.
+	Event
+	Allocation or change
+	Sold revenue
+	Recorded balance
+
+	Report 70 sold
+	A 60 + B 10
+	Rp720,000
+	B 30
+
+	Return 5 unsold from B
+	B stock −5
+	Rp720,000 unchanged
+	B 25
+
+
+
+Acceptance checks
+A repeated Post has no extra effect. Sales over eligible quantity are blocked; a next-month delivery cannot cover a previous-month report. Missing values and explicit zero are visibly different.
+Changed customer ownership or catalog data does not rewrite snapshots. Two admins posting concurrently receive one valid outcome and a safe conflict. Late corrections preview later stock, revenue, and credit effects.
+Admin CO cannot write PO or administer HR, but can use its separately configured HR/Cuti access. A PO for 100 units at Rp10,000, with 30 delivered, shows Order Value Rp1,000,000 and Delivered Revenue Rp300,000. CO dispatch contributes no revenue.
+Readiness and approval boundary
+Sequence: design approval, implementation plan, implementation and review, then an authorized test deployment. This draft authorizes none of those execution steps and no production deployment, data cleanup, accounts, or role grants. Preserve the current unrelated release.
+The user plans to clear test data before the pilot; deletion is outside this work. If opening customer-held balances are needed, review them separately with their source evidence, cutoff, price, and salesperson attribution. Never assume absent historical stock is zero.
+Existing system references
+Code-backed design context: pl0203/lou_erp at candidate 75d38e55aa886386441597e8c22bb2fd90013565. Source files were fetched from GitHub and matched to local blob hashes. These existing sources motivate separate CO stock and sold-revenue records; this review makes no claim of live-data testing.
+Canonical full-order sales and owner attribution
+Customer delivered sales
+Revenue and KPI consume the order-value source
+Procurement already separates order and delivery values
+Padiwan  |  Design review  |  
+

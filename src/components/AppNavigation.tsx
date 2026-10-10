@@ -127,7 +127,7 @@ export default function AppNavigation({ module, links, beforeSignOut }: { module
   async function handleSignOut() {
     if (signingOut || (beforeSignOut && !beforeSignOut())) return
     setSigningOut(true); setSignOutError('')
-    try { await signOut(); closeDrawer(); navigate('/login', { replace: true }) }
+    try { if (await signOut()) closeDrawer() /* ProtectedRoute owns the auth redirect. */ }
     catch { setSignOutError('Tidak dapat keluar. Silakan coba lagi.') }
     finally { setSigningOut(false) }
   }

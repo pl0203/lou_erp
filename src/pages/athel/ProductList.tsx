@@ -1,3 +1,4 @@
+import { useProcurementAccess } from '../../lib/procurementAccess'
 import { parseCatalogPrice, formatCatalogPrice } from '../../lib/catalogPricing'
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -104,6 +105,7 @@ const TIER_LABELS: Record<string, string> = {
 
 export default function ProductList() {
   const queryClient = useQueryClient()
+  const access = useProcurementAccess()
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
@@ -136,7 +138,7 @@ export default function ProductList() {
   const endItem = totalItems === 0 ? 0 : Math.min(page * PAGE_SIZE, totalItems)
 
   const saveMutation = useMutation({
-    mutationFn: () => saveProduct(form, editingId),
+    mutationFn: () => { access.require(editingId ? 'product_edit' : 'product_create'); return saveProduct(form, editingId) },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] })
       setShowForm(false)
@@ -146,7 +148,7 @@ export default function ProductList() {
   })
 
   const deleteMutation = useMutation({
-    mutationFn: () => deleteProduct(deleteId!),
+    mutationFn: () => { access.require('product_delete'); return deleteProduct(deleteId!) },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] })
       setDeleteId(null)
@@ -154,6 +156,7 @@ export default function ProductList() {
   })
 
   const openEdit = (p: Product) => {
+    if (!access.capabilities.product_edit) return
     setEditingId(p.id)
     setForm({
       name: p.name,
@@ -168,6 +171,7 @@ export default function ProductList() {
   }
 
   const handleSave = () => {
+    if (!access.capabilities[editingId ? 'product_edit' : 'product_create']) return
     if (!form.sku.trim()) return alert('SKU wajib diisi.')
     if (!form.name.trim()) return alert('Nama barang wajib diisi.')
     saveMutation.mutate()
@@ -184,12 +188,12 @@ export default function ProductList() {
           <h1 className="text-xl font-semibold text-gray-900">Daftar Barang</h1>
           <p className="text-sm text-gray-500 mt-0.5">{totalItems} barang</p>
         </div>
-        <button
-          onClick={() => { setEditingId(null); setForm(EMPTY_FORM); setShowForm(true) }}
+        {access.capabilities.product_create && <button
+          onClick={() => { if (!access.capabilities.product_create) return; setEditingId(null); setForm(EMPTY_FORM); setShowForm(true) }}
           className="bg-brand-primary hover:bg-brand-hover text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
         >
           + Tambah Barang
-        </button>
+        </button>}
       </div>
 
       <div className="px-4 md:px-8 py-4 bg-white border-b border-gray-100">
@@ -250,18 +254,18 @@ export default function ProductList() {
                         {formatCatalogPrice(p.depo_bangunan)}
                       </td>
                       <td className="px-5 py-4 text-right">
-                        <button
+                        {access.capabilities.product_edit && <button
                           onClick={() => openEdit(p)}
                           className="text-brand-primary hover:text-brand-hover text-xs font-medium mr-3"
                         >
                           Ubah
-                        </button>
-                        <button
-                          onClick={() => setDeleteId(p.id)}
+                        </button>}
+                        {access.capabilities.product_delete && <button
+                          onClick={() => access.capabilities.product_delete && setDeleteId(p.id)}
                           className="text-red-400 hover:text-red-600 text-xs font-medium"
                         >
                           Hapus
-                        </button>
+                        </button>}
                       </td>
                     </tr>
                   ))}
@@ -280,18 +284,18 @@ export default function ProductList() {
                       {p.size && <p className="text-xs text-gray-400 mt-0.5">{p.size}</p>}
                     </div>
                     <div className="flex gap-2">
-                      <button
+                      {access.capabilities.product_edit && <button
                         onClick={() => openEdit(p)}
                         className="text-brand-primary text-xs font-medium"
                       >
                         Ubah
-                      </button>
-                      <button
-                        onClick={() => setDeleteId(p.id)}
+                      </button>}
+                      {access.capabilities.product_delete && <button
+                        onClick={() => access.capabilities.product_delete && setDeleteId(p.id)}
                         className="text-red-400 text-xs font-medium"
                       >
                         Hapus
-                      </button>
+                      </button>}
                     </div>
                   </div>
 
@@ -427,7 +431,7 @@ export default function ProductList() {
               </button>
               <button
                 onClick={handleSave}
-                disabled={saveMutation.isPending}
+                disabled={!access.capabilities[editingId ? 'product_edit' : 'product_create'] || saveMutation.isPending}
                 className="px-4 py-2 text-sm font-medium bg-brand-primary text-white rounded-lg hover:bg-brand-hover disabled:opacity-50"
               >
                 {saveMutation.isPending ? 'Menyimpan...' : 'Simpan'}
@@ -459,7 +463,7 @@ export default function ProductList() {
               </button>
               <button
                 onClick={() => deleteMutation.mutate()}
-                disabled={deleteMutation.isPending}
+                disabled={!access.capabilities.product_delete || deleteMutation.isPending}
                 className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
               >
                 {deleteMutation.isPending ? 'Menghapus...' : 'Hapus'}

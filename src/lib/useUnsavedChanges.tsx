@@ -28,7 +28,15 @@ export function useUnsavedChanges(isDirty: boolean) {
   const dirty = useRef(isDirty)
   dirty.current = isDirty
   const bypass = useRef(false)
-  const [pending, setPending] = useState<{ action: () => void; message: string } | null>(null)
+  type Pending = { action: () => void; message: string; settle?: (accepted: boolean) => void }
+  const [pending, publishPending] = useState<Pending | null>(null)
+  const pendingRef = useRef<Pending | null>(null)
+  const setPending = (next: Pending | null) => {
+    const previous = pendingRef.current
+    pendingRef.current = next; publishPending(next)
+    if (previous !== next) previous?.settle?.(false)
+  }
+  useEffect(() => () => { pendingRef.current?.settle?.(false); pendingRef.current = null }, [])
   const blocker = useBlocker(useCallback(({ currentLocation, nextLocation }) =>
     dirty.current && !bypass.current && `${currentLocation.pathname}${currentLocation.search}` !== `${nextLocation.pathname}${nextLocation.search}`, []))
   const latestBlocker = useRef(blocker)
@@ -49,11 +57,26 @@ export function useUnsavedChanges(isDirty: boolean) {
     if (blocker.state === 'blocked') blocker.reset()
   }
   const discard = () => {
-    if (blocker.state === 'blocked') blocker.proceed()
+    if (pending?.settle) pending.settle(true)
+    else if (blocker.state === 'blocked') blocker.proceed()
     else pending?.action()
     setPending(null)
   }
   return {
+    confirmDiscardDecision(options: { message?: string; signal?: AbortSignal } = {}): Promise<boolean> {
+      if (options.signal?.aborted || latestBlocker.current.state === 'blocked') return Promise.resolve(false)
+      if (!dirty.current) return Promise.resolve(true)
+      return new Promise(resolve => {
+        let finished = false
+        const settle = (accepted: boolean) => {
+          if (finished) return
+          finished = true; options.signal?.removeEventListener('abort', cancel); resolve(accepted)
+        }
+        const decision: Pending = { action: () => {}, message: options.message ?? DEFAULT_MESSAGE, settle }
+        const cancel = () => { if (pendingRef.current === decision) setPending(null); else settle(false) }
+        setPending(decision); options.signal?.addEventListener('abort', cancel, { once:true })
+      })
+    },
     confirmDiscard(action: () => void, options: { when?: boolean; message?: string } = {}) {
       if (options.when ?? dirty.current) setPending({ action, message: options.message ?? DEFAULT_MESSAGE })
       else action()

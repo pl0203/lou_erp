@@ -1,13 +1,18 @@
 // @vitest-environment node
+import { readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
-import { expect, test } from 'vitest'
+import { afterAll, beforeAll, expect, test } from 'vitest'
+import { createHistoricalProtectedRoot } from './historical-protected-root.mjs'
+let historical: ReturnType<typeof createHistoricalProtectedRoot>
+beforeAll(() => { historical = createHistoricalProtectedRoot() })
+afterAll(() => historical?.cleanup())
 import { DEMO_MIGRATIONS, DEMO_TABLES, DEMO_NEW_TABLES, buildDemoPreflight, buildDemoRollout, reconcileDemoRollout, verifyDemoFixtureTarget } from '../../scripts/build-demo-rollout.mjs'
 const hash = (text:string) => createHash('sha256').update(text).digest('hex')
 const sources = [0,1,2,3].map(i => ({ path: `supabase/migrations/${['202610081101_demo_order_promotions.sql','202610081102_demo_visit_workflow.sql','202610081103_demo_sales_reporting.sql','202610081104_demo_sales_assignment_cardinality.sql'][i]}`, sql: `-- source ${i}\nBEGIN;\nSELECT ${i};\nCOMMIT;\n` }))
 const target = { kind:'fixture', host:'127.0.0.1', port:65443, database:'demo_rollout_test', operator:'postgres', permit:'disposable-demo-rollout' }
 const manifest = { version:1, status:'synthetic', upstream:'18ec064e43466dc8b567482a628b3ef91f886ce4', sources:sources.map(s=>({path:s.path,sha256:hash(s.sql),commit:'1'.repeat(40)})) }
 const baseline = { database:'demo_rollout_test', operator:'postgres', data_md5:'1'.repeat(32), schema_md5:'2'.repeat(32), pending_girard:2, unresolved_requests:0, promotion_bucket:null, new_tables:Object.fromEntries(Object.keys(DEMO_NEW_TABLES).map(r=>[r,{present:false,rows:null,unresolved_requests:null}])), columns:Object.fromEntries(DEMO_TABLES.map(r=>[r,r==='public.users'?['id','role','is_active','manager_id']:['id']])), schema:{"function:public.changed()":"a".repeat(32)} }
-const inputs = () => ({repoRoot:process.cwd(), sources, target, manifest, manifestSha256:hash(JSON.stringify(manifest)), baseline, schemaChanges:[{key:"function:public.changed()",before:"a".repeat(32),after:"b".repeat(32),reason:"Reviewed replacement"}] })
+const inputs = () => ({repoRoot:historical.root, sources, target, manifest, manifestSha256:hash(JSON.stringify(manifest)), baseline, schemaChanges:[{key:"function:public.changed()",before:"a".repeat(32),after:"b".repeat(32),reason:"Reviewed replacement"}] })
 test('pins the exact ordered four reviewed sources before atomic assembly', () => {
  const packet=buildDemoRollout(inputs())
  expect(DEMO_MIGRATIONS).toEqual(sources.map(s=>s.path))
@@ -101,4 +106,14 @@ test('baseline classification and packet construction also require complete abse
  const packet=buildDemoRollout(inputs())
  expect(reconcileDemoRollout(packet,{...baseline,new_tables:undefined})).toMatchObject({status:'REVIEW_REQUIRED',reapply:false})
  expect(()=>buildDemoRollout({...inputs(),baseline:{...baseline,new_tables:undefined}})).toThrow(/baseline|inventory/i)
+})
+
+test('historical production guard still rejects the current CO frontend tree',()=>{expect(()=>buildDemoRollout({...inputs(),repoRoot:process.cwd()})).toThrow(/Protected HR\/reset\/baseline source drift: src\/lib\/AuthContext.tsx/)})
+
+test('database lifecycle uses the hash-verified historical root without changing old pins',()=>{
+ const source=readFileSync('tests/demo/rollout-database.mjs','utf8')
+ expect(source).toContain("import { createHistoricalProtectedRoot } from './historical-protected-root.mjs'")
+ expect(source).toContain('repoRoot:historical.root')
+ expect(source).toMatch(/finally\s*\{\s*historical\.cleanup\(\)/)
+ expect(source).not.toContain('repoRoot:process.cwd()')
 })

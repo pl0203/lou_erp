@@ -124,6 +124,12 @@ test.each([-1, 1])('history navigation (%s) can be kept then discarded without c
   expect(screen.getByDisplayValue('Keep my draft')).toBeTruthy()
   await act(() => router.navigate(delta)); discard()
   await waitFor(() => expect(router.state.location.pathname).toBe(delta === -1 ? '/dashboard' : '/reports'))
+  // Router state publishes before React commits the destination and retires its
+  // old blocker. Reverse immediately after that observable route lifecycle,
+  // without an arbitrary delay or waiting for the next PO read.
+  await screen.findByText('Destination page')
+  expect(screen.queryByDisplayValue('Original item')).toBeNull()
+  expect(router.state.blockers.size).toBe(0)
   await act(() => router.navigate(-delta))
   await screen.findByDisplayValue('Original item')
   expect(screen.queryByDisplayValue('Keep my draft')).toBeNull()

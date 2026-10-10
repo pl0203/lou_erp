@@ -37,7 +37,7 @@ export default function LeaveManagement() {
       {/* Keep only the same actor/scope's ephemeral owner through read failures. Its
           protected UI is suspended until the shared authority read succeeds again. */}
       {identity && !denied && context.data && <>
-        {readState === 'ready' && context.data.memberKind && <LeaveSetupStatus context={context.data} />}
+        {readState === 'ready' && <LeaveSetupStatus context={context.data} />}
         <LeaveTabs key={identity} context={context.data} readState={readState} onDirtyChange={setDirty} />
       </>}
     </main>

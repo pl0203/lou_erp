@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { customerBackend } from './helpers/customerBackend'
 import { CUSTOMER_CATEGORIES } from '../src/lib/customerCategory'
 const state = vi.hoisted(() => ({ backend: null as any }))
+vi.mock('../src/lib/procurementAccess', () => ({ useProcurementAccess: () => ({ready:true,capabilities:{customer_create:true,customer_edit:true,customer_delete:false,product_create:true,product_edit:true,product_delete:true},require:()=>{}}) }))
 vi.mock('../src/lib/supabase', () => ({ supabase: { from: (...args: any[]) => state.backend.from(...args), rpc: (...args: any[]) => state.backend.rpc(...args), auth: { getUser: () => state.backend.auth.getUser() } } }))
 vi.mock('../src/components/AthelNav', () => ({ default: () => null }))
 vi.mock('../src/components/GirardNav', () => ({ default: () => null }))

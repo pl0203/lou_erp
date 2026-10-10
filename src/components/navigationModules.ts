@@ -10,13 +10,14 @@ export function leaveHome(role?: string) {
 export function moduleOptions(role?: string) {
   if (!role) return []
   return [
-    ...(['po_admin', 'executive'].includes(role) ? [{ to: '/athel/po', label: moduleLabels.athel, icon: moduleIcons.athel, description: 'Manajemen pembelian' }] : []),
+    ...(['po_admin', 'co_admin', 'executive'].includes(role) ? [{ to: role === 'co_admin' ? '/athel/co' : '/athel/po', label: moduleLabels.athel, icon: moduleIcons.athel, description: 'Manajemen pembelian' }] : []),
     ...(['sales_person', 'sales_manager', 'sales_head', 'executive'].includes(role) ? [{ to: '/girard/schedule', label: moduleLabels.girard, icon: moduleIcons.girard, description: 'Manajemen penjualan' }] : []),
     { to: leaveHome(role), label: moduleLabels.ihr, icon: moduleIcons.ihr, description: role === 'executive' ? 'Manajemen SDM' : 'Ajukan cuti dan saldo' },
   ]
 }
 export function roleHome(role?: string) {
   if (role === 'executive') return '/landing'
+  if (role === 'co_admin') return '/athel/co'
   if (role === 'po_admin') return '/athel/po'
   if (['sales_person', 'sales_manager', 'sales_head'].includes(role ?? '')) return '/girard/schedule'
   return '/ihr/leave'

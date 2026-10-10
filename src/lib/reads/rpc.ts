@@ -1,3 +1,4 @@
+import { decodeSalesMetrics, decodeSalesMetricMonths } from './salesMetrics'
 import { supabase } from '../supabase'
 import { isPOConflict, POConflictError } from '../poConflict'
 import { PO_OUTPUT_STATUSES, READ_RPC_DEFINITIONS } from './contracts'
@@ -33,7 +34,7 @@ const performance = object({ id, full_name: text, scheduled: count, visited: cou
 const manager = object({ id, name: text, address: nullable(text), city: nullable(text), last_visit_date: nullable(text), visit_frequency_days: count, visits_this_period: count, target_visits: count, on_track: bool })
 const customerStat = object({ customer_id: id, first_order_date: nullable(date), order_count: count, total_sales: money, top_items: array(object({ name: text, revenue: money }), 10) })
 const activity = object({ sales_person_id: id, total_scheduled: count, total_visited: count, total_orders: count, weekly_visits: count })
-const schema: Record<ReadRpcName, Check> = {
+const schema: Record<Exclude<ReadRpcName, 'pilot_sales_metrics_v2' | 'pilot_sales_metric_months_v2'>, Check> = {
   pilot_sales_report_months_v1: object({ earliest_schedule_date: nullable(date), earliest_order_at: nullable(timestamp) }),
   pilot_po_page_v1: object({ items: array(po) }),
   pilot_sales_order_page_v1: object({ items: array(sales), status_counts: object({ pending: count, approved: count, rejected: count, cancelled: count }) }),
@@ -56,8 +57,10 @@ const schema: Record<ReadRpcName, Check> = {
 }
 
 export function decodeRead<N extends ReadRpcName>(name: N, args: RpcArgsMap[N], data: unknown): RpcResultMap[N] {
+  if (name === 'pilot_sales_metrics_v2') return decodeSalesMetrics(args as RpcArgsMap['pilot_sales_metrics_v2'], data) as RpcResultMap[N]
+  if (name === 'pilot_sales_metric_months_v2') return decodeSalesMetricMonths(args as RpcArgsMap['pilot_sales_metric_months_v2'], data) as RpcResultMap[N]
   object({ version: (value, path) => { if (value !== 1) fail(path) }, as_of: timestamp })(data, name)
-  schema[name](data, name)
+  schema[name as keyof typeof schema](data, name)
   const result = data as Record<string, any>
   const definition = READ_RPC_DEFINITIONS[name]
   if (definition.result === 'page') {

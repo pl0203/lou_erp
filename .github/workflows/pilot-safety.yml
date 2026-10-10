@@ -258,3 +258,23 @@ jobs:
           path: scale-results/customer-category-*
           if-no-files-found: warn
           retention-days: 7
+
+      - name: Guarded final CO composition, SQL decoders and real races
+        env:
+          CO_CI_PROFILE: github-pilot-safety-v1
+          CO_CI_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p scale-results/co-final
+          node scripts/test-co-ci.mjs | tee scale-results/co-final/aggregate.log
+          for marker in CO_FINAL_COMPOSED_DATABASE_PASSED CO_REAL_RACES_PASSED CO_EVIDENCE_REAL_RACES_PASSED; do
+            [[ "$(grep -Fxc "$marker" scale-results/co-final/aggregate.log)" == 1 ]]
+          done
+      - name: Preserve final CO evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: co-final-${{ github.run_id }}
+          path: scale-results/co-final
+          if-no-files-found: warn
+          retention-days: 7

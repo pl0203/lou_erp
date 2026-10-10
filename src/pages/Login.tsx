@@ -4,13 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 
-const ROLE_HOME: Record<string, string> = {
-  po_admin:      '/athel/po',
-  sales_person:  '/girard/schedule',
-  sales_manager: '/girard/schedule',
-  sales_head:    '/girard/schedule',
-  executive:     '/landing',
-}
+import { roleHome } from '../components/navigationModules'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -22,7 +16,7 @@ export default function Login() {
 
   useEffect(() => {
     if (!loading && profile) {
-      navigate(ROLE_HOME[profile.role] ?? '/login', { replace: true })
+      navigate(roleHome(profile.role), { replace: true })
     }
   }, [profile, loading])
 

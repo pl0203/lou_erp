@@ -5,6 +5,7 @@ import { spawn,spawnSync,execFileSync } from 'node:child_process'
 import { buildDemoPreflight,buildDemoRollout,reconcileDemoRollout } from '../../scripts/build-demo-rollout.mjs'
 import { stripMigrationTransaction } from '../../scripts/assemble-read-rollout.mjs'
 import { demoFixtureConnection,bindDemoCiServer,DEMO_CI_IDENTITY_SQL } from '../../scripts/demo-rollout-fixture-target.mjs'
+import { createHistoricalProtectedRoot } from './historical-protected-root.mjs'
 import { fixtureSql,sources } from './rollout-fixture.mjs'
 const connection=demoFixtureConnection(process.env,process.env.DEMO_ROLLOUT_PERMIT==='disposable-demo-rollout-ci'?execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim():undefined)
 let target=connection.target
@@ -28,11 +29,13 @@ assert.equal(sql(`SELECT current_database()='demo_rollout_test' AND current_user
 sql(fixtureSql)
 if(target.kind==='fixture-ci') sql(`UPDATE public.demo_rollout_fixture_marker SET run_id='${target.ci.runId}',source_sha='${target.ci.sourceSha}';`)
 
+const historical=createHistoricalProtectedRoot()
+try {
 const before=capture()
 // Rehearse only inside a transaction rolled back by this synthetic test; never a hosted discovery apply.
 const rehearsal=oneJson(`BEGIN;\n${sources.map(s=>stripMigrationTransaction(s.sql,true)).join('\n')}\n${buildDemoPreflight({target,columns:before.columns}).replace('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;\n','').replace('ROLLBACK;\nDROP TABLE pg_temp.demo_columns,pg_temp.demo_data,pg_temp.demo_new_data;\n','')}ROLLBACK;`)
 const changes=[...new Set([...Object.keys(before.schema),...Object.keys(rehearsal.schema)])].filter(k=>before.schema[k]!==rehearsal.schema[k]).map(key=>({key,before:before.schema[key]??null,after:rehearsal.schema[key]??null,reason:'Explicit synthetic metadata delta'}))
-const build=(s=sources,baseline=before,schemaChanges=changes)=>{const manifest=manifestFor(s);return buildDemoRollout({repoRoot:process.cwd(),target,baseline,sources:s,manifest,manifestSha256:hash(JSON.stringify(manifest)),schemaChanges})}
+const build=(s=sources,baseline=before,schemaChanges=changes)=>{const manifest=manifestFor(s);return buildDemoRollout({repoRoot:historical.root,target,baseline,sources:s,manifest,manifestSha256:hash(JSON.stringify(manifest)),schemaChanges})}
 
 const unchanged=()=>{const after=capture(); assert.equal(after.data_md5,before.data_md5);assert.equal(after.schema_md5,before.schema_md5)}
 // A matching reviewed-looking before/after hash cannot authorize an old generic column grant.
@@ -119,3 +122,5 @@ assert.equal(proposal.new_tables['public.visit_requests'].rows,1)
 assert.equal(proposal.new_tables['private.pilot_schedule_requests'].unresolved_requests,1)
 assert.deepEqual(reconcileDemoRollout(packet,proposal).status,'REVIEW_REQUIRED')
 console.log('DEMO_ROLLOUT_NEW_ONLY_WRITES_AND_UNRESOLVED_READBACK_REFUSED')
+
+} finally { historical.cleanup() }

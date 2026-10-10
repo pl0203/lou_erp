@@ -8,7 +8,8 @@
       "ci/customer-categories-postgres": false,
       "ci/ihr-leave-postgres": false,
       "fix/padiwan-sidebar-theme": false,
-      "fix/demo-revisions": false
+      "fix/demo-revisions": false,
+      "feat/consignment-orders-reviewed-20261010": false
     }
   },
   "rewrites": [

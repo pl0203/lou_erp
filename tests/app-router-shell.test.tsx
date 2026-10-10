@@ -75,7 +75,7 @@ test('existing role-denied redirects stay enforced in the new shell', async () =
   expect(router().state.location.pathname).toBe('/girard/schedule')
 })
 
-test.each(['executive', 'po_admin'])('%s retains the protected direct legacy sales URL', async role => {
+test.each(['executive'])('%s retains the protected direct legacy sales URL', async role => {
   state.role = role
   await act(() => router().navigate('/athel/sales-orders'))
   render(state.tree)
@@ -118,4 +118,9 @@ test('unauthenticated direct HR leave links still redirect to login', async () =
   await screen.findByText('Selamat datang')
   expect(screen.queryByText('HR leave route')).toBeNull()
   expect(router().state.location.pathname).toBe('/login')
+})
+
+test('PO Admin direct legacy sales URL now returns to its allowed home', async () => {
+ state.role='po_admin'; await act(()=>router().navigate('/athel/sales-orders')); render(state.tree)
+ expect(await screen.findByText('PO list route')).toBeTruthy(); expect(screen.queryByText('Legacy sales orders route')).toBeNull()
 })

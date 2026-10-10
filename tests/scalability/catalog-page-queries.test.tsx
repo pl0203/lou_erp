@@ -2,6 +2,7 @@ import React from 'react'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 const state = vi.hoisted(() => ({ query: null as any, urls: [] as URL[] }))
+vi.mock('../../src/lib/procurementAccess', () => ({ useProcurementAccess: () => ({ready:true,capabilities:{customer_create:true,customer_edit:true,customer_delete:false,product_create:true,product_edit:true,product_delete:true},require:()=>{}}) }))
 vi.mock('../../src/components/AthelNav', () => ({ default: () => null }))
 vi.mock('@tanstack/react-query', () => ({ useQuery: (options: any) => { state.query = options.queryFn; return { isLoading: true } }, useQueryClient: () => ({}), useMutation: () => ({}) }))
 vi.mock('../../src/lib/supabase', async () => {

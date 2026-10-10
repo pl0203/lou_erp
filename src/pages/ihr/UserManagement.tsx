@@ -34,6 +34,7 @@ const EMPTY_FORM: UserForm = {
 }
 
 const ROLES = [
+  { value: 'co_admin', label: 'CO Admin' },
   { value: 'po_admin',      label: 'PO Admin' },
   { value: 'sales_person',  label: 'Sales Person' },
   { value: 'sales_manager', label: 'Sales Manager' },
@@ -43,6 +44,7 @@ const ROLES = [
 
 const ROLE_STYLES: Record<string, string> = {
   po_admin:      'bg-blue-100 text-blue-700',
+  co_admin:      'bg-blue-100 text-blue-700',
   sales_person:  'bg-gray-100 text-gray-700',
   sales_manager: 'bg-purple-100 text-purple-700',
   sales_head:    'bg-orange-100 text-orange-700',

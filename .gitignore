@@ -25,3 +25,8 @@ dist-ssr
 
 # Generated, deterministic self-hosted PO software/model assets
 public/po-reader/
+
+# Synthetic CI receipts, never product source or release inputs
+/scale-results/
+/rollout-results/
+/import-results/

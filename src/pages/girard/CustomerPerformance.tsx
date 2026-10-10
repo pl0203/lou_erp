@@ -1,5 +1,6 @@
+import { SalesMetricsPanel } from '../../components/sales/SalesMetricSummary'
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import { usePagedRead } from '../../lib/reads/usePagedRead'
 import { fetchCustomerPerformancePage } from '../../lib/reads/reports'
@@ -7,39 +8,9 @@ import { formatMoney, moneyPercentage } from '../../lib/reads/money'
 import PaginationControls from '../../components/PaginationControls'
 import { useAuth } from '../../lib/AuthContext'
 
-type MonthOption = { value: string; label: string }
-
 function currentYearMonth(): string {
   const now = new Date()
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-}
-
-async function fetchEarliestMonth(): Promise<string> {
-  const { data, error } = await supabase
-    .from('purchase_orders')
-    .select('order_date')
-    .order('order_date', { ascending: true }).order('id')
-    .limit(1)
-  if (error) throw error
-  if (!data || data.length === 0) return currentYearMonth()
-  const d = new Date(data[0].order_date)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-}
-
-function buildMonthOptions(earliest: string): MonthOption[] {
-  const options: MonthOption[] = []
-  const current = currentYearMonth()
-  let cursor = current
-  while (cursor >= earliest) {
-    const [year, month] = cursor.split('-').map(Number)
-    const label = new Date(year, month - 1, 1).toLocaleDateString('id-ID', {
-      month: 'long', year: 'numeric'
-    })
-    options.push({ value: cursor, label })
-    const prev = new Date(year, month - 2, 1)
-    cursor = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`
-  }
-  return options
 }
 
 async function upsertCustomerTarget(
@@ -162,27 +133,23 @@ function InlineTargetEdit({
 }
 
 export function CustomerPerformanceContent() {
+  return <div className="min-w-0"><div className="px-4 pt-6 md:px-8"><SalesMetricsPanel group="customer" /></div><CustomerActivityContent /></div>
+}
+
+export function CustomerActivityContent() {
   const { profile } = useAuth()
   const queryClient = useQueryClient()
-  const { data: pageData, filters, setFilters, setPage, isPending, isError, refetch } = usePagedRead('customer_performance', { yearMonth: currentYearMonth() }, (filters, page, signal) => fetchCustomerPerformancePage(profile!.id, profile!.role, filters.yearMonth, page, signal))
+  const { data: receivedPage, filters, setFilters, setPage, isPending, isError, refetch } = usePagedRead('customer_performance', { yearMonth: currentYearMonth() }, (filters, page, signal) => fetchCustomerPerformancePage(profile!.id, profile!.role, filters.yearMonth, page, signal))
+  const pageData = isPending ? undefined : receivedPage
   const yearMonth = filters.yearMonth
   const setYearMonth = (yearMonth: string) => setFilters({ yearMonth })
   const isLoading = !pageData && isPending
 
   const canEditTargets = profile?.role === 'sales_head' || profile?.role === 'executive'
 
-  const { data: earliestMonth, isError: monthError, refetch: refetchMonths } = useQuery({
-    queryKey: ['earliest_month'],
-    queryFn: fetchEarliestMonth,
-  })
-
-  const monthOptions = buildMonthOptions(earliestMonth ?? currentYearMonth())
-
   const data = pageData?.items ?? []
 
   if (isError) return <div role="alert" className="p-6 text-red-600">Data performa tidak tersedia. <button onClick={() => refetch()} className="underline">Coba lagi</button></div>
-
-  if (monthError) return <div role="alert" className="p-6 text-red-600">Daftar bulan tidak tersedia. <button onClick={() => refetchMonths()} className="underline">Coba lagi</button></div>
 
   const summary = pageData?.summary
   const totalSales = summary?.total_sales ?? '0'
@@ -191,7 +158,7 @@ export function CustomerPerformanceContent() {
   const totalTarget = summary?.total_target_visits ?? 0
   const visitPct = summary?.visit_percent ?? 0
   const topCustomer = summary?.top_customer
-  const selectedLabel   = monthOptions.find(m => m.value === yearMonth)?.label ?? yearMonth
+  const selectedLabel   = yearMonth
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['customer_performance'] })
 
@@ -203,26 +170,22 @@ export function CustomerPerformanceContent() {
       {/* Header with month picker */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">Performa Pelanggan</h2>
+          <h2 className="text-lg font-semibold text-gray-900">Aktivitas dan Target Pelanggan</h2>
           <p className="text-sm text-gray-500 mt-0.5">{selectedLabel}</p>
         </div>
-        <select
-          value={yearMonth}
-          onChange={e => setYearMonth(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
-        >
-          {monthOptions.map(m => (
-            <option key={m.value} value={m.value}>{m.label}</option>
-          ))}
-        </select>
+        <label className="text-sm text-gray-600">Bulan aktivitas pelanggan
+          <input aria-label="Bulan aktivitas pelanggan" type="month" value={yearMonth} onChange={e => { if (/^(?!0000)\d{4}-(?:0[1-9]|1[0-2])$/.test(e.target.value)) setYearMonth(e.target.value) }} className="ml-2 rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+        </label>
       </div>
+
+      <p className="text-xs text-gray-500">Kunjungan, penanggung jawab toko saat ini, dan target tetap memakai kohort aktivitas pelanggan yang ada. Pembanding target memakai nilai pengiriman PO dengan status in progress atau complete berdasarkan tanggal SJ; basis ini terpisah dari metrik Sales di atas. Filter Sales tidak mengubah bulan atau kohort aktivitas ini.</p>
 
       {pageData && <PaginationControls page={pageData.page} total={pageData.total} pageSize={pageData.page_size} pending={isPending} onPageChange={setPage} />}
 
       {/* Top metrics */}
       {pageData && (      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-xs text-gray-400 mb-1">Total Penjualan</p>
+          <p className="text-xs text-gray-400 mb-1">Nilai pembanding target</p>
           <p className="text-xl font-bold text-gray-900">
             Rp {formatMoney(totalSales, 'millions')}M
           </p>
@@ -238,7 +201,7 @@ export function CustomerPerformanceContent() {
           <p className="text-xs text-gray-400 mt-1">target {totalTarget}</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-xs text-gray-400 mb-1">Pelanggan Teratas</p>
+          <p className="text-xs text-gray-400 mb-1">Teratas pada basis aktivitas</p>
           <p className="text-sm font-bold text-gray-900 truncate">
             {topCustomer?.name ?? '—'}
           </p>
@@ -292,14 +255,14 @@ export function CustomerPerformanceContent() {
                   <th className="text-center px-5 py-3 font-medium text-gray-500">Kunjungan (Aktual/Target)</th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500">Kunjungan Terakhir</th>
                   <th className="text-center px-5 py-3 font-medium text-gray-500">Pesanan</th>
-                  <th className="text-right px-5 py-3 font-medium text-gray-500">Total Penjualan</th>
+                  <th className="text-right px-5 py-3 font-medium text-gray-500">Nilai pembanding target</th>
                   <th className="text-right px-5 py-3 font-medium text-gray-500">
                     Target Penjualan
                     {canEditTargets && (
                       <span className="text-gray-300 ml-1 font-normal">(klik untuk ubah)</span>
                     )}
                   </th>
-                  <th className="text-right px-5 py-3 font-medium text-gray-500">% Penjualan</th>
+                  <th className="text-right px-5 py-3 font-medium text-gray-500">% Pembanding target</th>
                 </tr>
               </thead>
               <tbody>
@@ -389,7 +352,7 @@ export function CustomerPerformanceContent() {
                       <p className="text-gray-700 mt-0.5">{r.order_count}</p>
                     </div>
                     <div>
-                      <p className="text-gray-400">Total Penjualan</p>
+                      <p className="text-gray-400">Nilai pembanding target</p>
                       <p className="font-semibold text-gray-900 mt-0.5">
                         {!/^0+(?:\.0+)?$/.test(r.total_sales)
                           ? `Rp ${formatMoney(r.total_sales, 'millions')}M`
@@ -433,7 +396,7 @@ export function CustomerPerformanceContent() {
                     </div>
                   </div>
                   <div className="pt-2 border-t border-gray-100">
-                    <p className="text-xs text-gray-400 mb-1">% Penjualan</p>
+                    <p className="text-xs text-gray-400 mb-1">% Pembanding target</p>
                     <div className="flex items-center gap-2">
                       <div className="flex-1 bg-gray-100 rounded-full h-1.5">
                         <div

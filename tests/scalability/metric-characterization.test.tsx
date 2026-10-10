@@ -12,8 +12,8 @@ vi.mock('@tanstack/react-query', () => ({
 }))
 vi.mock('../../src/lib/supabase', async () => { const { fixtureClient } = await import('./fixtures'); return { supabase: fixtureClient(() => state.fixture) } })
 import Dashboard from '../../src/pages/athel/Dashboard'
-import GirardRevenue from '../../src/pages/girard/GirardRevenue'
-import GirardPerformance from '../../src/pages/girard/GirardPerformance'
+import { fetchRevenuePage } from '../../src/lib/reads/reports'
+import { PerformanceActivityContent as GirardPerformance } from '../../src/pages/girard/GirardPerformance'
 import GirardTeam from '../../src/pages/girard/GirardTeam'
 import ManagerCustomers from '../../src/pages/girard/ManagerCustomers'
 import { fetchCustomerPerformance } from '../../src/pages/girard/CustomerPerformance'
@@ -46,9 +46,8 @@ test('customer performance uses current-month PO count and older-PO shipments pl
   const { items: [row] } = await fetchCustomerPerformance(fixtureId(2), 'executive', '2026-10')
   expect(row).toMatchObject({ order_count: 2, total_sales: '20.00', actual_visits: 2, target_visits: 4, sales_target: '200.00' })
 })
-test('revenue includes approved sales only while sales performance includes every status', async () => {
-  render(<GirardRevenue />)
-  expect((await query('revenue')).items).toMatchObject([{ order_count: 1, total_sales: '100.00' }])
+test('legacy v1 revenue retains approved sales only while the separate activity comparator includes every status', async () => {
+  expect((await fetchRevenuePage('30d')).items).toMatchObject([{ order_count: 1, total_sales: '100.00' }])
   cleanup(); render(<GirardPerformance />)
   expect((await query('performance')).items).toMatchObject([{ scheduled: 2, visited: 1, missed: 1, orders: 4, total_sales: '200.00', visit_rate: 50, sales_target: '300.00' }])
 })
