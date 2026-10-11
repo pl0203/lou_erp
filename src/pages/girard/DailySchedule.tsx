@@ -1,3 +1,5 @@
+import PendingVisitRequests from '../../components/PendingVisitRequests'
+import { visitCadence, visitDateLabel } from '../../lib/visitUsability'
 import { useUnsavedChanges } from '../../lib/useUnsavedChanges'
 import { VisitProposalForm } from '../../components/VisitRequestInbox'
 import { readCompleteQuery } from '../../lib/reads/completeQuery'
@@ -61,11 +63,6 @@ async function fetchSchedules(userId: string, dates: string[], signal?: AbortSig
   return data.map(row => ({ ...row, customers: customerMap.get(row.outlet_id) ?? null })) as Schedule[]
 }
 
-function isOverdue(lastVisit: string | null, frequencyDays: number): boolean {
-  if (!lastVisit) return true
-  const diff = (Date.now() - new Date(lastVisit).getTime()) / (1000 * 60 * 60 * 24)
-  return diff > frequencyDays
-}
 
 function formatDate(dateStr: string): string {
   return parseCalendarDate(dateStr).toLocaleDateString('id-ID', {
@@ -81,6 +78,7 @@ function DailyScheduleContent() {
   const { profile } = useAuth()
   const navigate = useNavigate()
   const dates = getDateRange()
+  const [requestReceipt, setRequestReceipt] = useState<{id: string; date?: string} | null>(null)
   const [proposalSchedule, setProposalSchedule] = useState<Schedule | null>(null)
   const [showProposal, setShowProposal] = useState(false)
   const [proposalDirty, setProposalDirty] = useState(false)
@@ -166,8 +164,11 @@ function DailyScheduleContent() {
 
       <div className="px-4 md:px-8 py-6 max-w-2xl mx-auto space-y-4">
         <ActivePromotionsBanner />
+        <p className="text-xs text-gray-700">Jadwal memakai tanggal tanpa jam. Pengingat interval dihitung dari kunjungan terakhir pelanggan, dengan batas waktu UTC.</p>
         <div className="flex flex-wrap gap-3"><button className="min-h-11 cursor-pointer rounded-xl bg-brand-primary px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-brand-hover" onClick={() => replaceProposal(null)}>Ajukan kunjungan baru</button><button className="min-h-11 cursor-pointer rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-brand-primary transition-colors hover:bg-brand-tint" onClick={() => navigate('/girard/visit-history')}>Riwayat kunjungan saya</button></div>
-        {showProposal && <VisitProposalForm key={`${proposalSchedule?.id ?? 'new'}:${proposalRevision}`} source={proposalSchedule ?? undefined} onDirtyChange={setProposalDirty} confirmDiscard={unsaved.confirmDiscard} onDone={() => { setProposalDirty(false); setShowProposal(false) }} />}
+        {requestReceipt && <div role="status" className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm"><p>Permintaan terkirim{requestReceipt.date ? ` untuk ${visitDateLabel(requestReceipt.date)}` : ''}.</p><p>Status saat pengiriman: Menunggu persetujuan. Jadwal akan tampil setelah disetujui.</p><a className="mt-2 inline-block underline" href={`/girard/visit-requests#visit-request-${requestReceipt.id}`}>Lihat status permintaan</a></div>}
+        {profile?.id && <PendingVisitRequests actorId={profile.id} date={selectedDate} />}
+        {showProposal && <VisitProposalForm key={`${proposalSchedule?.id ?? 'new'}:${proposalRevision}`} source={proposalSchedule ?? undefined} onSubmitted={setRequestReceipt} onDirtyChange={setProposalDirty} confirmDiscard={unsaved.confirmDiscard} onDone={() => { setProposalDirty(false); setShowProposal(false) }} />}
 
         {isLoading && (
           <div className="text-center text-gray-400 text-sm py-24">
@@ -193,7 +194,7 @@ function DailyScheduleContent() {
           const customer = schedule.customers
           const stats = statsMap[customer?.id]
           const checkedIn = schedule.outlet_visits.length > 0
-          const overdue = isOverdue(customer?.last_visit_date, customer?.visit_frequency_days)
+          const cadence = visitCadence(customer?.last_visit_date, customer?.visit_frequency_days)
           const isToday = selectedDate === dates[0]
 
           return (
@@ -214,12 +215,13 @@ function DailyScheduleContent() {
                           ✓ Sudah Check-in
                         </span>
                       )}
-                      {overdue && !checkedIn && isToday && (
+                      {cadence && !checkedIn && isToday && (
                         <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">
-                          Terlambat
+                          {cadence.label}
                         </span>
                       )}
                     </div>
+                    {cadence && !checkedIn && isToday && <p className="mt-2 text-xs text-gray-700">{cadence.explanation}</p>}
                     {(customer?.address || customer?.city) && (
                       <p className="text-xs text-gray-400 mt-0.5 truncate">
                         {[customer?.address, customer?.city].filter(Boolean).join(', ')}
@@ -227,7 +229,7 @@ function DailyScheduleContent() {
                     )}
                   </div>
                   <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium shrink-0 capitalize ${STATUS_STYLES[schedule.status] ?? 'bg-gray-100 text-gray-600'}`}>
-                    {schedule.status}
+                    {schedule.status === 'completed' ? 'Selesai' : schedule.status === 'missed' ? 'Terlewat' : 'Menunggu kunjungan'}
                   </span>
                 </div>
               </div>
@@ -239,7 +241,7 @@ function DailyScheduleContent() {
                   <p className="text-sm font-medium text-gray-900">
                     {customer?.last_visit_date
                       ? parseCalendarDate(customer.last_visit_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
-                      : 'Never'}
+                      : 'Belum pernah'}
                   </p>
                 </div>
                 <div className="px-4 py-3 text-center">
@@ -252,7 +254,7 @@ function DailyScheduleContent() {
                   <p className="text-xs text-gray-400 mb-0.5">Penjualan (3bl)</p>
                   <p className="text-sm font-medium text-gray-900">
                     {statsError || (!statsLoading && !stats) ? 'Tidak tersedia' : statsLoading || !stats ? 'Memuat...' : !/^0(?:\.0+)?$/.test(String(stats.total_sales))
-                      ? `Rp ${formatMoney(String(stats.total_sales), 'millions')}M`
+                      ? `Rp ${formatMoney(String(stats.total_sales), 'full')}`
                       : 'Rp 0'}
                   </p>
                 </div>
@@ -292,7 +294,7 @@ function DailyScheduleContent() {
                         onClick={() => navigate(`/girard/visit/${schedule.id}`)}
                         className="flex-1 bg-brand-primary hover:bg-brand-hover text-white text-sm font-medium py-2.5 rounded-xl transition-colors"
                       >
-                        Check In
+                        Check-in kunjungan
                       </button>
                     ) : (
                       <button

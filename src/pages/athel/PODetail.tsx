@@ -1,3 +1,5 @@
+import { PO_STATUS_LABELS, summarizePOAudit } from '../../lib/orderPresentation'
+import { formatDisplayDate, formatAuditTimestamp } from '../../lib/displayDate'
 import ReturnedDateDialog from '../../components/ReturnedDateDialog'
 import { fetchCompletePOLines, fetchAuditPage, fetchDeliveryPage, fetchDeliveryLines, fetchDeliveryForEdit } from '../../lib/reads/detailReads'
 import type { DeliveryHeader, DeliveryLine } from '../../lib/reads/detailReads'
@@ -58,13 +60,6 @@ const STATUS_STYLES: Record<string, string> = {
   confirm:     'bg-blue-100 text-blue-700',
   in_progress: 'bg-yellow-100 text-yellow-700',
   complete:    'bg-green-100 text-green-700',
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  confirm:     'Confirm',
-  in_progress: 'In Progress',
-  complete:    'Complete',
-  cancelled:   'Cancelled',
 }
 
 const PO_COLUMNS = 'id, po_number, status, order_date, expected_delivery_date, total_value, notes, customer_id, completed_at, updated_at, sales_person_id_at_creation, sales_assignment_source_id, sales_attributed_at, sales_attribution_state, sales_person_at_creation:users!purchase_orders_sales_person_id_at_creation_fkey(full_name), customers(name)'
@@ -347,12 +342,14 @@ export default function PODetail() {
     }))
   }
 
+  const deliveryWillComplete = sjLines.some(line => line.quantity_to_deliver > 0) && sjLines.every(line => line.quantity_to_deliver >= line.quantity_outstanding)
+
   const handleSaveSJ = async () => {
     if (!lineReady || editVersion !== lineState?.po_updated_at) return
-    if (!sjNumber.trim()) return alert('SJ number is required.')
-    if (!sjDate) return alert('SJ date is required.')
+    if (!sjNumber.trim()) return alert('Nomor SJ wajib diisi.')
+    if (!sjDate) return alert('Tanggal SJ wajib diisi.')
     if (sjLines.every(l => l.quantity_to_deliver === 0))
-      return alert('At least one item must have a delivery quantity.')
+      return alert('Isi jumlah pengiriman untuk minimal satu barang.')
 
     if (editingSJ) {
       updateSJMutation.mutate({
@@ -384,7 +381,7 @@ export default function PODetail() {
     }
   }
 
-  if (isLoading) return <div className="p-8 text-gray-400 text-sm">Loading...</div>
+  if (isLoading) return <div className="p-8 text-gray-400 text-sm">Memuat...</div>
   if (poError || !po) return <div role="alert" className="p-8 text-red-500 text-sm">Data PO belum tersedia. <button onClick={() => refetchPO()}>Coba lagi</button><TransactionRecovery send={sendTransaction} onCommitted={() => queryClient.invalidateQueries()} /></div>
   
   const isInProgress = po.status === 'in_progress'
@@ -418,7 +415,7 @@ export default function PODetail() {
             <div className="flex flex-wrap items-center gap-3">
               <h1 className="text-xl font-semibold text-gray-900">{po.po_number}</h1>
               <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLES[po.status] ?? 'bg-gray-100 text-gray-600'}`}>
-                {STATUS_LABELS[po.status] ?? po.status}
+                {PO_STATUS_LABELS[po.status] ?? po.status}
               </span>
             </div>
             <p className="text-sm text-gray-500 mt-0.5">{po.customers?.name}</p>
@@ -466,7 +463,7 @@ export default function PODetail() {
                   {po.status === s && (
                     <span className="w-2 h-2 rounded-full bg-current opacity-70" />
                   )}
-                  {STATUS_LABELS[s]}
+                  {PO_STATUS_LABELS[s]}
                 </div>
                 {i < arr.length - 1 && <span className="text-gray-300">→</span>}
               </div>
@@ -481,28 +478,29 @@ export default function PODetail() {
               </button>
             )}
           </div>
+          <p className="mt-3 text-sm text-gray-600">Dikirim berarti jumlah barang tercatat pada SJ aktif. Selesai berarti seluruh jumlah PO sudah tercatat dikirim, bukan konfirmasi penerimaan toko.</p>
           {isComplete && (
             <p className="text-sm text-green-600 mt-3 font-medium">
-              ✓ Semua barang telah terkirim sepenuhnya..
+              ✓ Semua jumlah barang sudah tercatat dikirim.
             </p>
           )}
         </div>
 
         {/* Order Details */}
         <div className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
-          <h2 className="text-base font-medium text-gray-900 mb-4">Order Details</h2>
+          <h2 className="text-base font-medium text-gray-900 mb-4">Rincian Pesanan</h2>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm [overflow-wrap:anywhere]">
             <div>
-              <p className="text-gray-400 mb-1">Toko/Customer</p>
+              <p className="text-gray-400 mb-1">Pelanggan</p>
               <p className="text-gray-900">{po.customers?.name}</p>
             </div>
             <div>
               <p className="text-gray-400 mb-1">Tanggal PO</p>
-              <p className="text-gray-900">{po.order_date}</p>
+              <p className="text-gray-900">{formatDisplayDate(po.order_date)}</p>
             </div>
             <div>
               <p className="text-gray-400 mb-1">Tanggal Kedaluwarsa PO</p>
-              <p className="text-gray-900">{po.expected_delivery_date ?? '—'}</p>
+              <p className="text-gray-900">{formatDisplayDate(po.expected_delivery_date)}</p>
             </div>
             <div>
               <p className="text-gray-400 mb-1">Total</p>
@@ -523,14 +521,14 @@ export default function PODetail() {
           <h2 className="text-base font-medium text-brand-primary">Kredit salesperson</h2>
           <p className="mt-2 text-sm font-semibold text-brand-primary">{po.sales_attribution_state === 'unassigned' ? 'Unassigned' : po.sales_attribution_state === 'assigned' && po.sales_person_id_at_creation ? po.sales_person_at_creation?.full_name || `Salesperson ${po.sales_person_id_at_creation}` : 'Legacy / belum diketahui'}</p>
           <p className="mt-1 text-xs text-gray-600">Kredit ditetapkan saat PO dibuat dan tetap setelah perubahan penugasan toko. PO Unassigned tidak otomatis diberi kredit kemudian.</p>
-          {po.sales_attributed_at && <p className="mt-1 text-xs text-gray-500">Snapshot: {new Date(po.sales_attributed_at).toLocaleString('id-ID')}</p>}
+          {po.sales_attributed_at && <p className="mt-1 text-xs text-gray-500">Snapshot: {formatAuditTimestamp(po.sales_attributed_at)}</p>}
         </section>
 
         {/* Line Items */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100">
             <h2 className="text-base font-medium text-gray-900">Daftar Barang</h2>
-            <p className="mt-1 text-xs text-gray-500 md:hidden">Geser tabel untuk melihat semua kolom.</p>
+            <p className="mt-1 text-xs text-gray-600">Geser tabel untuk melihat semua kolom.</p>
           </div>
           <div className="max-w-full overflow-x-auto" role="region" aria-label="Daftar barang PO" tabIndex={0}>
           <table className="w-full min-w-[40rem] text-sm">
@@ -540,7 +538,7 @@ export default function PODetail() {
                 <th className="text-left px-6 py-3 text-gray-500 font-medium">SKU</th>
                 <th className="text-right px-6 py-3 text-gray-500 font-medium">Dipesan</th>
                 {isInProgress && (
-                  <th className="text-right px-6 py-3 text-gray-500 font-medium">Outstanding</th>
+                  <th className="text-right px-6 py-3 text-gray-500 font-medium">Sisa dikirim</th>
                 )}
                 <th className="text-right px-6 py-3 text-gray-500 font-medium">Harga Satuan</th>
                 <th className="text-right px-6 py-3 text-gray-500 font-medium">Total</th>
@@ -596,10 +594,10 @@ export default function PODetail() {
               {(sjList ?? []).map(sj => <div key={sj.id} className="py-4 border-b border-gray-100">
                 <div className="flex flex-wrap justify-between gap-3"><div className="min-w-0 [overflow-wrap:anywhere]">
                   <span className="font-medium text-sm">{sj.sj_number}</span>
-                  {sj.voided_at && <p className="text-xs text-red-600">Dibatalkan: {sj.void_reason} · {new Date(sj.voided_at).toLocaleString('id-ID')}</p>}
-                  <p className="text-xs text-gray-400">Created: {sj.sj_date}</p>
-                  {sj.sj_date_received && <p className="text-xs text-gray-400">Diterima Toko: {sj.sj_date_received}</p>}
-                  {sj.sj_date_returned && <p className="text-xs text-gray-400">SJ Kembali: {sj.sj_date_returned}</p>}
+                  {sj.voided_at && <p className="text-xs text-red-600">Dibatalkan: {sj.void_reason} · {formatAuditTimestamp(sj.voided_at)}</p>}
+                  <p className="text-xs text-gray-400">Tanggal SJ: {formatDisplayDate(sj.sj_date)}</p>
+                  {sj.sj_date_received && <p className="text-xs text-gray-400">Diterima Toko: {formatDisplayDate(sj.sj_date_received)}</p>}
+                  {sj.sj_date_returned && <p className="text-xs text-gray-400">SJ Kembali: {formatDisplayDate(sj.sj_date_returned)}</p>}
                 </div><div className="flex flex-wrap gap-3">
                   <button disabled={deliveries.isPending} onClick={() => setSelectedSJId(selectedSJId === sj.id ? null : sj.id)} className="text-brand-primary text-xs">{selectedSJId === sj.id ? 'Tutup barang' : 'Lihat barang'}</button>
                   {canEditReturnedDate && !sj.voided_at && <button type="button" disabled={poFetching || deliveries.isPending || returnedMutation.isPending} onClick={event => { returnedTrigger.current = event.currentTarget; returnedReadSequence.current++; returnedRead.current?.abort(); returnedReviewRequired.current = false; setReturnedReview(null); setReturnedTarget({ id: sj.id, number: sj.sj_number, version: po.updated_at }); setReturnedDate(sj.sj_date_returned ?? ''); returnedMutation.reset() }} className="text-brand-primary text-xs underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-accent">Ubah tanggal SJ kembali</button>}
@@ -629,22 +627,17 @@ export default function PODetail() {
                 <div key={entry.id} className="flex gap-4 text-sm">
                   <div className="w-1 rounded-full bg-blue-200 shrink-0" />
                   <div className="min-w-0 [overflow-wrap:anywhere]">
-                    <p className="text-gray-900">
-                      <span className="font-medium">
-                        {entry.users?.full_name ?? 'Someone'}
-                      </span>
-                      {' changed '}
-                      <span className="font-medium">{entry.field_changed}</span>
-                      {entry.old_value && (
-                        <> from <span className="text-gray-500">{entry.old_value}</span></>
-                      )}
-                      {entry.new_value && (
-                        <> to <span className="text-gray-700">{entry.new_value}</span></>
-                      )}
-                    </p>
-                    <p className="text-gray-400 text-xs mt-0.5">
-                      {new Date(entry.changed_at).toLocaleString('id-ID')}
-                    </p>
+                    <p className="text-gray-900">{summarizePOAudit(entry)}</p>
+                    <p className="text-gray-600 text-xs mt-0.5">{formatAuditTimestamp(entry.changed_at)}</p>
+                    <details className="mt-2 text-xs text-gray-600">
+                      <summary className="cursor-pointer font-medium">Detail teknis audit</summary>
+                      <dl className="mt-2 space-y-1">
+                        <dt>Peristiwa asli</dt><dd>{entry.field_changed}</dd>
+                        <dt>Waktu asli</dt><dd>{entry.changed_at}</dd>
+                        <dt>Nilai sebelumnya</dt><dd className="whitespace-pre-wrap">{entry.old_value ?? 'null'}</dd>
+                        <dt>Nilai sesudahnya</dt><dd className="whitespace-pre-wrap">{entry.new_value ?? 'null'}</dd>
+                      </dl>
+                    </details>
                   </div>
                 </div>
               ))}
@@ -661,21 +654,26 @@ export default function PODetail() {
           <div className="bg-white rounded-xl w-full max-w-lg shadow-xl max-h-[90vh] overflow-y-auto">
             <div className="px-6 py-5 border-b border-gray-100">
               <h3 className="text-base font-semibold text-gray-900">
-                {editingSJ ? 'Edit Surat Jalan' : 'New Surat Jalan'}
+                {editingSJ ? 'Ubah Surat Jalan' : 'Surat Jalan Baru'}
               </h3>
               <p className="text-xs text-gray-400 mt-0.5">
                 Masukkan jumlah pengiriman. Dibatasi sesuai sisa per barang.
               </p>
             </div>
             <div className="px-6 py-4 space-y-4">
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900 space-y-1">
+                <p>Diterima berarti tanggal penerimaan toko sudah dicatat; tanggal ini tidak menentukan status Selesai.</p>
+                <p>SJ kembali berarti dokumen surat jalan kembali, bukan retur barang.</p>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">Nomor SJ *</label>
                   <input
                     type="text"
+                    aria-label="Nomor SJ"
                     value={sjNumber}
                     onChange={e => setSjNumber(e.target.value)}
-                    placeholder="e.g. SJ-2024-001"
+                    placeholder="mis. SJ-2024-001"
                     className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                   />
                 </div>
@@ -683,6 +681,7 @@ export default function PODetail() {
                   <label className="block text-sm text-gray-600 mb-1">Tanggal SJ *</label>
                   <input
                     type="date"
+                    aria-label="Tanggal SJ"
                     value={sjDate}
                     onChange={e => setSjDate(e.target.value)}
                     className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
@@ -694,6 +693,7 @@ export default function PODetail() {
                   </label>
                   <input
                     type="date"
+                    aria-label="Tanggal SJ Diterima Toko"
                     value={sjDateReceived}
                     onChange={e => setSjDateReceived(e.target.value)}
                     className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
@@ -701,10 +701,11 @@ export default function PODetail() {
                 </div>
                 <div>
                   <label className="block text-sm text-gray-600 mb-1">
-                    Tanggal SJ Balik <span className="text-gray-400"></span>
+                    Tanggal SJ Kembali <span className="text-gray-400"></span>
                   </label>
                   <input
                     type="date"
+                    aria-label="Tanggal SJ Kembali"
                     value={sjDateReturned}
                     onChange={e => setSjDateReturned(e.target.value)}
                     className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
@@ -719,7 +720,7 @@ export default function PODetail() {
                     <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_5.5rem_5rem] gap-2 text-xs text-gray-400 font-medium px-1 mb-2">
                       <div className="min-w-0">Item</div>
                       <div className="min-w-0 [overflow-wrap:anywhere] text-right">Dipesan</div>
-                      <div className="min-w-0 [overflow-wrap:anywhere] text-right">Outstanding</div>
+                      <div className="min-w-0 [overflow-wrap:anywhere] text-right">Sisa dikirim</div>
                       <div className="min-w-0 text-right">Dikirim</div>
                     </div>
                     <div className="space-y-2">
@@ -758,6 +759,11 @@ export default function PODetail() {
                 </div>
               </div>
             </div>
+            <div aria-live="polite" className="mx-6 mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+              {!editingSJ && isComplete && sjLines.every(line => line.quantity_outstanding === 0)
+                ? <><p>PO saat ini berstatus Selesai.</p><p>Tidak ada sisa jumlah barang untuk surat jalan baru.</p></>
+                : deliveryWillComplete ? <><p>Setelah disimpan, PO akan berstatus Selesai karena seluruh jumlah pesanan sudah tercatat dikirim.</p><p>Status Selesai tetap berlaku jika tanggal penerimaan belum diisi. Catat penerimaan toko dan kembalinya dokumen SJ secara terpisah.</p></> : <p>Masih ada sisa barang yang belum tercatat dikirim; PO belum selesai.</p>}
+            </div>
             <div className="px-6 py-4 border-t border-gray-100 flex flex-wrap justify-end gap-3">
               <button
                 onClick={closeSJModal}
@@ -772,7 +778,7 @@ export default function PODetail() {
               >
                 {sjMutation.isPending || updateSJMutation.isPending
                   ? 'Menyimpan...'
-                  : editingSJ ? 'Update SJ' : 'Create SJ'}
+                  : editingSJ ? 'Simpan Perubahan SJ' : 'Simpan SJ'}
               </button>
             </div>
             {(!lineReady || editVersion !== lineState?.po_updated_at) && <p className="px-6 pb-4 text-sm text-red-600">Data PO belum lengkap atau berubah. Tutup formulir lalu muat ulang sebelum menyimpan; isian Anda tetap terlihat sampai formulir ditutup.</p>}

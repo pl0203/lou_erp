@@ -1,3 +1,5 @@
+import { calendarDateKey } from '../../lib/calendarDate'
+import { visitScheduleHref } from '../../lib/visitUsability'
 import ReadFailure from '../../components/ReadFailure'
 import { readCompleteQuery } from '../../lib/reads/completeQuery'
 import { chunkIds } from '../../lib/reads/completeReads'
@@ -72,12 +74,12 @@ export default function GirardManagers() {
 
       <div className="px-4 md:px-8 py-6">
         {isLoading && (
-          <div className="text-center text-gray-400 text-sm py-24">Memuat...</div>
+          <div className="text-center text-gray-600 text-sm py-24">Memuat...</div>
         )}
 
         {!isLoading && (!managers || managers.length === 0) && (
           <div className="text-center py-24">
-            <p className="text-gray-400 text-sm">Tidak ada manajer penjualan ditemukan.</p>
+            <p className="text-gray-600 text-sm">Tidak ada manajer penjualan ditemukan.</p>
           </div>
         )}
 
@@ -92,18 +94,19 @@ export default function GirardManagers() {
                   </div>
                   <div className="min-w-0">
                     <p className="font-semibold text-gray-900 truncate">{m.full_name}</p>
-                    <p className="text-xs text-gray-400 truncate">{m.email}</p>
+                    <p className="text-xs text-gray-600 truncate">{m.email}</p>
                   </div>
                 </div>
 
+                <a aria-label={`Lihat jadwal tim ${m.full_name}`} className="mb-4 inline-block text-sm font-semibold text-brand-primary underline" href={visitScheduleHref(calendarDateKey(), undefined, m.id)}>Lihat jadwal tim</a>
                 {/* Stats */}
                 <div className="grid grid-cols-2 gap-3 mb-4">
                   <div className="bg-gray-50 rounded-lg p-3 text-center">
-                    <p className="text-xs text-gray-400 mb-1">Pelanggan</p>
+                    <p className="text-xs text-gray-600 mb-1">Pelanggan</p>
                     <p className="text-xl font-bold text-gray-900">{m.customers.length}</p>
                   </div>
                   <div className="bg-gray-50 rounded-lg p-3 text-center">
-                    <p className="text-xs text-gray-400 mb-1">Sales</p>
+                    <p className="text-xs text-gray-600 mb-1">Sales</p>
                     <p className="text-xl font-bold text-gray-900">{m.team.length}</p>
                   </div>
                 </div>
@@ -111,14 +114,14 @@ export default function GirardManagers() {
                 {/* Team list */}
                 {m.team.length > 0 && (
                   <div className="mb-3">
-                    <p className="text-xs text-gray-400 mb-2">Tim</p>
+                    <p className="text-xs text-gray-600 mb-2">Tim</p>
                     <div className="space-y-1">
                       {m.team.map(sp => (
                         <div key={sp.id} className="flex items-center gap-2">
                           <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-600 text-xs font-semibold flex items-center justify-center shrink-0">
                             {sp.full_name[0]}
                           </div>
-                          <p className="text-xs text-gray-700 truncate">{sp.full_name}</p>
+                          <a className="text-sm text-brand-primary underline" href={visitScheduleHref(calendarDateKey(), sp.id)}>{sp.full_name}</a>
                         </div>
                       ))}
                     </div>
@@ -128,13 +131,13 @@ export default function GirardManagers() {
                 {/* Customer list */}
                 {m.customers.length > 0 && (
                   <div>
-                    <p className="text-xs text-gray-400 mb-2">Pelanggan Ditugaskan</p>
+                    <p className="text-xs text-gray-600 mb-2">Pelanggan Ditugaskan</p>
                     <div className="space-y-1">
                       {m.customers.slice(0, 3).map(c => (
                         <p key={c.id} className="text-xs text-gray-600 truncate">• {c.name}</p>
                       ))}
                       {m.customers.length > 3 && (
-                        <p className="text-xs text-gray-400">+{m.customers.length - 3} lainnya</p>
+                        <p className="text-xs text-gray-600">+{m.customers.length - 3} lainnya</p>
                       )}
                     </div>
                   </div>

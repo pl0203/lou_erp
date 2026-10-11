@@ -1,3 +1,4 @@
+import { visitCadence, visitDateLabel } from '../../lib/visitUsability'
 import ReadFailure from '../../components/ReadFailure'
 import { readCompleteQuery } from '../../lib/reads/completeQuery'
 import { chunkIds } from '../../lib/reads/completeReads'
@@ -59,11 +60,6 @@ async function fetchMyVisitSchedules(userId: string, dates: string[], signal?: A
   return data.map(row => ({ ...row, customers: customerMap.get(row.outlet_id) ?? null })) as Schedule[]
 }
 
-function isOverdue(lastVisit: string | null, frequencyDays: number): boolean {
-  if (!lastVisit) return true
-  const diff = (Date.now() - new Date(lastVisit).getTime()) / (1000 * 60 * 60 * 24)
-  return diff > frequencyDays
-}
 
 function formatDate(dateStr: string): string {
   return parseCalendarDate(dateStr).toLocaleDateString('id-ID', {
@@ -152,6 +148,7 @@ export default function MyVisits() {
 
       <div className="px-4 md:px-8 py-6 max-w-2xl mx-auto space-y-4">
         <ActivePromotionsBanner />
+        <p className="text-xs text-gray-700">Jadwal memakai tanggal tanpa jam. Pengingat interval dihitung dari kunjungan terakhir pelanggan, dengan batas waktu UTC.</p>
 
         {isLoading && (
           <div className="text-center text-gray-400 text-sm py-24">Memuat kunjungan Anda...</div>
@@ -160,7 +157,7 @@ export default function MyVisits() {
         {!isLoading && schedules.length === 0 && (
           <div className="text-center py-24">
             <p className="text-gray-400 text-sm">
-              Tidak ada kunjungan dijadwalkan untuk {DAY_LABELS[dates.indexOf(selectedDate)].toLowerCase()}.
+              Tidak ada kunjungan dijadwalkan untuk {visitDateLabel(selectedDate)}.
             </p>
             <p className="text-gray-300 text-xs mt-1">
               Jadwalkan kunjungan untuk diri Anda dari halaman Jadwal.
@@ -172,7 +169,7 @@ export default function MyVisits() {
           const customer = schedule.customers
           const stats = statsMap[customer?.id]
           const checkedIn = schedule.outlet_visits.length > 0
-          const overdue = isOverdue(customer?.last_visit_date, customer?.visit_frequency_days)
+          const cadence = visitCadence(customer?.last_visit_date, customer?.visit_frequency_days)
           const isToday = selectedDate === dates[0]
 
           return (
@@ -192,12 +189,13 @@ export default function MyVisits() {
                           ✓ Sudah Check-in
                         </span>
                       )}
-                      {overdue && !checkedIn && isToday && (
+                      {cadence && !checkedIn && isToday && (
                         <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">
-                          Terlambat
+                          {cadence.label}
                         </span>
                       )}
                     </div>
+                    {cadence && !checkedIn && isToday && <p className="mt-2 text-xs text-gray-700">{cadence.explanation}</p>}
                     {(customer?.address || customer?.city) && (
                       <p className="text-xs text-gray-400 mt-0.5 truncate">
                         {[customer?.address, customer?.city].filter(Boolean).join(', ')}
@@ -205,7 +203,7 @@ export default function MyVisits() {
                     )}
                   </div>
                   <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium shrink-0 capitalize ${STATUS_STYLES[schedule.status] ?? 'bg-gray-100 text-gray-600'}`}>
-                    {schedule.status}
+                    {schedule.status === 'completed' ? 'Selesai' : schedule.status === 'missed' ? 'Terlewat' : 'Menunggu kunjungan'}
                   </span>
                 </div>
               </div>
@@ -228,7 +226,7 @@ export default function MyVisits() {
                   <p className="text-xs text-gray-400 mb-0.5">Penjualan (3bl)</p>
                   <p className="text-sm font-medium text-gray-900">
                     {statsError || (!statsLoading && !stats) ? 'Tidak tersedia' : statsLoading || !stats ? 'Memuat...' : !/^0(?:\.0+)?$/.test(String(stats.total_sales))
-                      ? `Rp ${formatMoney(String(stats.total_sales), 'millions')}M`
+                      ? `Rp ${formatMoney(String(stats.total_sales), 'full')}`
                       : 'Rp 0'}
                   </p>
                 </div>
@@ -262,7 +260,7 @@ export default function MyVisits() {
                         onClick={() => navigate(`/girard/visit/${schedule.id}`)}
                         className="flex-1 bg-brand-primary hover:bg-brand-hover text-white text-sm font-medium py-2.5 rounded-xl transition-colors"
                       >
-                        Check In
+                        Check-in kunjungan
                       </button>
                     ) : (
                       <button

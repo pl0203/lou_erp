@@ -25,7 +25,7 @@ const query = (name: string) => state.queries.get(name).queryFn({ signal: new Ab
 test('dashboard preserves selected PO cohort, wider shipment/item windows, mixed-price quantity and legacy status', async () => {
   render(<Dashboard />)
   fireEvent.change(screen.getByLabelText('Tanggal awal'), { target: { value: '2026-10-01' } })
-  fireEvent.change(screen.getByLabelText('Fulfillment'), { target: { value: 'undelivered' } })
+  fireEvent.change(screen.getByLabelText('Status pengiriman'), { target: { value: 'undelivered' } })
   const data = await query('athel_dashboard')
   expect(data.metrics).toMatchObject({ totalPOCount: 2, totalPOValue: '70.00', deliveredValue: '0.00', outstandingValue: '70.00', averagePOValue: '35.00' })
   expect(data.dailySeries).toEqual([{ key: '2026-10-01', label: '1 Okt', deliveredValue: '20.00', sjCount: 2 }])

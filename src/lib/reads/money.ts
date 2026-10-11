@@ -47,10 +47,10 @@ export function moneyPercentage(value: string, total: string, digits = 0): strin
 
 export function formatCompactMoney(value: string): string {
   const parsed = decimal(value)
-  for (const [exponent, digits, suffix] of [[9, 2, 'B'], [6, 1, 'M'], [3, 0, 'K']] as const) {
+  for (const [exponent, digits, suffix] of [[9, 2, ' miliar'], [6, 1, ' juta']] as const) {
     if (parsed.units >= 10n ** BigInt(parsed.scale + exponent)) {
       const result = rounded(value, digits, exponent)
-      return `Rp${result.negative ? '-' : ''}${result.whole}${digits ? `.${result.fraction}` : ''}${suffix}`
+      return `Rp${result.negative ? '-' : ''}${result.whole}${digits ? `,${result.fraction}` : ''}${suffix}`
     }
   }
   return `Rp${formatMoney(value, 'full')}`

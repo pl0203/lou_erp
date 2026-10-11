@@ -9,10 +9,11 @@ import CODetail from '../../src/pages/athel/co/CODetail';
 test('stock route shows current equation, old overdue month and separate partial coverage', async () => {
     stockFixture();
     mountApp(<App />, `/athel/co/stock?customer=${customer}`);
-    await screen.findByRole('heading', { name: 'Customer Stock' });
+    await screen.findByRole('heading', { name: 'Stok pelanggan' });
     await screen.findAllByText('30 + 0 − 0 − 0 = 30');
-    expect(screen.getAllByText(/2026-09/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/Cakupan.*2026-10-09/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/September 2026/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Cakupan.*9 Oktober 2026/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Laporan terakhir: Oktober 2026/).length).toBeGreaterThan(0);
     expect(screen.getByLabelText('Bulan akhir stok').getAttribute('type')).toBe('month');
 });
 test('canonical stock-key URL opens movement scope without using UUID as SKU text search', async () => {
@@ -187,4 +188,13 @@ test('missing authorized directory identity is explicit on the row and accessibl
     const table = await screen.findByRole('table', { name: 'Stok pelanggan tercatat' });
     await waitFor(() => expect(table.textContent).toContain('Identitas pelanggan tidak tersedia'));
     expect(screen.getByRole('button', { name: `Lihat pergerakan Identitas pelanggan tidak tersedia (${id(98)}) · SKU-1` })).toBeTruthy();
+});
+
+test('stock shares the physical-stock caveat once and uses aligned quantity labels with compact per-row reporting', async () => {
+    stockFixture(3); mountApp(<App/>, `/athel/co/stock?customer=${customer}`);
+    const table = await screen.findByRole('table', { name: 'Stok pelanggan tercatat' });
+    await waitFor(() => expect(table.querySelectorAll('tbody tr')).toHaveLength(3));
+    expect(screen.getAllByText('Angka tercatat berdasarkan laporan, bukan verifikasi stok fisik saat ini.')).toHaveLength(1);
+    expect(table.querySelectorAll('dl[aria-label="Jumlah stok"]')).toHaveLength(3);
+    expect(screen.getByRole('button', { name: 'Lihat pergerakan Store A · SKU-1' }).textContent).toBe('Pergerakan');
 });

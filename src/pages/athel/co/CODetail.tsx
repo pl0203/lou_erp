@@ -5,6 +5,8 @@ import { fetchCODetail, fetchCODetailSection } from '../../../lib/co/rpc';
 import type { COOrderRecord, COSection } from '../../../lib/co/validation';
 import { useCOTransactionSender } from '../../../lib/co/transactions';
 import { coKeys } from '../../../lib/co/queryKeys';
+import { formatDisplayDate, formatAuditTimestamp } from '../../../lib/displayDate';
+import { CO_AUDIT_ACTIONS, formatCOReportMonth } from '../../../lib/co/presentation';
 import { formatMoney } from '../../../lib/reads/money';
 import type { CODeliveryCorrectionSelection } from '../../../components/co/CODeliveryDialog';
 import CODeliveryDialog from '../../../components/co/CODeliveryDialog';
@@ -106,17 +108,18 @@ function DetailReady({ co, allowed, blockers, reload, refreshing, readError, onA
     const sections: [
         COSection,
         string
-    ][] = [['lines', 'Barang CO'], ['sj_drafts', 'Draft Surat Jalan'], ['deliveries', 'Riwayat Surat Jalan'], ['reports', 'Laporan bulanan pelanggan (semua CO)'], ['return_drafts', 'Draft retur pelanggan (semua sumber CO)'], ['returns', 'Retur barang CO (bagian sumber CO ini)'], ['audit', 'Riwayat audit']];
+    ][] = [['lines', 'Barang CO'], ['sj_drafts', 'Draft Surat Jalan'], ['deliveries', 'Riwayat Surat Jalan'], ['reports', 'Laporan bulanan pelanggan (semua CO)'], ['return_drafts', 'Draft retur pelanggan (semua sumber CO)'], ['returns', 'Retur barang CO (bagian sumber CO ini)'], ['audit', 'Audit CO dan laporan pelanggan']];
     return <div className="max-w-6xl mx-auto space-y-6">
     <div className="flex flex-wrap items-start justify-between gap-3">
     <div>
     <Link to="/athel/co" className="text-sm text-gray-500">← Kembali</Link>
     <h2 className="mt-2 text-xl font-semibold">{co.co_number}</h2>
-    <p className="mt-1 text-sm text-gray-500">{co.customer_name} · {co.order_date}</p>
+    <p className="mt-1 text-sm text-gray-500">{co.customer_name} · {formatDisplayDate(co.order_date)}</p>
     </div>
     <COBadges status={co.status} progress={co.summary.delivery_progress}/>
     </div>
-    <COCard title="Ringkasan CO">
+    <COCard title="Ringkasan CO ini">
+    <p className="mb-3 text-sm text-gray-700">Sejak pembuatan CO sampai sumber tercatat terbaru. Pendapatan berasal dari penjualan bulanan yang diposting dan dialokasikan ke CO ini; nilai rencana bukan pendapatan.</p>
     <dl className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">{[['Dikirim', co.summary.delivered_quantity], ['Terjual', co.summary.sold_quantity], ['Retur belum terjual', co.summary.returned_quantity], ['Sisa stok tercatat', co.summary.remaining_quantity], ['Belum dikirim', co.summary.pending_quantity], ['Sisa diselesaikan', co.summary.resolved_undelivered_quantity]].map(([l, v]) => <div key={l}>
         <dt className="text-gray-500">{l}</dt>
         <dd className="font-semibold break-words">{quantityText(v)}</dd>
@@ -129,18 +132,23 @@ function DetailReady({ co, allowed, blockers, reload, refreshing, readError, onA
     <dd className="font-semibold break-words">Rp {formatMoney(co.summary.revenue, 'full')}</dd>
     </div>
     </dl>
-    <p className="mt-4 text-sm">PIC asli: <span>{co.sales_person_name ?? 'Unassigned'}</span>
+    <p className="mt-4 text-sm">PIC asli: <span>{co.sales_person_name ?? 'Belum ditetapkan'}</span>
     </p>
     <p className="text-xs text-gray-500 mt-1">Pelanggan, harga kesepakatan dan atribusi saat pembuatan tetap tersimpan.</p>
-    <p className="text-xs mt-2">Laporan terakhir: {co.last_report_month?.slice(0, 7) ?? 'Belum ada'} · Cakupan sampai: {co.coverage_through_date ?? 'Belum ada'}</p>
-    <COFreshness value={co.reporting_freshness}/>{co.notes && <p className="mt-3 text-sm whitespace-pre-wrap break-words">{co.notes}</p>}</COCard>
+    {co.notes && <p className="mt-3 text-sm whitespace-pre-wrap break-words">{co.notes}</p>}</COCard>
+    <COCard title="Pelaporan pelanggan (semua CO)">
+        <p className="text-sm text-gray-700">Mencakup semua CO {co.customer_name}, termasuk aktivitas sebelum CO ini dibuat. Kelengkapan laporan pelanggan tidak menunjukkan bahwa CO ini sudah dikirim atau terjual.</p>
+        <p className="text-sm mt-3">Laporan terakhir: {formatCOReportMonth(co.last_report_month)} · Cakupan sampai: {formatDisplayDate(co.coverage_through_date)} (tanggal UTC server)</p>
+        {!co.last_report_month && <p className="text-xs mt-2">Belum ada laporan yang diposting. Angka nol tercatat belum memverifikasi tidak adanya penjualan.</p>}
+        <COFreshness value={co.reporting_freshness}/>
+    </COCard>
     {!sj && !cancel && !returnSelection && !settlement && readFailure}
-    <COStatusActions id={co.id} customerId={co.customer_id} allowed={allowed} blockers={blockers} pending={pending || refreshing || sender.hasUnresolved()} onSJ={() => { trigger.current = document.activeElement as HTMLElement; setSJ({}); }} onCancel={() => { trigger.current = document.activeElement as HTMLElement; setCancel(true); }}
+    <COStatusActions co={co} id={co.id} customerId={co.customer_id} allowed={allowed} blockers={blockers} pending={pending || refreshing || sender.hasUnresolved()} onSJ={() => { trigger.current = document.activeElement as HTMLElement; setSJ({}); }} onCancel={() => { trigger.current = document.activeElement as HTMLElement; setCancel(true); }}
         onResolve={() => { trigger.current = document.activeElement as HTMLElement; setSettlement('resolve_undelivered'); }}
         onClose={() => { trigger.current = document.activeElement as HTMLElement; setSettlement('close_co'); }}/>
 
     {settlementSender.hasUnresolved() && <button type="button" className={CO_BUTTON} disabled={refreshing || pending} onClick={e => { trigger.current = e.currentTarget; setSettlement('recovery'); }}>Pulihkan penyelesaian CO</button>}
-    <CORecoveryPanel sender={sender} current={actor.isCurrent} accept={async (r) => { if (r.operation !== 'cancel_co' || r.id !== co.id)
+    <CORecoveryPanel pending={pending} sender={sender} current={actor.isCurrent} accept={async (r) => { if (r.operation !== 'cancel_co' || r.id !== co.id)
         throw new Error('Pemulihan tidak sesuai CO.'); await sender.acknowledgeRecovered(); if (actor.isCurrent()) {
         setCancel(false);
         reload();
@@ -156,27 +164,27 @@ function DetailReady({ co, allowed, blockers, reload, refreshing, readError, onA
                     </div>;
                 if (section === 'sj_drafts')
                     return <div className="flex flex-wrap justify-between gap-2">
-                    <span>{row.sj_number} · {row.sj_date} · {row.consumed ? 'Sudah diposting' : row.mode === 'delivery_correction' ? 'Draft koreksi' : 'Draft'}</span>
+                    <span>{row.sj_number} · {formatDisplayDate(row.sj_date)} · {row.consumed ? 'Sudah diposting' : row.mode === 'delivery_correction' ? 'Draft koreksi' : 'Draft'}</span>
                     <button className={CO_BUTTON} type="button" disabled={refreshing || row.consumed} onClick={e => { trigger.current = e.currentTarget; setSJ({ draftId: row.id }); }}>Buka draft</button>
                     </div>;
                 if (section === 'deliveries')
                     return <div className="space-y-2">
-                    <p>{row.sj_number} · {row.sj_date} · Revisi {row.revision_no} · {row.is_effective ? 'Efektif' : 'Historis'}{row.is_void ? ' · Dibatalkan' : ''}</p>
-                    <p className="text-xs text-gray-500">Diterima: {row.received_date ?? 'Belum diisi'}</p>
+                    <p>{row.sj_number} · {formatDisplayDate(row.sj_date)} · Revisi {row.revision_no} · {row.is_effective ? 'Efektif' : 'Historis'}{row.is_void ? ' · Dibatalkan' : ''}</p>
+                    <p className="text-xs text-gray-500">Diterima: {formatDisplayDate(row.received_date)}</p>
                     {row.is_effective && row.current_revision_id === row.id && allowed.includes('correct_sj') && <div className="flex flex-wrap gap-2"><button className={CO_BUTTON} disabled={refreshing} onClick={e=>{trigger.current=e.currentTarget;setSJ({correctionSource:{headId:row.head_id,revisionId:row.id,version:row.head_version,action:'replace'}})}}>Siapkan pengganti SJ</button>{!row.is_void&&<button className={CO_BUTTON} disabled={refreshing} onClick={e=>{trigger.current=e.currentTarget;setSJ({correctionSource:{headId:row.head_id,revisionId:row.id,version:row.head_version,action:'void'}})}}>Batalkan SJ dengan koreksi</button>}</div>}
                     <button className={CO_BUTTON} type="button" onClick={() => setSelected({ section: 'delivery_lines', parent: row.id, title: `Barang ${row.sj_number} revisi ${row.revision_no}` })}>Lihat barang SJ</button>
                     </div>;
                 if (section === 'reports')
-                    return <Link className="text-brand-primary" to={`/athel/co/reports/${co.customer_id}/${row.report_month}${row.revision_id ? `?revision=${row.revision_id}` : ''}`}>{row.report_month} · Revisi {row.revision_no ?? row.report_version} · Bukti revisi tersimpan</Link>;
+                    return <Link className="text-brand-primary" to={`/athel/co/reports/${co.customer_id}/${row.report_month}${row.revision_id ? `?revision=${row.revision_id}` : ''}`}>{formatCOReportMonth(row.report_month)} · Revisi {row.revision_no ?? row.report_version} · Bukti revisi tersimpan</Link>;
                 if (section === 'return_drafts') return <div className="space-y-2">
-                    <p>{row.reference ?? row.reason ?? 'Draft retur'} · {row.return_date} · {row.line_count} sumber seluruh pelanggan{row.consumed ? ' · Sudah diposting' : ''}</p>
+                    <p>{row.reference ?? row.reason ?? 'Draft retur'} · {formatDisplayDate(row.return_date)} · {row.line_count} sumber seluruh pelanggan{row.consumed ? ' · Sudah diposting' : ''}</p>
                     <button className={CO_BUTTON} disabled={refreshing} onClick={e => {
                         trigger.current = e.currentTarget;
                         setReturnSelection({ view: 'draft', id: row.id, draftVersion: row.draft_version });
                     }}>Buka draft retur</button>
                 </div>;
                 if (section === 'returns') return <div className="space-y-2">
-                    <p>{row.reference ?? row.reason ?? 'Retur'} · {row.return_date} · Revisi {row.revision_no}{row.is_void ? ' · Dibatalkan' : ''}</p>
+                    <p>{row.reference ?? row.reason ?? 'Retur'} · {formatDisplayDate(row.return_date)} · Revisi {row.revision_no}{row.is_void ? ' · Dibatalkan' : ''}</p>
                     <button className={CO_BUTTON} disabled={refreshing} onClick={e => {
                         trigger.current = e.currentTarget;
                         setReturnSelection({ view: 'revision', id: row.id });
@@ -193,15 +201,17 @@ function DetailReady({ co, allowed, blockers, reload, refreshing, readError, onA
                     </div>}
                 </div>;
                 return <div className="space-y-2">
-                <p>{row.operation} · {row.created_at}</p>
-                <p className="text-xs">Aktor: {row.actor_id}{row.reason ? ` · ${row.reason}` : ''}</p>
+                <p>Pengguna tercatat {CO_AUDIT_ACTIONS[row.operation] ?? 'mencatat perubahan'} {row.report_revision_id ? 'untuk pelanggan (semua CO)' : `pada ${co.co_number}`}.</p>
+                <p className="text-xs text-gray-700">{formatAuditTimestamp(row.created_at)}</p>
+                {row.reason && <p className="text-sm">Alasan: {row.reason}</p>}
+                <details className="text-xs"><summary className="cursor-pointer text-gray-700">Detail teknis audit</summary><pre className="mt-2 whitespace-pre-wrap break-all">{JSON.stringify(row, null, 2)}</pre></details>
                 <button type="button" className={CO_BUTTON} onClick={() => setSelected({ section: 'audit_changes', parent: row.id, title: 'Detail perubahan audit' })}>Lihat perubahan</button>
                 </div>;
             }}/>)}
     <p className="text-xs text-gray-500">SJ Kembali adalah pengembalian dokumen. Retur barang belum terjual adalah tindakan stok yang terpisah.</p>
     {selected && <COCard title={selected.title}>
         <button type="button" className={CO_BUTTON} onClick={() => setSelected(null)}>Tutup rincian</button>
-        <COHistorySection co={co} section={selected.section} parent={selected.parent} title={selected.title} onAuthorityFailure={onAuthorityFailure} renderRow={r => <p>{r.display_sku ?? r.path} · {r.product_name ?? r.side} · {r.quantity ?? r.value ?? '—'}</p>}/>
+        <COHistorySection co={co} section={selected.section} parent={selected.parent} title={selected.title} onAuthorityFailure={onAuthorityFailure} renderRow={r => <p>{r.display_sku ?? r.path} · {r.product_name ?? (r.side === 'before' ? 'Sebelum' : r.side === 'after' ? 'Sesudah' : r.side)} · {r.quantity ?? r.value ?? '—'}</p>}/>
         </COCard>}
     {sj && <CODeliveryDialog onAuthorityFailure={onAuthorityFailure} key={JSON.stringify(sj)} co={co} draftId={sj.draftId} correctionSource={sj.correctionSource} readBlocked={refreshing} readFailure={readFailure} returnFocus={trigger.current} onClose={() => setSJ(null)} onSaved={reload}/>}
     {returnSelection && <COReturnDialog key={JSON.stringify(returnSelection)} customerId={co.customer_id} customerVersion={co.customer_version}
@@ -233,7 +243,7 @@ export function COHistorySection({ co, section, title, parent = null, renderRow,
         }
     });
     useEffect(() => setPage(1), [co.id, co.co_version, co.customer_version, parent]);
-    return <COCard title={title}>{query.isError ? <COFailure error={query.error} retry={() => void query.refetch()}/> : query.isPending ? <p role="status">Memuat riwayat…</p> : <>
+    return <COCard title={title}>{section === 'audit' && <p className="mb-3 text-sm text-gray-700">Perubahan yang terkait CO ini serta laporan seluruh pelanggan. Laporan pelanggan dapat mendahului pembuatan CO ini. Identitas aktor lengkap tersedia pada detail teknis.</p>}{query.isError ? <COFailure error={query.error} retry={() => void query.refetch()}/> : query.isPending ? <p role="status">Memuat riwayat…</p> : <>
         <div className="divide-y divide-gray-100">{query.data?.rows.map((r: Record<string, any>) => <div className="py-3 text-sm break-words" key={r.id}>{renderRow(r)}</div>)}</div>{query.data?.rows.length === 0 && <p className="text-sm text-gray-500">Belum ada catatan.</p>}<COPagination page={page} total={query.data?.total ?? '0'} pending={query.isFetching} onPage={setPage}/>
         </>}</COCard>;
 }

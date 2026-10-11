@@ -174,7 +174,7 @@ export default function COSettlementDialog({ co, operation, blocked, readFailure
             <h2 id="co-settlement-title" className="font-semibold">{operation === 'recovery' ? 'Pulihkan penyelesaian CO' : operation === 'close_co' ? 'Tutup CO' : 'Selesaikan sisa belum dikirim'}</h2>
             <p className="text-sm">{operation === 'recovery' ? 'Periksa hasil permintaan asli. Tindakan baru mengikuti izin CO terkini setelah pemulihan selesai.' : operation === 'close_co' ? 'Penutupan memerlukan stok nol, sisa rencana selesai dan laporan akhir bulan lengkap.' : 'Jumlah ini adalah tambahan pembatalan sisa rencana, bukan pengiriman atau retur. Tidak mengubah stok atau pendapatan.'}</p>
             {readFailure}{error && <COFailure error={error}/>}{read.isError && <COFailure error={read.error} retry={() => void read.refetch()}/>}
-            <CORecoveryPanel sender={sender} current={() => current() && !pending && !blocked} accept={recover}/>
+            <CORecoveryPanel confirmed={!!confirmed} pending={pending} sender={sender} current={() => current() && !pending && !blocked} accept={recover}/>
             {confirmed && <button className={CO_BUTTON} disabled={pending || blocked} onClick={() => {
                 if (busy.current) return; busy.current = true; setPending(true);
                 void accept(confirmed).catch(failure).finally(() => { busy.current = false; if (current()) setPending(false); });

@@ -46,7 +46,7 @@ test('navigation during a deferred correction read does not strand the next PO i
  fireEvent.click(screen.getByRole('link',{name:'Go B'}));await screen.findByText('PO-b');await waitFor(()=>expect((screen.getByRole('button',{name:'+ Surat Jalan'}) as HTMLButtonElement).disabled).toBe(false));await act(()=>gate.resolve());expect(screen.queryByText('Edit Surat Jalan')).toBeNull()
 })
 test('same-component PO navigation closes the previous PO delivery dialog',async()=>{
- mount();const add=await screen.findByRole('button',{name:'+ Surat Jalan'});await waitFor(()=>expect((add as HTMLButtonElement).disabled).toBe(false));fireEvent.click(add);await screen.findByText('New Surat Jalan');fireEvent.click(screen.getByRole('link',{name:'Go B'}));await screen.findByText('PO-b');expect(screen.queryByText('New Surat Jalan')).toBeNull()
+ mount();const add=await screen.findByRole('button',{name:'+ Surat Jalan'});await waitFor(()=>expect((add as HTMLButtonElement).disabled).toBe(false));fireEvent.click(add);await screen.findByText('Surat Jalan Baru');fireEvent.click(screen.getByRole('link',{name:'Go B'}));await screen.findByText('PO-b');expect(screen.queryByText('Surat Jalan Baru')).toBeNull()
 })
 
 test('same-component edit navigation initializes the new PO even when versions match',async()=>{

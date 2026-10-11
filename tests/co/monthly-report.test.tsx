@@ -47,3 +47,46 @@ test('authority denial stops automatic private reads until an explicit retry', a
 test('Review saves staged input and leaves the newly bound preview available in one action', async () => { const s = store(); s.impacts.report = [reportImpact()]; mount(<COMonthlyReport />); fireEvent.change(await screen.findByLabelText('Terjual Item 1'), { target: { value: '70' } }); await click('Tinjau laporan'); expect(await screen.findByRole('button', { name: 'Post laporan' })).toBeTruthy(); expect(s.commands).toHaveLength(1); const preview = wire.rpc.mock.calls.find(([n]) => n === 'pilot_co_preview_v1')![1]; expect(preview.p_payload.expected_draft_version).toBe('2'); });
 
 test('same-version context diagnostics freeze the saved editor rather than trusting its old ready header',async()=>{const s=store();const {client}=mount(<COMonthlyReport/>);fireEvent.change(await screen.findByLabelText('Terjual Item 1'),{target:{value:'7'}});s.metadata.context_issue='CO_ELIGIBLE_SET_STALE';await client.invalidateQueries({predicate:q=>q.queryKey[4]==='report'});await waitFor(()=>expect((screen.getByRole('button',{name:'Simpan Draft'}) as HTMLButtonElement).disabled).toBe(true));expect((screen.getByLabelText('Terjual Item 1') as HTMLInputElement).value).toBe('7');});
+
+test('customer report entry offers the required month before requiring an unexplained filter choice', async () => {
+    store(); mount(<COMonthlyReports />, `/athel/co/reports?customer=${customer}`);
+    const next = await screen.findByRole('link', { name: /Buka periode berikutnya: September 2026/ });
+    expect(next.getAttribute('href')).toBe(`/athel/co/reports/${customer}/2026-09-01`);
+    expect(screen.getByText(/Pilih pelanggan dan bulan untuk membuka atau menyiapkan laporan/)).toBeTruthy();
+});
+
+test('report entry preserves a month provided by the CO lifecycle handoff', async () => {
+    store(); mount(<COMonthlyReports />, `/athel/co/reports?customer=${customer}&month=2026-09`);
+    await screen.findByRole('link', { name: 'Buka / siapkan laporan' });
+    expect((screen.getByLabelText('Bulan laporan') as HTMLInputElement).value).toBe('2026-09');
+    expect(screen.getByRole('link', { name: 'Buka / siapkan laporan' }).getAttribute('href')).toBe(`/athel/co/reports/${customer}/2026-09-01`);
+});
+
+test('report save with durable identity stays neutral until canonical acknowledgment and never offers recovery in flight', async () => {
+    const s = store(), base = wire.handler;
+    let release!: () => void;
+    wire.handler = async (name: string, args: any) => {
+        const response = await base(name, args);
+        if (name === 'pilot_co_transaction_v1') await new Promise<void>(resolve => { release = resolve; });
+        return response;
+    };
+    mount(<COMonthlyReport/>);
+    fireEvent.change(await screen.findByLabelText('Terjual Item 1'), { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Simpan Draft' }));
+    await waitFor(() => expect(release).toBeTypeOf('function'));
+    expect(localStorage.length).toBe(1);
+    const identity = JSON.parse(localStorage.getItem(localStorage.key(0)!)!).id;
+    expect(identity).toBeTruthy();
+    expect(screen.queryByText(/Hasil penyimpanan sebelumnya perlu dipulihkan/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Pulihkan hasil penyimpanan' })).toBeNull();
+    await act(async () => release());
+    await waitFor(() => expect(localStorage.length).toBe(0));
+    expect(s.commands).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Pulihkan hasil penyimpanan' })).toBeNull();
+});
+
+test('report coverage uses a readable calendar date and states the UTC reporting boundary', async () => {
+    store(); mount(<COMonthlyReport/>);
+    expect(await screen.findByText(/Cakupan tercatat sampai 30 September 2026.*UTC/)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Store A · September 2026' })).toBeTruthy();
+});

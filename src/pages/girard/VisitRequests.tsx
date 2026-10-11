@@ -1,10 +1,13 @@
-import { Link } from 'react-router-dom'
+import VisitRequestStatus from '../../components/VisitRequestStatus'
+import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../../lib/AuthContext'
 import GirardNav from '../../components/GirardNav'
 import VisitRequestInbox from '../../components/VisitRequestInbox'
 
 export default function VisitRequests() {
   const { profile } = useAuth()
+  const { hash } = useLocation()
+  const focusedRequest = hash.startsWith('#visit-request-') ? hash.slice('#visit-request-'.length) : null
   return (
     <div className="min-h-screen bg-brand-canvas">
       <GirardNav />
@@ -24,7 +27,9 @@ export default function VisitRequests() {
         </div>
       </header>
       <main className="mx-auto max-w-5xl px-4 py-6 md:px-8 md:py-8">
-        <VisitRequestInbox key={`${profile?.id}:${profile?.role}`} />
+        {focusedRequest !== null
+          ? <VisitRequestStatus key={`${profile?.id}:${profile?.role}:${focusedRequest}`} requestId={focusedRequest} />
+          : <VisitRequestInbox key={`${profile?.id}:${profile?.role}`} />}
       </main>
     </div>
   )

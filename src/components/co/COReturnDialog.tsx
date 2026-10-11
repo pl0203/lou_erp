@@ -380,7 +380,7 @@ function ReturnEditor({ customerId, customerVersion, observedVersion, selection,
             <h2 id="co-return-title" className="text-lg font-semibold">{action ? 'Koreksi retur barang' : 'Retur barang belum terjual'}</h2>
             <p className="text-sm">Satu retur pelanggan dapat mencakup beberapa CO. Draft tidak mengubah stok atau pendapatan. SJ Kembali hanya pengembalian dokumen.</p>
             {readFailure}{error && <COFailure error={error}/>}
-            <CORecoveryPanel sender={sender} current={() => current() && !pending && !reviewPending && !blocked} accept={recover}/>
+            <CORecoveryPanel confirmed={!!confirmed} pending={pending || reviewPending} sender={sender} current={() => current() && !pending && !reviewPending && !blocked} accept={recover}/>
             {confirmed && <div role="alert">
                 <p>Retur sudah tersimpan. Baca hasil kanonis sebelum membuat perubahan baru.</p>
                 <button className={CO_BUTTON} disabled={pending || reviewPending || blocked} onClick={() => {

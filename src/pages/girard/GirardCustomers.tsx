@@ -1,3 +1,4 @@
+import CustomerPricingHelp from '../../components/CustomerPricingHelp'
 import { hasInvalidCustomerCategories } from '../../lib/customerCategoryRows'
 import CustomerCategorySelect from '../../components/CustomerCategorySelect'
 import { parseCustomerCategory, formatCustomerCategory, type CustomerCategory } from '../../lib/customerCategory'
@@ -314,8 +315,9 @@ export default function GirardCustomers() {
   const errorMessage = ((createMutation.error || assignExistingMutation.error || updateMutation.error) as Error)?.message
 
   const tierSelect = (value: string, onChange: (v: string) => void) => (
-    <select
+    <div><select
       aria-label="Tier Harga"
+      aria-describedby="sales-customer-pricing-help"
       value={value}
       onChange={e => onChange(e.target.value)}
       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
@@ -325,7 +327,7 @@ export default function GirardCustomers() {
       <option value="dalam_kota">Dalam Kota</option>
       <option value="depo_bangunan">Depo Bangunan</option>
       <option value="others">Others</option>
-    </select>
+    </select><CustomerPricingHelp id="sales-customer-pricing-help" /></div>
   )
 
   const readError = customerReadError || managerReadError || assignmentReadError || hasInvalidCustomerCategories(customers ?? [])

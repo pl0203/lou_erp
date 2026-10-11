@@ -29,7 +29,7 @@ test('manager decisions bind request version and disable repeat clicks',async()=
  mock.role='sales_manager';mock.requests=[{id:'r',requester_id:'sales',version:2,status:'pending',kind:'new',customer_id:'c',scheduled_date:'2026-10-08'}];mock.send.mockReturnValue(new Promise(()=>{}));mount(<VisitRequestInbox/>);await screen.findByText('Setujui');await screen.findByText('Pengaju: Assigned Salesperson');fireEvent.click(screen.getByText('Setujui'));fireEvent.click(screen.getByText('Setujui'));await waitFor(()=>expect(mock.send).toHaveBeenCalledTimes(1));expect(mock.send).toHaveBeenCalledWith('approve_request',{request_id:'r',expected_version:2})
 })
 
-vi.mock('react-router-dom',()=>({useNavigate:()=>()=>{}}))
+vi.mock('react-router-dom',()=>({useNavigate:()=>()=>{},useSearchParams:()=>[new URLSearchParams(),vi.fn()]}))
 vi.mock('../../src/components/GirardNav',()=>({default:()=>null}))
 import ManagerSchedule from '../../src/pages/girard/ManagerSchedule'
 import {calendarDateKey} from '../../src/lib/calendarDate'
@@ -41,7 +41,7 @@ test('manager can change the approved store and today date through the versioned
   const q:any={select:()=>q,eq:()=>q,in:()=>q,order:()=>q,range:()=>q,abortSignal:()=>q,single:async()=>({data:{id:'manager',full_name:'Manager'},error:null}),then:(ok:any)=>Promise.resolve({data:rows,count:rows.length,error:null}).then(ok)};return q;
  });
  mount(<ManagerSchedule/>);const edits=await screen.findAllByRole('button',{name:'Ubah'});fireEvent.click(edits[0]);const date=screen.getByLabelText('Tanggal jadwal') as HTMLInputElement;expect(date.disabled).toBe(false);fireEvent.change(date,{target:{value:'2026-10-09'}});
- const selects=screen.getAllByRole('combobox');const store=selects.find(el=>(el as HTMLSelectElement).value==='c')!;expect((store as HTMLSelectElement).disabled).toBe(false);fireEvent.change(store,{target:{value:'c2'}});fireEvent.click(screen.getByRole('button',{name:'Save Changes'}));
+ const selects=screen.getAllByRole('combobox');const store=selects.find(el=>(el as HTMLSelectElement).value==='c')!;expect((store as HTMLSelectElement).disabled).toBe(false);fireEvent.change(store,{target:{value:'c2'}});fireEvent.click(screen.getByRole('button',{name:'Simpan perubahan'}));
  await waitFor(()=>expect(mock.send).toHaveBeenCalledWith('edit_schedule',{schedule_id:'s',expected_version:2,customer_id:'c2',sales_person_id:'sales',scheduled_date:'2026-10-09',notes:''}));
 })
 import DailySchedule from '../../src/pages/girard/DailySchedule'

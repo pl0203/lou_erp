@@ -30,7 +30,7 @@ test.each(['po_admin', 'co_admin'])('%s cannot mount disallowed data routes', ro
   }
 })
 test.each(['po_admin', 'co_admin'])('%s keeps both master lists and HR', role => { for (const [path, text] of [['/athel/customers','Customer data'], ['/athel/products','Item data'], ['/ihr/leave','HR data']]) { mount(role,path); expect(screen.getByText(text)).toBeTruthy(); cleanup() } })
-test('CO has an authorized minimal route shell and home', () => { mount('co_admin','/athel/co'); expect(screen.getByRole('heading', { name: 'Consignment Order' })).toBeTruthy(); expect(roleHome('co_admin')).toBe('/athel/co'); expect(moduleOptions('co_admin').map(v=>v.to)).toEqual(['/athel/co','/ihr/leave']) })
+test('CO has an authorized minimal route shell and home', () => { mount('co_admin','/athel/co'); expect(screen.getByRole('heading', { name: 'Pesanan konsinyasi (CO)' })).toBeTruthy(); expect(roleHome('co_admin')).toBe('/athel/co'); expect(moduleOptions('co_admin').map(v=>v.to)).toEqual(['/athel/co','/ihr/leave']) })
 test.each(['co_admin','po_admin','executive'])('%s has only approved Procurement links', role => {
  auth.profile.role=role; render(<MemoryRouter><AthelNav /></MemoryRouter>);
  const links=within(screen.getByRole('navigation',{name:'Navigasi Procurement'})).getAllByRole('link').map(v=>v.getAttribute('href'));
@@ -39,4 +39,4 @@ test.each(['co_admin','po_admin','executive'])('%s has only approved Procurement
 test('executive retains Dashboard and legacy administration', () => { mount('executive','/athel/dashboard'); expect(reads).toHaveBeenCalledWith('dashboard'); cleanup(); mount('executive','/athel/sales-orders'); expect(reads).toHaveBeenCalledWith('sales') })
 test('inactive CO cannot enter even the shell', () => { auth.profile.is_active=false; mount('co_admin','/athel/co'); expect(screen.getByText('Login boundary')).toBeTruthy() })
 
-test('PO cannot enter the CO route family',()=>{mount('po_admin','/athel/co');expect(screen.getByText('PO home')).toBeTruthy();expect(screen.queryByRole('heading',{name:'Consignment Order'})).toBeNull()})
+test('PO cannot enter the CO route family',()=>{mount('po_admin','/athel/co');expect(screen.getByText('PO home')).toBeTruthy();expect(screen.queryByRole('heading',{name:'Pesanan konsinyasi (CO)'})).toBeNull()})

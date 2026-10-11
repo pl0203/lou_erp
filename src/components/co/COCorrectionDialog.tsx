@@ -177,7 +177,7 @@ function ReviewBody({ operation, customerId, source, selectedMonth, sender, curr
             epoch.current++;
         }}
     /> : null;
-    const body = <><h2 id="co-correction-title" className="font-semibold text-lg">Tinjau perubahan tercatat</h2><p className="text-xs mt-2 break-all">Operasi {operation} · sumber {String(source.report_head_id ?? source.delivery_head_id ?? source.return_head_id ?? source.draft_id)}{source.original_revision_id ? ` · revisi asli ${source.original_revision_id}` : ''}{source.expected_report_version ?? source.expected_delivery_version ?? source.expected_return_version ? ` · versi asli ${source.expected_report_version ?? source.expected_delivery_version ?? source.expected_return_version}` : ''}</p><p className="text-xs mt-2">Semua periode, stok, pendapatan dan atribusi diterapkan bersama. Riwayat asli tetap tersimpan.</p><div className="space-y-4 mt-4">{readFailure}{error && <COFailure error={error}/>}<CORecoveryPanel sender={sender} current={() => live() && !pending && !busy.current} accept={recover}/>{monthEditor ? monthEditor : <>
+    const body = <><h2 id="co-correction-title" className="font-semibold text-lg">Tinjau perubahan tercatat</h2><p className="text-xs mt-2 break-all">Operasi {operation} · sumber {String(source.report_head_id ?? source.delivery_head_id ?? source.return_head_id ?? source.draft_id)}{source.original_revision_id ? ` · revisi asli ${source.original_revision_id}` : ''}{source.expected_report_version ?? source.expected_delivery_version ?? source.expected_return_version ? ` · versi asli ${source.expected_report_version ?? source.expected_delivery_version ?? source.expected_return_version}` : ''}</p><p className="text-xs mt-2">Semua periode, stok, pendapatan dan atribusi diterapkan bersama. Riwayat asli tetap tersimpan.</p><div className="space-y-4 mt-4">{readFailure}{error && <COFailure error={error}/>}<CORecoveryPanel confirmed={!!confirmed} pending={pending} sender={sender} current={() => live() && !pending && !busy.current} accept={recover}/>{monthEditor ? monthEditor : <>
  <label className="block text-sm">Alasan perubahan<textarea className={CO_INPUT} aria-label="Alasan perubahan" disabled={locked} value={reason} onChange={e => { if (locked)
             return; setReason(e.target.value); setReview(null); setContext(null); setCompleted({}); setAck([]); setRequired([]); setReopen([]); epoch.current++; }}/></label>
  {required.map(m => <button type="button" className={CO_BUTTON} key={m} disabled={locked || !context} onClick={() => { setActiveMonth(m); setReview(null); epoch.current++; }}>Lengkapi periode {m.slice(0, 7)}</button>)}{Object.keys(completed).length > 0 && <p className="text-sm">Draft periode siap dalam paket: {Object.keys(completed).map(m => m.slice(0, 7)).join(', ')}. Tinjau ulang seluruh paket.</p>}
@@ -264,6 +264,8 @@ function ReviewMonth({
         <h3>Lengkapi periode {month.slice(0, 7)}</h3>
         <p className="text-xs">Isian tersimpan dipertahankan. SKU tambahan wajib diisi, termasuk nol eksplisit.</p>
         <CORecoveryPanel
+            confirmed={!!work.confirmed}
+            pending={work.pending}
             sender={work.sender}
             current={() => current() && work.current() && !work.pending}
             accept={recover}

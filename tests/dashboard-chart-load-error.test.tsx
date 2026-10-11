@@ -14,5 +14,5 @@ test('a chart chunk download failure leaves existing metrics and detail tables u
   render(<Dashboard />)
   expect(await screen.findByText('Grafik tidak dapat dimuat. Muat ulang halaman untuk mencoba lagi.')).toBeTruthy()
   expect(screen.getAllByText('Rp123').length).toBeGreaterThan(0)
-  expect(screen.getByText('Top Customer')).toBeTruthy()
+  expect(screen.getByText('Pelanggan Teratas')).toBeTruthy()
 })

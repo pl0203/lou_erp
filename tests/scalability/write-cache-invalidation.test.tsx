@@ -71,7 +71,7 @@ function choose(option: string, value: string) {
 }
 function editSchedule() {
   // The third date tab is the first editable date under the existing rule.
-  const tabs = screen.getAllByRole('button').filter(button => /\bvisits?\b/.test(button.textContent ?? ''))
+  const tabs = screen.getAllByRole('button').filter(button => /\bkunjungan\b/.test(button.textContent ?? ''))
   fireEvent.click(tabs[2])
 }
 function submitSchedule(mode: 'create' | 'update' | 'delete') {
@@ -85,8 +85,8 @@ function submitSchedule(mode: 'create' | 'update' | 'delete') {
   }
   if (mode === 'delete') fireEvent.click(screen.getAllByRole('button', { name: 'Hapus' }).at(-1)!)
   else {
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Keep these notes' } })
-    fireEvent.click(screen.getByRole('button', { name: mode === 'create' ? 'Assign' : 'Save Changes' }))
+    fireEvent.change(screen.getByLabelText('Catatan jadwal'), { target: { value: 'Keep these notes' } })
+    fireEvent.click(screen.getByRole('button', { name: mode === 'create' ? 'Tugaskan' : 'Simpan perubahan' }))
   }
 }
 
@@ -97,10 +97,10 @@ test.each(['create', 'update', 'delete'] as const)('schedule %s refreshes active
   submitSchedule(mode)
   await waitFor(() => expect(state.send).toHaveBeenCalledTimes(1))
   probe.unchanged()
-  if (mode !== 'delete') expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('Keep these notes')
+  if (mode !== 'delete') expect((screen.getByLabelText('Catatan jadwal') as HTMLTextAreaElement).value).toBe('Keep these notes')
   await act(async () => commit({ id: 'schedule', version: 2 }))
   await waitFor(() => probe.refreshed())
-  expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull()
+  expect(screen.queryByRole('button', { name: 'Batal' })).toBeNull()
   expect(screen.queryByText('Hapus jadwal kunjungan?')).toBeNull()
 })
 
@@ -110,7 +110,7 @@ test.each(['create', 'update'] as const)('failed schedule %s keeps the draft and
   submitSchedule(mode)
   await screen.findByText('Schedule write failed')
   probe.unchanged()
-  expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('Keep these notes')
+  expect((screen.getByLabelText('Catatan jadwal') as HTMLTextAreaElement).value).toBe('Keep these notes')
 })
 
 type CustomerMode = 'create' | 'assign' | 'reassign' | 'unassign'

@@ -21,16 +21,16 @@ test.each(['missing','inactive','mismatch','error'])('%s verified profile reject
 
 test('team filters go unchanged to server intersection without client person/role authority',async()=>{
   role('sales_manager');mount(<PerformanceContent/>,`/girard/dashboard?sales_manager=${uuid(2)}&sales_type=co`)
-  await screen.findByRole('region',{name:'Ringkasan seluruh hasil'});expect(metricsCalls()[0].args).toMatchObject({p_manager_id:uuid(2),p_order_type:'co',p_group_by:'person'});expect(Object.keys(metricsCalls()[0].args).sort()).toEqual(['p_group_by','p_manager_id','p_month_from','p_month_until','p_order_type','p_page','p_page_size']);expect(screen.getByText('Cakupan: tim')).toBeTruthy()
+  await screen.findByRole('region',{name:'Ringkasan seluruh hasil'});expect(metricsCalls()[0].args).toMatchObject({p_manager_id:uuid(2),p_order_type:'co',p_group_by:'person'});expect(Object.keys(metricsCalls()[0].args).sort()).toEqual(['p_group_by','p_manager_id','p_month_from','p_month_until','p_order_type','p_page','p_page_size']);expect(screen.getByText(/^Cakupan: tim · manajer terpilih/)).toBeTruthy()
 })
 
 test('leadership Unassigned is explicit and narrowing clears broader rows before response',async()=>{
   role('sales_head');const pending=deferred();let narrowArgs:any
   state.handler=(name:string,args:any)=>{if(name==='pilot_sales_metrics_v2'){if(args.p_manager_id){narrowArgs=args;return pending.promise}return {data:page(args,{items:[{person_id:null,person_name:'Unassigned',is_unassigned:true,...values,co_contributing_report_count:'1'}]}),error:null}}return fixture(name,args)}
-  mount(<PerformanceContent/>,'/girard/dashboard');await screen.findByText('Unassigned')
+  mount(<PerformanceContent/>,'/girard/dashboard');await screen.findByText('Belum ditugaskan')
   fireEvent.change(within(screen.getByRole('region',{name:'Metrik Sales'})).getByLabelText('Manajer'),{target:{value:uuid(2)}})
-  await waitFor(()=>expect(narrowArgs).toBeTruthy());expect(screen.queryByText('Unassigned')).toBeNull()
-  await act(async()=>pending.resolve({data:page(narrowArgs,{total:'0',items:[],summary:{...zero,co_report_event_count:'0'}}),error:null}));await screen.findByRole('region',{name:'Ringkasan seluruh hasil'});expect(screen.queryByText('Unassigned')).toBeNull()
+  await waitFor(()=>expect(narrowArgs).toBeTruthy());expect(screen.queryByText('Belum ditugaskan')).toBeNull()
+  await act(async()=>pending.resolve({data:page(narrowArgs,{total:'0',items:[],summary:{...zero,co_report_event_count:'0'}}),error:null}));await screen.findByRole('region',{name:'Ringkasan seluruh hasil'});expect(screen.queryByText('Belum ditugaskan')).toBeNull()
 })
 
 test('identity switch and revocation remove private rows and earliest months; late responses stay removed',async()=>{
@@ -61,7 +61,7 @@ test('actual Dashboard tab wiring keeps customer and person groups and independe
 })
 
 test('forged own manager filter stays an intersecting RPC argument and cannot relabel scope',async()=>{
-  mount(<App/>,`/girard/my-sales?sales_manager=${uuid(2)}`);await screen.findByRole('region',{name:'Ringkasan seluruh hasil'});expect(metricsCalls()[0].args.p_manager_id).toBe(uuid(2));expect(screen.getByText('Cakupan: sendiri')).toBeTruthy();expect(screen.queryByLabelText('Manajer')).toBeNull()
+  mount(<App/>,`/girard/my-sales?sales_manager=${uuid(2)}`);await screen.findByRole('region',{name:'Ringkasan seluruh hasil'});expect(metricsCalls()[0].args.p_manager_id).toBe(uuid(2));expect(screen.getByText(/^Cakupan: sendiri · manajer terpilih/)).toBeTruthy();expect(screen.queryByLabelText('Manajer')).toBeNull()
 })
 
 test('verified same-ID role revocation removes the active summary immediately',async()=>{
@@ -80,7 +80,7 @@ test('a late broad leadership page cannot restore Unassigned after narrowing',as
   role('sales_head');const pending=deferred();let broad:any
   state.handler=(name:string,args:any)=>{if(name==='pilot_sales_metrics_v2'){if(!args.p_manager_id){broad=page(args,{items:[{person_id:null,person_name:'Unassigned',is_unassigned:true,...values,co_contributing_report_count:'1'}]});return pending.promise}return {data:page(args,{total:'0',items:[],summary:{...zero,co_report_event_count:'0'}}),error:null}}return fixture(name,args)}
   mount(<PerformanceContent/>,'/girard/dashboard');await waitFor(()=>expect(broad).toBeTruthy());await screen.findByRole('option',{name:'Manager B'})
-  fireEvent.change(screen.getByLabelText('Manajer'),{target:{value:uuid(2)}});await screen.findByRole('region',{name:'Ringkasan seluruh hasil'});await act(async()=>pending.resolve({data:broad,error:null}));expect(screen.queryByText('Unassigned')).toBeNull();expect(metricsCalls()[0].signal?.aborted).toBe(true)
+  fireEvent.change(screen.getByLabelText('Manajer'),{target:{value:uuid(2)}});await screen.findByRole('region',{name:'Ringkasan seluruh hasil'});await act(async()=>pending.resolve({data:broad,error:null}));expect(screen.queryByText('Belum ditugaskan')).toBeNull();expect(metricsCalls()[0].signal?.aborted).toBe(true)
 })
 
 test('returning to the same identity cannot resurrect its older in-flight response',async()=>{

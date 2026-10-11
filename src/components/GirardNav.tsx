@@ -41,7 +41,7 @@ export default function GirardNav() {
   const { profile } = useAuth()
   const roleLinks = profile ? [...(ROLE_LINKS[profile.role] ?? [])] : []
   if (profile && ['sales_person', 'sales_manager', 'sales_head', 'executive'].includes(profile.role)) {
-    roleLinks.push({ to: '/girard/visit-history', label: 'Riwayat Kunjungan', icon: 'visit' })
+    roleLinks.push({ to: '/girard/visit-history', label: 'Riwayat Kunjungan Saya', icon: 'visit' })
     if (!roleLinks.some(link => link.to === '/girard/promotions')) roleLinks.push({ to: '/girard/promotions', label: 'Promosi', icon: 'promotion' })
     if (!roleLinks.some(link => link.to === '/girard/my-orders')) roleLinks.push({ to: '/girard/my-orders', label: 'Riwayat Pesanan', icon: 'orders' })
   }

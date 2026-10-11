@@ -455,6 +455,7 @@ export default function POEdit() {
             </div>
           )}
 
+          <p className="mt-4 text-xs text-gray-600">Barang manual hanya disimpan pada PO ini; tidak menambahkan produk baru ke katalog. Nama, SKU, jumlah, dan harga dicatat sebagai rincian pesanan.</p>
           <div className="flex flex-wrap items-center justify-between gap-3 mt-4 pt-4 border-t border-gray-100">
             <button
               type="button"

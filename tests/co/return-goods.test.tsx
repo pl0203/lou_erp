@@ -123,11 +123,11 @@ test('known committed canonical retry does not resend and repeated failures pres
 test('dirty return blocks tabs, Keep retains fields and Discard leaves without a late save', async () => {
     const { router, state } = await openReturn();
     change('Referensi retur', 'DIRTY');
-    fireEvent.click(screen.getByRole('link', { name: 'Orders' }));
+    fireEvent.click(screen.getByRole('link', { name: 'Pesanan CO' }));
     await click('Tetap mengedit');
     expect(router.state.location.pathname).toBe('/athel/co/stock');
     expect(screen.getByDisplayValue('DIRTY')).toBeTruthy();
-    fireEvent.click(screen.getByRole('link', { name: 'Orders' }));
+    fireEvent.click(screen.getByRole('link', { name: 'Pesanan CO' }));
     await click('Buang perubahan');
     await waitFor(() => expect(router.state.location.pathname).toBe('/athel/co'));
     expect(state.commands).toHaveLength(0);
@@ -453,4 +453,37 @@ test('newer authoritative parent version freezes a retained return before stale 
     await click('Simpan Draft retur');
     await waitFor(() => expect(state.commands).toHaveLength(1));
     expect(state.commands[0].payload.expected_customer_version).toBe('2');
+});
+
+test('return owner readback success clears previous recovery warning and error', async () => {
+  const s = stockFixture(2);
+  mountApp(<App/>, `/athel/co/stock?customer=${customer}`);
+  await click('Retur barang belum terjual');
+  await screen.findByLabelText('Jumlah retur SJ-1 Item 1');
+  change('Jumlah retur SJ-1 Item 1','5');
+  change('Referensi retur','RECOVERY');
+  let executed = false;
+  s.fail = async (name:string, args:any) => {
+    if(name==='pilot_co_transaction_v1' && !executed) {
+      executed=true;
+      await s.handle(name,args);
+      return {data:null,error:{code:'08006',message:'Committed reply lost'}};
+    }
+    if(name==='pilot_co_return_v1' && executed) return {data:null,error:{code:'08006',message:'Canonical read unavailable'}};
+    return null;
+  };
+  await click('Simpan Draft retur');
+  await screen.findByText('Committed reply lost');
+  await click('Pulihkan hasil penyimpanan');
+  await click('Lihat hasil tersimpan');
+  await click('Buang perubahan');
+  await screen.findByRole('button',{name:'Buka hasil retur tersimpan'});
+  await screen.findAllByText('Canonical read unavailable');
+  s.fail = null;
+  await click('Buka hasil retur tersimpan');
+  await waitFor(()=>expect(localStorage.length).toBe(0));
+  expect(s.commands).toHaveLength(1);
+  expect(screen.queryByText(/Hasil penyimpanan sebelumnya perlu dipulihkan/)).toBeNull();
+  expect(screen.queryByRole('button',{name:'Lihat hasil tersimpan'})).toBeNull();
+  expect(screen.queryByText('Canonical read unavailable')).toBeNull();
 });

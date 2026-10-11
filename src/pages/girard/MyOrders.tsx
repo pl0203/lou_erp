@@ -39,9 +39,20 @@ export default function MyOrders() {
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5">
         <h1 className="text-xl font-semibold text-gray-900">Riwayat Pesanan Saya</h1>
         <p className="text-sm text-gray-500 mt-0.5">
-          Riwayat pengajuan lama Anda. Pesanan baru dibuat melalui Procurement.
+          Riwayat pengajuan lama Anda. Pencatatan pesanan baru ditangani oleh Admin PO.
         </p>
       </div>
+
+      <section aria-labelledby="order-handoff-title" className="mx-4 md:mx-8 my-4 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+        <h2 id="order-handoff-title" className="font-semibold">Pesanan baru: serahkan ke Admin PO</h2>
+        <p className="mt-1">Sampaikan detail pesanan kepada Admin PO melalui saluran kerja yang biasa digunakan. Admin PO akan mencatatnya di modul Pengadaan.</p>
+        <ul className="mt-2 list-disc pl-5 space-y-1">
+          <li>Nama pelanggan dan cabang, nomor atau dokumen PO pelanggan</li>
+          <li>Tanggal PO, batas berlaku bila ada, serta catatan pengiriman</li>
+          <li>SKU atau nama barang, jumlah, dan harga yang disepakati</li>
+        </ul>
+        <p className="mt-2">Halaman ini hanya menampilkan riwayat pengajuan lama; detail di atas perlu Anda teruskan sendiri kepada Admin PO.</p>
+      </section>
 
       {/* Summary pills */}
       {!isLoading && !isError && <div className="bg-white border-b border-gray-100 px-4 md:px-8 py-3 flex gap-3 flex-wrap">

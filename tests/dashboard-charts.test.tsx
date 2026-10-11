@@ -112,13 +112,13 @@ test('empty composition and all-zero deliveries have explicit honest messages', 
 
 test('customer names remain literal text and chart tooltips do not use HTML rendering', async () => {
   render(<Dashboard />)
-  await screen.findByRole('img', { name: 'Kontribusi Customer' })
-  expect(state.charts['Kontribusi Customer'].tooltip.renderMode).toBe('richText')
-  expect(state.charts['Kontribusi Customer'].yAxis.data).toEqual([state.data.customerShare[0].label])
+  await screen.findByRole('img', { name: 'Kontribusi Pelanggan' })
+  expect(state.charts['Kontribusi Pelanggan'].tooltip.renderMode).toBe('richText')
+  expect(state.charts['Kontribusi Pelanggan'].yAxis.data).toEqual([state.data.customerShare[0].label])
   expect(document.querySelector('img')).toBeNull()
 })
 
-test.each(['Top Customer', 'Outstanding Item Breakdown'].flatMap(title =>
+test.each(['Pelanggan Teratas', 'Rincian Barang Belum Terkirim'].flatMap(title =>
   ['empty', 'populated'].map(rows => ({ title, rows })),
 ))('$title keeps its $rows table inside a shrinkable grid card', async ({ title, rows }) => {
   const customerName = 'CustomerWithAnUnbrokenNameLongerThanANarrowViewport'
@@ -141,7 +141,7 @@ test.each(['Top Customer', 'Outstanding Item Breakdown'].flatMap(title =>
   expect(table.parentElement!.classList.contains('overflow-x-auto')).toBe(true)
   expect(within(table).getAllByRole('columnheader')).toHaveLength(5)
   if (rows === 'populated') {
-    const labels = title === 'Top Customer' ? [customerName] : [sku, productName]
+    const labels = title === 'Pelanggan Teratas' ? [customerName] : [sku, productName]
     for (const label of labels) {
       const cell = within(table).getByText(label)
       expect(cell.classList.contains('[overflow-wrap:anywhere]')).toBe(true)
@@ -156,7 +156,7 @@ test('loading and query errors remain unavailable instead of showing fabricated 
   state.data = undefined
   state.loading = true
   const view = render(<Dashboard />)
-  expect(screen.getByText('Memuat dashboard Procurement...')).toBeTruthy()
+  expect(screen.getByText('Memuat dashboard Pengadaan...')).toBeTruthy()
   expect(screen.queryByRole('img')).toBeNull()
   state.loading = false
   state.error = true
@@ -168,21 +168,85 @@ test('loading and query errors remain unavailable instead of showing fabricated 
 test('large KPI and customer totals retain exact values in shrinkable wrapping containers', async () => {
   state.data.metrics.totalPOValue = '999999999999999.99'
   render(<Dashboard />)
-  await screen.findByRole('img', { name: 'Kontribusi Customer' })
+  await screen.findByRole('img', { name: 'Kontribusi Pelanggan' })
   const kpi = screen.getByText('Total PO', { selector: 'p' }).parentElement!
   expect(kpi.classList.contains('min-w-0')).toBe(true)
   expect(kpi.children[1].classList.contains('[overflow-wrap:anywhere]')).toBe(true)
   expect(kpi.children[1].textContent).toBe('Rp999.999.999.999.999,99')
-  const customer = screen.getByRole('region', { name: 'Kontribusi Customer' })
+  const customer = screen.getByRole('region', { name: 'Kontribusi Pelanggan' })
   expect(within(customer).getByText('Rp999.999.999.999.999,99').classList.contains('[overflow-wrap:anywhere]')).toBe(true)
 })
 
-test.each(['Top Customer', 'Outstanding Item Breakdown'])('%s exposes a keyboard-accessible contained table without squeezing its columns', async title => {
+test.each(['Pelanggan Teratas', 'Rincian Barang Belum Terkirim'])('%s exposes a keyboard-accessible contained table without squeezing its columns', async title => {
   render(<Dashboard />)
-  await screen.findByRole('img', { name: 'Kontribusi Customer' })
+  await screen.findByRole('img', { name: 'Kontribusi Pelanggan' })
   const scroll = screen.getByRole('region', { name: `Tabel ${title}` })
   expect(scroll.tabIndex).toBe(0)
   expect(scroll.parentElement!.textContent).toContain('Geser tabel untuk melihat semua kolom.')
   expect(scroll.classList.contains('overflow-x-auto')).toBe(true)
   expect(within(scroll).getByRole('table').className).toMatch(/min-w-\[/)
+})
+
+test('average PO denominator names all filtered orders and keeps completed count separate', async () => {
+  state.data.metrics = { ...state.data.metrics, totalPOCount: 249, totalPOValue: '2490000', averagePOValue: '10000', completedPOCount: 167 }
+  render(<Dashboard />)
+  const label = screen.getByText('Rata-rata Nilai PO')
+  expect(label.parentElement!.textContent).toContain('Total nilai PO ÷ 249 PO pada filter ini')
+  expect(label.parentElement!.textContent).not.toContain('167')
+  expect(screen.getByText('PO selesai: 167 dari 249 PO pada filter ini.')).toBeTruthy()
+})
+
+test('customer branches remain distinct with an open keyboard-readable full-name table', async () => {
+  const names = ['PT.CATURKARDUS INTERNASIONAL CABANG SURABAYA', 'PT.CATURKARDUS INTERNASIONAL CABANG MALANG', 'PT.CATURKARDUS INTERNASIONAL CABANG KEDIRI']
+  state.data.customerShare = names.map(label => ({ label, value: '10000', color: '#2563eb' }))
+  render(<Dashboard />)
+  const region = await screen.findByRole('region', { name: 'Kontribusi Pelanggan' })
+  const table = within(region).getByRole('region', { name: 'Data Kontribusi Pelanggan' })
+  expect(table.closest('details')?.open).toBe(true)
+  table.focus()
+  expect(document.activeElement).toBe(table)
+  for (const name of names) expect(within(table).getByRole('rowheader', { name })).toBeTruthy()
+  const axis = state.charts['Kontribusi Pelanggan'].yAxis
+  expect(axis.axisLabel.overflow).not.toBe('truncate')
+  expect(new Set(names.map((name, index) => axis.axisLabel.formatter(name, index))).size).toBe(3)
+  for (const [index, branch] of ['SURABAYA', 'MALANG', 'KEDIRI'].entries()) expect(axis.axisLabel.formatter(names[index], index)).toContain(branch)
+})
+
+test('dashboard identifies date/status scope and distinguishes zero PO average from an undefined denominator', () => {
+  state.data.metrics = { ...state.data.metrics, totalPOCount: 0, averagePOValue: '0', completedPOCount: 0 }
+  render(<Dashboard />)
+  expect(screen.getByRole('option', { name: 'Dikonfirmasi' })).toBeTruthy()
+  expect(screen.getByRole('option', { name: 'Dalam proses' })).toBeTruthy()
+  expect(screen.getByText(/Tanggal PO:.*Semua status.*Semua pengiriman/)).toBeTruthy()
+  expect(screen.getByText('Rata-rata Nilai PO').parentElement!.textContent).toContain('Belum tersedia')
+})
+
+test('chart and outstanding-item scope exposes the wider PO source and excluded fulfillment filter', async () => {
+  render(<Dashboard />)
+  fireEvent.change(screen.getByLabelText('Tanggal awal'), { target: { value: '2026-10-01' } })
+  fireEvent.change(screen.getByLabelText('Tanggal akhir'), { target: { value: '2026-10-10' } })
+  for (const title of ['Nilai PO vs Pengiriman PO Bulanan', 'Tren Pengiriman PO Harian']) {
+    const region = await screen.findByRole('region', { name: title })
+    expect(region.textContent).toContain('1 September 2026 – 10 Oktober 2026')
+    expect(region.textContent).toContain('tanpa filter status pengiriman')
+  }
+  const items = screen.getByRole('heading', { name: 'Rincian Barang Belum Terkirim' }).parentElement!
+  expect(items.textContent).toContain('1 September 2026 – 10 Oktober 2026')
+  expect(items.textContent).toContain('tanpa filter status pengiriman')
+})
+
+test('monthly chart states the narrow selected PO period and explains outside-filter zero buckets', async () => {
+  state.data.monthlySeries = Array.from({ length: 12 }, (_, index) => {
+    const date = new Date(Date.UTC(2025, 10 + index, 1))
+    return { key: date.toISOString().slice(0, 7), label: date.toLocaleDateString('id-ID', { month: 'short', year: 'numeric', timeZone: 'UTC' }), poValue: index >= 9 ? '10000' : '0', deliveredValue: '0' }
+  })
+  render(<Dashboard />)
+  fireEvent.change(screen.getByLabelText('Tanggal awal'), { target: { value: '2026-08-01' } })
+  fireEvent.change(screen.getByLabelText('Tanggal akhir'), { target: { value: '2026-10-10' } })
+  const region = await screen.findByRole('region', { name: 'Nilai PO vs Pengiriman PO Bulanan' })
+  expect(region.textContent).toContain('Total PO: tanggal PO 1 Agustus 2026 – 10 Oktober 2026')
+  expect(region.textContent).toContain('sumber PO 1 November 2025 – 10 Oktober 2026')
+  expect(region.textContent).toContain('Bulan di luar rentang tanggal PO ditampilkan Rp0 karena tidak termasuk filter')
+  expect(region.textContent).toContain('bukan bukti tidak ada pesanan')
+  expect(state.charts['Nilai PO vs Pengiriman PO Bulanan'].series[0].data).toEqual([...Array(9).fill(0), 10000, 10000, 10000])
 })

@@ -25,11 +25,19 @@ test('permits finite plotting projections only and rejects malformed money', () 
 })
 
 test('formats compact amounts and ratios without converting monetary totals to numbers', () => {
-  expect(formatCompactMoney('1500000000.00')).toBe('Rp1.50B')
-  expect(formatCompactMoney('1500000')).toBe('Rp1.5M')
-  expect(formatCompactMoney('1500')).toBe('Rp2K')
+  expect(formatCompactMoney('1500000000.00')).toBe('Rp1,50 miliar')
+  expect(formatCompactMoney('1500000')).toBe('Rp1,5 juta')
+  expect(formatCompactMoney('1500')).toBe('Rp1.500')
   expect(formatCompactMoney('0.00')).toBe('Rp0')
   expect(moneyPercentage('9007199254740993', '18014398509481986', 1)).toBe('50.0')
   expect(moneyPercentage('2', '3', 0)).toBe('67')
   expect(moneyPercentage('0', '0', 1)).toBe('0.0')
+})
+
+test('reporting compact money uses explicit Indonesian units and full small values', () => {
+  expect(formatCompactMoney('10000.25')).toBe('Rp10.000,25')
+  expect(formatCompactMoney('-1500.125')).toBe('Rp-1.500,125')
+  expect(formatCompactMoney('0.01')).toBe('Rp0,01')
+  expect(formatCompactMoney('1500000')).toBe('Rp1,5 juta')
+  expect(formatCompactMoney('1500000000')).toBe('Rp1,50 miliar')
 })

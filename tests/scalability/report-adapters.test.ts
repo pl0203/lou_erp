@@ -70,3 +70,9 @@ test('manager rows and summary share the exact caller-supplied overdue reference
   expect(result.referenceInstant).toBe('2026-10-01T12:00:00.000Z')
   expect(state.calls[0].args.p_visit_from).toBe('2026-09-01T12:00:00.000Z')
 })
+
+test('dashboard status labels follow the shared Indonesian PO glossary', async () => {
+  state.fixture.rpc.pilot_athel_summary_v1 = () => ({ ...emptyDashboardSummary(), statusBreakdown: [{ status: 'confirm', value: 1 }, { status: 'in_progress', value: 1 }, { status: 'complete', value: 1 }, { status: 'cancelled', value: 1 }] })
+  const result = await fetchDashboardData('2026-10-01', '2026-10-01', 'all', 'all')
+  expect(result.statusBreakdown.map(row => row.label)).toEqual(['Dikonfirmasi', 'Dalam proses', 'Selesai', 'Dibatalkan'])
+})

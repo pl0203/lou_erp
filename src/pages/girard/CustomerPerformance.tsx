@@ -1,3 +1,5 @@
+import { salesMonthLabel } from '../../lib/reads/useSalesMetrics'
+import { formatAuditTimestamp } from '../../lib/displayDate'
 import { SalesMetricsPanel } from '../../components/sales/SalesMetricSummary'
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -85,8 +87,8 @@ function InlineTargetEdit({
 
   if (!canEdit) {
     return (
-      <span className="text-gray-400 text-xs">
-        {currentTarget != null ? `Rp ${formatMoney(currentTarget, 'millions')}M` : '—'}
+      <span className="text-gray-600 text-xs">
+        {currentTarget != null ? `Rp ${formatMoney(currentTarget, 'full')}` : '—'}
       </span>
     )
   }
@@ -113,7 +115,7 @@ function InlineTargetEdit({
         >
           {mutation.isPending ? '...' : '✓'}
         </button>
-        <button onClick={() => setEditing(false)} className="text-gray-400 hover:text-gray-600 text-xs">
+        <button onClick={() => setEditing(false)} className="text-gray-600 hover:text-gray-600 text-xs">
           ✕
         </button>
       </div>
@@ -125,8 +127,8 @@ function InlineTargetEdit({
       onClick={() => { setValue(currentTarget?.toString() ?? ''); setEditing(true) }}
       className="text-right w-full group"
     >
-      <span className="text-gray-400 text-xs group-hover:text-brand-primary transition-colors">
-        {currentTarget != null ? `Rp ${formatMoney(currentTarget, 'millions')}M` : '+ Set target'}
+      <span className="text-gray-600 text-xs group-hover:text-brand-primary transition-colors">
+        {currentTarget != null ? `Rp ${formatMoney(currentTarget, 'full')}` : '+ Atur target'}
       </span>
     </button>
   )
@@ -158,7 +160,7 @@ export function CustomerActivityContent() {
   const totalTarget = summary?.total_target_visits ?? 0
   const visitPct = summary?.visit_percent ?? 0
   const topCustomer = summary?.top_customer
-  const selectedLabel   = yearMonth
+  const selectedLabel = salesMonthLabel(yearMonth)
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['customer_performance'] })
 
@@ -171,48 +173,51 @@ export function CustomerActivityContent() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-lg font-semibold text-gray-900">Aktivitas dan Target Pelanggan</h2>
-          <p className="text-sm text-gray-500 mt-0.5">{selectedLabel}</p>
+          <p className="text-sm text-gray-500 mt-0.5">Periode aktivitas: {selectedLabel}</p>
         </div>
         <label className="text-sm text-gray-600">Bulan aktivitas pelanggan
           <input aria-label="Bulan aktivitas pelanggan" type="month" value={yearMonth} onChange={e => { if (/^(?!0000)\d{4}-(?:0[1-9]|1[0-2])$/.test(e.target.value)) setYearMonth(e.target.value) }} className="ml-2 rounded-lg border border-gray-200 px-3 py-2 text-sm" />
         </label>
       </div>
 
-      <p className="text-xs text-gray-500">Kunjungan, penanggung jawab toko saat ini, dan target tetap memakai kohort aktivitas pelanggan yang ada. Pembanding target memakai nilai pengiriman PO dengan status in progress atau complete berdasarkan tanggal SJ; basis ini terpisah dari metrik Sales di atas. Filter Sales tidak mengubah bulan atau kohort aktivitas ini.</p>
+      <div className="rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-600">
+        <p>Filter bulan aktivitas ini tidak mengubah Metrik Sales. Cakupan: pelanggan dan penanggung jawab toko saat ini sesuai izin akun; ringkasan mencakup semua halaman.</p>
+        <p className="mt-1">Nilai pembanding target: pengiriman PO berstatus Dalam proses atau Selesai, berdasarkan tanggal SJ pada {selectedLabel}. Jumlah pesanan memakai tanggal PO. Kunjungan memakai waktu pencatatan, dengan batas bulan menurut zona waktu perangkat.</p>
+      </div>
 
       {pageData && <PaginationControls page={pageData.page} total={pageData.total} pageSize={pageData.page_size} pending={isPending} onPageChange={setPage} />}
 
       {/* Top metrics */}
       {pageData && (      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-xs text-gray-400 mb-1">Nilai pembanding target</p>
-          <p className="text-xl font-bold text-gray-900">
-            Rp {formatMoney(totalSales, 'millions')}M
+          <p className="text-xs text-gray-600 mb-1">Nilai pembanding target</p>
+          <p className="text-xl font-bold text-gray-900 [overflow-wrap:anywhere]">
+            Rp {formatMoney(totalSales, 'full')}
           </p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-xs text-gray-400 mb-1">Pelanggan Aktif</p>
-          <p className="text-xl font-bold text-gray-900">{activePelanggan}</p>
-          <p className="text-xs text-gray-400 mt-1">dari {summary?.total_customers} total</p>
+          <p className="text-xs text-gray-600 mb-1">Pelanggan Aktif</p>
+          <p className="text-xl font-bold text-gray-900 [overflow-wrap:anywhere]">{activePelanggan}</p>
+          <p className="text-xs text-gray-600 mt-1">dari {summary?.total_customers} total</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-xs text-gray-400 mb-1">Total Kunjungan</p>
-          <p className="text-xl font-bold text-gray-900">{totalVisits}</p>
-          <p className="text-xs text-gray-400 mt-1">target {totalTarget}</p>
+          <p className="text-xs text-gray-600 mb-1">Total Kunjungan</p>
+          <p className="text-xl font-bold text-gray-900 [overflow-wrap:anywhere]">{totalVisits}</p>
+          <p className="text-xs text-gray-600 mt-1">target {totalTarget}</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-xs text-gray-400 mb-1">Teratas pada basis aktivitas</p>
-          <p className="text-sm font-bold text-gray-900 truncate">
+          <p className="text-xs text-gray-600 mb-1">Teratas pada basis aktivitas</p>
+          <p className="text-sm font-bold text-gray-900 [overflow-wrap:anywhere]">
             {topCustomer?.name ?? '—'}
           </p>
           {topCustomer && !/^0+(?:\.0+)?$/.test(topCustomer.total_sales) && (
-            <p className="text-xs text-gray-400 mt-1">
-              Rp {formatMoney(topCustomer.total_sales, 'millions')}M
+            <p className="text-xs text-gray-600 mt-1">
+              Rp {formatMoney(topCustomer.total_sales, 'full')}
             </p>
           )}
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-xs text-gray-400 mb-1">Kunjungan %</p>
+          <p className="text-xs text-gray-600 mb-1">Kunjungan %</p>
           <p className={`text-xl font-bold ${
             visitPct >= 80 ? 'text-green-600'
             : visitPct >= 50 ? 'text-yellow-600'
@@ -220,32 +225,34 @@ export function CustomerActivityContent() {
           }`}>
             {visitPct}%
           </p>
-          <p className="text-xs text-gray-400 mt-1">{totalVisits}/{totalTarget} kunjungan</p>
+          <p className="text-xs text-gray-600 mt-1">{totalVisits}/{totalTarget} kunjungan</p>
         </div>
       </div>
       )}
 
       {isLoading && (
-        <div className="text-center text-gray-400 text-sm py-12">Memuat data...</div>
+        <div className="text-center text-gray-600 text-sm py-12">Memuat data...</div>
       )}
 
       {!isLoading && data.length === 0 && (
         <div className="text-center py-12">
-          <p className="text-gray-400 text-sm">Tidak ada data untuk bulan ini.</p>
+          <p className="text-gray-600 text-sm">Tidak ada data untuk bulan ini.</p>
         </div>
       )}
 
       {!isLoading && data.length > 0 && (
         <>
           {canEditTargets && (
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-gray-600">
               Klik pada kolom Target Penjualan untuk mengatur target per pelanggan.
             </p>
           )}
 
           {/* Desktop table */}
           <div className="hidden md:block bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <table className="w-full text-sm">
+            <p className="px-5 py-2 text-xs text-gray-600">Geser tabel untuk melihat semua kolom.</p>
+            <div role="region" aria-label="Tabel aktivitas pelanggan" tabIndex={0} className="max-w-full overflow-x-auto">
+            <table className="w-full min-w-[72rem] text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
                   <th className="text-left px-5 py-3 font-medium text-gray-500">Pelanggan</th>
@@ -270,7 +277,7 @@ export function CustomerActivityContent() {
                   const onTrack = r.actual_visits >= r.target_visits
                   return (
                     <tr key={r.id} className="border-b border-gray-50 hover:bg-gray-50">
-                      <td className="px-5 py-4 font-medium text-gray-900">{r.name}</td>
+                      <td className="min-w-[14rem] px-5 py-4 font-medium text-gray-900">{r.name}</td>
                       {showManagerCol && (
                         <td className="px-5 py-4 text-gray-600 text-xs">{r.manager_name ?? '—'}</td>
                       )}
@@ -278,20 +285,16 @@ export function CustomerActivityContent() {
                         <span className={`font-medium ${onTrack ? 'text-green-600' : 'text-red-500'}`}>
                           {r.actual_visits}
                         </span>
-                        <span className="text-gray-400">/{r.target_visits}</span>
+                        <span className="text-gray-600">/{r.target_visits}</span>
                       </td>
                       <td className="px-5 py-4 text-xs text-gray-600">
                         {r.last_visit_date
-                          ? new Date(r.last_visit_date).toLocaleDateString('id-ID', {
-                              day: 'numeric', month: 'short', year: 'numeric'
-                            })
+                          ? formatAuditTimestamp(r.last_visit_date)
                           : 'Belum pernah'}
                       </td>
                       <td className="px-5 py-4 text-center text-gray-700">{r.order_count}</td>
                       <td className="px-5 py-4 text-right font-medium text-gray-900">
-                        {!/^0+(?:\.0+)?$/.test(r.total_sales)
-                          ? `Rp ${formatMoney(r.total_sales, 'millions')}M`
-                          : '—'}
+                        {`Rp ${formatMoney(r.total_sales, 'full')}`}
                       </td>
                       <td className="px-5 py-4 text-right font-medium text-gray-900">
                         <InlineTargetEdit key={`${r.id}:${yearMonth}`}
@@ -310,6 +313,7 @@ export function CustomerActivityContent() {
                 })}
               </tbody>
             </table>
+            </div>
           </div>
 
           {/* Mobile cards */}
@@ -320,50 +324,46 @@ export function CustomerActivityContent() {
                 <div key={r.id} className="bg-white rounded-xl border border-gray-200 p-4">
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-gray-900 text-sm truncate">{r.name}</p>
+                      <p className="font-semibold text-gray-900 text-sm [overflow-wrap:anywhere]">{r.name}</p>
                       {r.manager_name && (
-                        <p className="text-xs text-gray-400 mt-0.5">{r.manager_name}</p>
+                        <p className="text-xs text-gray-600 mt-0.5">{r.manager_name}</p>
                       )}
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2 text-xs mb-3">
                     <div>
-                      <p className="text-gray-400">Kunjungan</p>
+                      <p className="text-gray-600">Kunjungan</p>
                       <p className="mt-0.5">
                         <span className={`font-semibold ${onTrack ? 'text-green-600' : 'text-red-500'}`}>
                           {r.actual_visits}
                         </span>
-                        <span className="text-gray-400">/{r.target_visits}</span>
+                        <span className="text-gray-600">/{r.target_visits}</span>
                       </p>
                     </div>
                     <div>
-                      <p className="text-gray-400">Kunjungan Terakhir</p>
+                      <p className="text-gray-600">Kunjungan Terakhir</p>
                       <p className="text-gray-700 mt-0.5">
                         {r.last_visit_date
-                          ? new Date(r.last_visit_date).toLocaleDateString('id-ID', {
-                              day: 'numeric', month: 'short'
-                            })
+                          ? formatAuditTimestamp(r.last_visit_date)
                           : 'Belum pernah'}
                       </p>
                     </div>
                     <div>
-                      <p className="text-gray-400">Pesanan</p>
+                      <p className="text-gray-600">Pesanan</p>
                       <p className="text-gray-700 mt-0.5">{r.order_count}</p>
                     </div>
                     <div>
-                      <p className="text-gray-400">Nilai pembanding target</p>
+                      <p className="text-gray-600">Nilai pembanding target</p>
                       <p className="font-semibold text-gray-900 mt-0.5">
-                        {!/^0+(?:\.0+)?$/.test(r.total_sales)
-                          ? `Rp ${formatMoney(r.total_sales, 'millions')}M`
-                          : '—'}
+                        {`Rp ${formatMoney(r.total_sales, 'full')}`}
                       </p>
                     </div>
                   </div>
 
                   {/* Visit progress bar */}
                   <div className="pt-2 border-t border-gray-100">
-                      <p className="text-xs text-gray-400 mb-1">Target Penjualan
+                      <p className="text-xs text-gray-600 mb-1">Target Penjualan
                       <InlineTargetEdit key={`${r.id}:${yearMonth}`}
                         customerId={r.id}
                         yearMonth={yearMonth}
@@ -374,7 +374,7 @@ export function CustomerActivityContent() {
                       </p>
                     </div>
                   <div className="pt-2 border-t border-gray-100">
-                    <p className="text-xs text-gray-400 mb-1">% Kunjungan</p>
+                    <p className="text-xs text-gray-600 mb-1">% Kunjungan</p>
                     <div className="flex items-center gap-2">
                       <div className="flex-1 bg-gray-100 rounded-full h-1.5">
                         <div
@@ -388,7 +388,7 @@ export function CustomerActivityContent() {
                           }}
                         />
                       </div>
-                      <span className="text-xs text-gray-400">
+                      <span className="text-xs text-gray-600">
                         {r.target_visits > 0
                           ? Math.round((r.actual_visits / r.target_visits) * 100)
                           : 0}%
@@ -396,7 +396,7 @@ export function CustomerActivityContent() {
                     </div>
                   </div>
                   <div className="pt-2 border-t border-gray-100">
-                    <p className="text-xs text-gray-400 mb-1">% Pembanding target</p>
+                    <p className="text-xs text-gray-600 mb-1">% Pembanding target</p>
                     <div className="flex items-center gap-2">
                       <div className="flex-1 bg-gray-100 rounded-full h-1.5">
                         <div
@@ -408,7 +408,7 @@ export function CustomerActivityContent() {
                           }}
                         />
                       </div>
-                      <span className="text-xs text-gray-400">
+                      <span className="text-xs text-gray-600">
                         {moneyPercentage(r.total_sales, r.sales_target ?? '0')}%
                       </span>
                     </div>

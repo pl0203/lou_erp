@@ -24,8 +24,8 @@ function SeriesControls({ items, selected, onToggle }: { items: { name: string; 
   </div>
 }
 
-function ChartData({ headers, rows, caption }: { headers: string[]; rows: (string | number)[][]; caption: string }) {
-  return <details className="mt-3 border-t border-slate-100 pt-3">
+function ChartData({ headers, rows, caption, open = false }: { headers: string[]; rows: (string | number)[][]; caption: string; open?: boolean }) {
+  return <details open={open} className="mt-3 border-t border-slate-100 pt-3">
     <summary className="w-fit cursor-pointer rounded text-xs font-medium text-slate-500 hover:text-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary">Lihat data</summary>
     <div className="mt-3 max-h-72 overflow-auto rounded-lg border border-slate-200" tabIndex={0} role="region" aria-label={`Data ${caption}`}>
       <table className="w-full text-left text-xs">
@@ -37,10 +37,10 @@ function ChartData({ headers, rows, caption }: { headers: string[]; rows: (strin
   </details>
 }
 
-function MonthlyChart({ series }: { series: DashboardData['monthlySeries'] }) {
+function MonthlyChart({ series, sourcePeriod, selectedPOPeriod }: { series: DashboardData['monthlySeries']; sourcePeriod: string; selectedPOPeriod: string }) {
   const [selected, setSelected] = useState({ 'Total PO': true, 'PO terkirim': true })
   const option = useMemo(() => monthlyOptions(series, selected), [series, selected])
-  return <ChartCard title="Nilai PO vs Pengiriman PO Bulanan" subtitle="Khusus PO · rolling 12 bulan · bulan berjalan di sisi kanan">
+  return <ChartCard title="Nilai PO vs Pengiriman PO Bulanan" subtitle={`Khusus PO · 12 bulan bergulir. Total PO: tanggal PO ${selectedPOPeriod}, sesuai status PO dan status pengiriman terpilih. Bulan di luar rentang tanggal PO ditampilkan Rp0 karena tidak termasuk filter, bukan bukti tidak ada pesanan. Seri pengiriman mengikuti tanggal SJ; sumber PO ${sourcePeriod} sesuai status PO, tanpa filter status pengiriman.`}>
     <SeriesControls items={[{ name: 'Total PO', color: CHART_COLORS.po }, { name: 'PO terkirim', color: CHART_COLORS.delivered }]} selected={selected} onToggle={name => setSelected(previous => ({ ...previous, [name]: !previous[name as keyof typeof previous] }))} />
     <div className="mt-3"><EChart label="Nilai PO vs Pengiriman PO Bulanan" option={option} height={300} /></div>
     {series.every(item => moneyToChartNumber(item.poValue) === 0 && moneyToChartNumber(item.deliveredValue) === 0) && <p className="mt-1 text-xs text-slate-500">Belum ada nilai PO atau pengiriman pada periode ini.</p>}
@@ -48,7 +48,7 @@ function MonthlyChart({ series }: { series: DashboardData['monthlySeries'] }) {
   </ChartCard>
 }
 
-function DailyChart({ series }: { series: DashboardData['dailySeries'] }) {
+function DailyChart({ series, sourcePeriod }: { series: DashboardData['dailySeries']; sourcePeriod: string }) {
   const [selected, setSelected] = useState({ 'Nilai PO terkirim': true, 'Jumlah SJ PO': true })
   const last = Math.max(0, series.length - 1)
   const [window, setWindow] = useState({ start: 0, end: last })
@@ -61,7 +61,7 @@ function DailyChart({ series }: { series: DashboardData['dailySeries'] }) {
       setWindow({ start: Math.max(0, Math.round(zoom.start / 100 * last)), end: Math.min(last, Math.round(zoom.end / 100 * last)) })
     }
   }
-  return <ChartCard title="Tren Pengiriman PO Harian" subtitle="Tanggal SJ PO · nilai item PO terkirim dan jumlah surat jalan PO per hari; tidak mencakup CO">
+  return <ChartCard title="Tren Pengiriman PO Harian" subtitle={`Tanggal SJ dalam rentang terpilih · nilai item dan jumlah SJ PO. Sumber PO ${sourcePeriod} sesuai status PO, tanpa filter status pengiriman. Tidak mencakup CO.`}>
     <SeriesControls items={[{ name: 'Nilai PO terkirim', color: CHART_COLORS.delivered }, { name: 'Jumlah SJ PO', color: CHART_COLORS.count, line: true }]} selected={selected} onToggle={name => setSelected(previous => ({ ...previous, [name]: !previous[name as keyof typeof previous] }))} />
     <div className="mt-3"><EChart label="Tren Pengiriman PO Harian" option={option} height={300} onDataZoom={onDataZoom} /></div>
     {series.length > 14 && <details className="mt-2 rounded-lg bg-slate-50 px-3 py-2">
@@ -79,11 +79,11 @@ function DailyChart({ series }: { series: DashboardData['dailySeries'] }) {
 
 function CustomerChart({ items, total }: { items: DashboardData['customerShare']; total: string }) {
   const option = useMemo(() => customerOptions(items, total), [items, total])
-  return <ChartCard title="Kontribusi Customer" subtitle="Proporsi nilai PO · 5 customer teratas dan lainnya">
+  return <ChartCard title="Kontribusi Pelanggan" subtitle="Proporsi nilai PO · 5 pelanggan teratas dan lainnya. Nama lengkap dan cabang tersedia pada tabel di bawah grafik.">
     {items.length === 0 ? <p className="grid h-80 place-items-center text-sm text-slate-400">Belum ada data pada filter ini.</p> : <>
       <div className="mt-4 flex flex-wrap items-baseline gap-x-2"><span className="min-w-0 max-w-full text-xl font-semibold tracking-tight text-slate-900 [overflow-wrap:anywhere]">{currency(total)}</span><span className="text-xs text-slate-500">total nilai PO</span></div>
-      <EChart label="Kontribusi Customer" option={option} height={300} />
-      <ChartData caption="Kontribusi Customer" headers={['Customer', 'Total PO', 'Proporsi']} rows={items.map(item => [item.label, currency(item.value), `${moneyPercentage(item.value, total, 1)}%`])} />
+      <EChart label="Kontribusi Pelanggan" option={option} height={300} />
+      <ChartData open caption="Kontribusi Pelanggan" headers={['Pelanggan', 'Total PO', 'Proporsi']} rows={items.map(item => [item.label, currency(item.value), `${moneyPercentage(item.value, total, 1)}%`])} />
     </>}
   </ChartCard>
 }
@@ -91,7 +91,7 @@ function CustomerChart({ items, total }: { items: DashboardData['customerShare']
 function StatusChart({ items }: { items: DashboardData['statusBreakdown'] }) {
   const option = useMemo(() => statusOptions(items), [items])
   const total = items.reduce((sum, item) => sum + item.value, 0)
-  return <ChartCard title="Komposisi Status PO" subtitle="Jumlah purchase order berdasarkan status">
+  return <ChartCard title="Komposisi Status PO" subtitle="Jumlah pesanan pembelian (PO) berdasarkan status">
     {items.length === 0 ? <p className="grid h-80 place-items-center text-sm text-slate-400">Belum ada data pada filter ini.</p> : <>
       <div className="relative mx-auto mt-4 max-w-64">
         <EChart label="Komposisi Status PO" option={option} height={232} />
@@ -103,12 +103,12 @@ function StatusChart({ items }: { items: DashboardData['statusBreakdown'] }) {
   </ChartCard>
 }
 
-export default function DashboardCharts({ data }: { data: DashboardData }) {
+export default function DashboardCharts({ data, sourcePeriod, selectedPOPeriod }: { data: DashboardData; sourcePeriod: string; selectedPOPeriod: string }) {
   const dailyKey = `${data.dailySeries[0]?.key}:${data.dailySeries.at(-1)?.key}:${data.dailySeries.length}`
   return <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-    <MonthlyChart series={data.monthlySeries} />
+    <MonthlyChart series={data.monthlySeries} sourcePeriod={sourcePeriod} selectedPOPeriod={selectedPOPeriod} />
     <CustomerChart items={data.customerShare} total={data.metrics.totalPOValue} />
-    <DailyChart key={dailyKey} series={data.dailySeries} />
+    <DailyChart key={dailyKey} series={data.dailySeries} sourcePeriod={sourcePeriod} />
     <StatusChart items={data.statusBreakdown} />
   </div>
 }

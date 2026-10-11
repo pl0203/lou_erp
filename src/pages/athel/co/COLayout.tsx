@@ -6,8 +6,8 @@ export default function COLayout() {
     return <div className="min-h-screen bg-brand-canvas">
     <AthelNav />
     <header className="bg-white border-b border-gray-200 px-4 md:px-8 pt-5">
-    <h1 className="text-xl font-semibold text-gray-900">Consignment Order</h1>
-    <nav aria-label="Bagian Consignment Order" className="mt-4 flex gap-4 overflow-x-auto text-sm">{[['orders', '/athel/co', 'Orders'], ['reports', '/athel/co/reports', 'Monthly Sales Reports'], ['stock', '/athel/co/stock', 'Customer Stock']].map(([tab, to, label]) => <Link key={tab} to={to} aria-current={selected === tab ? 'page' : undefined} className={`shrink-0 border-b-2 pb-3 ${selected === tab ? 'border-brand-primary text-brand-primary' : 'border-transparent text-gray-500'}`}>{label}</Link>)}</nav>
+    <h1 className="text-xl font-semibold text-gray-900">Pesanan konsinyasi (CO)</h1>
+    <nav aria-label="Bagian pesanan konsinyasi" className="mt-4 flex gap-4 overflow-x-auto text-sm">{[['orders', '/athel/co', 'Pesanan CO'], ['reports', '/athel/co/reports', 'Laporan penjualan bulanan'], ['stock', '/athel/co/stock', 'Stok pelanggan']].map(([tab, to, label]) => <Link key={tab} to={to} aria-current={selected === tab ? 'page' : undefined} className={`shrink-0 border-b-2 pb-3 ${selected === tab ? 'border-brand-primary text-brand-primary' : 'border-transparent text-gray-500'}`}>{label}</Link>)}</nav>
     </header>
     <main className="px-4 md:px-8 py-6">
     <Outlet />

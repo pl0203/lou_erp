@@ -44,7 +44,7 @@ test('detail remaining quantity uses authoritative state rather than the display
  mount(PODetail);await screen.findByText('Item 0');const row=screen.getByText('Item 0').closest('tr')!;expect(within(row).getByText('6')).toBeTruthy()
 })
 test('failed authoritative line state prevents opening a delivery form and offers retry',async()=>{
- state.failLines=true;mount(PODetail);expect(await screen.findByRole('alert')).toBeTruthy();expect(screen.queryByText('New Surat Jalan')).toBeNull()
+ state.failLines=true;mount(PODetail);expect(await screen.findByRole('alert')).toBeTruthy();expect(screen.queryByText('Surat Jalan Baru')).toBeNull()
  const add=screen.queryByRole('button',{name:/Tambah.*(SJ|Surat Jalan)|New SJ/i});if(add)expect((add as HTMLButtonElement).disabled).toBe(true)
 })
 
@@ -81,15 +81,15 @@ test('PO cancellation invalidates cached report summaries after confirmed succes
 
 test('a later line refresh failure retains the delivery draft but blocks its save',async()=>{
  mount(PODetail);const add=await screen.findByRole('button',{name:'+ Surat Jalan'});await waitFor(()=>expect((add as HTMLButtonElement).disabled).toBe(false));fireEvent.click(add)
- fireEvent.change(screen.getByPlaceholderText('e.g. SJ-2024-001'),{target:{value:'KEEP-SJ'}})
+ fireEvent.change(screen.getByPlaceholderText('mis. SJ-2024-001'),{target:{value:'KEEP-SJ'}})
  state.failLines=true;await act(()=>clients[0].invalidateQueries({queryKey:['po_line_state']}));await screen.findByRole('alert')
- expect(screen.getByDisplayValue('KEEP-SJ')).toBeTruthy();expect((screen.getByRole('button',{name:'Create SJ'}) as HTMLButtonElement).disabled).toBe(true)
+ expect(screen.getByDisplayValue('KEEP-SJ')).toBeTruthy();expect((screen.getByRole('button',{name:'Simpan SJ'}) as HTMLButtonElement).disabled).toBe(true)
 })
 
 test('PO detail stacks order fields on phones and exposes the entire items table through local scrolling', async () => {
   mount(PODetail)
   await screen.findByText('Item 0')
-  const info = screen.getByText('Toko/Customer').parentElement!.parentElement!
+  const info = screen.getByText('Pelanggan').parentElement!.parentElement!
   expect(info.classList.contains('grid-cols-1')).toBe(true)
   expect(info.classList.contains('sm:grid-cols-3')).toBe(true)
   const scroll = screen.getByRole('region', { name: 'Daftar barang PO' })
@@ -113,7 +113,7 @@ test('delivery modal stacks phone date fields and scrolls the full quantity edit
   const add = await screen.findByRole('button', { name: '+ Surat Jalan' })
   await waitFor(() => expect((add as HTMLButtonElement).disabled).toBe(false))
   fireEvent.click(add)
-  const number = screen.getByPlaceholderText('e.g. SJ-2024-001')
+  const number = screen.getByPlaceholderText('mis. SJ-2024-001')
   expect(number.parentElement!.parentElement!.classList.contains('grid-cols-1')).toBe(true)
   const items = screen.getByRole('region', { name: 'Jumlah barang surat jalan' })
   expect(items.classList.contains('overflow-x-auto')).toBe(true)

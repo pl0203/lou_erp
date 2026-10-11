@@ -12,18 +12,18 @@ beforeEach(()=>{mock.rpc.mockReset().mockResolvedValue({data:answer,error:null})
 afterEach(()=>{cleanup();clients.splice(0).forEach(c=>c.clear())})
 function mount(customerId='c'){const client=new QueryClient({defaultOptions:{queries:{retry:false}}});clients.push(client);return {client,...render(<QueryClientProvider client={client}><StorePOContext customerId={customerId}/></QueryClientProvider>)}}
 test('latest PO date stays distinct from server-derived two-calendar-month range',async()=>{
- mount();await screen.findByText(/2026-01-01/);expect(screen.getByText(/2026-08-08.*2026-10-08/)).toBeTruthy();expect(screen.getByText(/Tidak ada PO pada rentang ini/)).toBeTruthy()
+ mount();await screen.findByText(/1 Januari 2026/);expect(screen.getByText(/8 Agustus 2026.*8 Oktober 2026/)).toBeTruthy();expect(screen.getByText(/Tidak ada PO pada rentang ini/)).toBeTruthy()
 })
-test('cancelled and legacy statuses are preserved exactly',async()=>{
+test('known statuses are localized without inventing a mapping for legacy statuses',async()=>{
  mock.rpc.mockResolvedValue({data:{...answer,items:[{id:'1',po_number:'PO-1',order_date:'2026-10-08',status:'cancelled'},{id:'2',po_number:'PO-2',order_date:'2026-09-01',status:'shipped'}],total:2},error:null})
- mount();await screen.findByText('cancelled');expect(screen.getByText('shipped')).toBeTruthy()
+ mount();await screen.findByText('Dibatalkan');expect(screen.getByText('shipped')).toBeTruthy()
 })
 test('failure shows retry and never a misleading empty state',async()=>{
  mock.rpc.mockResolvedValueOnce({data:null,error:{message:'denied'}});mount();await screen.findByRole('alert');expect(screen.queryByText(/Tidak ada PO/)).toBeNull();fireEvent.click(screen.getByText('Coba lagi'));await screen.findByText(/Tidak ada PO/)
 })
 test('customer and identity changes cannot show a stale store result',async()=>{
- const {rerender,client}=mount();await screen.findByText(/2026-01-01/);mock.rpc.mockReturnValue(new Promise(()=>{}));mock.profile={id:'b',role:'sales_manager'};
- rerender(<QueryClientProvider client={client}><StorePOContext customerId="different"/></QueryClientProvider>);expect(screen.queryByText(/2026-01-01/)).toBeNull();expect(screen.getByText(/Memuat riwayat PO/)).toBeTruthy()
+ const {rerender,client}=mount();await screen.findByText(/1 Januari 2026/);mock.rpc.mockReturnValue(new Promise(()=>{}));mock.profile={id:'b',role:'sales_manager'};
+ rerender(<QueryClientProvider client={client}><StorePOContext customerId="different"/></QueryClientProvider>);expect(screen.queryByText(/1 Januari 2026/)).toBeNull();expect(screen.getByText(/Memuat riwayat PO/)).toBeTruthy()
  await waitFor(()=>expect(mock.rpc).toHaveBeenCalledWith('pilot_store_po_context_v1',{p_customer_id:'different',p_page:1,p_page_size:20}))
 })
 test('invalid projection rejects rather than silently treating it as zero',async()=>{
@@ -31,5 +31,10 @@ test('invalid projection rejects rather than silently treating it as zero',async
 })
 test('server window rollover during pagination returns to the first page of the new window',async()=>{
  let rolled=false;mock.rpc.mockImplementation(async(_name:string,args:any)=>{if(args.p_page===2)rolled=true;return {data:{...answer,total:40,page:args.p_page,range_from:rolled?'2026-08-09':'2026-08-08',range_through:rolled?'2026-10-09':'2026-10-08'},error:null}})
- mount();await screen.findByText('Halaman 1');fireEvent.click(screen.getByText('Berikutnya'));await waitFor(()=>expect(screen.getByText(/2026-08-09.*2026-10-09/)).toBeTruthy());expect(screen.getByText('Halaman 1')).toBeTruthy()
+ mount();await screen.findByText('Halaman 1');fireEvent.click(screen.getByText('Berikutnya'));await waitFor(()=>expect(screen.getByText(/9 Agustus 2026.*9 Oktober 2026/)).toBeTruthy());expect(screen.getByText('Halaman 1')).toBeTruthy()
+})
+
+test('in-progress PO uses the same Indonesian status label as its detail page', async () => {
+ mock.rpc.mockResolvedValue({ data: { ...answer, items: [{ id: '1', po_number: 'PO-1', order_date: '2026-10-08', status: 'in_progress' }], total: 1 }, error: null })
+ mount(); await screen.findByText('Dalam proses'); expect(screen.queryByText('in_progress')).toBeNull()
 })

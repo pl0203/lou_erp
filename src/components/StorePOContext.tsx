@@ -1,3 +1,5 @@
+import { PO_STATUS_LABELS } from '../lib/orderPresentation'
+import { formatDisplayDate } from '../lib/displayDate'
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
@@ -22,13 +24,13 @@ function StorePOContextPage({customerId}:{customerId:string}) {
  const responseWindow=query.data ? `${query.data.range_from}:${query.data.range_through}` : null
  useEffect(()=>{if(responseWindow && responseWindow!==serverWindow){if(serverWindow && page!==1)setPage(1);setServerWindow(responseWindow)}},[responseWindow,serverWindow,page])
  // Background revalidation also conceals prior results until current authority is verified.
- return <section aria-label="Riwayat Purchase Order toko" className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
-  <h2 className="text-base font-medium text-gray-900">Purchase Order toko</h2>
+ return <section aria-label="Riwayat PO toko" className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
+  <h2 className="text-base font-medium text-gray-900">Pesanan pembelian (PO) toko</h2>
   {query.isError ? <div role="alert">Riwayat PO belum tersedia. <button className="underline" onClick={()=>query.refetch()}>Coba lagi</button></div>
    : query.isFetching || !query.data || responseWindow!==serverWindow ? <p role="status">Memuat riwayat PO...</p> : <>
-   <p>PO terakhir (seluruh riwayat): {query.data.latest_po_date ?? 'Belum ada PO'}</p>
-   <p className="text-sm text-gray-500">Rentang status: {query.data.range_from} – {query.data.range_through}</p>
-   {query.data.items.length===0 ? <p>Tidak ada PO pada rentang ini.</p> : <ul className="divide-y">{query.data.items.map(item=><li key={item.id} className="py-2 flex flex-wrap justify-between gap-2"><span>{item.po_number} · {item.order_date}</span><span>{item.status}</span></li>)}</ul>}
+   <p>PO terakhir (seluruh riwayat): {query.data.latest_po_date ? formatDisplayDate(query.data.latest_po_date) : 'Belum ada PO'}</p>
+   <p className="text-sm text-gray-500">Rentang status: {formatDisplayDate(query.data.range_from)} – {formatDisplayDate(query.data.range_through)}</p>
+   {query.data.items.length===0 ? <p>Tidak ada PO pada rentang ini.</p> : <ul className="divide-y">{query.data.items.map(item=><li key={item.id} className="py-2 flex flex-wrap justify-between gap-2"><span>{item.po_number} · {formatDisplayDate(item.order_date)}</span><span>{PO_STATUS_LABELS[item.status] ?? item.status}</span></li>)}</ul>}
    <div className="flex justify-between text-sm"><button disabled={page===1} onClick={()=>setPage(page-1)}>Sebelumnya</button><span>Halaman {page}</span><button disabled={page*20>=query.data.total} onClick={()=>setPage(page+1)}>Berikutnya</button></div>
   </>}
  </section>

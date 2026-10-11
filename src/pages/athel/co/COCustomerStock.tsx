@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { fetchCOCustomers } from '../../../lib/co/catalog';
 import { fetchCOCustomerStock } from '../../../lib/co/rpc';
+import { formatCOReportMonth } from '../../../lib/co/presentation';
+import { formatDisplayDate } from '../../../lib/displayDate';
 import { coKeys } from '../../../lib/co/queryKeys';
 import { isCOAuthorityError } from '../../../components/co/COReportWorkspace';
 import { CO_BUTTON, CO_INPUT, CO_PRIMARY, COFailure, COFreshness, COPagination, useCOActor, useCORead } from '../../../components/co/COShared';
@@ -67,8 +69,8 @@ export default function COCustomerStock() {
     const blocked = stock.isFetching || stock.isError || !stock.data;
     const readFailure = stock.isError ? <COFailure error={stock.error} retry={() => void stock.refetch()}/> : null;
     return <div className="max-w-6xl mx-auto space-y-5">
-        <h2 className="text-xl font-semibold">Customer Stock</h2>
-        <p className="text-sm text-gray-500">Stok buku tercatat. Current memakai pergerakan bulan berjalan sampai cakupan server; angka ini bukan verifikasi fisik langsung.</p>
+        <h2 className="text-xl font-semibold">Stok pelanggan</h2>
+        <p className="text-sm text-gray-500">Stok buku tercatat. Stok terkini memakai pergerakan bulan berjalan sampai cakupan server; angka ini bukan verifikasi fisik langsung.</p>
         <div className="grid gap-3 sm:grid-cols-3 rounded-xl border bg-white p-4">
             <label>Pelanggan<select aria-label="Pelanggan stok" className={CO_INPUT} value={customer} onChange={e => update('customer', e.target.value)}>
                 <option value="">Semua pelanggan</option>{customers.data?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -82,7 +84,7 @@ export default function COCustomerStock() {
                     setError(''); update('month', e.target.value);
                 }}/></label>
         </div>
-        <button className={CO_BUTTON} onClick={() => update('month', '')}>Current</button>
+        <button className={CO_BUTTON} onClick={() => update('month', '')}>Stok terkini</button>
         {period && !asOf && <COFailure error={new Error('Bulan stok tidak valid. Pilih bulan kalender.')}/>}
         {error && <COFailure error={new Error(error)}/>}
         {customers.isError && <COFailure error={customers.error} retry={() => void customers.refetch()}/>}
@@ -90,34 +92,38 @@ export default function COCustomerStock() {
         {!returning && readFailure}
         {!stock.data && !stock.isError && <p role="status">Memuat stok…</p>}
         {stock.data && !stock.isError && <>
-            <p className="text-sm">Periode {stock.data.period_start} sampai {stock.data.coverage_date} · {asOf ? 'Akhir bulan, riwayat efektif dinyatakan ulang' : 'Current, bulan berjalan'}</p>
+            <p className="text-sm">Periode {formatDisplayDate(stock.data.period_start)} sampai {formatDisplayDate(stock.data.coverage_date)} (tanggal UTC server) · {asOf ? 'Akhir bulan, riwayat efektif dinyatakan ulang' : 'Stok terkini, bulan berjalan'}</p>
             <p className="text-sm">Total seluruh hasil filter: {stock.data.summary.opening_quantity} + {stock.data.summary.delivered_quantity} − {stock.data.summary.sold_quantity} − {stock.data.summary.returned_quantity} = {stock.data.summary.recorded_quantity}</p>
             {stock.data.reporting_freshness && <COFreshness value={stock.data.reporting_freshness}/>}
+            {!stock.data.reporting_freshness && <p className="text-xs text-gray-700">Angka tercatat berdasarkan laporan, bukan verifikasi stok fisik saat ini.</p>}
+            {stock.data.rows.some(row => !row.has_delivery_history) && <p className="text-xs text-gray-700">Belum ada riwayat pengiriman pada barang bertanda Belum dikirim. Nol tercatat tidak membuktikan saldo fisik awal.</p>}
             <table aria-label="Stok pelanggan tercatat" className="block w-full md:table md:table-fixed md:border-collapse text-sm">
-                <thead className="hidden md:table-header-group text-left text-gray-500">
-                    <tr><th className="p-3 w-1/5">Pelanggan / barang</th><th className="p-3 w-1/4">Awal + dikirim − terjual − retur = sisa</th><th className="p-3">Pelaporan</th><th className="p-3 w-1/6">Riwayat</th></tr>
+                <thead className="hidden md:table-header-group text-left text-gray-700">
+                    <tr><th className="p-3 w-[28%]">Pelanggan / barang</th><th className="p-3 w-[24%]">Jumlah stok</th><th className="p-3 w-[28%]">Pelaporan</th><th className="p-3 w-[20%]">Riwayat</th></tr>
                 </thead>
                 <tbody className="block md:table-row-group">{stock.data.rows.map(row => <tr key={`${row.customer_id}:${row.id}`}
                     className="mb-3 block rounded-xl border border-gray-200 bg-white md:table-row md:rounded-none">
                     <td className="block p-3 align-top md:table-cell">
                         <p className="font-semibold break-words">{customerIdentity(row.customer_id)}</p>
                         <h3 className="font-medium break-words">{row.display_sku} · {row.product_name}</h3>
-                        {!row.has_delivery_history && <p className="text-xs mt-2">Belum ada riwayat pengiriman. Nol tercatat tidak membuktikan saldo fisik awal.</p>}
+                        {!row.has_delivery_history && <p className="text-xs mt-2 text-gray-700">Belum dikirim</p>}
                     </td>
                     <td className="block p-3 align-top md:table-cell">
-                        <p className="font-medium break-words">{row.opening_quantity} + {row.delivered_quantity} − {row.sold_quantity} − {row.returned_quantity} = {row.recorded_quantity}</p>
-                        <p className="text-xs mt-2 md:hidden">Awal + dikirim − terjual − retur = sisa tercatat</p>
+                        <dl aria-label="Jumlah stok" className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs tabular-nums">
+                            {[['Awal', row.opening_quantity], ['Dikirim', row.delivered_quantity], ['Terjual', row.sold_quantity], ['Retur', row.returned_quantity], ['Sisa tercatat', row.recorded_quantity]].map(([label, quantity]) => <div key={label} className="contents"><dt className="text-gray-700">{label}</dt><dd className="text-right font-medium break-all">{quantity}</dd></div>)}
+                        </dl>
+                        <p className="sr-only">{row.opening_quantity} + {row.delivered_quantity} − {row.sold_quantity} − {row.returned_quantity} = {row.recorded_quantity}</p>
                     </td>
                     <td className="block p-3 align-top md:table-cell">
-                        <p className="text-xs">Laporan terakhir: {row.last_report_month?.slice(0, 7) ?? 'Belum ada'} · Cakupan sampai: {row.coverage_through_date ?? 'Belum ada'}
+                        <p className="text-xs">Laporan terakhir: {formatCOReportMonth(row.last_report_month)} · Cakupan sampai: {row.coverage_through_date ? formatDisplayDate(row.coverage_through_date) : 'Belum ada'} (UTC)
                             {row.coverage_through_date && row.coverage_through_date !== monthEnd(row.coverage_through_date.slice(0, 7)) ? ' · bulan parsial' : ''}</p>
-                        <COFreshness value={row.reporting_freshness}/>
+                        <COFreshness value={row.reporting_freshness} compact/>
                     </td>
                     <td className="block p-3 align-top md:table-cell">
-                        <button className={CO_BUTTON} aria-label={`Lihat pergerakan ${customerIdentity(row.customer_id)} · ${row.display_sku}`} onClick={() => {
+                        <button className={`${CO_BUTTON} w-full px-2`} aria-label={`Lihat pergerakan ${customerIdentity(row.customer_id)} · ${row.display_sku}`} onClick={() => {
                             const next = new URLSearchParams(params);
                             next.set('customer', row.customer_id); next.set('sku', row.id); setParams(next);
-                        }}>Lihat pergerakan {row.display_sku}</button>
+                        }}>Pergerakan</button>
                     </td>
                 </tr>)}</tbody>
             </table>

@@ -13,9 +13,9 @@ function assertAmount(label:string,amount:string,region:HTMLElement=screen.getBy
 test('own route presents three independent exact metrics and posted/partial coverage definitions',async()=>{
   mount(<App/>); await ready()
   expect(screen.getByRole('heading',{name:'Penjualan Saya'})).toBeTruthy()
-  assertAmount('PO Order Value','Rp 1.000.000'); assertAmount('PO Delivered Revenue','Rp 300.000'); assertAmount('CO Sold Revenue','Rp 720.000')
-  expect(within(sales()).getByText(/belum dilaporkan/i)).toBeTruthy()
-  expect(within(sales()).getByText(/sebagian bulan/i)).toBeTruthy()
+  assertAmount('Nilai pesanan PO','Rp 1.000.000'); assertAmount('Nilai pengiriman PO','Rp 300.000'); assertAmount('Penjualan CO dilaporkan','Rp 720.000')
+  expect(within(sales()).getAllByText(/belum dilaporkan/i).length).toBeGreaterThan(0)
+  expect(within(sales()).getAllByText(/sebagian bulan/i).length).toBeGreaterThan(0)
   expect(within(sales()).getByText(/waktu pembacaan/i)).toBeTruthy()
   expect(within(sales()).queryByText('Rp 2.020.000')).toBeNull()
   expect(metricsCalls()[0].args).toEqual({p_manager_id:null,p_month_from:'2026-10-01',p_month_until:'2026-11-01',p_group_by:'customer',p_order_type:'all',p_page:1,p_page_size:20})
@@ -29,8 +29,8 @@ test('whole-month controls include authorized CO-only history and bind leap/Dece
   change('Dari bulan','2024-02'); change('Sampai bulan','2024-02'); await waitFor(()=>expect(metricsCalls().at(-1)?.args).toMatchObject({p_month_from:'2024-02-01',p_month_until:'2024-03-01'}))
   change('Sampai bulan','2025-12'); change('Dari bulan','2025-12'); await waitFor(()=>expect(metricsCalls().at(-1)?.args).toMatchObject({p_month_from:'2025-12-01',p_month_until:'2026-01-01'}))
   change('Dari bulan','2025-02'); change('Sampai bulan','2025-02'); await waitFor(()=>expect(metricsCalls().at(-1)?.args).toMatchObject({p_month_from:'2025-02-01',p_month_until:'2025-03-01'}))
-  change('Jenis pesanan','po'); await ready(); await waitFor(()=>assertAmount('CO Sold Revenue','Rp 0'))
-  change('Jenis pesanan','co'); await ready(); await waitFor(()=>assertAmount('PO Order Value','Rp 0')); assertAmount('PO Delivered Revenue','Rp 0'); assertAmount('CO Sold Revenue','Rp 720.000')
+  change('Jenis pesanan','po'); await ready(); await waitFor(()=>assertAmount('Penjualan CO dilaporkan','Di luar filter'))
+  change('Jenis pesanan','co'); await ready(); await waitFor(()=>assertAmount('Nilai pesanan PO','Di luar filter')); assertAmount('Nilai pengiriman PO','Di luar filter'); assertAmount('Penjualan CO dilaporkan','Rp 720.000')
   expect(state.calls.filter(c=>c.name==='pilot_sales_metric_months_v2').map(c=>c.args.p_order_type)).toEqual(['all','po','co'])
   expect(state.calls.every(c=>['pilot_sales_metric_months_v2','pilot_sales_metrics_v2'].includes(c.name))).toBe(true)
 })
@@ -41,8 +41,8 @@ test('more than 100 rows use server summaries, exact pagination, and reset to pa
     const all=Array.from({length:101},(_,n)=>({customer_id:uuid(100+n),customer_name:`Store ${n+1}`,...zero,po_order_value:'10000.00',po_order_count:'1',co_report_event_count:'0'}))
     return {data:page(args,{total:'101',summary:{...zero,po_order_value:'1010000.00',po_order_count:'101',co_report_event_count:'0'},items:all.slice((args.p_page-1)*20,args.p_page*20)}),error:null}
   }
-  mount(<App/>); await ready(); assertAmount('PO Order Value','Rp 1.010.000')
-  fireEvent.click(within(sales()).getByRole('button',{name:'Berikutnya'})); await screen.findByText('Store 21'); assertAmount('PO Order Value','Rp 1.010.000')
+  mount(<App/>); await ready(); assertAmount('Nilai pesanan PO','Rp 1.010.000')
+  fireEvent.click(within(sales()).getByRole('button',{name:'Berikutnya'})); await screen.findByText('Store 21'); assertAmount('Nilai pesanan PO','Rp 1.010.000')
   expect(within(sales()).getByText('21–40 dari 101')).toBeTruthy()
   change('Dari bulan','2026-09'); await waitFor(()=>expect(metricsCalls().at(-1)?.args.p_page).toBe(1))
   await screen.findByText('Store 1'); expect(metricsCalls()).toHaveLength(3)
@@ -50,7 +50,7 @@ test('more than 100 rows use server summaries, exact pagination, and reset to pa
 
 test('huge counts and money never round through Number or sum visible rows',async()=>{
   state.handler=(name:string,args:any)=>name==='pilot_sales_metrics_v2'?{data:page(args,{total:'9007199254740993',summary:{...values,co_sold_revenue:'2147483646999978525163.53',co_report_event_count:'1'},items:Array.from({length:20},(_,n)=>({customer_id:uuid(100+n),customer_name:`Store ${n}`,...zero,co_report_event_count:'0'}))}),error:null}:fixture(name,args)
-  mount(<App/>); await ready(); assertAmount('CO Sold Revenue','Rp 2.147.483.646.999.978.525.163,53')
+  mount(<App/>); await ready(); assertAmount('Penjualan CO dilaporkan','Rp 2.147.483.646.999.978.525.163,53')
   expect(within(sales()).getByText('1–20 dari 9.007.199.254.740.993')).toBeTruthy()
 })
 
@@ -80,7 +80,7 @@ test('customer Dashboard preserves current-owner activity/target comparison inde
 test('explicit zero reports retain customer events without fictional person rows',async()=>{
   role('sales_head')
   state.handler=(name:string,args:any)=>name==='pilot_sales_metrics_v2'?{data:page(args,{total:'0',summary:{...zero,co_report_event_count:'1'},items:[]}),error:null}:fixture(name,args)
-  mount(<PerformanceContent/>,'/girard/dashboard'); await ready(); assertAmount('CO Sold Revenue','Rp 0')
+  mount(<PerformanceContent/>,'/girard/dashboard'); await ready(); assertAmount('Penjualan CO dilaporkan','Rp 0')
   expect(within(sales()).getByText('Laporan CO (pelanggan/bulan): 1')).toBeTruthy()
   expect(within(sales()).getByText(/Tidak ada kontribusi orang/i)).toBeTruthy()
 })
@@ -89,7 +89,7 @@ test('correction and repeated refresh replace amounts once without increasing co
   let corrected=false
   state.handler=(name:string,args:any)=>{if(name!=='pilot_sales_metrics_v2')return fixture(name,args); const data=page(args); if(corrected){data.summary.co_sold_revenue='700000.00';data.items[0].co_sold_revenue='700000.00'} return {data,error:null}}
   mount(<App/>);await ready();corrected=true
-  for(let i=0;i<2;i++){fireEvent.click(within(sales()).getByRole('button',{name:'Muat ulang metrik'}));await waitFor(()=>assertAmount('CO Sold Revenue','Rp 700.000'))}
+  for(let i=0;i<2;i++){fireEvent.click(within(sales()).getByRole('button',{name:'Muat ulang metrik'}));await waitFor(()=>assertAmount('Penjualan CO dilaporkan','Rp 700.000'))}
   expect(within(screen.getByRole('region',{name:'Ringkasan seluruh hasil'})).getByText('CO dengan penjualan: 2')).toBeTruthy()
   expect(within(sales()).queryByText('Rp 720.000')).toBeNull()
 })
@@ -99,7 +99,7 @@ test.each(['metrics','months','decoder'])('%s failure is unavailable and retryab
   state.handler=(name:string,args:any)=>{if(fail && name===(kind==='months'?'pilot_sales_metric_months_v2':'pilot_sales_metrics_v2'))return kind==='decoder'?{data:{...page(args),evidence_path:'secret/co.pdf'},error:null}:{data:null,error:new Error('offline')};return fixture(name,args)}
   mount(<App/>); await waitFor(()=>expect(within(sales()).getByRole('alert')).toBeTruthy())
   expect(within(sales()).queryByText(/^Rp /)).toBeNull(); expect(sales().innerHTML).not.toContain('secret/co.pdf')
-  fail=false;fireEvent.click(within(sales()).getByRole('button',{name:'Coba lagi'}));await ready();assertAmount('CO Sold Revenue','Rp 720.000')
+  fail=false;fireEvent.click(within(sales()).getByRole('button',{name:'Coba lagi'}));await ready();assertAmount('Penjualan CO dilaporkan','Rp 720.000')
 })
 
 test('failed refresh removes previous successful values',async()=>{
@@ -109,20 +109,20 @@ test('failed refresh removes previous successful values',async()=>{
 
 test('null earliest month is truthful empty scope, not directory failure',async()=>{
   state.handler=(name:string,args:any)=>name==='pilot_sales_metric_months_v2'?{data:months(args,null),error:null}:name==='pilot_sales_metrics_v2'?{data:page(args,{total:'0',summary:{...zero,co_report_event_count:'0'},items:[]}),error:null}:fixture(name,args)
-  mount(<App/>);await ready();expect(within(sales()).getByText(/Belum ada bulan metrik/i)).toBeTruthy();expect(within(sales()).queryByRole('alert')).toBeNull();assertAmount('CO Sold Revenue','Rp 0')
+  mount(<App/>);await ready();expect(within(sales()).getByText(/Belum ada bulan metrik/i)).toBeTruthy();expect(within(sales()).queryByRole('alert')).toBeNull();assertAmount('Penjualan CO dilaporkan','Belum tersedia')
 })
 
 test('late old-type/page responses cannot appear under new filters and Back/Forward restores semantics',async()=>{
   const pending=deferred(); let oldArgs:any
   state.handler=(name:string,args:any)=>{if(name==='pilot_sales_metrics_v2'&&args.p_order_type==='po'){oldArgs=args;return pending.promise}return fixture(name,args)}
   const {router}=mount(<App/>);await ready();change('Jenis pesanan','po');await waitFor(()=>expect(oldArgs).toBeTruthy());expect(within(sales()).queryByText('Rp 720.000')).toBeNull()
-  change('Jenis pesanan','co');await ready();await act(async()=>pending.resolve({data:page(oldArgs),error:null}));assertAmount('PO Order Value','Rp 0');expect(within(sales()).getByLabelText('Jenis pesanan')).toHaveProperty('value','co')
-  await act(async()=>router.navigate(-1));await ready();expect(within(sales()).getByLabelText('Jenis pesanan')).toHaveProperty('value','po');assertAmount('CO Sold Revenue','Rp 0')
+  change('Jenis pesanan','co');await ready();await act(async()=>pending.resolve({data:page(oldArgs),error:null}));assertAmount('Nilai pesanan PO','Di luar filter');expect(within(sales()).getByLabelText('Jenis pesanan')).toHaveProperty('value','co')
+  await act(async()=>router.navigate(-1));await ready();expect(within(sales()).getByLabelText('Jenis pesanan')).toHaveProperty('value','po');assertAmount('Penjualan CO dilaporkan','Di luar filter')
   await act(async()=>router.navigate(1));await ready();expect(within(sales()).getByLabelText('Jenis pesanan')).toHaveProperty('value','co')
 })
 
 test('compatibility RevenueContent uses v2 without legacy ranking or invented owner/last-sale data',async()=>{
-  role('sales_head');mount(<RevenueContent/>,'/compatibility');await ready();assertAmount('CO Sold Revenue','Rp 720.000');expect(state.calls.some(c=>c.name==='pilot_revenue_v1')).toBe(false);expect(within(sales()).queryByText(/Peringkat|Pesanan Terakhir|Penanggung Jawab Toko/)).toBeNull()
+  role('sales_head');mount(<RevenueContent/>,'/compatibility');await ready();assertAmount('Penjualan CO dilaporkan','Rp 720.000');expect(state.calls.some(c=>c.name==='pilot_revenue_v1')).toBe(false);expect(within(sales()).queryByText(/Peringkat|Pesanan Terakhir|Penanggung Jawab Toko/)).toBeNull()
 })
 
 test('activity month changes do not show previous cohort figures under the new month',async()=>{
@@ -138,7 +138,7 @@ test('activity month changes do not show previous cohort figures under the new m
 
 test('a zero-report customer remains visible and a positive zero-price allocation keeps its count',async()=>{
   state.handler=(name:string,args:any)=>name==='pilot_sales_metrics_v2'?{data:page(args,{total:'2',summary:{...zero,co_sold_order_count:'1',co_report_event_count:'2'},items:[{customer_id:uuid(40),customer_name:'Explicit zero report',...zero,co_report_event_count:'1'},{customer_id:uuid(41),customer_name:'Zero price sold stock',...zero,co_sold_order_count:'1',co_report_event_count:'1'}]}),error:null}:fixture(name,args)
-  mount(<App/>);await ready();expect(within(sales()).getByText('Explicit zero report')).toBeTruthy();assertAmount('CO Sold Revenue','Rp 0')
+  mount(<App/>);await ready();expect(within(sales()).getByText('Explicit zero report')).toBeTruthy();assertAmount('Penjualan CO dilaporkan','Rp 0')
   expect(within(screen.getByRole('region',{name:'Zero price sold stock'})).getByText('CO dengan penjualan: 1')).toBeTruthy()
 })
 
@@ -165,7 +165,7 @@ test('month-directory responses resolved out of order never restore broader hist
 
 test('a failing independent activity read leaves valid Sales available and never invents activity zero',async()=>{
   role('sales_head');state.handler=(name:string,args:any)=>name==='pilot_customer_performance_v1'?{data:null,error:new Error('activity failed')}:fixture(name,args)
-  mount(<CustomerPerformanceContent/>,'/girard/dashboard');await ready();expect(screen.getByText(/Data performa tidak tersedia/)).toBeTruthy();assertAmount('CO Sold Revenue','Rp 720.000');expect(screen.queryByText('0/0 kunjungan')).toBeNull()
+  mount(<CustomerPerformanceContent/>,'/girard/dashboard');await ready();expect(screen.getByText(/Data performa tidak tersedia/)).toBeTruthy();assertAmount('Penjualan CO dilaporkan','Rp 720.000');expect(screen.queryByText('0/0 kunjungan')).toBeNull()
 })
 
 test('native controls and unified responsive metric cards retain accessible exact values and long names',async()=>{

@@ -1,3 +1,5 @@
+import { PO_STATUS_LABELS } from '../../lib/orderPresentation'
+import { formatDisplayDate } from '../../lib/displayDate'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { fetchPOPage } from '../../lib/reads/orders'
@@ -12,13 +14,6 @@ const STATUS_STYLES: Record<string, string> = {
   in_progress: 'bg-yellow-100 text-yellow-700',
   complete:    'bg-green-100 text-green-700',
   cancelled:   'bg-gray-200 text-gray-500',
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  confirm:     'Dikonfirmasi',
-  in_progress: 'Dalam Proses',
-  complete:    'Selesai',
-  cancelled:   'Dibatalkan',
 }
 
 export default function POList() {
@@ -65,7 +60,7 @@ export default function POList() {
         >
           <option value="all">Semua status</option>
           <option value="confirm">Dikonfirmasi</option>
-          <option value="in_progress">Dalam Proses</option>
+          <option value="in_progress">Dalam proses</option>
           <option value="complete">Selesai</option>
         </select>
       </div>
@@ -85,6 +80,7 @@ export default function POList() {
         {!isLoading && !isError && pos.length > 0 && (
           <>
             {/* Desktop table */}
+            <p className="hidden md:block mb-2 text-xs text-gray-600">Geser tabel untuk melihat semua kolom; kolom Aksi tetap terlihat di kanan.</p>
             <div className="hidden md:block bg-white rounded-xl border border-gray-200 overflow-x-auto" role="region" aria-label="Daftar pesanan pembelian" tabIndex={0}>
               <table className="w-full min-w-[56rem] text-sm">
                 <thead>
@@ -95,25 +91,25 @@ export default function POList() {
                     <th className="text-left px-5 py-3 font-medium text-gray-500">Tanggal Pesanan</th>
                     <th className="text-left px-5 py-3 font-medium text-gray-500">Tanggal Kedaluwarsa PO</th>
                     <th className="text-right px-5 py-3 font-medium text-gray-500">Total Nilai</th>
-                    <th className="text-right px-5 py-3 font-medium text-gray-500">Aksi</th>
+                    <th className="sticky right-0 z-10 bg-gray-50 text-right px-5 py-3 font-medium text-gray-700 shadow-[-4px_0_6px_-4px_#9ca3af]">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
                   {pos.map(po => (
                     <tr key={po.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                      <td className="px-5 py-4 font-medium text-gray-900">{po.po_number}</td>
-                      <td className="px-5 py-4 text-gray-600">{po.customers?.name ?? '—'}</td>
+                      <td className="min-w-36 px-5 py-4 font-medium text-gray-900">{po.po_number}</td>
+                      <td className="min-w-48 max-w-72 px-5 py-4 text-gray-700 break-words">{po.customers?.name ?? '—'}</td>
                       <td className="px-5 py-4">
                         <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLES[po.status] ?? 'bg-gray-100 text-gray-600'}`}>
-                          {STATUS_LABELS[po.status] ?? po.status}
+                          {PO_STATUS_LABELS[po.status] ?? po.status}
                         </span>
                       </td>
-                      <td className="px-5 py-4 text-gray-600">{po.order_date}</td>
-                      <td className="px-5 py-4 text-gray-600">{po.expected_delivery_date ?? '—'}</td>
+                      <td className="px-5 py-4 text-gray-600">{formatDisplayDate(po.order_date)}</td>
+                      <td className="px-5 py-4 text-gray-600">{formatDisplayDate(po.expected_delivery_date)}</td>
                       <td className="px-5 py-4 text-right text-gray-900 font-medium">
                         Rp {formatMoney(po.total_value, 'full')}
                       </td>
-                      <td className="px-5 py-4 text-right">
+                      <td className="sticky right-0 z-10 min-w-36 max-w-52 bg-white px-5 py-4 text-right shadow-[-4px_0_6px_-4px_#9ca3af]">
                         <button
                           onClick={() => navigate(`/athel/po/${po.id}`)}
                           className="text-brand-primary hover:text-brand-hover text-xs font-medium mr-3"
@@ -146,17 +142,17 @@ export default function POList() {
                       <p className="text-xs text-gray-500 mt-0.5">{po.customers?.name ?? '—'}</p>
                     </div>
                     <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium shrink-0 ${STATUS_STYLES[po.status] ?? 'bg-gray-100 text-gray-600'}`}>
-                      {STATUS_LABELS[po.status] ?? po.status}
+                      {PO_STATUS_LABELS[po.status] ?? po.status}
                     </span>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-xs mb-3">
                     <div>
                       <p className="text-gray-400">Tanggal Pesanan</p>
-                      <p className="text-gray-700 font-medium">{po.order_date}</p>
+                      <p className="text-gray-700 font-medium">{formatDisplayDate(po.order_date)}</p>
                     </div>
                     <div>
                       <p className="text-gray-400">Tanggal Kedaluwarsa PO</p>
-                      <p className="text-gray-700 font-medium">{po.expected_delivery_date ?? '—'}</p>
+                      <p className="text-gray-700 font-medium">{formatDisplayDate(po.expected_delivery_date)}</p>
                     </div>
                     <div className="col-span-2">
                       <p className="text-gray-400">Total Nilai</p>

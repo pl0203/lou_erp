@@ -1,3 +1,4 @@
+import { visitDateLabel } from '../../lib/visitUsability'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
@@ -111,13 +112,14 @@ function OwnVisitHistoryPage() {
     <GirardNav />{unsaved.dialog}
     <main className="max-w-2xl mx-auto p-4 space-y-4">
       <h1 className="text-xl font-semibold">Riwayat kunjungan saya</h1>
+      <p className="text-sm text-gray-700">Hanya kunjungan yang Anda lakukan sendiri. {profile?.role !== 'sales_person' && <a className="underline" href="/girard/schedule">Lihat jadwal dan kunjungan tim</a>}</p>
       {query.isError ? <p role="alert">Riwayat belum tersedia. <button onClick={() => query.refetch()}>Coba lagi</button></p>
         : query.isPending ? <p>Memuat riwayat...</p> : <>
           {query.data?.items.length === 0 && <p>Belum ada kunjungan.</p>}
           {query.data?.items.map(visit => <article key={visit.id} className="bg-white rounded-xl border p-5">
             <h2 className="font-medium">{visit.customers?.name ?? 'Toko tidak tersedia'}</h2>
-            <p>Jadwal: {visit.sales_schedules?.scheduled_date ?? 'Kunjungan historis'}</p>
-            <p>{new Date(visit.checked_in_at).toLocaleString('id-ID')}</p>
+            <p>Jadwal: {visit.sales_schedules?.scheduled_date ? visitDateLabel(visit.sales_schedules.scheduled_date) : 'Kunjungan historis'}</p>
+            <p>{new Date(visit.checked_in_at).toLocaleString('id-ID', { timeZone: 'UTC' })} UTC</p>
             <p className="text-sm text-gray-500">Lokasi: {visit.lat === null || visit.lng === null ? 'Tidak dicatat' : `${visit.lat}, ${visit.lng}`}</p>
             {visit.schedule_id && <button className="text-brand-primary" onClick={() => navigate(`/girard/visit/${visit.schedule_id}`)}>Lihat foto dan bukti kunjungan</button>}
             <VisitNoteEditor visit={visit} onDirtyChange={noteDirtyChanged} confirmDiscard={unsaved.confirmDiscard} />

@@ -4,9 +4,11 @@ import { useBeforeSignOut } from '../../lib/AuthContext';
 import { useUnsavedChanges } from '../../lib/useUnsavedChanges';
 import ReturnedDateDialog from '../ReturnedDateDialog';
 import { Link } from 'react-router-dom';
+import type { COOrderRecord } from '../../lib/co/validation';
 import type { COOperation } from '../../lib/co/contracts';
 import { CO_BUTTON, CO_PRIMARY, CO_INPUT, COFailure } from './COShared';
-export default function COStatusActions({ id, customerId, allowed, blockers, onSJ, onCancel, onResolve, onClose, pending }: {
+export default function COStatusActions({ id, customerId, allowed, blockers, onSJ, onCancel, onResolve, onClose, pending, co }: {
+    co: COOrderRecord;
     id: string;
     customerId: string;
     allowed: COOperation[];
@@ -21,9 +23,21 @@ export default function COStatusActions({ id, customerId, allowed, blockers, onS
     onClose: () => void;
     pending: boolean;
 }) {
+    const next = co.status === 'closed' ? 'CO sudah ditutup. Riwayat tetap dapat dibaca.'
+        : co.status === 'cancelled' ? 'CO sudah dibatalkan. Riwayat tetap dapat dibaca.'
+        : BigInt(co.summary.pending_quantity) > 0n ? 'Siapkan dan posting Surat Jalan untuk sisa barang. Jika sisa tidak akan dikirim, gunakan Selesaikan sisa belum dikirim.'
+        : blockers.stock_remains || blockers.missing_month_count !== '0' ? 'Lengkapi laporan penjualan bulanan pelanggan; catat retur untuk barang belum terjual yang dikembalikan.'
+        : 'Periksa penyelesaian, lalu pilih Tutup CO jika tindakan tersedia.';
+    const nextMonth = co.reporting_freshness.next_required_report_month?.slice(0, 7);
     return <div className="space-y-3">
+    <section role="region" aria-label="Alur CO dan langkah berikutnya" className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm space-y-2">
+        <p className="font-medium">Pengiriman → Penjualan bulanan → Penyelesaian → Penutupan</p>
+        <p><strong>Langkah berikutnya:</strong> {next}</p>
+        <p className="text-xs text-gray-700">Surat Jalan yang diposting mencatat pengiriman. Tanggal diterima mencatat penerimaan terpisah. Terkirim penuh tetap aktif sampai CO ditutup; sisa yang diselesaikan juga dihitung dalam progres pengiriman.</p>
+        <p className="text-xs text-gray-700">Penutupan memerlukan stok tercatat habis, sisa pengiriman selesai, dan seluruh laporan wajib lengkap.</p>
+    </section>
     <div className="flex flex-wrap gap-2">{allowed.includes('edit_co') && <Link className={CO_BUTTON} to={`/athel/co/${id}/edit`}>Ubah CO</Link>}<button type="button" className={CO_PRIMARY} disabled={pending || !allowed.includes('save_sj_draft')} onClick={onSJ}>Tambah Surat Jalan</button>
-    <Link className={CO_BUTTON} to={`/athel/co/reports?customer=${customerId}`}>Catat penjualan bulanan</Link>
+    <Link className={CO_BUTTON} to={`/athel/co/reports?customer=${customerId}${nextMonth ? `&month=${nextMonth}` : ''}`}>Catat penjualan bulanan</Link>
     <Link className={CO_BUTTON} to={`/athel/co/stock?customer=${customerId}&co=${id}`}>Retur barang belum terjual</Link>{allowed.includes('cancel_co') && <button type="button" className={CO_BUTTON} disabled={pending} onClick={onCancel}>Batalkan CO</button>}</div>
     <div className="flex flex-wrap gap-2">
         <button type="button" className={CO_BUTTON} disabled={pending || !allowed.includes('resolve_undelivered')} onClick={onResolve}>Selesaikan sisa belum dikirim</button>

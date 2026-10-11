@@ -29,6 +29,6 @@ test('earliest directory is keyed by current actor scope rather than retaining a
 test('authorized Unassigned amount is visibly separated from salesperson credit', () => {
   state.profile = { id: 'head', role: 'sales_head' }; state.unassigned = true
   view()
-  expect(screen.getByText('Unassigned')).toBeTruthy()
-  expect(screen.getByText(/1 pesanan belum memiliki kredit salesperson/i)).toBeTruthy()
+  expect(screen.getByText('Belum ditugaskan')).toBeTruthy()
+  expect(screen.getByText('1 pesanan belum memiliki kredit tenaga penjualan. Rp 75.000.000 termasuk dalam nilai pembanding aktivitas.')).toBeTruthy()
 })

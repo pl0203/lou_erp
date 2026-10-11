@@ -11,7 +11,7 @@ export const count = (value: number) => value.toLocaleString('id-ID')
 export const percent = (value: number, total: number) => `${(total > 0 ? value / total * 100 : 0).toFixed(1)}%`
 export function compactCurrency(value: number) {
   const absolute = Math.abs(value)
-  if (absolute >= 1e9) return `Rp${(value / 1e9).toLocaleString('id-ID', { maximumFractionDigits: 1 })} M`
+  if (absolute >= 1e9) return `Rp${(value / 1e9).toLocaleString('id-ID', { maximumFractionDigits: 1 })} miliar`
   if (absolute >= 1e6) return `Rp${(value / 1e6).toLocaleString('id-ID', { maximumFractionDigits: 1 })} jt`
   if (absolute >= 1e3) return `Rp${(value / 1e3).toLocaleString('id-ID', { maximumFractionDigits: 1 })} rb`
   return currency(value)
@@ -95,7 +95,7 @@ export function customerOptions(items: DashboardData['customerShare'], total: st
       return `${row.name}\n${currency(items[Number(row.dataIndex)]?.value ?? '0')} · ${moneyPercentage(items[Number(row.dataIndex)]?.value ?? '0', total, 1)}%`
     } },
     xAxis: { ...valueAxis, axisLabel: { color: CHART_COLORS.text, formatter: compactCurrency, hideOverlap: true }, splitNumber: 2 },
-    yAxis: { ...categoryAxis, inverse: true, data: items.map(item => item.label), axisLine: { show: false }, axisLabel: { color: CHART_COLORS.text, width: 100, overflow: 'truncate', interval: 0 } },
+    yAxis: { ...categoryAxis, inverse: true, data: items.map(item => item.label), axisLine: { show: false }, axisLabel: { color: CHART_COLORS.text, width: 150, overflow: 'break', interval: 0, formatter: (value: string, index: number) => `${index + 1}. ${value.length > 28 ? `${value.slice(0, 9)}…${value.slice(-17)}` : value}` } },
     series: [{ name: 'Total PO', type: 'bar', data: items.map(item => moneyToChartNumber(item.value)), barMaxWidth: 20, itemStyle: { color: CHART_COLORS.po, borderRadius: [0, 3, 3, 0] }, label: { show: true, position: 'right', color: CHART_COLORS.text, formatter: row => `${moneyPercentage(items[row.dataIndex]?.value ?? '0', total, 1)}%` } }],
   }
 }

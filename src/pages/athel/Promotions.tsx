@@ -101,7 +101,7 @@ export default function Promotions() {
     <AthelNav />{unsaved.dialog}
     <TransactionRecovery send={sender} onCommitted={() => { refresh(); close() }} />
     <header className="flex flex-wrap items-center justify-between gap-4 border-b border-gray-200 bg-white px-4 py-5 md:px-8">
-      <div><h1 className="text-xl font-semibold text-brand-primary">Promosi</h1><p className="mt-1 text-sm text-gray-500">Procurement · Product highlight dan stok promosi</p></div>
+      <div><h1 className="text-xl font-semibold text-brand-primary">Promosi</h1><p className="mt-1 text-sm text-gray-500">Pengadaan · Promosi produk dan stok tersedia</p></div>
       <button type="button" disabled={blocked || !!form || !!stockTarget} onClick={() => { setForm(empty()); setEditing(null); mutation.reset() }} className={BUTTON}>+ Tambah Promosi</button>
     </header>
     <main className="mx-auto max-w-6xl space-y-5 px-4 py-6 md:px-8">
@@ -120,7 +120,7 @@ export default function Promotions() {
         </article>)}</div>
       </>}
       {form && <section aria-label={editing ? 'Ubah promosi' : 'Tambah promosi'} className="rounded-xl border border-brand-accent bg-white p-4 sm:p-6">
-        <h2 className="font-semibold text-brand-primary">{editing ? `Ubah ${editing.product_name}` : 'Tambah Product Highlight'}</h2>
+        <h2 className="font-semibold text-brand-primary">{editing ? `Ubah ${editing.product_name}` : 'Tambah Promosi Produk'}</h2>
         {products.isError && <p role="alert">Daftar produk belum dapat dimuat. <button type="button" className="underline" onClick={() => void products.refetch()}>Coba lagi</button></p>}
         <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
           <label className="text-sm text-gray-700">Produk<select aria-label="Produk" disabled={!!editing || blocked || products.isFetching || products.isError} value={form.product_id} onChange={event => pickProduct(event.target.value)} className={INPUT}><option value="">Pilih produk…</option>{products.data?.map(product => <option key={product.id} value={product.id}>{product.name} · {product.sku}</option>)}</select></label>

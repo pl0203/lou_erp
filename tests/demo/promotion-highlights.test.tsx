@@ -35,6 +35,8 @@ afterEach(() => { cleanup(); client.clear(); vi.useRealTimers(); focusManager.se
 
 test.each(['sales_person', 'sales_manager', 'sales_head', 'executive'])('%s sees positive promotional stock and its product image without ordering or administration', async role => {
   mocks.auth.profile.role = role; mount(true); await tick()
+  expect(screen.getByRole('heading', { level: 1, name: 'Promosi' })).toBeTruthy()
+  expect(screen.getByRole('region', { name: 'Promosi produk' })).toBeTruthy()
   expect(screen.getByText('Stok tersedia: 3')).toBeTruthy()
   expect(screen.getByText('SKU · 60 × 60')).toBeTruthy()
   expect(screen.getByRole('img', { name: 'Promosi Tiles' }).getAttribute('src')).toBe(`https://example.invalid/${promotion}?token=private`)
@@ -48,7 +50,7 @@ test.each(['sales_person', 'sales_manager', 'sales_head', 'executive'])('%s sees
 test('enabled exhausted stock disappears without signing or pausing the campaign', async () => {
   items = [item({ remaining_quantity: 0 })]; mount(); await tick()
   expect(screen.queryByText('Tiles')).toBeNull()
-  expect(screen.getByText('Belum ada product highlight aktif.')).toBeTruthy()
+  expect(screen.getByText('Belum ada promosi produk aktif.')).toBeTruthy()
   expect(mocks.invoke).not.toHaveBeenCalled()
   expect(items[0]).toMatchObject({ is_active: true, remaining_quantity: 0 })
 })
@@ -64,7 +66,7 @@ test('mixed highlights show only enabled positive stock and ignore managed legac
 
 test.each([-1, null, 0.5])('malformed managed stock %s fails closed instead of becoming available stock', async remaining_quantity => {
   items = [item({ remaining_quantity })]; mount(); await tick()
-  expect(screen.getByRole('alert').textContent).toContain('Highlight belum dapat dimuat.')
+  expect(screen.getByRole('alert').textContent).toContain('Promosi belum dapat dimuat.')
   expect(screen.queryByText('Tiles')).toBeNull(); expect(mocks.invoke).not.toHaveBeenCalled()
 })
 
@@ -84,7 +86,7 @@ test('background prefix refresh retains the mounted image while newer stock is p
   mount(); await tick(); const image = screen.getByRole('img'), pending = deferred<ReturnType<typeof reply>>()
   mocks.rpc.mockImplementationOnce(() => request(pending.promise))
   await act(async () => { void client.invalidateQueries({ queryKey: ['promotions'] }) }); await tick()
-  expect(screen.getByText('Memperbarui highlight…')).toBeTruthy()
+  expect(screen.getByText('Memperbarui promosi…')).toBeTruthy()
   expect(screen.getByRole('img')).toBe(image); expect(image.isConnected).toBe(true)
   await act(async () => { pending.resolve(reply()) }); await tick()
   expect(screen.getByRole('img')).toBe(image); expect(mocks.invoke).toHaveBeenCalledOnce()
@@ -94,14 +96,14 @@ test('foreground polling refreshes other-actor stock without image unmount or si
   mount(); await tick(); const image = screen.getByRole('img'), pending = deferred<ReturnType<typeof reply>>()
   mocks.rpc.mockImplementationOnce(() => request(pending.promise))
   await tick(30_000)
-  expect(screen.getByText('Memperbarui highlight…')).toBeTruthy()
+  expect(screen.getByText('Memperbarui promosi…')).toBeTruthy()
   expect(screen.getByText('Stok tersedia: 3')).toBeTruthy()
   expect(screen.getByRole('img')).toBe(image); expect(image.isConnected).toBe(true)
   expect(mocks.invoke).toHaveBeenCalledOnce()
   items = [item({ remaining_quantity: 2, stock_version: 2 })]
   await act(async () => { pending.resolve(reply()) }); await tick()
   expect(screen.getByText('Stok tersedia: 2')).toBeTruthy(); expect(screen.getByRole('img')).toBe(image)
-  expect(screen.queryByText('Memperbarui highlight…')).toBeNull(); expect(mocks.invoke).toHaveBeenCalledOnce()
+  expect(screen.queryByText('Memperbarui promosi…')).toBeNull(); expect(mocks.invoke).toHaveBeenCalledOnce()
   items = [item({ remaining_quantity: 0, stock_version: 3 })]; await tick(30_000)
   expect(screen.queryByText('Tiles')).toBeNull(); expect(screen.queryByRole('img')).toBeNull()
 })
@@ -114,7 +116,7 @@ test('hidden pages do not poll and refocus updates exhausted stock', async () =>
   await tick(90_000); expect(mocks.rpc).toHaveBeenCalledTimes(reads)
   visibility.mockReturnValue('visible')
   await act(async () => { window.dispatchEvent(new Event('visibilitychange')) }); await tick()
-  expect(screen.queryByText('Tiles')).toBeNull(); expect(screen.getByText('Belum ada product highlight aktif.')).toBeTruthy()
+  expect(screen.queryByText('Tiles')).toBeNull(); expect(screen.getByText('Belum ada promosi produk aktif.')).toBeTruthy()
 })
 
 test('reconnect fetches changed stock without navigation', async () => {
@@ -127,14 +129,14 @@ test('reconnect fetches changed stock without navigation', async () => {
 test('initial loading differs from verified empty stock and errors hide stale quantities until retry', async () => {
   const pending = deferred<ReturnType<typeof reply>>()
   mocks.rpc.mockImplementationOnce(() => request(pending.promise)); mount()
-  expect(screen.getByText('Memuat highlight…')).toBeTruthy(); expect(screen.queryByText('Belum ada product highlight aktif.')).toBeNull()
+  expect(screen.getByText('Memuat promosi…')).toBeTruthy(); expect(screen.queryByText('Belum ada promosi produk aktif.')).toBeNull()
   await act(async () => { pending.resolve(reply()) }); await tick()
   expect(screen.getByText('Stok tersedia: 3')).toBeTruthy()
   mocks.rpc.mockImplementationOnce(() => request(Promise.resolve({ data: null, error: { message: 'Read failed' } })))
   await act(async () => { await client.invalidateQueries({ queryKey: ['promotions'] }) }); await tick()
   expect(screen.getByRole('alert')).toBeTruthy(); expect(screen.queryByText('Stok tersedia: 3')).toBeNull(); expect(screen.queryByRole('img')).toBeNull()
   items = []; fireEvent.click(screen.getByRole('button', { name: 'Coba lagi' })); await tick()
-  expect(screen.queryByRole('alert')).toBeNull(); expect(screen.getByText('Belum ada product highlight aktif.')).toBeTruthy()
+  expect(screen.queryByRole('alert')).toBeNull(); expect(screen.getByText('Belum ada promosi produk aktif.')).toBeTruthy()
 })
 
 test.each(['loading', 'inactive', 'mismatch', 'error', 'signed-out'])('unverified %s identity cannot read or reuse a previous actor highlight', async state => {

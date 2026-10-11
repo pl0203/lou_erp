@@ -1,8 +1,10 @@
 import React from 'react'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
+// Each test controls its primary list read; independent pending-request reads remain healthy.
+// Combined failures and per-source retries are covered in visit-pending-independence.test.tsx.
 const state = vi.hoisted(()=>({error:true, loading:false, refetch:vi.fn()}))
-vi.mock('@tanstack/react-query',()=>({useQuery:()=>({data:[],isLoading:state.loading,isError:state.error,refetch:state.refetch}),useQueryClient:()=>({}),useMutation:()=>({})}))
+vi.mock('@tanstack/react-query',()=>({useQuery:({queryKey}:any)=>queryKey[0]==='own_pending_visit_requests'?({data:[],isLoading:false,isPending:false,isError:false,refetch:vi.fn()}):({data:[],isLoading:state.loading,isError:state.error,refetch:state.refetch}),useQueryClient:()=>({}),useMutation:()=>({})}))
 vi.mock('../src/lib/reads/usePagedRead',()=>({usePagedRead:(_key:string,filters:any)=>({data:state.loading?undefined:{items:[],total:0,page:1,page_size:10,status_counts:{pending:0,approved:0,rejected:0,cancelled:0}},filters,setFilters:vi.fn(),setPage:vi.fn(),isPending:state.loading,isError:state.error,refetch:state.refetch})}))
 vi.mock('../src/lib/supabase',()=>({supabase:{}}))
 vi.mock('../src/lib/AuthContext',()=>({useAuth:()=>({profile:{id:'dummy'}})}))

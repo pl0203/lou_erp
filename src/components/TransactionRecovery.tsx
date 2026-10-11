@@ -4,6 +4,7 @@ import type { TransactionSender, TransactionResult } from '../lib/orderTransacti
 export default function TransactionRecovery({ send, onCommitted }: { send: TransactionSender; onCommitted: (result: TransactionResult, operation?: string) => void }) {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
+  if (send.isInFlight?.()) return <div role="status" className="m-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">Menyimpan… Tunggu hasil penyimpanan.</div>
   if (!send.hasUnresolved() && !message) return null
   async function reconcile() {
     if (!window.confirm('Periksa hasil permintaan sebelumnya? Jika sudah tersimpan, hasilnya akan ditampilkan. Jika belum tersimpan, permintaan lama akan dibatalkan secara aman sebelum Anda membuat permintaan baru.')) return

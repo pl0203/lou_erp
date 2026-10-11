@@ -11,7 +11,7 @@ import DailySchedule from '../src/pages/girard/DailySchedule'
 beforeEach(()=>{vi.useFakeTimers();vi.setSystemTime(new Date('2026-09-30T12:00:00Z'))})
 afterEach(()=>{cleanup();vi.useRealTimers()})
 for(const [name,Page] of [['own visits',MyVisits],['daily schedule',DailySchedule]] as const)test(`${name} displays September30 as September30`,()=>{
- render(<Page/>);expect(screen.getByText(/30 September/)).toBeTruthy()
+ render(<Page/>);expect(screen.getAllByText(/30 September/)[0]).toBeTruthy()
 })
 
 vi.mock('../src/components/VisitRequestInbox', () => ({ default: () => null, VisitProposalForm: () => null }))

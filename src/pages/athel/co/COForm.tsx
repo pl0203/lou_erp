@@ -363,10 +363,11 @@ function COFormEditor({ mode, id, actor }: {
                 focus.current = null;
             } }, price: node => { prices.current[l.key] = node; if (node && !node.disabled && focus.current?.key === l.key && focus.current.field === 'price') { node.focus(); focus.current = null; } } }}/>)}</div>{!lines.length && <p className="p-6 text-center text-sm text-gray-500">Belum ada barang. Cari SKU atau nama untuk menambahkan barang.</p>}
       {lines.length > 100 && <COPagination page={page} pageSize={100} total={String(lines.length)} pending={pending} onPage={setPage}/>}<div className="mt-4 pt-4 border-t border-gray-100 flex flex-wrap justify-between gap-3">
-    <button type="button" className="text-sm text-brand-primary disabled:opacity-50" disabled={disabled} onClick={() => { const row = blankLine(); focus.current = { key: row.key, field: 'name' }; setPage(Math.floor(lines.length / 100) + 1); setLines(prev => [...prev, row]); }}>Tambah barang manual</button>
+    <button type="button" className="text-sm text-brand-primary disabled:opacity-50" aria-describedby="co-manual-item-help" disabled={disabled} onClick={() => { const row = blankLine(); focus.current = { key: row.key, field: 'name' }; setPage(Math.floor(lines.length / 100) + 1); setLines(prev => [...prev, row]); }}>Tambah barang manual</button>
     <p className="text-sm break-words">Nilai rencana CO: <strong>{total === null ? 'Harga / jumlah belum lengkap' : `Rp ${total}`}</strong>
     </p>
     </div>
+    <p id="co-manual-item-help" className="text-xs text-gray-700 mt-3">Barang manual disimpan sebagai identitas SKU pelanggan saat CO disimpan. SKU dapat dipakai kembali pada CO berikutnya untuk pelanggan yang sama; barang ini tidak otomatis ditambahkan ke katalog produk umum.</p>
     <p className="text-xs text-gray-500 mt-2">Nilai rencana bukan pendapatan. Pendapatan muncul dari penjualan bulanan yang diposting.</p>
     </COCard>
     {failure && <COFailure error={new Error(failure)} retry={conflict && !refreshing ? reload : undefined}/>}<div className="flex flex-wrap justify-end gap-3">
@@ -385,10 +386,11 @@ function COFormCommands({ customer, coId, editing, actor, refreshing, ready, sav
     unresolved: (v: boolean) => void;
 }) {
     const sender = useCOTransactionSender({ formScope: editing ? `edit:${coId}` : 'create', customerId: customer, coId });
+    const [pending, setPending] = useState(false);
     const blocked = sender.hasUnresolved();
     useEffect(() => unresolved(blocked), [blocked, unresolved]);
     return <>
-    <fieldset disabled={refreshing} className="contents"><CORecoveryPanel sender={sender} current={() => actor.isCurrent() && !refreshing} accept={r => recovered(r, sender)}/></fieldset>
-    <button type="button" className={CO_PRIMARY} disabled={!ready || blocked} onClick={() => void save(sender)}>{editing ? 'Simpan Perubahan' : 'Simpan CO'}</button>
+    <fieldset disabled={refreshing} className="contents"><CORecoveryPanel pending={pending} sender={sender} current={() => actor.isCurrent() && !refreshing} accept={r => recovered(r, sender)}/></fieldset>
+    <button type="button" className={CO_PRIMARY} disabled={!ready || blocked || pending} onClick={() => { setPending(true); void save(sender).finally(() => setPending(false)); }}>{pending ? 'Menyimpan…' : editing ? 'Simpan Perubahan' : 'Simpan CO'}</button>
     </>;
 }

@@ -7,6 +7,8 @@ import { parsePromoStockWarning, PromoStockWarningError } from './promotionStock
 export type TransactionResult = { id: string; po_id?: string; updated_at?: string; stock_version?: number }
 export type Recovery = { state: 'committed' | 'abandoned' | 'unknown'; result?: TransactionResult; operation?: string }
 export type TransactionSender = ((operation: string, payload: unknown) => Promise<TransactionResult>) & {
+  /** Live request state is separate from durable uncertainty, which must survive a reload. */
+  isInFlight?: () => boolean
   hasUnresolved: () => boolean
   reconcile: () => Promise<Recovery>
   acknowledgeRecovered: () => void
@@ -42,6 +44,7 @@ function compatibilityError(error: { code?: string; message: string; details?: s
 /** Durable metadata stores only actor/form-scoped request UUID + hash, never order contents. */
 export function createTransactionSender(options: TransactionOptions = {}): TransactionSender {
   let pending: Pending | null = null
+  let activeSends = 0
   function read() {
     if (options.storage && options.storageKey) {
       const raw = options.storage().getItem(options.storageKey)
@@ -70,7 +73,7 @@ export function createTransactionSender(options: TransactionOptions = {}): Trans
       throw error
     }
   }
-  const send = async (operation: string, payload: unknown) => {
+  const sendRequest = async (operation: string, payload: unknown) => {
     const key = await fingerprint(operation, payload)
     const current = read()
     if (current?.committed && current.key === key) { await validateReceipt(current.committed, current, operation, payload); if (read()?.id === current.id && !options.retainCommitted) save(null); return current.committed }
@@ -93,10 +96,17 @@ export function createTransactionSender(options: TransactionOptions = {}): Trans
     if (read()?.id === request.id) save(options.retainCommitted ? { ...request, uncertain: false, committed: data as TransactionResult } : null)
     return data as TransactionResult
   }
+  const send = async (operation: string, payload: unknown) => {
+    activeSends++
+    try { return await sendRequest(operation, payload) }
+    finally { activeSends-- }
+  }
   return Object.assign(send, {
+    isInFlight() { return activeSends > 0 },
     hasUnresolved() { try { const value = read(); return !!(value?.uncertain || value?.committed) } catch { return true } },
     acknowledgeRecovered() { if (read()?.committed) save(null) },
     async reconcile(): Promise<Recovery> {
+      if (activeSends > 0) throw new Error('Penyimpanan masih berlangsung. Tunggu hasilnya sebelum memulihkan.')
       const request = read()
       if (!request) return { state: 'unknown' }
       const { data: raw, error } = await supabase.rpc(options.recoveryRpcName ?? 'pilot_reconcile_request', { p_request_id: request.id, p_abandon: true })

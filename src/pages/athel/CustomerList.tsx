@@ -1,3 +1,4 @@
+import CustomerPricingHelp from '../../components/CustomerPricingHelp'
 import { useProcurementAccess } from '../../lib/procurementAccess'
 import { hasInvalidCustomerCategories } from '../../lib/customerCategoryRows'
 import CustomerCategorySelect from '../../components/CustomerCategorySelect'
@@ -410,6 +411,8 @@ export default function CustomerList() {
               <div>
                 <label className="block text-sm text-gray-600 mb-1">Tier Harga</label>
                 <select
+                  aria-label="Tier Harga"
+                  aria-describedby="customer-pricing-help"
                   value={form.pricing_tier}
                   onChange={e => setForm(p => ({ ...p, pricing_tier: e.target.value }))}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
@@ -420,6 +423,7 @@ export default function CustomerList() {
                   <option value="depo_bangunan">Depo Bangunan</option>
       <option value="others">Others</option>
                 </select>
+                <CustomerPricingHelp id="customer-pricing-help" />
               </div>
             </div>
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">

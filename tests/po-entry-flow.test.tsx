@@ -228,3 +228,9 @@ test.each(['new', 'edit'] as const)('%s empty-list Save blocks writes and return
  expect(state.send).not.toHaveBeenCalled()
  expect(document.activeElement).toBe(screen.getByRole('combobox', { name: 'Cari SKU atau nama barang' }))
 })
+
+test.each(['new', 'edit'] as const)('%s explains manual item scope before entry or save', kind => {
+ mount(kind)
+ expect(screen.getByText(/Barang manual hanya disimpan pada PO ini/)).toBeTruthy()
+ expect(screen.getByText(/tidak menambahkan produk baru ke katalog/)).toBeTruthy()
+})

@@ -76,3 +76,31 @@ test('PT409 is a definitive conflict, retains its code, and permits a deliberate
  expect(calls).toHaveLength(2); expect(calls[1].p_request_id).not.toBe(calls[0].p_request_id)
  localStorage.removeItem('stale-po-test')
 })
+
+test('active save keeps durable recovery identity but cannot be reconciled until its outcome is known', async () => {
+ localStorage.clear()
+ let finish!: (value: any) => void
+ mock.rpc.mockReset().mockImplementation(() => new Promise(resolve => { finish = resolve }))
+ const options = { storage: () => localStorage, storageKey: 'active-po-save' }
+ const send = createTransactionSender(options)
+ const saving = send('create_po', { po_number: 'PO-ACTIVE' })
+ await vi.waitFor(() => expect(mock.rpc).toHaveBeenCalledTimes(1))
+ expect(send.isInFlight?.()).toBe(true)
+ expect(send.hasUnresolved()).toBe(true)
+ const remounted = createTransactionSender(options)
+ expect(remounted.isInFlight?.()).toBe(false)
+ expect(remounted.hasUnresolved()).toBe(true)
+ await expect(send.reconcile()).rejects.toThrow('Penyimpanan masih berlangsung')
+ expect(mock.rpc).toHaveBeenCalledTimes(1)
+ finish({ data: null, error: { message: 'response lost' } })
+ await expect(saving).rejects.toThrow('response lost')
+ expect(send.isInFlight?.()).toBe(false)
+ expect(send.hasUnresolved()).toBe(true)
+ const requestId = JSON.parse(localStorage.getItem('active-po-save')!).id
+ mock.rpc.mockResolvedValue({ data: { id: 'saved' }, error: null })
+ await send('create_po', { po_number: 'PO-ACTIVE' })
+ expect(mock.rpc).toHaveBeenLastCalledWith('pilot_order_transaction', expect.objectContaining({ p_request_id: requestId }))
+ expect(send.isInFlight?.()).toBe(false)
+ expect(send.hasUnresolved()).toBe(false)
+ localStorage.clear()
+})

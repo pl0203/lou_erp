@@ -81,8 +81,8 @@ function InlineSalesTargetEdit({
 
   if (!canEdit) {
     return (
-      <span className="text-gray-400 text-xs">
-        {currentTarget != null ? `Rp ${formatMoney(currentTarget, 'millions')}M` : '—'}
+      <span className="text-gray-600 text-xs">
+        {currentTarget != null ? `Rp ${formatMoney(currentTarget, 'full')}` : '—'}
       </span>
     )
   }
@@ -111,7 +111,7 @@ function InlineSalesTargetEdit({
         </button>
         <button
           onClick={() => setEditing(false)}
-          className="text-gray-400 hover:text-gray-600 text-xs"
+          className="text-gray-600 hover:text-gray-600 text-xs"
         >
           ✕
         </button>
@@ -124,8 +124,8 @@ function InlineSalesTargetEdit({
       onClick={() => { setValue(currentTarget?.toString() ?? ''); setEditing(true) }}
       className="text-right w-full group"
     >
-      <span className="text-gray-400 text-xs group-hover:text-brand-primary transition-colors">
-        {currentTarget != null ? `Rp ${formatMoney(currentTarget, 'millions')}M` : '+ Set target'}
+      <span className="text-gray-600 text-xs group-hover:text-brand-primary transition-colors">
+        {currentTarget != null ? `Rp ${formatMoney(currentTarget, 'full')}` : '+ Atur target'}
       </span>
     </button>
   )
@@ -145,7 +145,9 @@ function PerformanceTable({
         <div className="px-5 py-4 border-b border-gray-100">
           <h2 className="text-base font-medium text-gray-900">Tim aktif saat ini</h2>
         </div>
-        <table className="w-full text-sm">
+        <p className="px-5 py-2 text-xs text-gray-600">Geser tabel untuk melihat semua kolom.</p>
+        <div role="region" aria-label="Tabel aktivitas tim" tabIndex={0} className="max-w-full overflow-x-auto">
+        <table className="w-full min-w-[64rem] text-sm">
           <thead>
             <tr className="bg-gray-50 border-b border-gray-100">
               <th className="text-left px-5 py-3 font-medium text-gray-500">Nama</th>
@@ -163,7 +165,7 @@ function PerformanceTable({
           <tbody>
             {performance.map(p => (
               <tr key={p.id} className="border-b border-gray-50 hover:bg-gray-50">
-                <td className="px-5 py-4">
+                <td className="min-w-[14rem] px-5 py-4">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-green-100 text-green-700 text-xs font-semibold flex items-center justify-center shrink-0">
                       {p.full_name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}
@@ -196,7 +198,7 @@ function PerformanceTable({
                 </td>
                 <td className="px-5 py-4 text-center text-gray-700">{p.orders}</td>
                 <td className="px-5 py-4 text-right font-medium text-gray-900">
-                  Rp {formatMoney(p.total_sales, 'millions')}M
+                  Rp {formatMoney(p.total_sales, 'full')}
                 </td>
                 <td className="px-5 py-4 text-right">
                   <InlineSalesTargetEdit key={`${p.id}:${yearMonth}`}
@@ -211,6 +213,7 @@ function PerformanceTable({
             ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       <div className="md:hidden space-y-3">
@@ -245,21 +248,21 @@ function PerformanceTable({
             </div>
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div className="bg-gray-50 rounded-lg p-3 text-center">
-                <p className="text-xs text-gray-400 mb-1">Kunjungan</p>
+                <p className="text-xs text-gray-600 mb-1">Kunjungan</p>
                 <p className="font-semibold text-gray-900">{p.visited}/{p.scheduled}</p>
               </div>
               <div className="bg-gray-50 rounded-lg p-3 text-center">
-                <p className="text-xs text-gray-400 mb-1">Pesanan</p>
+                <p className="text-xs text-gray-600 mb-1">Pesanan</p>
                 <p className="font-semibold text-gray-900">{p.orders}</p>
               </div>
               <div className="bg-gray-50 rounded-lg p-3 text-center">
-                <p className="text-xs text-gray-400 mb-1">Nilai pembanding target</p>
+                <p className="text-xs text-gray-600 mb-1">Nilai pembanding target</p>
                 <p className="font-semibold text-gray-900">
-                  Rp {formatMoney(p.total_sales, 'millions')}M
+                  Rp {formatMoney(p.total_sales, 'full')}
                 </p>
               </div>
               <div className="bg-gray-50 rounded-lg p-3 text-center">
-                <p className="text-xs text-gray-400 mb-1">Target</p>
+                <p className="text-xs text-gray-600 mb-1">Target</p>
                 <InlineSalesTargetEdit key={`${p.id}:${yearMonth}`}
                   userId={p.id}
                   yearMonth={yearMonth}
@@ -277,9 +280,11 @@ function PerformanceTable({
 }
 
 function SummaryCards({
-  avgVisitRate, totalVisited, totalScheduled, totalOrders, totalSales
+  avgVisitRate, totalVisited, totalScheduled, totalOrders, totalSales, totalStaff, period
 }: {
   avgVisitRate: number
+  totalStaff: number
+  period: string
   totalVisited: number
   totalScheduled: number
   totalOrders: number
@@ -287,27 +292,28 @@ function SummaryCards({
 }) {
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <section aria-label="Rata-rata tingkat kunjungan per orang" className="bg-white rounded-xl border border-gray-200 p-4">
+        <p className="text-xs text-gray-600 mb-1">Rata-rata tingkat kunjungan per orang</p>
+        <p className="text-2xl font-bold text-gray-900">{totalStaff > 0 ? `${avgVisitRate}%` : 'Belum tersedia'}</p>
+        <p className="text-xs text-gray-600 mt-1">{period} · {totalStaff} anggota aktif, bobot sama.</p>
+        <p className="text-xs leading-relaxed text-gray-600 mt-2">Per orang: kunjungan tercatat ÷ jadwal × 100, dibulatkan. Rata-rata dari persentase per orang lalu dibulatkan. Anggota tanpa jadwal dihitung 0%.</p>
+      </section>
       <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <p className="text-xs text-gray-400 mb-1">Tingkat Kunjungan</p>
-        <p className="text-2xl font-bold text-gray-900">{avgVisitRate}%</p>
-        <p className="text-xs text-gray-400 mt-1">{totalVisited}/{totalScheduled} kunjungan</p>
+        <p className="text-xs text-gray-600 mb-1">Total Kunjungan</p>
+        <p className="text-2xl font-bold text-gray-900 [overflow-wrap:anywhere]">{totalVisited}</p>
+        <p className="text-xs text-gray-600 mt-1">{totalVisited}/{totalScheduled} kunjungan tercatat dari jadwal</p>
       </div>
       <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <p className="text-xs text-gray-400 mb-1">Total Kunjungan</p>
-        <p className="text-2xl font-bold text-gray-900">{totalVisited}</p>
-        <p className="text-xs text-gray-400 mt-1">dari {totalScheduled} dijadwalkan</p>
+        <p className="text-xs text-gray-600 mb-1">Pesanan Dibuat</p>
+        <p className="text-2xl font-bold text-gray-900 [overflow-wrap:anywhere]">{totalOrders}</p>
+        <p className="text-xs text-gray-600 mt-1">tanggal pembuatan pesanan · {period}</p>
       </div>
       <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <p className="text-xs text-gray-400 mb-1">Pesanan Dibuat</p>
-        <p className="text-2xl font-bold text-gray-900">{totalOrders}</p>
-        <p className="text-xs text-gray-400 mt-1">basis aktivitas saat ini</p>
-      </div>
-      <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <p className="text-xs text-gray-400 mb-1">Nilai pembanding target</p>
-        <p className="text-2xl font-bold text-gray-900">
-          Rp {formatMoney(totalSales, 'millions')}M
+        <p className="text-xs text-gray-600 mb-1">Nilai pembanding target</p>
+        <p className="text-2xl font-bold text-gray-900 [overflow-wrap:anywhere]">
+          Rp {formatMoney(totalSales, 'full')}
         </p>
-        <p className="text-xs text-gray-400 mt-1">basis aktivitas saat ini</p>
+        <p className="text-xs text-gray-600 mt-1">tanggal pembuatan pesanan · {period}</p>
       </div>
     </div>
   )
@@ -334,17 +340,20 @@ export function PerformanceActivityContent() {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['performance'] })
   return <div className="px-4 md:px-8 py-6 space-y-6">
     <div className="flex items-center justify-between flex-wrap gap-3">
-      <div><h2 className="text-lg font-semibold text-gray-900">Aktivitas dan Target Tim</h2><p className="text-sm text-gray-500 mt-0.5">{selectedLabel}</p></div>
+      <div><h2 className="text-lg font-semibold text-gray-900">Aktivitas dan Target Tim</h2><p className="text-sm text-gray-600 mt-0.5">Periode aktivitas: {selectedLabel}</p></div>
       <select aria-label="Bulan performa sales" value={yearMonth} onChange={event => setFilters({ yearMonth: event.target.value })} className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary">
         {monthOptions.map(month => <option key={month.value} value={month.value}>{month.label}</option>)}
       </select>
     </div>
-    <p className="text-xs text-gray-500">Kohort tim aktif, jadwal, dan target tetap memakai basis laporan aktivitas yang ada. Nilai pembanding memakai sumber pesanan kanonis menurut waktu pembuatan, termasuk riwayat Girard yang belum dikonversi; tidak digabung dengan metrik Sales di atas. Filter Sales tidak mengubah bulan atau kohort aktivitas ini.</p>
-    {isError || monthError ? <div role="alert" className="text-red-600">{monthError ? 'Daftar bulan tidak tersedia.' : 'Data performa tidak tersedia.'} <button onClick={() => { refetch(); refetchMonths() }} className="underline">Coba lagi</button></div> : !data ? <p className="text-center text-gray-400 text-sm py-12">Memuat data performa...</p> : <>
+    <div className="rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-600">
+      <p>Filter bulan aktivitas ini tidak mengubah Metrik Sales. Cakupan: anggota yang kini aktif (tenaga penjualan, manajer Sales, kepala Sales, dan eksekutif) sesuai izin akun; ringkasan mencakup semua halaman.</p>
+      <p className="mt-1">Jadwal memakai tanggal kunjungan. Pesanan dan nilai pembanding target memakai tanggal pembuatan pesanan, termasuk riwayat Girard yang belum dikonversi. Basis ini berbeda dari tanggal PO, tanggal SJ, dan bulan laporan CO pada Metrik Sales.</p>
+    </div>
+    {isError || monthError ? <div role="alert" className="text-red-600">{monthError ? 'Daftar bulan tidak tersedia.' : 'Data performa tidak tersedia.'} <button onClick={() => { refetch(); refetchMonths() }} className="underline">Coba lagi</button></div> : !data ? <p className="text-center text-gray-600 text-sm py-12">Memuat data performa...</p> : <>
       <PaginationControls page={data.page} total={data.total} pageSize={data.page_size} pending={isPending} onPageChange={setPage} />
-      {(data.summary.unassigned_orders ?? 0) > 0 && <div className="bg-white rounded-xl border border-gray-200 p-4"><p className="font-medium text-gray-900">Unassigned</p><p className="text-sm text-gray-500">{data.summary.unassigned_orders} pesanan belum memiliki kredit salesperson. Rp {formatMoney(data.summary.unassigned_sales!, 'millions')}M termasuk dalam nilai pembanding aktivitas.</p></div>}
-      <SummaryCards avgVisitRate={data.summary.average_visit_rate} totalVisited={data.summary.total_visited} totalScheduled={data.summary.total_scheduled} totalOrders={data.summary.total_orders} totalSales={data.summary.total_sales} />
-      {data.items.length === 0 ? <p className="text-center text-gray-400 text-sm py-12">Tidak ada data performa untuk bulan ini.</p> : <PerformanceTable performance={data.items} yearMonth={yearMonth} canEdit={canEdit && !isPending} onSaved={invalidate} />}
+      {(data.summary.unassigned_orders ?? 0) > 0 && <div className="bg-white rounded-xl border border-gray-200 p-4"><p className="font-medium text-gray-900">Belum ditugaskan</p><p className="text-sm text-gray-500">{data.summary.unassigned_orders} pesanan belum memiliki kredit tenaga penjualan. Rp {formatMoney(data.summary.unassigned_sales!, 'full')} termasuk dalam nilai pembanding aktivitas.</p></div>}
+      <SummaryCards avgVisitRate={data.summary.average_visit_rate} totalVisited={data.summary.total_visited} totalScheduled={data.summary.total_scheduled} totalOrders={data.summary.total_orders} totalSales={data.summary.total_sales} totalStaff={data.total} period={selectedLabel} />
+      {data.items.length === 0 ? <p className="text-center text-gray-600 text-sm py-12">Tidak ada data performa untuk bulan ini.</p> : <PerformanceTable performance={data.items} yearMonth={yearMonth} canEdit={canEdit && !isPending} onSaved={invalidate} />}
     </>}
   </div>
 }

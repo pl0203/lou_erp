@@ -10,7 +10,7 @@ vi.mock('../src/components/GirardNav', () => ({ default: () => null }))
 vi.mock('../src/components/ActivePromotionsBanner', () => ({ default: () => null }))
 vi.mock('../src/components/VisitRequestInbox', () => ({ default: () => <p>Embedded requests</p>, VisitProposalForm: () => <p>Proposal form</p> }))
 vi.mock('@tanstack/react-query', () => ({ useQueryClient: () => ({ invalidateQueries: vi.fn() }), useQuery: () => ({ data: [], isLoading: false, isError: false }), useMutation: () => ({ mutate: vi.fn(), isPending: false }) }))
-vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }))
+vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn(), useSearchParams: () => [new URLSearchParams(), vi.fn()] }))
 afterEach(cleanup)
 test('salesperson schedule keeps proposal controls without the embedded request list', () => {
  state.role = 'sales_person'; render(<DailySchedule />)

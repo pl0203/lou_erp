@@ -4,6 +4,8 @@ import { fetchCOPage, fetchCODetail } from '../../../lib/co/rpc';
 import { fetchCOCustomers } from '../../../lib/co/catalog';
 import type { COOrderRecord } from '../../../lib/co/validation';
 import COSourceBoundary from '../../../components/co/COSourceBoundary';
+import { formatDisplayDate } from '../../../lib/displayDate';
+import { formatCOReportMonth } from '../../../lib/co/presentation';
 import { formatMoney } from '../../../lib/reads/money';
 import { CO_INPUT, CO_PRIMARY, useCOActor, useCORead, COBadges, COPagination, COFailure, quantityText } from '../../../components/co/COShared';
 export default function COOrders() {
@@ -38,10 +40,10 @@ function OrdersOwner() {
         <div className="hidden md:block overflow-x-auto rounded-xl border border-gray-200 bg-white" role="region" aria-label="Daftar CO" tabIndex={0}>
         <table className="w-full min-w-[70rem] text-sm">
         <thead className="bg-gray-50 text-gray-500">
-        <tr>{['Nomor / tanggal CO', 'Pelanggan', 'Status / pengiriman', 'Nilai rencana', 'Terjual / pendapatan', 'Stok tercatat', 'Laporan terakhir', 'Aksi'].map(t => <th key={t} className="px-4 py-3 text-left font-medium">{t}</th>)}</tr>
+        <tr>{['Nomor / tanggal CO', 'Pelanggan', 'Status / pengiriman', 'Nilai rencana', 'Terjual / pendapatan', 'Stok tercatat', 'Laporan pelanggan (semua CO)', 'Aksi'].map(t => <th key={t} className="px-4 py-3 text-left font-medium">{t}</th>)}</tr>
         </thead>
         <tbody>{rows.map(co => <tr key={co.id} className="border-t border-gray-100">
-            <td className="px-4 py-4">{co.co_number}<p className="text-xs text-gray-500">{co.order_date}</p>
+            <td className="px-4 py-4">{co.co_number}<p className="text-xs text-gray-500">{formatDisplayDate(co.order_date)}</p>
             </td>
             <td>{co.customer_name}</td>
             <td>
@@ -51,7 +53,7 @@ function OrdersOwner() {
             <td>{quantityText(co.summary.sold_quantity)}<p>Rp {formatMoney(co.summary.revenue, 'full')}</p>
             </td>
             <td>{quantityText(co.summary.remaining_quantity)}</td>
-            <td>{co.last_report_month?.slice(0, 7) ?? 'Belum ada'}</td>
+            <td>{formatCOReportMonth(co.last_report_month)}</td>
             <td>
             <COOrderLinks co={co}/>
             </td>
@@ -61,7 +63,7 @@ function OrdersOwner() {
     <div className="md:hidden space-y-3">{rows.map(co => <article key={co.id} className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
             <div className="break-words">
             <h3 className="font-semibold">{co.co_number}</h3>
-            <p className="text-sm text-gray-500">{co.customer_name} · {co.order_date}</p>
+            <p className="text-sm text-gray-500">{co.customer_name} · {formatDisplayDate(co.order_date)}</p>
             </div>
             <COBadges status={co.status} progress={co.summary.delivery_progress}/>
             <dl className="grid grid-cols-2 gap-2 text-xs">
@@ -82,8 +84,8 @@ function OrdersOwner() {
             <dd>{quantityText(co.summary.remaining_quantity)}</dd>
             </div>
             <div>
-            <dt>Laporan terakhir</dt>
-            <dd>{co.last_report_month?.slice(0, 7) ?? 'Belum ada'}</dd>
+            <dt>Laporan pelanggan (semua CO)</dt>
+            <dd>{formatCOReportMonth(co.last_report_month)}</dd>
             </div>
             </dl>
             <COOrderLinks co={co}/>

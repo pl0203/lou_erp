@@ -1,3 +1,4 @@
+import { PO_STATUS_LABELS } from '../orderPresentation'
 import { calendarDateKey, parseCalendarDate } from '../calendarDate'
 import { callRead } from './rpc'
 import { chunkIds, IncompleteReadError } from './completeReads'
@@ -7,7 +8,7 @@ import type { CustomerStatAggregate, DailyBucket, DashboardArgs, DashboardSummar
 export const REPORT_PAGE_SIZE = 50
 const DONUT_COLORS = ['#3b82f6', '#10b981', '#f97316', '#8b5cf6', '#ef4444', '#64748b']
 const STATUS_META: Record<string, { label: string; color: string }> = {
-  confirm: { label: 'Confirm', color: '#3b82f6' }, in_progress: { label: 'In Progress', color: '#f59e0b' }, complete: { label: 'Complete', color: '#10b981' }, cancelled: { label: 'Cancelled', color: '#94a3b8' },
+  confirm: { label: PO_STATUS_LABELS.confirm, color: '#3b82f6' }, in_progress: { label: PO_STATUS_LABELS.in_progress, color: '#f59e0b' }, complete: { label: PO_STATUS_LABELS.complete, color: '#10b981' }, cancelled: { label: PO_STATUS_LABELS.cancelled, color: '#94a3b8' },
 }
 export type DashboardData = Omit<DashboardSummary, 'monthlySeries' | 'customerShare' | 'statusBreakdown'> & {
   monthlySeries: (DashboardSummary['monthlySeries'][number] & { label: string })[]
@@ -83,8 +84,8 @@ export function fetchSalesPerformancePage(managerId: string, role: string, yearM
   const from = new Date(year, month - 1, 1).toISOString().slice(0, 10), to = new Date(year, month, 0).toISOString().slice(0, 10)
   return callRead('pilot_sales_performance_v1', { p_manager_id: role === 'sales_manager' ? managerId : null, p_date_from: from, p_date_to: to, p_order_from: `${from}T00:00:00`, p_order_to: `${to}T23:59:59`, p_year_month: yearMonth, p_page: page, p_page_size: REPORT_PAGE_SIZE }, signal)
 }
-export async function fetchTeamActivity(userIds: string[], signal?: AbortSignal): Promise<TeamActivity[]> {
-  const day = new Date().toISOString().slice(0, 10), weekAgo = new Date()
+export async function fetchTeamActivity(userIds: string[], signal?: AbortSignal, selectedDay?: string): Promise<TeamActivity[]> {
+  const day = selectedDay ?? new Date().toISOString().slice(0, 10), weekAgo = new Date()
   weekAgo.setDate(weekAgo.getDate() - 7)
   const result: TeamActivity[] = []
   for (const ids of chunkIds(userIds)) {

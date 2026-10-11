@@ -10,7 +10,7 @@ vi.mock('@tanstack/react-query', () => ({ useQuery: (options: any) => ({ data: u
 // Compatibility presentation unit fixture; transport/decoder behavior is exercised in tests/co/sales-metrics-ui.
 vi.mock('../../src/lib/reads/useSalesMetrics', async original => ({ ...await original<any>(), useSalesMetrics: () => ({
   allowed:true,role:'sales_person',identity:'actor',key:['unit-sales'],valid:true,from:'2026-10',through:'2026-10',orderType:'all',manager:null,
-  data:state.error || state.earliestError ? undefined : state.salesResponse,months:{earliest_month:null},unavailable:state.error || state.earliestError,pending:state.pending,
+  data:state.error || state.earliestError ? undefined : state.salesResponse,months:{earliest_month:'2026-10-01'},unavailable:state.error || state.earliestError,pending:state.pending,
   update:vi.fn(),setPage:vi.fn(),refresh:vi.fn(),reset:vi.fn(),
 }) }))
 
@@ -33,14 +33,14 @@ test('compatibility Sales cards show full separately labelled v2 totals independ
 test('sales performance uses the full summary and its server-calculated rounded average', () => {
   state.response.summary = { total_visited: 1234, total_scheduled: 2345, total_orders: 1500, total_sales: '1500000000.00', average_visit_rate: 57 }
   render(<PerformanceContent />)
-  expect(screen.getByText('Rp 1500.0M')).toBeTruthy()
+  expect(screen.getByText('Rp 1.500.000.000')).toBeTruthy()
   expect(screen.getByText('57%')).toBeTruthy()
   expect(screen.getByText('1500')).toBeTruthy()
 })
 test('customer performance uses full totals and never derives customer counts from its page', () => {
   state.response.summary = { total_sales: '1500000000.00', active_customers: 101, total_customers: 1234, total_visits: 2345, total_target_visits: 3456, visit_percent: 68, top_customer: null }
   render(<CustomerPerformanceContent />)
-  expect(screen.getByText('Rp 1500.0M')).toBeTruthy()
+  expect(screen.getByText('Rp 1.500.000.000')).toBeTruthy()
   expect(screen.getByText('dari 1234 total')).toBeTruthy()
   expect(screen.getByText('68%')).toBeTruthy()
 })
@@ -66,7 +66,7 @@ test('retained customer rows cannot edit targets for the newly requested month',
   state.response.items = [{ id: 'c', name: 'Previous month customer', manager_name: null, actual_visits: 0, target_visits: 4, last_visit_date: null, order_count: 0, total_sales: '0', sales_target: null }]
   state.response.summary = { total_sales: '0', active_customers: 0, total_customers: 101, total_visits: 0, total_target_visits: 404, visit_percent: 0, top_customer: null }
   render(<CustomerPerformanceContent />)
-  expect(screen.queryAllByRole('button', { name: '+ Set target' })).toHaveLength(0)
+  expect(screen.queryAllByRole('button', { name: '+ Atur target' })).toHaveLength(0)
 })
 
 for (const [name, Component] of [['Sales metrics', RevenueContent], ['sales activity', PerformanceContent]] as const) test(`${name}: failed month-directory reads are explicit and retryable`, () => {

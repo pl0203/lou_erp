@@ -1,3 +1,5 @@
+import { PO_STATUS_LABELS } from '../../lib/orderPresentation'
+import { formatDisplayDate } from '../../lib/displayDate'
 import { calendarDateKey } from '../../lib/calendarDate'
 import { lazy, Suspense, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -77,6 +79,10 @@ export default function AthelDashboard() {
     queryFn: ({ signal }) => fetchDashboardData(startDate, endDate, status, fulfillment, signal),
   })
 
+  const rollingStart = data?.monthlySeries[0]?.key ? `${data.monthlySeries[0].key}-01` : startDate
+  const selectedPOPeriod = `${formatDisplayDate(startDate)} – ${formatDisplayDate(endDate)}`
+  const sourcePeriod = `${formatDisplayDate(startDate < rollingStart ? startDate : rollingStart)} – ${formatDisplayDate(endDate)}`
+
   return (
     <div className="min-h-screen bg-brand-canvas">
       <AthelNav />
@@ -85,7 +91,7 @@ export default function AthelDashboard() {
         <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
           <div>
             <h1 className="text-3xl font-semibold tracking-tight text-gray-900">Dashboard</h1>
-            <p className="mt-1 text-sm text-gray-500">Pantau performa PO, pengiriman, customer utama, dan item outstanding.</p>
+            <p className="mt-1 text-sm text-gray-500">Pantau performa PO, pengiriman, pelanggan utama, dan barang yang belum terkirim.</p>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -118,14 +124,14 @@ export default function AthelDashboard() {
                 className="min-w-0 max-w-full w-full bg-transparent text-sm text-gray-700 outline-none"
               >
                 <option value="all">Semua status</option>
-                <option value="confirm">Confirm</option>
-                <option value="in_progress">In Progress</option>
-                <option value="complete">Complete</option>
-                <option value="cancelled">Cancelled</option>
+                <option value="confirm">{PO_STATUS_LABELS.confirm}</option>
+                <option value="in_progress">{PO_STATUS_LABELS.in_progress}</option>
+                <option value="complete">{PO_STATUS_LABELS.complete}</option>
+                <option value="cancelled">{PO_STATUS_LABELS.cancelled}</option>
               </select>
             </label>
             <label className="min-w-0 rounded-xl border border-blue-200 bg-white px-4 py-3 shadow-sm">
-              <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400">Fulfillment</span>
+              <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400">Status pengiriman</span>
               <select
                 value={fulfillment}
                 onChange={e => setFulfillment(e.target.value as FulfillmentFilter)}
@@ -144,7 +150,7 @@ export default function AthelDashboard() {
       <div className="px-4 py-6 md:px-8">
         {isLoading && (
           <div className="rounded-2xl border border-gray-200 bg-white px-6 py-20 text-center text-sm text-gray-400 shadow-sm">
-            Memuat dashboard Procurement...
+            Memuat dashboard Pengadaan...
           </div>
         )}
 
@@ -156,6 +162,10 @@ export default function AthelDashboard() {
 
         {!isLoading && !isError && data && (
           <div className="space-y-6">
+            <section aria-label="Cakupan ringkasan PO" className="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-600">
+              <p>Tanggal PO: {formatDisplayDate(startDate)} – {formatDisplayDate(endDate)} · {({ all: 'Semua status', ...PO_STATUS_LABELS })[status]} · {({ all: 'Semua pengiriman', undelivered: 'Belum terkirim', partial: 'Terkirim sebagian', complete: 'Terkirim penuh' })[fulfillment]}</p>
+              <p className="mt-1">Khusus PO sesuai izin akun. Nilai terkirim mencakup SJ yang tidak dibatalkan untuk PO terpilih, termasuk pengiriman di luar rentang tanggal PO. Nilai uang dalam rupiah; juta = 1.000.000 dan miliar = 1.000.000.000.</p>
+            </section>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <StatCard
                 label="Total PO"
@@ -168,41 +178,43 @@ export default function AthelDashboard() {
                 helper={`${moneyPercentage(data.metrics.deliveredValue, data.metrics.totalPOValue, 1)}% dari total nilai PO`}
               />
               <StatCard
-                label="Outstanding Value"
+                label="Nilai Belum Terkirim"
                 value={formatCurrency(data.metrics.outstandingValue)}
                 helper="Nilai item yang masih belum terpenuhi"
               />
               <StatCard
                 label="Rata-rata Nilai PO"
-                value={formatCurrency(data.metrics.averagePOValue)}
-                helper={`${data.metrics.completedPOCount} PO selesai pada filter ini`}
+                value={data.metrics.totalPOCount > 0 ? formatCurrency(data.metrics.averagePOValue) : 'Belum tersedia'}
+                helper={data.metrics.totalPOCount > 0 ? `Total nilai PO ÷ ${data.metrics.totalPOCount} PO pada filter ini` : 'Belum ada PO pada filter ini untuk menghitung rata-rata'}
               />
             </div>
 
+            <p className="text-sm text-gray-600">PO selesai: {data.metrics.completedPOCount} dari {data.metrics.totalPOCount} PO pada filter ini.</p>
+
             <Suspense fallback={<div role="status" className="rounded-2xl border border-slate-200 bg-white p-12 text-center text-sm text-slate-500">Memuat grafik...</div>}>
-              <DashboardCharts key={`${startDate}:${endDate}:${status}:${fulfillment}`} data={data} />
+              <DashboardCharts key={`${startDate}:${endDate}:${status}:${fulfillment}`} data={data} sourcePeriod={sourcePeriod} selectedPOPeriod={selectedPOPeriod} />
             </Suspense>
 
             <div className="grid gap-6 xl:grid-cols-2">
               <DataTableCard
-                title="Top Customer"
-                subtitle="Customer dengan kontribusi nilai PO terbesar pada filter ini."
+                title="Pelanggan Teratas"
+                subtitle="Pelanggan dengan kontribusi nilai PO terbesar pada filter ini."
               >
-                <div className="max-w-full overflow-x-auto" role="region" aria-label="Tabel Top Customer" tabIndex={0}>
+                <div className="max-w-full overflow-x-auto" role="region" aria-label="Tabel Pelanggan Teratas" tabIndex={0}>
                   <table className="w-full min-w-[32rem] text-sm">
                     <thead>
                       <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
                         <th className="px-4 py-3">#</th>
-                        <th className="px-4 py-3">Customer</th>
+                        <th className="px-4 py-3">Pelanggan</th>
                         <th className="px-4 py-3 text-right">Total PO</th>
                         <th className="px-4 py-3 text-right">Terkirim</th>
-                        <th className="px-4 py-3 text-right">% Fulfillment</th>
+                        <th className="px-4 py-3 text-right">% Terkirim</th>
                       </tr>
                     </thead>
                     <tbody>
                       {data.topCustomers.length === 0 && (
                         <tr>
-                          <td colSpan={5} className="px-4 py-10 text-center text-sm text-gray-400">Belum ada customer pada filter ini.</td>
+                          <td colSpan={5} className="px-4 py-10 text-center text-sm text-gray-400">Belum ada pelanggan pada filter ini.</td>
                         </tr>
                       )}
                       {data.topCustomers.map(item => (
@@ -224,17 +236,17 @@ export default function AthelDashboard() {
               </DataTableCard>
 
               <DataTableCard
-                title="Outstanding Item Breakdown"
-                subtitle="Item dengan nilai outstanding terbesar dari PO pada periode ini."
+                title="Rincian Barang Belum Terkirim"
+                subtitle={`Sisa barang dari sumber PO ${sourcePeriod} sesuai status PO, tanpa filter status pengiriman. Dapat mencakup PO di luar tanggal awal ringkasan.`}
               >
-                <div className="max-w-full overflow-x-auto" role="region" aria-label="Tabel Outstanding Item Breakdown" tabIndex={0}>
+                <div className="max-w-full overflow-x-auto" role="region" aria-label="Tabel Rincian Barang Belum Terkirim" tabIndex={0}>
                   <table className="w-full min-w-[36rem] text-sm">
                     <thead>
                       <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
                         <th className="px-4 py-3">#</th>
                         <th className="px-4 py-3">SKU</th>
                         <th className="px-4 py-3">Nama Barang</th>
-                        <th className="px-4 py-3 text-right">Outstanding</th>
+                        <th className="px-4 py-3 text-right">Belum terkirim</th>
                         <th className="px-4 py-3 text-right">Nilai</th>
                       </tr>
                     </thead>

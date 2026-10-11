@@ -59,6 +59,7 @@ test('stock adjustment rejects blank reason before transport', async () => {
 })
 test('Athel create form requires opening stock and image while keeping blank/zero prices distinct', async () => {
  mount(); fireEvent.click(screen.getByRole('button', { name: /Tambah Promosi/ }))
+ expect(screen.getByRole('heading', { name: 'Tambah Promosi Produk' })).toBeTruthy()
  await screen.findByRole('option', { name: /Tiles/ })
  fireEvent.change(screen.getByLabelText('Produk'), { target: { value: id } })
  expect((screen.getByLabelText('Harga Pokok (Rp)') as HTMLInputElement).value).toBe('')

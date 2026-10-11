@@ -1,3 +1,6 @@
+import VisitCustomerSelect from './VisitCustomerSelect'
+import { isVisitDate, visitSaveError } from '../lib/visitUsability'
+import type { TransactionResult } from '../lib/orderTransactions'
 import {useEffect,useRef,useState} from 'react'
 import {useQuery,useQueryClient} from '@tanstack/react-query'
 import {useAuth} from '../lib/AuthContext'
@@ -7,25 +10,25 @@ import {calendarDateKey,parseCalendarDate} from '../lib/calendarDate'
 import NavigationIcon from './NavigationIcon'
 import type {VisitRequest} from '../lib/visitPlanning'
 import TransactionRecovery from './TransactionRecovery'
-export function VisitProposalForm({source,onDone,onDirtyChange,confirmDiscard}:{source?:{id:string;version:number;outlet_id:string;scheduled_date:string};onDone?:()=>void;onDirtyChange?:(dirty:boolean)=>void;confirmDiscard?:(action:()=>void,options?:{when?:boolean})=>void}){
+export function VisitProposalForm({source,onDone,onSubmitted,onDirtyChange,confirmDiscard}:{source?:{id:string;version:number;outlet_id:string;scheduled_date:string};onDone?:()=>void;onSubmitted?:(result:{id:string;date?:string})=>void;onDirtyChange?:(dirty:boolean)=>void;confirmDiscard?:(action:()=>void,options?:{when?:boolean})=>void}){
  const {profile}=useAuth();const client=useQueryClient();const send=useVisitPlanningSender(`proposal:${source?.id??'new'}`)
  const [customer,setCustomer]=useState(source?.outlet_id??'');const [date,setDate]=useState(source?.scheduled_date??calendarDateKey());const [notes,setNotes]=useState('');const [busy,setBusy]=useState(false);const [message,setMessage]=useState('');const lock=useRef(false)
  const dirty=customer!==(source?.outlet_id??'') || date!==(source?.scheduled_date??calendarDateKey()) || notes!==''
  useEffect(()=>{onDirtyChange?.(dirty)},[dirty,onDirtyChange])
  useEffect(()=>()=>{onDirtyChange?.(false)},[onDirtyChange])
  const customers=useQuery({queryKey:['visit_customers',profile?.id,profile?.role],queryFn:({signal})=>fetchVisitCustomers(signal),enabled:!!profile?.id})
- const done=()=>{client.invalidateQueries();setNotes('');setCustomer(source?.outlet_id??'');setMessage('Permintaan tersimpan. Menunggu persetujuan manajer.');onDone?.()}
- async function submit(){if(lock.current || !customer || !date)return;lock.current=true;setBusy(true);setMessage('');try{await send(source?'amend_visit':'propose_visit',{customer_id:customer,scheduled_date:date,notes,...(source?{schedule_id:source.id,expected_version:source.version}:{})});done()}catch(e){setMessage((e as Error).message)}finally{lock.current=false;setBusy(false)}}
+ const done=(result:TransactionResult,recovered=false)=>{client.invalidateQueries();setNotes('');setCustomer(source?.outlet_id??'');setMessage('Permintaan tersimpan. Menunggu persetujuan manajer.');onSubmitted?.({id:result.id,...(!recovered?{date}:{})});onDone?.()}
+ async function submit(){if(lock.current || !customer || !isVisitDate(date))return;lock.current=true;setBusy(true);setMessage('');try{const result=await send(source?'amend_visit':'propose_visit',{customer_id:customer,scheduled_date:date,notes,...(source?{schedule_id:source.id,expected_version:source.version}:{})});done(result)}catch(e){setMessage(visitSaveError(e))}finally{lock.current=false;setBusy(false)}}
  return <section className="bg-white rounded-xl border border-gray-200 p-5 space-y-3">
-  <TransactionRecovery send={send} onCommitted={done}/><h2 className="font-medium">{source?'Ajukan perubahan jadwal':'Ajukan kunjungan'}</h2>
+  <TransactionRecovery send={send} onCommitted={result=>done(result,true)}/><h2 className="font-medium">{source?'Ajukan perubahan jadwal':'Ajukan kunjungan'}</h2>
   {source && <p className="text-sm text-gray-500">Jadwal yang disetujui tetap berlaku sampai perubahan disetujui manajer.</p>}
   {customers.isError ? <p role="alert">Daftar toko belum tersedia. <button className={secondaryButton} onClick={()=>customers.refetch()}>Coba lagi</button></p> : <>
-   <label className="block">Toko<select className="block w-full border rounded p-2" aria-label="Toko" value={customer} onChange={e=>setCustomer(e.target.value)} disabled={busy||send.hasUnresolved()}><option value="">Pilih toko</option>{customers.data?.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+   <VisitCustomerSelect label="Toko" customers={customers.data??[]} value={customer} onChange={value=>{setCustomer(value);setMessage('')}} disabled={busy||send.hasUnresolved()}/>
    <label className="block">Tanggal kunjungan<input className="block border rounded p-2" aria-label="Tanggal kunjungan" type="date" value={date} onChange={e=>setDate(e.target.value)} disabled={busy||send.hasUnresolved()}/></label>
    <label className="block">Catatan permintaan<textarea className="block w-full border rounded p-2" aria-label="Catatan permintaan" maxLength={MAX_VISIT_NOTE_LENGTH} value={notes} onChange={e=>setNotes(e.target.value)} disabled={busy||send.hasUnresolved()}/></label>
-   <button className={primaryButton} disabled={busy||!customer||!date||send.hasUnresolved()} onClick={submit}>{source?'Ajukan perubahan':'Ajukan kunjungan'}</button>
+   <button className={primaryButton} disabled={busy||!customer||!isVisitDate(date)||send.hasUnresolved()} onClick={submit}>{busy?'Mengirim permintaan...':source?'Ajukan perubahan':'Ajukan kunjungan'}</button>
   </>}
-  {onDone && <button disabled={busy} className={`${secondaryButton} ml-3`} onClick={()=>confirmDiscard?confirmDiscard(onDone,{when:dirty}):onDone()}>Batal</button>}
+  {onDone && <button disabled={busy} className={`${secondaryButton} ml-3`} onClick={()=>confirmDiscard?confirmDiscard(()=>onDone(),{when:dirty}):onDone()}>Batal</button>}
   {message && <p role="status">{message}</p>}
  </section>
 }
@@ -56,7 +59,7 @@ export default function VisitRequestInbox() {
   if(lock.current)return
   lock.current=true;setBusy(true);setError('')
   try { await send(operation,{request_id:id,expected_version:version});client.invalidateQueries() }
-  catch(e) { setError((e as Error).message) }
+  catch(e) { setError(visitSaveError(e)) }
   finally { lock.current=false;setBusy(false) }
  }
  const total=requests.data?.total??0
@@ -85,18 +88,18 @@ export default function VisitRequestInbox() {
      const status=statuses[r.status]
      const canWithdraw=profile?.role==='sales_person' && r.requester_id===profile.id
      const canReview=['sales_manager','sales_head','executive'].includes(profile?.role??'') && r.requester_id!==profile?.id
-     return <article aria-labelledby={`visit-request-${r.id}`} className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm" key={r.id}>
+     return <article id={`visit-request-${r.id}`} aria-labelledby={`visit-request-title-${r.id}`} className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm" key={r.id}>
       <div className="p-5 sm:p-6">
        <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
          <p className="mb-1.5 text-xs font-medium text-gray-500">{r.kind==='amendment'?'Perubahan jadwal':'Kunjungan baru'}</p>
-         <h3 id={`visit-request-${r.id}`} className="break-words text-lg font-semibold text-brand-primary">{customers.data?.find(c=>c.id===r.customer_id)?.name??'Toko belum tersedia'}</h3>
+         <h3 id={`visit-request-title-${r.id}`} className="break-words text-lg font-semibold text-brand-primary">{customers.data?.find(c=>c.id===r.customer_id)?.name??'Toko belum tersedia'}</h3>
         </div>
         <span className={`inline-flex shrink-0 rounded-full border px-3 py-1 text-xs font-semibold ${status.style}`}>{status.label}</span>
        </div>
        <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-600">
         <p className="inline-flex items-center gap-2"><NavigationIcon name="calendar" className="h-4 w-4 text-gray-400"/><span>{parseCalendarDate(r.scheduled_date).toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'})}</span></p>
-        <p className="break-words">Pengaju: {people.data?.find(person=>person.id===r.requester_id)?.full_name??r.requester_id}</p>
+        <p className="break-words">Pengaju: {people.data?.find(person=>person.id===r.requester_id)?.full_name??'Nama belum tersedia'}</p>
        </div>
        {r.notes && <div className="mt-4 rounded-xl bg-brand-canvas px-4 py-3"><p className="mb-1 text-xs font-semibold text-gray-500">Catatan permintaan</p><p className="whitespace-pre-wrap break-words text-sm leading-6 text-gray-700">{r.notes}</p></div>}
       </div>

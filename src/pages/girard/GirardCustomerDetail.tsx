@@ -185,7 +185,7 @@ function CustomerDetailView({ id, identity, enabled }: { id?: string; identity: 
                 <p className="text-xs text-gray-400 mb-1">Penjualan (3bl)</p>
                 <p className="text-sm font-semibold text-gray-900">
                   {statsError || (!statsLoading && !stats) ? 'Tidak tersedia' : statsLoading || !stats ? 'Memuat...' : !/^0(?:\.0+)?$/.test(String(stats.total_sales_3mo))
-                    ? `Rp ${formatMoney(String(stats.total_sales_3mo), 'millions')}M`
+                    ? `Rp ${formatMoney(String(stats.total_sales_3mo), 'full')}`
                     : 'Rp 0'}
                 </p>
               </div>

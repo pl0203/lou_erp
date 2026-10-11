@@ -1,3 +1,5 @@
+import VisitCustomerSelect from '../../components/VisitCustomerSelect'
+import { isVisitDate, visitDateLabel, visitAssigneeLabel, isVisitScheduleConflict, visitSaveError } from '../../lib/visitUsability'
 import TransactionRecovery from '../../components/TransactionRecovery'
 import { useVisitPlanningSender } from '../../lib/visitTransactions'
 import { useUnsavedChanges } from '../../lib/useUnsavedChanges'
@@ -9,7 +11,7 @@ import { singleRelation } from '../../lib/relations'
 import { useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
-import { useNavigate } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../lib/AuthContext'
 import GirardNav from '../../components/GirardNav'
 
@@ -25,6 +27,8 @@ type Customer = {
 type SalesPerson = {
   id: string
   full_name: string
+  role?: string
+  manager_id?: string | null
 }
 
 type Schedule = {
@@ -37,6 +41,7 @@ type Schedule = {
   notes: string | null
   customers: { id: string; name: string; city: string | null }
   users: { id: string; full_name: string }
+  outlet_visits?: { id: string }[]
 }
 
 type ScheduleForm = {
@@ -73,13 +78,13 @@ async function fetchMyCustomers(_managerId: string, role: string, signal?: Abort
 async function fetchMyTeam(managerId: string, role: string, signal?: AbortSignal): Promise<SalesPerson[]> {
   if (role === 'executive' || role === 'sales_head') {
     const roles = role === 'executive' ? ['sales_head', 'sales_manager', 'sales_person', 'executive'] : ['sales_manager', 'sales_person', 'sales_head']
-    const data = await readCompleteQuery((offset, limit) => supabase.from('users').select('id, full_name', { count: 'exact' })
+    const data = await readCompleteQuery((offset, limit) => supabase.from('users').select('id, full_name, role, manager_id', { count: 'exact' })
       .in('role', roles).eq('is_active', true).order('id').range(offset, offset + limit - 1), row => row.id, signal)
     return data.sort((a, b) => a.full_name.localeCompare(b.full_name))
   }
-  const team = await readCompleteQuery((offset, limit) => supabase.from('users').select('id, full_name', { count: 'exact' })
+  const team = await readCompleteQuery((offset, limit) => supabase.from('users').select('id, full_name, role, manager_id', { count: 'exact' })
     .eq('manager_id', managerId).eq('is_active', true).order('id').range(offset, offset + limit - 1), row => row.id, signal)
-  let selfQuery = supabase.from('users').select('id, full_name').eq('id', managerId)
+  let selfQuery = supabase.from('users').select('id, full_name, role, manager_id').eq('id', managerId)
   if (signal) selfQuery = selfQuery.abortSignal(signal)
   const { data: self, error } = await selfQuery.single()
   if (error) throw error
@@ -89,7 +94,7 @@ async function fetchMyTeam(managerId: string, role: string, signal?: AbortSignal
 async function fetchSchedules(_managerId: string, role: string, dates: string[], signal?: AbortSignal): Promise<Schedule[]> {
   const read = (ids?: string[]) => readCompleteQuery((offset, limit) => {
     let query = supabase.from('sales_schedules')
-      .select('id, version, outlet_id, sales_person_id, scheduled_date, status, notes, created_at, customers!sales_schedules_outlet_id_fkey(id, name, city), users!sales_schedules_sales_person_id_fkey(id, full_name)', { count: 'exact' })
+      .select('id, version, outlet_id, sales_person_id, scheduled_date, status, notes, created_at, outlet_visits(id), customers!sales_schedules_outlet_id_fkey(id, name, city), users!sales_schedules_sales_person_id_fkey(id, full_name)', { count: 'exact' })
       .in('scheduled_date', dates).order('scheduled_date').order('created_at').order('id').range(offset, offset + limit - 1)
     if (ids) query = query.in('outlet_id', ids)
     return query
@@ -125,7 +130,13 @@ function ManagerScheduleContent() {
   const queryClient = useQueryClient()
   const dateRange = getNext30Days()
 
-  const [selectedDate, setSelectedDate] = useState(dateRange[0])
+  const [params] = useSearchParams()
+  const [selectedDate, setSelectedDate] = useState(() => isVisitDate(params.get('date') ?? '') ? params.get('date')! : dateRange[0])
+  const [personFilter, setPersonFilter] = useState(params.get('person') ?? '')
+  const [managerFilter, setManagerFilter] = useState(params.get('manager') ?? '')
+  const [statusFilter, setStatusFilter] = useState(params.get('status') === 'visited' ? 'visited' : '')
+  const [saved, setSaved] = useState<{ id: string; date: string; customer: string } | null>(null)
+  const [validation, setValidation] = useState('')
   const dates = dateRange.includes(selectedDate) ? dateRange : [...dateRange, selectedDate]
   const [showForm, setShowForm] = useState(false)
   const [editingVersion, setEditingVersion] = useState<number | null>(null)
@@ -154,30 +165,25 @@ function ManagerScheduleContent() {
     enabled: !!profile?.id,
   })
 
-  const schedules = allSchedules?.filter(s => s.scheduled_date === selectedDate) ?? []
-
-  const navigate = useNavigate()
+  const scopedSchedules = allSchedules?.filter(s => (!personFilter || s.sales_person_id === personFilter) && (!managerFilter || s.sales_person_id === managerFilter || team?.find(person => person.id === s.sales_person_id)?.manager_id === managerFilter) && (!statusFilter || !!s.outlet_visits?.length)) ?? []
+  const schedules = scopedSchedules.filter(schedule => schedule.scheduled_date === selectedDate)
+  const saveConfirmed = (result: { id: string }) => {
+    setSaved({ id: result.id, date: form.scheduled_date, customer: customers?.find(customer => customer.id === form.outlet_id)?.name ?? 'Pelanggan' })
+    setSelectedDate(form.scheduled_date)
+    queryClient.invalidateQueries()
+    setShowForm(false)
+    setEditingId(null)
+    setForm(EMPTY_FORM)
+  }
 
   const createMutation = useMutation({
     mutationFn: () => write('create_schedule', { customer_id: form.outlet_id, sales_person_id: form.sales_person_id, scheduled_date: form.scheduled_date, notes: form.notes }),
-    onSuccess: () => {
-      queryClient.invalidateQueries()
-      setShowForm(false)
-      setForm(EMPTY_FORM)
-      if (form.sales_person_id === profile?.id) {
-        navigate('/girard/my-visits')
-      }
-    },
+    onSuccess: saveConfirmed,
   })
 
   const updateMutation = useMutation({
     mutationFn: () => write('edit_schedule', { schedule_id: editingId, expected_version: editingVersion, customer_id: form.outlet_id, sales_person_id: form.sales_person_id, scheduled_date: form.scheduled_date, notes: form.notes }),
-    onSuccess: () => {
-      queryClient.invalidateQueries()
-      setShowForm(false)
-      setEditingId(null)
-      setForm(EMPTY_FORM)
-    },
+    onSuccess: saveConfirmed,
   })
 
   const deleteMutation = useMutation({
@@ -188,7 +194,9 @@ function ManagerScheduleContent() {
     },
   })
 
+  const resetErrors = () => { createMutation.reset(); updateMutation.reset(); setValidation('') }
   const openCreate = () => {
+    resetErrors()
     setEditingId(null)
     setInitialForm({ ...EMPTY_FORM, scheduled_date: selectedDate })
     setForm({ ...EMPTY_FORM, scheduled_date: selectedDate })
@@ -196,6 +204,7 @@ function ManagerScheduleContent() {
   }
 
   const openEdit = (s: Schedule) => {
+    resetErrors()
     setEditingId(s.id)
     setEditingVersion(s.version)
     setInitialForm({ outlet_id: s.outlet_id, sales_person_id: s.sales_person_id, scheduled_date: s.scheduled_date, notes: s.notes ?? '' })
@@ -210,9 +219,10 @@ function ManagerScheduleContent() {
 
   const handleSave = () => {
     if (createMutation.isPending || updateMutation.isPending || send.hasUnresolved()) return
-    if (!form.outlet_id) return alert('Please select a customer.')
-    if (!form.sales_person_id) return alert('Please select a sales person.')
-    if (!form.scheduled_date) return alert('Please select a date.')
+    if (!form.outlet_id) return setValidation('Pilih pelanggan terlebih dahulu.')
+    if (!form.sales_person_id) return setValidation('Pilih petugas kunjungan terlebih dahulu.')
+    if (!isVisitDate(form.scheduled_date)) return setValidation('Pilih tanggal kunjungan yang valid.')
+    setValidation('')
     if (editingId) {
       updateMutation.mutate()
     } else {
@@ -220,6 +230,9 @@ function ManagerScheduleContent() {
     }
   }
 
+  const saveError = createMutation.error || updateMutation.error
+  const conflict = isVisitScheduleConflict(saveError)
+  const conflictSchedule = conflict ? allSchedules?.find(schedule => schedule.outlet_id === form.outlet_id && schedule.scheduled_date === form.scheduled_date && schedule.id !== editingId) : undefined
   const deleteTarget = allSchedules?.find(s => s.id === deleteId)
 
   // Group dates by week for the date picker tabs
@@ -238,7 +251,7 @@ function ManagerScheduleContent() {
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Jadwal</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Tugaskan kunjungan untuk tim anda
+            Tugaskan kunjungan untuk tim Anda. Hanya jadwal sesuai akses Anda yang ditampilkan.
           </p>
         </div>
         <button
@@ -249,12 +262,18 @@ function ManagerScheduleContent() {
         </button>
       </div>
 
-      <label className="block px-4 pt-4">Lihat tanggal <input type="date" value={selectedDate} onChange={e => { if (e.target.value) setSelectedDate(e.target.value) }} /></label>
+      <label className="block px-4 pt-4">Lihat tanggal <input type="date" value={selectedDate} onChange={e => { if (isVisitDate(e.target.value)) setSelectedDate(e.target.value) }} /></label>
+      <div className="px-4 md:px-8 py-3 space-y-2">
+        <p className="text-sm text-gray-700">Jadwal tim · {visitDateLabel(selectedDate)} · {personFilter ? team?.find(person => person.id === personFilter)?.full_name ?? 'Petugas dipilih (detail belum tersedia)' : managerFilter ? `Tim ${team?.find(person => person.id === managerFilter)?.full_name ?? 'manajer dipilih'}` : 'Semua petugas yang dapat Anda akses'} · {statusFilter ? 'Sudah dikunjungi' : 'Semua status'}</p>
+        <label className="text-sm text-gray-700">Filter petugas <select aria-label="Filter petugas" value={personFilter} onChange={event => setPersonFilter(event.target.value)} className="rounded border p-2"><option value="">Semua petugas</option>{team?.map(person => <option key={person.id} value={person.id}>{visitAssigneeLabel(person, team)}</option>)}</select></label>
+        {(managerFilter || statusFilter || personFilter) && <button className="ml-3 text-sm underline" onClick={() => { setPersonFilter(''); setManagerFilter(''); setStatusFilter('') }}>Hapus filter tim/petugas/status</button>}
+        {saved && <div role="status" className="rounded-xl border border-green-200 bg-green-50 p-3 text-sm"><p>Kunjungan tersimpan: {saved.customer} · {visitDateLabel(saved.date)}.</p><a className="underline" href={`/girard/visit/${saved.id}`}>Lihat kunjungan tersimpan</a></div>}
+      </div>
       {/* Date tabs — next 7 days */}
       <div className="bg-white border-b border-gray-100 px-4 md:px-8">
         <div className="flex gap-1 overflow-x-auto">
           {weekDates.map((date, i) => {
-            const daySchedules = allSchedules?.filter(s => s.scheduled_date === date) ?? []
+            const daySchedules = scopedSchedules.filter(schedule => schedule.scheduled_date === date)
             const isSelected = selectedDate === date
             const d = parseCalendarDate(date)
             return (
@@ -272,7 +291,7 @@ function ManagerScheduleContent() {
                 </span>
                 <span className="text-lg font-semibold mt-0.5">{d.getDate()}</span>
                 <span className={`text-xs mt-0.5 ${isSelected ? 'text-green-500' : 'text-gray-400'}`}>
-                  {daySchedules.length} visit{daySchedules.length !== 1 ? 's' : ''}
+                  {daySchedules.length} kunjungan
                 </span>
               </button>
             )
@@ -302,7 +321,7 @@ function ManagerScheduleContent() {
 
     {!isLoading && schedules.length === 0 && (
     <div className="text-center py-24">
-        <p className="text-gray-400 text-sm">Tidak ada kunjungan yang dijadwalkan untuk hari ini.</p>
+        <p className="text-gray-400 text-sm">Tidak ada kunjungan yang dijadwalkan untuk {visitDateLabel(selectedDate)} pada filter ini.</p>
         <button
         onClick={openCreate}
         className="mt-4 min-h-11 cursor-pointer rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-brand-primary transition-colors hover:bg-brand-tint"
@@ -319,9 +338,9 @@ function ManagerScheduleContent() {
                 <tr className="bg-gray-50 border-b border-gray-100">
                   <th className="text-left px-5 py-3 font-medium text-gray-500">Pelanggan</th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500 hidden md:table-cell">Lokasi</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Sales Person</th>
+                  <th className="text-left px-5 py-3 font-medium text-gray-500">Petugas kunjungan</th>
                   <th className="text-left px-5 py-3 font-medium text-gray-500 hidden md:table-cell">Status</th>
-                  <th className="text-right px-5 py-3 font-medium text-gray-500">Actions</th>
+                  <th className="text-right px-5 py-3 font-medium text-gray-500">Tindakan</th>
                 </tr>
               </thead>
               <tbody>
@@ -345,10 +364,11 @@ function ManagerScheduleContent() {
                           : s.status === 'missed' ? 'bg-red-100 text-red-700'
                           : 'bg-yellow-100 text-yellow-700'
                         }`}>
-                          {s.status}
+                          {s.status === 'completed' ? 'Selesai' : s.status === 'missed' ? 'Terlewat' : 'Menunggu kunjungan'}
                         </span>
                       </td>
                       <td className="px-5 py-4 text-right">
+                        <a className="mr-2 inline-block py-2 text-xs font-semibold text-brand-primary underline" href={`/girard/visit/${s.id}`}>Lihat rincian kunjungan</a>
                         {editable ? (
                           <>
                             <button
@@ -393,9 +413,10 @@ function ManagerScheduleContent() {
                       : s.status === 'missed' ? 'bg-red-100 text-red-700'
                       : 'bg-yellow-100 text-yellow-700'
                     }`}>
-                      {s.status}
+                      {s.status === 'completed' ? 'Selesai' : s.status === 'missed' ? 'Terlewat' : 'Menunggu kunjungan'}
                     </span>
                   </div>
+                  <a className="mb-2 inline-block text-sm font-semibold text-brand-primary underline" href={`/girard/visit/${s.id}`}>Lihat rincian kunjungan</a>
                   {s.notes && (
                     <p className="text-xs text-gray-400 mb-2">{s.notes}</p>
                   )}
@@ -417,7 +438,7 @@ function ManagerScheduleContent() {
                   )}
                   {!editable && (
                     <p className="text-xs text-gray-300 mt-2 pt-2 border-t border-gray-100">
-                      Terkunci — tidak bisa diubah karena sudah dekat dengan tanggal kunjungan.
+                      Terkunci karena bukti kunjungan sudah tersimpan.
                     </p>
                   )}
                 </div>
@@ -433,23 +454,12 @@ function ManagerScheduleContent() {
           <div className="bg-white rounded-xl w-full max-w-md shadow-xl">
             <div className="px-6 py-5 border-b border-gray-100">
               <h3 className="text-base font-semibold text-gray-900">
-                {editingId ? 'Edit Schedule' : 'Assign Visit'}
+                {editingId ? 'Ubah jadwal kunjungan' : 'Tugaskan kunjungan'}
               </h3>
             </div>
             <fieldset disabled={createMutation.isPending || updateMutation.isPending || send.hasUnresolved()} className="px-6 py-4 space-y-4">
               <div>
-                <label className="block text-sm text-gray-600 mb-1">Pelanggan *</label>
-                <select
-                  value={form.outlet_id}
-                  onChange={e => setForm(p => ({ ...p, outlet_id: e.target.value }))}
-                  disabled={createMutation.isPending || updateMutation.isPending || send.hasUnresolved()}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary disabled:bg-gray-50 disabled:text-gray-400"
-                >
-                  <option value="">Pilih Pelanggan...</option>
-                  {customers?.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
+                <VisitCustomerSelect customers={customers ?? []} value={form.outlet_id} onChange={outlet_id => { resetErrors(); setForm(previous => ({ ...previous, outlet_id })) }} disabled={createMutation.isPending || updateMutation.isPending || send.hasUnresolved()} />
                 {!customers?.length && (
                   <p className="text-xs text-orange-500 mt-1">
                     Belum ada toko/customer yang ditugaskan kepada Anda. Hubungi Head of Sales.
@@ -458,15 +468,15 @@ function ManagerScheduleContent() {
               </div>
 
               <div>
-                <label className="block text-sm text-gray-600 mb-1">Sales Person *</label>
-                <select
+                <label className="block text-sm text-gray-600 mb-1">Petugas kunjungan *</label>
+                <select aria-label="Petugas kunjungan"
                   value={form.sales_person_id}
                   onChange={e => setForm(p => ({ ...p, sales_person_id: e.target.value }))}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                 >
                   <option value="">Pilih anggota team sales anda...</option>
                   {team?.map(sp => (
-                    <option key={sp.id} value={sp.id}>{sp.full_name}</option>
+                    <option key={sp.id} value={sp.id}>{visitAssigneeLabel(sp, team ?? [])}</option>
                   ))}
                 </select>
                 {!team?.length && (
@@ -477,10 +487,10 @@ function ManagerScheduleContent() {
               </div>
 
               <div>
-                <label className="block text-sm text-gray-600 mb-1">Date *</label>
+                <label className="block text-sm text-gray-600 mb-1">Tanggal *</label>
                 <input type="date" aria-label="Tanggal jadwal"
                   value={form.scheduled_date}
-                  onChange={e => setForm(p => ({ ...p, scheduled_date: e.target.value }))}
+                  onChange={e => { resetErrors(); setForm(p => ({ ...p, scheduled_date: e.target.value })) }}
                   disabled={createMutation.isPending || updateMutation.isPending || send.hasUnresolved()}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
                 />
@@ -488,9 +498,9 @@ function ManagerScheduleContent() {
 
               <div>
                 <label className="block text-sm text-gray-600 mb-1">
-                  Notes <span className="text-gray-400">(optional)</span>
+                  Catatan <span className="text-gray-600">(opsional)</span>
                 </label>
-                <textarea
+                <textarea aria-label="Catatan jadwal"
                   maxLength={2000}
                   value={form.notes}
                   onChange={e => setForm(p => ({ ...p, notes: e.target.value }))}
@@ -502,10 +512,11 @@ function ManagerScheduleContent() {
             </fieldset>
             <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
               <button
+                disabled={createMutation.isPending || updateMutation.isPending}
                 onClick={() => unsaved.confirmDiscard(() => { setShowForm(false); setEditingId(null); setForm(EMPTY_FORM) })}
                 className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
               >
-                Cancel
+                Batal
               </button>
               <button
                 onClick={handleSave}
@@ -513,15 +524,14 @@ function ManagerScheduleContent() {
                 className="px-4 py-2 text-sm font-medium bg-brand-primary text-white rounded-lg hover:bg-brand-hover disabled:opacity-50"
               >
                 {createMutation.isPending || updateMutation.isPending
-                  ? 'Saving...'
-                  : editingId ? 'Save Changes' : 'Assign'}
+                  ? 'Menyimpan...'
+                  : editingId ? 'Simpan perubahan' : 'Tugaskan'}
               </button>
             </div>
-            {(createMutation.isError || updateMutation.isError) && (
-              <p className="text-red-500 text-xs px-6 pb-4 text-right">
-                {((createMutation.error || updateMutation.error) as Error)?.message}
-              </p>
-            )}
+            {(validation || saveError) && <div role="alert" className="px-6 pb-4 text-sm text-red-700">
+              <p>{validation || visitSaveError(saveError)}</p>
+              {conflict && <><p className="mt-1">Detail jadwal hanya ditampilkan sesuai akses Anda. Jika tidak terlihat, hubungi manajer atau pilih tanggal lain.</p>{conflictSchedule && <a className="mt-2 inline-block underline" href={`/girard/visit/${conflictSchedule.id}`}>Lihat jadwal yang sudah ada: {conflictSchedule.users?.full_name ?? 'Petugas kunjungan'} · {visitDateLabel(conflictSchedule.scheduled_date)}</a>}</>}
+            </div>}
           </div>
         </div>
       )}
