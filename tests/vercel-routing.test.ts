@@ -12,7 +12,7 @@ test('Vercel serves the SPA entry point for fresh client-side deep links', () =>
 })
 
 test('SPA routing preserves database preview deployment and backend guard configuration', () => {
-  expect(config.git).toEqual({ deploymentEnabled: { 'fix/pilot-database': true, 'fix/po-admin-director': false, 'fix/padiwan-sidebar-theme': false, 'fix/demo-revisions': false, 'fix/pilot-scale-sql': false, 'ci/customer-categories-postgres': false, 'ci/ihr-leave-postgres': false, 'feat/consignment-orders-reviewed-20261010': false, 'fix/usability-findings-local-20261010': false } })
+  expect(config.git).toEqual({ deploymentEnabled: { 'fix/pilot-database': true, 'fix/po-admin-director': false, 'fix/padiwan-sidebar-theme': false, 'fix/demo-revisions': false, 'fix/pilot-scale-sql': false, 'ci/customer-categories-postgres': false, 'ci/ihr-leave-postgres': false, 'feat/consignment-orders-reviewed-20261010': false, 'fix/usability-findings-local-20261010': false, 'feat/padiwan-ui-reviewed-checkpoint-20261012': false } })
   const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
   expect(pkg.scripts.build).toBe('node scripts/verify-preview-backend.mjs && vite build')
 })
@@ -35,4 +35,8 @@ test('reviewed consignment-orders publication branch has an explicit no-auto-dep
 
 test('usability review branch cannot deploy before explicit staging approval', () => {
   expect(config.git.deploymentEnabled['fix/usability-findings-local-20261010']).toBe(false)
+})
+
+test('reviewed Padiwan UI checkpoint cannot deploy before explicit staging approval', () => {
+  expect(config.git.deploymentEnabled['feat/padiwan-ui-reviewed-checkpoint-20261012']).toBe(false)
 })
