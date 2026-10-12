@@ -2,7 +2,7 @@ import React from 'react'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 const state=vi.hoisted(()=>({customer:null as any}))
-vi.mock('react-router-dom',()=>({useNavigate:()=>()=>{},useParams:()=>({scheduleId:'s'}),useBlocker:()=>({state:'unblocked'}),useBeforeUnload:()=>{}}))
+vi.mock('react-router-dom',()=>({Link: ({ to, children, ...props }: any) => <a href={to} {...props}>{children}</a>,useNavigate:()=>()=>{},useParams:()=>({scheduleId:'s'}),useBlocker:()=>({state:'unblocked'}),useBeforeUnload:()=>{}}))
 vi.mock('../src/components/StorePOContext',()=>({default:()=>null}))
 vi.mock('../src/components/GirardNav',()=>({default:()=>null}))
 vi.mock('../src/lib/AuthContext',()=>({useAuth:()=>({profile:{id:'u'}})}))

@@ -5,6 +5,7 @@ import { mount, state, ids, change, chooseCustomer } from './ui-harness';
 import COForm from '../../src/pages/athel/co/COForm';
 import CODetail from '../../src/pages/athel/co/CODetail';
 import COLayout from '../../src/pages/athel/co/COLayout';
+import COOrders from '../../src/pages/athel/co/COOrders';
 import { COFreshness, CORecoveryPanel } from '../../src/components/co/COShared';
 import type { COTransactionSender } from '../../src/lib/co/transactions';
 
@@ -111,8 +112,17 @@ test.each([
 
 test('CO tabs share Indonesian labels across report and stock destinations', async () => {
     const { mountRoutes } = await import('./ui-harness');
-    mountRoutes([{ path: '/athel/co', element: <COLayout/>, children: [{ index: true, element: <p>List</p> }] }], '/athel/co');
-    expect(screen.getByRole('heading', { name: 'Pesanan konsinyasi (CO)' })).toBeTruthy();
+    mountRoutes([{ path: '/athel/co', element: <COLayout/>, children: [{ index: true, element: <COOrders/> }] }], '/athel/co');
+    const main = screen.getByRole('main');
+    const tabs = screen.getByRole('navigation', { name: 'Bagian pesanan konsinyasi' });
+    const shell = tabs.closest('header')!;
+    expect(screen.getAllByRole('banner')).toContain(shell);
+    expect(within(shell).getByText('Pesanan konsinyasi (CO)', { selector: 'p' })).toBeTruthy();
+    expect(within(main).getByRole('heading', { level: 1, name: 'Pesanan Konsinyasi' })).toBeTruthy();
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    expect(screen.getAllByRole('main')).toHaveLength(1);
+    expect(main.id).toBe('main-content');
+    await within(main).findByRole('article');
     expect(screen.getByRole('link', { name: 'Pesanan CO' }).getAttribute('aria-current')).toBe('page');
     expect(screen.getByRole('link', { name: 'Laporan penjualan bulanan' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Stok pelanggan' })).toBeTruthy();

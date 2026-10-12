@@ -280,3 +280,15 @@ test('promotion cards keep absent legacy stock separate from managed zero withou
   expect(screen.queryByText('Exhausted')).toBeNull(); expect(screen.queryByText('Stok tersedia: 0')).toBeNull()
   const badge = screen.getByText('Legacy · aktif'); expect(badge.tagName).toBe('SPAN'); expect(badge.classList.contains('ui-status-badge')).toBe(true); expect(badge.getAttribute('role')).toBeNull()
 })
+
+
+test.each([{ name: 'GirardCustomers', Page: GirardCustomers }, { name: 'ManagerCustomers', Page: ManagerCustomers }])('$name location and visit frequency retain 14px data sizing and exact values', async ({ Page }) => {
+  mount(Page); await waitFor(() => expect(screen.queryAllByText(/^Memuat/)).toHaveLength(0))
+  const table = screen.getByRole('table'); expect(table.classList.contains('text-sm')).toBe(true)
+  const headers = within(table).getAllByRole('columnheader')
+  const indices = headers.flatMap((header, index) => ['Lokasi', 'Frekuensi Kunjungan'].includes(header.textContent ?? '') ? [index] : [])
+  expect(indices).toHaveLength(2)
+  for (const row of table.querySelectorAll('tbody tr')) for (const index of indices) {
+    const cell = row.children[index]; expect(cell.classList.contains('text-[13px]')).toBe(false); expect(cell.textContent?.trim()).not.toBe('')
+  }
+})

@@ -1,3 +1,5 @@
+import { Field } from '../ui/Field';
+import { Button } from '../ui/Button';
 import COEvidenceAttachment from './COEvidenceAttachment';
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
@@ -6,8 +8,8 @@ import type { COTransactionSender } from '../../lib/co/transactions';
 import { previewCOOperation } from '../../lib/co/rpc';
 import { useBeforeSignOut } from '../../lib/AuthContext';
 import { useUnsavedChanges } from '../../lib/useUnsavedChanges';
-import ReturnedDateDialog from '../ReturnedDateDialog';
-import { CO_BUTTON, CO_PRIMARY, CO_INPUT, COFailure, CORecoveryPanel } from './COShared';
+import { Dialog } from '../ui/Dialog';
+import { CO_INPUT, COFailure, CORecoveryPanel } from './COShared';
 import COChangePreview, { readAllCOImpacts } from './COChangePreview';
 import type { COReviewSnapshot } from './COChangePreview';
 import { useCOReportWorkspace, COReportFields, reportBinding, isCOAuthorityError } from './COReportWorkspace';
@@ -177,18 +179,18 @@ function ReviewBody({ operation, customerId, source, selectedMonth, sender, curr
             epoch.current++;
         }}
     /> : null;
-    const body = <><h2 id="co-correction-title" className="font-semibold text-lg">Tinjau perubahan tercatat</h2><p className="text-xs mt-2 break-all">Operasi {operation} · sumber {String(source.report_head_id ?? source.delivery_head_id ?? source.return_head_id ?? source.draft_id)}{source.original_revision_id ? ` · revisi asli ${source.original_revision_id}` : ''}{source.expected_report_version ?? source.expected_delivery_version ?? source.expected_return_version ? ` · versi asli ${source.expected_report_version ?? source.expected_delivery_version ?? source.expected_return_version}` : ''}</p><p className="text-xs mt-2">Semua periode, stok, pendapatan dan atribusi diterapkan bersama. Riwayat asli tetap tersimpan.</p><div className="space-y-4 mt-4">{readFailure}{error && <COFailure error={error}/>}<CORecoveryPanel confirmed={!!confirmed} pending={pending} sender={sender} current={() => live() && !pending && !busy.current} accept={recover}/>{monthEditor ? monthEditor : <>
- <label className="block text-sm">Alasan perubahan<textarea className={CO_INPUT} aria-label="Alasan perubahan" disabled={locked} value={reason} onChange={e => { if (locked)
-            return; setReason(e.target.value); setReview(null); setContext(null); setCompleted({}); setAck([]); setRequired([]); setReopen([]); epoch.current++; }}/></label>
- {required.map(m => <button type="button" className={CO_BUTTON} key={m} disabled={locked || !context} onClick={() => { setActiveMonth(m); setReview(null); epoch.current++; }}>Lengkapi periode {m.slice(0, 7)}</button>)}{Object.keys(completed).length > 0 && <p className="text-sm">Draft periode siap dalam paket: {Object.keys(completed).map(m => m.slice(0, 7)).join(', ')}. Tinjau ulang seluruh paket.</p>}
- {reopen.length > 0 && <div className="rounded-lg bg-amber-50 p-3 text-sm"><p>{reopen.length} CO perlu dibuka ulang, termasuk stok nol dengan pengiriman/laporan belum lengkap.</p><div className="max-h-40 overflow-y-auto">{reopen.map(r => <p key={r.co_id} className="break-all">{r.co_id} · versi {r.expected_co_version ?? 'Tidak tersedia'}</p>)}</div><label><input type="checkbox" checked={exactAck()} disabled={locked || reopen.some(r => !r.expected_co_version)} onChange={e => { setAck(e.target.checked ? reopen.map(r => ({ co_id: r.co_id, expected_co_version: r.expected_co_version! })) : []); setReview(null); epoch.current++; }}/> Saya menyetujui pembukaan ulang tepat {reopen.length} CO dan versi yang tercantum</label></div>}
- <button className={CO_PRIMARY} disabled={locked || !reason.trim()} onClick={() => void inspect()}>Tinjau semua dampak</button>{review && <COChangePreview snapshot={review} selectedMonth={selectedMonth} onAuthorityFailure={rejectPreviewAuthority}/>} {review?.header.can_post && exactAck() && !required.length && <button className={CO_PRIMARY} disabled={locked} onClick={() => void apply()}>Terapkan perubahan</button>}</>}
- {confirmed && <div role="alert"><p>Perubahan sudah tersimpan. Periksa hasil sumber sebelum membuat perubahan baru.</p><button className={CO_BUTTON} disabled={pending} onClick={() => { if (busy.current || !live())
+    const body = <><h2 id="co-correction-title" className="font-semibold text-lg">Tinjau perubahan tercatat</h2><p className="text-[13px] mt-2 break-all">Operasi {operation} · sumber {String(source.report_head_id ?? source.delivery_head_id ?? source.return_head_id ?? source.draft_id)}{source.original_revision_id ? ` · revisi asli ${source.original_revision_id}` : ''}{source.expected_report_version ?? source.expected_delivery_version ?? source.expected_return_version ? ` · versi asli ${source.expected_report_version ?? source.expected_delivery_version ?? source.expected_return_version}` : ''}</p><p className="text-[13px] mt-2">Semua periode, stok, pendapatan dan atribusi diterapkan bersama. Riwayat asli tetap tersimpan.</p><div className="space-y-4 mt-4">{readFailure}{error && <COFailure error={error}/>}<CORecoveryPanel confirmed={!!confirmed} pending={pending} sender={sender} current={() => live() && !pending && !busy.current} accept={recover}/>{monthEditor ? monthEditor : <>
+ <Field id="co-correction-reason" label="Alasan perubahan">{control => <textarea {...control} className={CO_INPUT} aria-label="Alasan perubahan" disabled={locked} value={reason} onChange={e => { if (locked)
+            return; setReason(e.target.value); setReview(null); setContext(null); setCompleted({}); setAck([]); setRequired([]); setReopen([]); epoch.current++; }}/>}</Field>
+ {required.map(m => <Button type="button" variant="secondary" key={m} disabled={locked || !context} onClick={() => { setActiveMonth(m); setReview(null); epoch.current++; }}>Lengkapi periode {m.slice(0, 7)}</Button>)}{Object.keys(completed).length > 0 && <p className="text-base">Draft periode siap dalam paket: {Object.keys(completed).map(m => m.slice(0, 7)).join(', ')}. Tinjau ulang seluruh paket.</p>}
+ {reopen.length > 0 && <div className="rounded-lg bg-amber-50 p-3 text-base"><p>{reopen.length} CO perlu dibuka ulang, termasuk stok nol dengan pengiriman/laporan belum lengkap.</p><div className="max-h-40 overflow-y-auto">{reopen.map(r => <p key={r.co_id} className="break-all">{r.co_id} · versi {r.expected_co_version ?? 'Tidak tersedia'}</p>)}</div><label><input type="checkbox" checked={exactAck()} disabled={locked || reopen.some(r => !r.expected_co_version)} onChange={e => { setAck(e.target.checked ? reopen.map(r => ({ co_id: r.co_id, expected_co_version: r.expected_co_version! })) : []); setReview(null); epoch.current++; }}/> Saya menyetujui pembukaan ulang tepat {reopen.length} CO dan versi yang tercantum</label></div>}
+ <Button disabled={locked || !reason.trim()} onClick={() => void inspect()}>Tinjau semua dampak</Button>{review && <COChangePreview snapshot={review} selectedMonth={selectedMonth} onAuthorityFailure={rejectPreviewAuthority}/>} {review?.header.can_post && exactAck() && !required.length && <Button disabled={locked} onClick={() => void apply()}>Terapkan perubahan</Button>}</>}
+ {confirmed && <div role="alert"><p>Perubahan sudah tersimpan. Periksa hasil sumber sebelum membuat perubahan baru.</p><Button variant="secondary" disabled={pending} onClick={() => { if (busy.current || !live())
         return; busy.current = true; setPending(true); void onAccepted(confirmed).then(ok => { if (live() && ok)
         setConfirmed(null); }).catch(setError).finally(() => { busy.current = false; if (live())
-        setPending(false); }); }}>Buka hasil perubahan tersimpan</button></div>}
- <button className={CO_BUTTON} disabled={anyPending} onClick={onClose}>Kembali ke sumber</button></div></>;
-    return embedded ? <section aria-labelledby="co-correction-title">{body}</section> : <ReturnedDateDialog labelledBy="co-correction-title" pending={anyPending} onClose={onClose} returnFocus={returnFocus} fallbackFocus={() => null}>{body}</ReturnedDateDialog>;
+        setPending(false); }); }}>Buka hasil perubahan tersimpan</Button></div>}
+ <Button variant="secondary" disabled={anyPending} onClick={onClose}>Kembali ke sumber</Button></div></>;
+    return embedded ? <section aria-labelledby="co-correction-title">{body}</section> : <Dialog labelledBy="co-correction-title" pending={anyPending} onClose={onClose} returnFocus={returnFocus} fallbackFocus={() => null}>{body}</Dialog>;
 }
 function ReviewMonth({
     customerId, month, context, blocked, current, confirmDiscard, onAuthorityFailure, onDirty, onPending, onCancel, onCompleted,
@@ -262,7 +264,7 @@ function ReviewMonth({
     if (work.denied) return <COFailure error={work.authorityError} retry={work.retryAuthority}/>;
     return <div className="space-y-3">
         <h3>Lengkapi periode {month.slice(0, 7)}</h3>
-        <p className="text-xs">Isian tersimpan dipertahankan. SKU tambahan wajib diisi, termasuk nol eksplisit.</p>
+        <p className="text-[13px]">Isian tersimpan dipertahankan. SKU tambahan wajib diisi, termasuk nol eksplisit.</p>
         <CORecoveryPanel
             confirmed={!!work.confirmed}
             pending={work.pending}
@@ -272,36 +274,36 @@ function ReviewMonth({
         />
         {work.confirmed && <div role="alert">
             <p>Draft periode sudah tersimpan. Baca hasilnya sebelum melanjutkan; isian yang belum terkirim tetap dipertahankan.</p>
-            <button className={CO_BUTTON} disabled={work.pending || blocked}
-                onClick={() => ignore(retryCommitted())}>Buka hasil laporan tersimpan</button>
+            <Button variant="secondary" disabled={work.pending || blocked}
+                onClick={() => ignore(retryCommitted())}>Buka hasil laporan tersimpan</Button>
         </div>}
-        {!ready ? <button className={CO_BUTTON}
+        {!ready ? <Button variant="secondary"
             disabled={blocked || work.pending || !work.accepted || !current() || !!work.confirmed || work.sender.hasUnresolved()}
             onClick={() => ignore(work.initialize(context).then(header => {
                 if (header && current()) setPrepared(true);
-            }))}>Perbarui periode terhadap sumber usulan</button> : <>
+            }))}>Perbarui periode terhadap sumber usulan</Button> : <>
             <COReportFields work={work}/><COEvidenceAttachment work={work} confirmDiscard={confirmDiscard} blocked={blocked || !current()} sourceFingerprint={context.source_context_fingerprint}/>
-            <button className={CO_BUTTON} disabled={blocked || work.frozen}
-                onClick={() => ignore(work.save())}>Simpan Draft periode</button>
-            <button className={CO_BUTTON} disabled={blocked || work.frozen}
+            <Button variant="secondary" disabled={blocked || work.frozen}
+                onClick={() => ignore(work.save())}>Simpan Draft periode</Button>
+            <Button variant="secondary" disabled={blocked || work.frozen}
                 onClick={() => ignore(work.save().then(header => {
                     if (header && current()) {
                         setCount(header.missing_count);
                         setZero(true);
                     }
-                }))}>Isi sisa periode dengan nol</button>
+                }))}>Isi sisa periode dengan nol</Button>
             {zero && <div role="alert">
                 <p>{count} baris kosong di seluruh periode, termasuk halaman belum dibuka. Isi nol?</p>
-                <button className={CO_BUTTON} onClick={() => setZero(false)}>Batal nol</button>
-                <button className={CO_BUTTON} disabled={work.frozen || blocked}
-                    onClick={() => { setZero(false); ignore(work.fillZero()); }}>Konfirmasi nol periode</button>
+                <Button variant="secondary" onClick={() => setZero(false)}>Batal nol</Button>
+                <Button variant="secondary" disabled={work.frozen || blocked}
+                    onClick={() => { setZero(false); ignore(work.fillZero()); }}>Konfirmasi nol periode</Button>
             </div>}
-            <button className={CO_PRIMARY} disabled={blocked || work.frozen}
-                onClick={() => void finish()}>Gunakan draft periode lengkap</button>
+            <Button disabled={blocked || work.frozen}
+                onClick={() => void finish()}>Gunakan draft periode lengkap</Button>
         </>}
         {!ready && work.error && <COFailure error={work.error}/>}
-        <button className={CO_BUTTON} disabled={work.dirty || work.pending || work.evidenceState.pending || work.evidenceState.unresolved || work.sender.hasUnresolved() || !!work.confirmed}
-            onClick={onCancel}>Kembali ke peninjauan</button>
+        <Button variant="secondary" disabled={work.dirty || work.pending || work.evidenceState.pending || work.evidenceState.unresolved || work.sender.hasUnresolved() || !!work.confirmed}
+            onClick={onCancel}>Kembali ke peninjauan</Button>
         {work.dirty && <p>Simpan isian periode sebelum kembali.</p>}
     </div>;
 }

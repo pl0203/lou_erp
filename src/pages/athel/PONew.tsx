@@ -1,3 +1,8 @@
+import { Button } from '../../components/ui/Button'
+import { ActionLink } from '../../components/ui/ActionLink'
+import { MainContent } from '../../components/ui/MainContent'
+import { Field } from '../../components/ui/Field'
+import { FormActions } from '../../components/ui/FormActions'
 import PromoStockWarning, { usePromoStockSubmission } from '../../components/PromoStockWarning'
 import PODocumentImport from '../../components/poImport/PODocumentImport'
 import { useAuth } from '../../lib/AuthContext'
@@ -106,6 +111,8 @@ export default function PONew() {
   const [notes, setNotes] = useState('')
   const [lineItems, setLineItems] = useState<LineItem[]>([])
   const productSearch = useRef<HTMLInputElement>(null)
+  const stockTrigger = useRef<HTMLElement | null>(null)
+  const formFocus = useRef<HTMLDivElement>(null)
   const quantityInputs = useRef<Record<string, HTMLInputElement | null>>({})
   const nameInputs = useRef<Record<string, HTMLInputElement | null>>({})
   const priceInputs = useRef<Record<string, HTMLInputElement | null>>({})
@@ -130,6 +137,7 @@ export default function PONew() {
   })
 
   const stockSubmission = usePromoStockSubmission((draft: Parameters<typeof createPO>[0]) => mutation.mutateAsync(draft))
+  const formLocked = mutation.isPending
 
   // Get selected customer's pricing tier
   const selectedCustomer = customers?.find(c => c.id === customerId)
@@ -183,6 +191,7 @@ export default function PONew() {
   const total = lineItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0)
 
   const handleSubmit = () => {
+    if (mutation.isPending) return
     if (!customerId) return alert('Pilih pelanggan terlebih dahulu.')
     if (!poNumber.trim()) return alert('Masukkan nomor PO terlebih dahulu.')
     if (lineItems.length === 0) {
@@ -205,24 +214,24 @@ export default function PONew() {
   return (
     <div className="min-h-screen bg-brand-canvas">
       {unsaved.dialog}
-      {stockSubmission.warning && <PromoStockWarning warning={stockSubmission.warning} pending={mutation.isPending} onContinue={() => void stockSubmission.continue()} onCancel={() => { stockSubmission.cancel(); mutation.reset() }} />}
-      <AthelNav />
+      {stockSubmission.warning && <PromoStockWarning warning={stockSubmission.warning} returnFocus={stockTrigger.current} fallbackFocus={() => formFocus.current} pending={mutation.isPending} onContinue={() => void stockSubmission.continue()} onCancel={() => { stockSubmission.cancel(); mutation.reset() }} />}
+      <div inert={!!stockSubmission.warning} aria-hidden={stockSubmission.warning ? true : undefined}>
+
+      <AthelNav /><MainContent>
       {(customerReadError || productReadError) && <ReadFailure onRetry={() => { void retryCustomers(); void retryProducts() }} />}
-        <TransactionRecovery send={sendTransaction} onCommitted={onCommitted} />
-      <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center gap-4">
-        <button type="button" onClick={() => navigate('/athel/po')} className="text-gray-400 hover:text-gray-600 text-sm">
-          ← Kembali
-        </button>
+        {!stockSubmission.warning && <TransactionRecovery send={sendTransaction} onCommitted={onCommitted} />}
+      <div ref={formFocus} tabIndex={-1} className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center gap-4">
+        <ActionLink variant="secondary" to={'/athel/po'} >← Kembali</ActionLink>
         <div>
           <h1 className="text-xl font-semibold text-gray-900">PO Baru</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Procurement · Purchase Order</p>
+          <p className="text-sm text-brand-secondary mt-0.5">Procurement · Purchase Order</p>
         </div>
       </div>
 
       <div className="px-4 md:px-8 py-6 max-w-4xl mx-auto space-y-6">
 
         <PODocumentImport key={`${actorKey}:${customerId}`} customers={customers ?? []} products={products ?? []} actorKey={actorKey}
-          disabled={!actorKey || !customers || !products || customerReadError || productReadError || customersFetching || productsFetching || mutation.isPending}
+          disabled={!actorKey || !customers || !products || customerReadError || productReadError || customersFetching || productsFetching || formLocked}
           hasFormEdits={formDirty} onDirtyChange={setImportDirty}
           onApply={(proposed, accept) => unsaved.confirmDiscard(() => {
             const draft = accept ? accept() : proposed
@@ -233,12 +242,11 @@ export default function PONew() {
           }, { when: formDirty, message: 'Ganti detail PO dan semua barang dengan hasil dokumen yang sudah diperiksa? Dokumen tidak disimpan dan PO belum dikirim.' })} />
 
         {/* Detail Pesanan */}
-        <div className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
+        <fieldset disabled={formLocked} className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
           <h2 className="text-base font-medium text-gray-900 mb-4">Detail Pesanan</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm text-gray-600 mb-1">Pelanggan</label>
-              <POCustomerLookup customers={customers ?? []} selectedId={customerId} disabled={!customers || customerReadError || customersFetching || mutation.isPending}
+              <Field id="po-customer" label="Pelanggan">{control => <POCustomerLookup {...control} customers={customers ?? []} selectedId={customerId} disabled={!customers || customerReadError || customersFetching || formLocked}
                 onSelect={customer => {
                   const nextCustomer = customer.id
                   if (nextCustomer === customerId) return
@@ -247,79 +255,63 @@ export default function PONew() {
                     setLineItems([])
                     setEntryError(null); setEntryNotice('')
                   }, { when: itemsDirty, message: 'Mengganti pelanggan akan menghapus daftar barang dan harga yang sudah diisi. Detail PO lainnya tetap dipertahankan. Permintaan yang sudah dikirim tidak dibatalkan.' })
-                }} />
+                }} />}</Field>
               {selectedCustomer && (
-                <p className="text-xs text-blue-600 mt-1">
+                <p className="text-[13px] text-blue-600 mt-1">
                   Tier harga: <span className="font-medium">{TIER_LABELS[pricingTier]}</span>
                 </p>
               )}
             </div>
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">Nomor PO</label>
-              <input
+            <Field id="po-number" label="Nomor PO">{control => <input {...control}
                 type="text"
                 value={poNumber}
                 onChange={e => setPoNumber(e.target.value)}
                 placeholder="mis. PO-2024-001"
-                className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">Tanggal PO</label>
-              <input
+                className="min-w-0 max-w-full w-full border border-brand-control-border rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-primary"
+              />}</Field>
+            <Field id="po-order-date" label="Tanggal PO">{control => <input {...control}
                 type="date"
                 value={orderDate}
                 onChange={e => setOrderDate(e.target.value)}
-                className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
-              />
-            </div>
-            <div>
-              <label htmlFor="po-expiry" className="block text-sm text-gray-600 mb-1">Tanggal Kedaluwarsa PO (opsional)</label>
-              <input
-                id="po-expiry"
+                className="min-w-0 max-w-full w-full border border-brand-control-border rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-primary"
+              />}</Field>
+            <Field id="po-expiry" label="Tanggal Kedaluwarsa PO (opsional)" hint="Jika PO pelanggan memiliki tanggal kedaluwarsa. Bukan tanggal pengiriman.">{control => <input {...control}
                 type="date"
                 value={expectedDelivery}
                 onChange={e => setExpectedDelivery(e.target.value)}
-                className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
-              />
-              <p className="mt-1 text-xs text-gray-500">Jika PO pelanggan memiliki tanggal kedaluwarsa. Bukan tanggal pengiriman.</p>
-            </div>
-            <div className="sm:col-span-2">
-              <label className="block text-sm text-gray-600 mb-1">Catatan</label>
-              <textarea
+                className="min-w-0 max-w-full w-full border border-brand-control-border rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-primary"
+              />}</Field>
+            <Field id="po-notes" label="Catatan" className="sm:col-span-2">{control => <textarea {...control}
                 value={notes}
                 onChange={e => setNotes(e.target.value)}
                 rows={2}
                 placeholder="Catatan (opsional)..."
-                className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary resize-none"
-              />
-            </div>
+                className="min-w-0 max-w-full w-full border border-brand-control-border rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-primary resize-none"
+              />}</Field>
           </div>
-        </div>
+        </fieldset>
 
         {/* Daftar Barang */}
-        <div className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
+        <fieldset disabled={formLocked} className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
           <h2 className="text-base font-medium text-gray-900 mb-1">Daftar Barang</h2>
-          <p className="text-xs text-gray-400 mb-4">
+          <p className="text-[13px] text-brand-secondary mb-4">
             Cari berdasarkan SKU atau nama untuk mengisi otomatis. Harga otomatis sesuai tier pelanggan dan dapat diubah per pesanan.
           </p>
 
           {!customerId && (
             <div className="bg-yellow-50 border border-yellow-100 rounded-lg px-4 py-3 mb-4">
-              <p className="text-xs text-yellow-700">Pilih pelanggan terlebih dahulu agar harga otomatis sesuai tier.</p>
+              <p className="text-[13px] text-yellow-700">Pilih pelanggan terlebih dahulu agar harga otomatis sesuai tier.</p>
             </div>
           )}
 
           <div className="mb-4 min-w-0">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Cari SKU atau nama barang</label>
-            <POProductLookup products={products ?? []} inputRef={productSearch} onSelect={addProduct}
-              disabled={!customerId || !selectedCustomer || !products || !customers || customerReadError || productReadError || customersFetching || productsFetching || mutation.isPending} />
-            <p className="text-xs text-gray-500 mt-1">Ketik SKU tepat lalu Enter, atau klik hasil pencarian untuk menambahkan barang. Ulangi pencarian untuk barang berikutnya.</p>
-            {entryNotice && <p role="status" className="text-xs text-blue-700 mt-2">{entryNotice}</p>}
+            <Field id="po-product-search" label="Cari SKU atau nama barang" hint="Ketik SKU tepat lalu Enter, atau klik hasil pencarian untuk menambahkan barang. Ulangi pencarian untuk barang berikutnya.">{control => <POProductLookup {...control} products={products ?? []} inputRef={productSearch} onSelect={addProduct}
+              disabled={!customerId || !selectedCustomer || !products || !customers || customerReadError || productReadError || customersFetching || productsFetching || formLocked} />}</Field>
+            {entryNotice && <p role="status" className="text-[13px] text-blue-700 mt-2">{entryNotice}</p>}
           </div>
 
           {lineItems.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-500">Belum ada barang. Cari SKU atau nama untuk menambahkan barang.</p>
+            <p className="rounded-lg border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-brand-secondary">Belum ada barang. Cari SKU atau nama untuk menambahkan barang.</p>
           ) : (
             <div className="min-w-0 space-y-2">
               <POLineItemsHeader />
@@ -341,41 +333,39 @@ export default function PONew() {
             </div>
           )}
 
-          <p className="mt-4 text-xs text-gray-600">Barang manual hanya disimpan pada PO ini; tidak menambahkan produk baru ke katalog. Nama, SKU, jumlah, dan harga dicatat sebagai rincian pesanan.</p>
+          <p className="mt-4 text-[13px] text-gray-600">Barang manual hanya disimpan pada PO ini; tidak menambahkan produk baru ke katalog. Nama, SKU, jumlah, dan harga dicatat sebagai rincian pesanan.</p>
           <div className="flex flex-wrap items-center justify-between gap-3 mt-4 pt-4 border-t border-gray-100">
-            <button type="button" onClick={addLine} className="text-brand-primary hover:text-brand-hover text-sm font-medium">
+            <Button variant="secondary" type="button" onClick={addLine} >
               + Tambah barang manual
-            </button>
-            <div className="min-w-0 text-sm text-gray-500 [overflow-wrap:anywhere]">
+            </Button>
+            <div className="min-w-0 text-sm text-brand-secondary [overflow-wrap:anywhere]">
               Total: <span className="text-gray-900 font-semibold text-base ml-1">
                 {Number.isFinite(total) ? `Rp ${total.toLocaleString('id-ID')}` : 'Harga belum lengkap'}
               </span>
             </div>
           </div>
-        </div>
+        </fieldset>
 
         {/* Actions */}
-        <div className="flex flex-wrap justify-end gap-3 pb-8">
-          <button
+        <FormActions className="pb-8">
+          <ActionLink variant="secondary" to={'/athel/po'}
+
+          >Batal</ActionLink>
+          <Button variant="primary"
             type="button"
-            onClick={() => navigate('/athel/po')}
-            className="px-5 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-200 rounded-lg"
-          >
-            Batal
-          </button>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={mutation.isPending || customerReadError || productReadError || !customers || !products || customersFetching || productsFetching}
-            className="px-5 py-2 text-sm font-medium bg-brand-primary hover:bg-brand-hover text-white rounded-lg disabled:opacity-50 transition-colors"
+            pending={mutation.isPending} onClick={event => { stockTrigger.current = event.currentTarget; handleSubmit() }}
+            disabled={formLocked || customerReadError || productReadError || !customers || !products || customersFetching || productsFetching}
+
           >
             {mutation.isPending ? 'Menyimpan...' : 'Simpan PO'}
-          </button>
-        </div>
+          </Button>
+        </FormActions>
 
         {mutation.isError && (
-          <p className="text-red-500 text-sm text-right">{(mutation.error as Error).message}</p>
+          <p className="text-red-700 text-sm text-right">{(mutation.error as Error).message}</p>
         )}
+      </div>
+      </MainContent>
       </div>
     </div>
   )

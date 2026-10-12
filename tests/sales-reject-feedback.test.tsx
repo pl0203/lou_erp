@@ -1,3 +1,6 @@
+import { beforeEach } from 'vitest'
+import { transferableAbortController } from 'node:util'
+import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import React from 'react'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
@@ -7,13 +10,13 @@ vi.mock('../src/lib/supabase',()=>({supabase:{rpc:mocks.rpc,from:()=>{const q:an
 vi.mock('../src/lib/reads/orders',()=>({fetchSalesOrderPage:async()=>({version:1,as_of:'2026-10-01T00:00:00Z',items:[{id:'dummy',status:'pending',total_value:'10.00',created_at:'2026-09-30T00:00:00Z',rejection_note:null,customers:{name:'Dummy customer'},users:{full_name:'Dummy sales'}}],total:1,page:1,page_size:10,status_counts:{pending:1,approved:0,rejected:0,cancelled:0}})}))
 vi.mock('../src/lib/AuthContext',()=>({useAuth:()=>({user:{id:'dummy-user'},profile:{id:'dummy-user',role:'sales_person'}})}))
 vi.mock('../src/components/AthelNav',()=>({default:()=>null}))
-vi.mock('react-router-dom',()=>({useNavigate:()=>()=>{}}))
 import SalesOrders from '../src/pages/athel/SalesOrders'
-afterEach(()=>{cleanup();localStorage.clear();vi.clearAllMocks()})
+const routers: ReturnType<typeof createMemoryRouter>[] = []
+afterEach(()=>{cleanup(); vi.unstubAllGlobals(); routers.splice(0).forEach(router => router.dispose());localStorage.clear();vi.clearAllMocks()})
 test('required rejection reason blocks whitespace and failed rejection preserves reason inline',async()=>{
  mocks.rpc.mockResolvedValue({data:null,error:{code:'40001',message:'Pesanan berubah. Muat ulang sebelum mencoba lagi.'}})
  const client=new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}})
- render(<QueryClientProvider client={client}><SalesOrders/></QueryClientProvider>)
+ renderRoute(client)
  fireEvent.click(await screen.findByRole('button',{name:'Tolak'}))
  const reason=screen.getByRole('textbox');fireEvent.change(reason,{target:{value:'   '}})
  expect((screen.getByRole('button',{name:'Tolak Pesanan'}) as HTMLButtonElement).disabled).toBe(true)
@@ -23,3 +26,8 @@ test('required rejection reason blocks whitespace and failed rejection preserves
  expect((reason as HTMLTextAreaElement).value).toBe('Barang belum tersedia')
  expect(screen.getByRole('button',{name:'Tolak Pesanan'})).toBeTruthy();client.clear()
 })
+
+function renderRoute(client: QueryClient) { const router = createMemoryRouter([{ path: '/athel/sales-orders', element: <SalesOrders /> }, { path: '*', element: <p>Destination</p> }], { initialEntries: ['/athel/sales-orders'] }); routers.push(router); return render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>) }
+
+// The real data router uses Node Request, which requires a Node-compatible signal.
+beforeEach(() => { vi.stubGlobal('AbortController', class { constructor() { return transferableAbortController() } }) })

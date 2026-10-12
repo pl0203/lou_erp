@@ -36,7 +36,7 @@ test('own requests use named status badges and keep routine daily detail collaps
  mount();await history()
  const status=screen.getByLabelText('Status pengajuan: Menunggu persetujuan')
  expect(status.textContent).toBe('Menunggu persetujuan')
- expect(status.closest('li')?.className).toContain('rounded-xl')
+ expect(status.closest('li')?.className).toContain('rounded-[14px]')
  await details()
  const region=screen.getByRole('region',{name:'Rincian pengajuan cuti'})
  const breakdown=within(region).getByText('Rincian tanggal dan periode').closest('details')!

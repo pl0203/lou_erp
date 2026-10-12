@@ -1,5 +1,8 @@
 import { useId, useMemo, useRef, useState } from 'react'
-import type { Ref } from 'react'
+import type { InputHTMLAttributes, Ref } from 'react'
+import { Button } from './ui/Button'
+
+type LookupControl = Pick<InputHTMLAttributes<HTMLInputElement>, 'id' | 'aria-describedby' | 'aria-invalid'>
 
 type Option = { id: string; name: string }
 export type POCustomerOption = Option & { pricing_tier: string }
@@ -8,7 +11,7 @@ const normalize = (value: string) => value.trim().toLocaleLowerCase()
 const VISIBLE_OPTIONS = 6
 
 /** Search the complete, authorized collection; the limit is presentation only. */
-function Picker<T extends Option>({ items, label, placeholder, selectedLabel = '', disabled = false, inputRef, match, exact, describe, onSelect }: {
+function Picker<T extends Option>({ items, label, placeholder, selectedLabel = '', disabled = false, inputRef, match, exact, describe, onSelect, ...control }: LookupControl & {
   items: T[]; label: string; placeholder: string; selectedLabel?: string; disabled?: boolean; inputRef?: Ref<HTMLInputElement>
   match: (item: T, query: string) => boolean; exact?: (item: T, query: string) => boolean
   describe: (item: T) => string; onSelect: (item: T) => void
@@ -40,6 +43,7 @@ function Picker<T extends Option>({ items, label, placeholder, selectedLabel = '
     if (!event.currentTarget.contains(event.relatedTarget as Node | null)) { setOpen(false); setQuery(null); setActive(null) }
   }}>
     <input
+      {...control}
       ref={inputRef} role="combobox" aria-label={label} aria-autocomplete="list"
       aria-expanded={expanded} aria-controls={`${id}-list`}
       aria-activedescendant={expanded && activeItem ? `${id}-${activeItem.id}` : undefined}
@@ -68,42 +72,42 @@ function Picker<T extends Option>({ items, label, placeholder, selectedLabel = '
         const exactMatches = exact ? matches.filter(item => exact(item, normalized)) : []
         if (exactMatches.length === 1) select(exactMatches[0])
       }}
-      className="min-w-0 max-w-full w-full border border-blue-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary bg-blue-50 disabled:bg-gray-50 disabled:text-gray-500"
+      className="min-h-11 min-w-0 max-w-full w-full border border-brand-control-border rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-primary bg-white disabled:bg-gray-50 disabled:text-brand-secondary"
     />
     {expanded && <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
       <div id={`${id}-list`} role="listbox" aria-label={label}>
-        {results.map(item => <button
+        {results.map(item => <Button variant="secondary"
           key={item.id} id={`${id}-${item.id}`} type="button" role="option" tabIndex={-1} aria-selected={activeId === item.id}
           onPointerDown={event => event.preventDefault()} onMouseDown={event => event.preventDefault()} onClick={() => select(item)}
-          className={`w-full text-left px-4 py-3 transition-colors border-b border-gray-50 last:border-0 [overflow-wrap:anywhere] ${activeId === item.id ? 'bg-blue-100' : 'hover:bg-blue-50'}`}
+          className={`w-full flex-col items-start justify-start text-left px-4 py-3 transition-colors border-b border-gray-50 last:border-0 [overflow-wrap:anywhere] ${activeId === item.id ? 'bg-blue-100' : 'hover:bg-blue-50'}`}
         >
-          <span className="block text-sm text-gray-900">{item.name}</span>
-          <span className="block text-xs text-gray-500 mt-0.5">{describe(item)}</span>
-        </button>)}
+          <span >{item.name}</span>
+          <span className="mt-0.5">{describe(item)}</span>
+        </Button>)}
       </div>
-      {!results.length && <p className="px-4 py-3 text-sm text-gray-500">Tidak ditemukan. Coba kata pencarian lain.</p>}
-      {matches.length > VISIBLE_OPTIONS && <p className="px-4 py-2 text-xs text-gray-500">Menampilkan {VISIBLE_OPTIONS} dari {matches.length} hasil. Perjelas pencarian.</p>}
-      {exact && !activeItem && matches.filter(item => exact(item, normalized)).length > 1 && <p className="px-4 py-2 text-xs text-amber-700">SKU cocok dengan beberapa produk. Pilih produk yang dimaksud.</p>}
+      {!results.length && <p className="px-4 py-3 text-sm text-brand-secondary">Tidak ditemukan. Coba kata pencarian lain.</p>}
+      {matches.length > VISIBLE_OPTIONS && <p className="px-4 py-2 text-[13px] text-brand-secondary">Menampilkan {VISIBLE_OPTIONS} dari {matches.length} hasil. Perjelas pencarian.</p>}
+      {exact && !activeItem && matches.filter(item => exact(item, normalized)).length > 1 && <p className="px-4 py-2 text-[13px] text-amber-700">SKU cocok dengan beberapa produk. Pilih produk yang dimaksud.</p>}
     </div>}
   </div>
 }
 
-export function POCustomerLookup({ customers, selectedId, selectedLabel, disabled, onSelect }: {
+export function POCustomerLookup({ customers, selectedId, selectedLabel, disabled, onSelect, ...control }: LookupControl & {
   customers: POCustomerOption[]; selectedId: string; selectedLabel?: string; disabled?: boolean; onSelect: (customer: POCustomerOption) => void
 }) {
   const selected = customers.find(customer => customer.id === selectedId)
   const knownLabels = useRef<Record<string, string>>({})
   if (selected) knownLabels.current[selected.id] = selected.name
-  return <Picker items={customers} label="Pelanggan" placeholder="Cari nama pelanggan..." selectedLabel={selected?.name ?? knownLabels.current[selectedId] ?? selectedLabel} disabled={disabled}
+  return <Picker {...control} items={customers} label="Pelanggan" placeholder="Cari nama pelanggan..." selectedLabel={selected?.name ?? knownLabels.current[selectedId] ?? selectedLabel} disabled={disabled}
     match={(customer, query) => normalize(customer.name).includes(query) || normalize(customer.id).includes(query)}
     describe={customer => customers.some(other => other.id !== customer.id && normalize(other.name) === normalize(customer.name)) ? `ID ${customer.id.slice(0, 8)}` : ''}
     onSelect={onSelect} />
 }
 
-export function POProductLookup<T extends POProductOption>({ products, onSelect, disabled, inputRef, label = 'Cari SKU atau nama barang' }: {
+export function POProductLookup<T extends POProductOption>({ products, onSelect, disabled, inputRef, label = 'Cari SKU atau nama barang', ...control }: LookupControl & {
   products: T[]; onSelect: (product: T) => void; disabled?: boolean; inputRef?: Ref<HTMLInputElement>; label?: string
 }) {
-  return <Picker items={products} label={label} placeholder="Cari SKU atau nama barang..." disabled={disabled} inputRef={inputRef}
+  return <Picker {...control} items={products} label={label} placeholder="Cari SKU atau nama barang..." disabled={disabled} inputRef={inputRef}
     match={(product, query) => normalize(product.sku).includes(query) || normalize(product.name).includes(query)}
     exact={(product, query) => normalize(product.sku) === query}
     describe={product => [product.sku, product.size].filter(Boolean).join(' · ')} onSelect={onSelect} />

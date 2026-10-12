@@ -3,7 +3,7 @@ import { afterEach, expect, test, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 const state=vi.hoisted(()=>({fail:false}))
-vi.mock('react-router-dom',()=>({useNavigate:()=>()=>{},useParams:()=>({scheduleId:'s'}),useBlocker:()=>({state:'unblocked'}),useBeforeUnload:()=>{}}))
+vi.mock('react-router-dom',()=>({Link: ({ to, children, ...props }: any) => <a href={to} {...props}>{children}</a>,useNavigate:()=>()=>{},useParams:()=>({scheduleId:'s'}),useBlocker:()=>({state:'unblocked'}),useBeforeUnload:()=>{}}))
 vi.mock('../../src/components/StorePOContext',()=>({default:()=>null}))
 vi.mock('../../src/components/GirardNav',()=>({default:()=>null}))
 vi.mock('../../src/lib/AuthContext',()=>({useAuth:()=>({profile:{id:'u',role:'sales_person'}})}))

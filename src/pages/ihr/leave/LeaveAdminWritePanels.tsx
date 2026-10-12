@@ -1,3 +1,5 @@
+import { Notice } from '../../../components/ui/Feedback'
+import { Button } from '../../../components/ui/Button'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { LeaveContext, LeaveResult, Page, Recovery } from '../../../lib/leave/contracts'
@@ -39,7 +41,7 @@ export function useAdminCommand<C>({actorId,context,formScope,readState,fresh,dr
   catch{if(alive.current)setError('Hasil perubahan belum pasti. Periksa akses lalu pulihkan kembali.')}
   finally{working.current=false;if(alive.current)setBusy(false)}
  }
- const recoveryUI=readState==='ready'?<>{recovery&&<div role="status"><p>Perubahan sebelumnya perlu dipulihkan sebelum percobaan berikutnya.</p><button type="button" className="min-h-11 underline" disabled={busy} onClick={()=>void recover()}>Pulihkan hasil perubahan</button></div>}{error&&<p role="alert">{error}</p>}</>:null
+ const recoveryUI=readState==='ready'?<>{recovery&&<div role="status" className="ui-notice ui-notice--info"><p>Perubahan sebelumnya perlu dipulihkan sebelum percobaan berikutnya.</p><Button type="button" variant="secondary" className="underline" disabled={busy} onClick={()=>void recover()}>Pulihkan hasil perubahan</Button></div>}{error&&<Notice tone="error" title={<> {error} </>}/>}</>:null
  return {send,busy,recovery,recoveryUI}
 }
 async function findMember(employeeId:string,signal:AbortSignal):Promise<LeaveMemberSetup>{
@@ -68,8 +70,8 @@ export function LeaveAdminMemberPanel({actorId,context,target,readState,onDirtyC
  const data=denied?undefined:query.data??(last.current.scope===context.scopeVersion||continuity.retaining?last.current.data:undefined)
  return <div className="space-y-4">{command.recoveryUI}
   {data&&<LeavePeopleSettings key={continuity.key} actorId={actorId} member={data.member} approvers={data.approvers} calendars={data.write.memberOptions?.calendars??[]} groups={data.write.memberOptions?.groups??[]} impacts={data.member.impacts??{available:false,pendingCount:null,approvedCount:null}} send={command.send} authorityReady={continuity.ready&&!command.recovery} onDirtyChange={setDirty} onSaved={continuity.onSaved}/>}
-  {fresh&&data?.write.memberOptions?.state!=='available'&&<p role="status">Lajur kalender anggota belum ditetapkan. Pilihan kalender memerlukan penyiapan yang berwenang.</p>}
-  {readState==='ready'&&!fresh&&<div role={query.isError?'alert':'status'}><p>Data pengaturan anggota belum dapat dikonfirmasi.</p><button type="button" onClick={()=>void query.refetch()}>Muat ulang anggota terpilih</button></div>}
+  {fresh&&data?.write.memberOptions?.state!=='available'&&<p role="status" className="ui-notice ui-notice--info">Lajur kalender anggota belum ditetapkan. Pilihan kalender memerlukan penyiapan yang berwenang.</p>}
+  {readState==='ready'&&!fresh&&<div role={query.isError?'alert':'status'}><p>Data pengaturan anggota belum dapat dikonfirmasi.</p><Button type="button" onClick={()=>void query.refetch()} variant="secondary">Muat ulang anggota terpilih</Button></div>}
  </div>
 }
 export function LeaveAdminBalancePanel({actorId,context,target,readState,onDirtyChange}:PanelProps){
@@ -81,6 +83,6 @@ export function LeaveAdminBalancePanel({actorId,context,target,readState,onDirty
  const data=query.data??last.current
  return <div className="space-y-4">{command.recoveryUI}
   {data&&<LeaveBalanceSettings key={data.authorityKey} actorId={actorId} employeeId={target.id} currentPeriod={data.balance.currentPeriod} accountMetadata={data.balance.account??undefined} canConfigure={data.capabilities.configure} canAdjust={data.capabilities.adjust} send={command.send} authorityReady={fresh&&!command.recovery} onDirtyChange={setDirty}/>}
-  {readState==='ready'&&!fresh&&<div role={query.isError?'alert':'status'}><p>Konteks perubahan saldo belum dapat dikonfirmasi.</p><button type="button" onClick={()=>void query.refetch()}>Muat ulang konteks saldo</button></div>}
+  {readState==='ready'&&!fresh&&<div role={query.isError?'alert':'status'}><p>Konteks perubahan saldo belum dapat dikonfirmasi.</p><Button type="button" onClick={()=>void query.refetch()} variant="secondary">Muat ulang konteks saldo</Button></div>}
  </div>
 }

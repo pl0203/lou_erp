@@ -1,3 +1,6 @@
+import { beforeEach } from 'vitest'
+import { transferableAbortController } from 'node:util'
+import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import React from 'react'
 import { afterEach, expect, test, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -17,15 +20,16 @@ vi.mock('../src/lib/supabase', () => ({ supabase: {
 } }))
 vi.mock('../src/lib/AuthContext', () => ({ useAuth: () => ({ user: { id: 'dummy-actor' } }) }))
 vi.mock('../src/components/AthelNav', () => ({ default: () => null }))
-vi.mock('react-router-dom', () => ({ useNavigate: () => mocks.navigate, useBlocker: () => ({ state: 'unblocked' }), useBeforeUnload: () => {} }))
 import PONew from '../src/pages/athel/PONew'
 
-afterEach(() => { cleanup(); localStorage.clear(); vi.clearAllMocks() })
+const routers: ReturnType<typeof createMemoryRouter>[] = []
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); routers.splice(0).forEach(router => router.dispose()); localStorage.clear(); vi.clearAllMocks() })
 
 test.each(['2026-08-31', '2024-02-29'])('manual PO retains selected business date %s after rerenders and sends it to the RPC', async orderDate => {
   mocks.rpc.mockResolvedValue({ data: { id: 'dummy-po' }, error: null })
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
-  const { container } = render(<QueryClientProvider client={client}><PONew /></QueryClientProvider>)
+  const router = createMemoryRouter([{ path: '/athel/po/new', element: <PONew /> }, { path: '*', element: <p>Destination</p> }], { initialEntries: ['/athel/po/new'] }); routers.push(router)
+  const { container } = render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>)
   await waitFor(() => expect((screen.getByRole('combobox', { name: 'Pelanggan' }) as HTMLInputElement).disabled).toBe(false))
   const dateInput = container.querySelectorAll<HTMLInputElement>('input[type="date"]')[0]
   fireEvent.change(dateInput, { target: { value: orderDate } })
@@ -47,6 +51,9 @@ test.each(['2026-08-31', '2024-02-29'])('manual PO retains selected business dat
   expect(payload).not.toHaveProperty('created_at')
   expect(payload).not.toHaveProperty('updated_at')
   expect(payload).not.toHaveProperty('created_by')
-  await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith('/athel/po/dummy-po'))
+  await waitFor(() => expect(router.state.location.pathname).toBe('/athel/po/dummy-po'))
   client.clear()
 })
+
+// The real data router uses Node Request, which requires a Node-compatible signal.
+beforeEach(() => { vi.stubGlobal('AbortController', class { constructor() { return transferableAbortController() } }) })

@@ -8,6 +8,12 @@ export { displayDay, rangeDays, rollingMonthKeys } from '../../lib/reads/reports
 export type { DashboardData } from '../../lib/reads/reports'
 import { formatMoney, formatCompactMoney, moneyPercentage } from '../../lib/reads/money'
 import AthelNav from '../../components/AthelNav'
+import { Button } from '../../components/ui/Button'
+import { MainContent } from '../../components/ui/MainContent'
+import { PageHeader } from '../../components/ui/PageHeader'
+import { Field } from '../../components/ui/Field'
+import { FilterBar } from '../../components/ui/FilterBar'
+import { Notice, StatusBadge } from '../../components/ui/Feedback'
 
 const DashboardCharts = lazy(() => import('../../components/athel/DashboardCharts').catch(() => ({
   default: function ChartsUnavailable() {
@@ -39,7 +45,7 @@ function StatCard({
   helper: string
 }) {
   return (
-    <div className="min-w-0 rounded-2xl border border-blue-200 bg-white p-4 shadow-sm sm:p-5">
+    <div className="min-w-0 rounded-2xl border border-brand-control-border bg-white p-4 shadow-sm sm:p-5">
       <p className="text-sm text-gray-500">{label}</p>
       <p className="mt-2 text-2xl font-semibold tracking-tight text-gray-900 [overflow-wrap:anywhere] sm:text-3xl">{value}</p>
       <p className="mt-2 text-sm text-gray-500">{helper}</p>
@@ -62,7 +68,7 @@ function DataTableCard({
         <h3 className="text-base font-semibold text-gray-900">{title}</h3>
         <p className="mt-1 text-sm text-gray-500">{subtitle}</p>
       </div>
-      <p className="mb-2 text-xs text-gray-500">Geser tabel untuk melihat semua kolom.</p>
+      <p className="mb-2 text-[13px] text-gray-500">Geser tabel untuk melihat semua kolom.</p>
       {children}
     </div>
   )
@@ -74,7 +80,7 @@ export default function AthelDashboard() {
   const [status, setStatus] = useState<FilterStatus>('all')
   const [fulfillment, setFulfillment] = useState<FulfillmentFilter>('all')
 
-  const { data, isLoading, isError, refetch } = useQuery({
+  const { data, isLoading, isError, isFetching, fetchStatus, refetch } = useQuery({
     queryKey: ['athel_dashboard', startDate, endDate, status, fulfillment],
     queryFn: ({ signal }) => fetchDashboardData(startDate, endDate, status, fulfillment, signal),
   })
@@ -87,79 +93,24 @@ export default function AthelDashboard() {
     <div className="min-h-screen bg-brand-canvas">
       <AthelNav />
 
-      <div className="border-b border-gray-200 bg-gradient-to-r from-slate-100 via-white to-blue-50 px-4 py-6 md:px-8">
-        <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
-          <div>
-            <h1 className="text-3xl font-semibold tracking-tight text-gray-900">Dashboard</h1>
-            <p className="mt-1 text-sm text-gray-500">Pantau performa PO, pengiriman, pelanggan utama, dan barang yang belum terkirim.</p>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <label className="min-w-0 rounded-xl border border-blue-200 bg-white px-4 py-3 shadow-sm">
-              <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400">Tanggal awal</span>
-              <input
-                type="date"
-                value={startDate}
-                max={endDate}
-                onChange={e => setStartDate(e.target.value)}
-                className="min-w-0 max-w-full w-full bg-transparent text-sm text-gray-700 outline-none"
-              />
-            </label>
-            <label className="min-w-0 rounded-xl border border-blue-200 bg-white px-4 py-3 shadow-sm">
-              <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400">Tanggal akhir</span>
-              <input
-                type="date"
-                value={endDate}
-                min={startDate}
-                max={getToday()}
-                onChange={e => setEndDate(e.target.value)}
-                className="min-w-0 max-w-full w-full bg-transparent text-sm text-gray-700 outline-none"
-              />
-            </label>
-            <label className="min-w-0 rounded-xl border border-blue-200 bg-white px-4 py-3 shadow-sm">
-              <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400">Status PO</span>
-              <select
-                value={status}
-                onChange={e => setStatus(e.target.value as FilterStatus)}
-                className="min-w-0 max-w-full w-full bg-transparent text-sm text-gray-700 outline-none"
-              >
-                <option value="all">Semua status</option>
-                <option value="confirm">{PO_STATUS_LABELS.confirm}</option>
-                <option value="in_progress">{PO_STATUS_LABELS.in_progress}</option>
-                <option value="complete">{PO_STATUS_LABELS.complete}</option>
-                <option value="cancelled">{PO_STATUS_LABELS.cancelled}</option>
-              </select>
-            </label>
-            <label className="min-w-0 rounded-xl border border-blue-200 bg-white px-4 py-3 shadow-sm">
-              <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-gray-400">Status pengiriman</span>
-              <select
-                value={fulfillment}
-                onChange={e => setFulfillment(e.target.value as FulfillmentFilter)}
-                className="min-w-0 max-w-full w-full bg-transparent text-sm text-gray-700 outline-none"
-              >
-                <option value="all">Semua</option>
-                <option value="undelivered">Belum terkirim</option>
-                <option value="partial">Terkirim sebagian</option>
-                <option value="complete">Terkirim penuh</option>
-              </select>
-            </label>
-          </div>
-        </div>
+      <MainContent>
+      <div className="border-b border-brand-divider bg-white px-4 py-6 md:px-8 space-y-5">
+        <PageHeader title="Dashboard" description="Pantau performa PO, pengiriman, pelanggan utama, dan barang yang belum terkirim." />
+        <FilterBar label="Filter dashboard Pengadaan">
+          <Field id="procurement-dashboard-start" label="Tanggal awal">{control => <input {...control} type="date" value={startDate} max={endDate} onChange={event => setStartDate(event.target.value)} />}</Field>
+          <Field id="procurement-dashboard-end" label="Tanggal akhir">{control => <input {...control} type="date" value={endDate} min={startDate} max={getToday()} onChange={event => setEndDate(event.target.value)} />}</Field>
+          <Field id="procurement-dashboard-status" label="Status PO">{control => <select {...control} value={status} onChange={event => setStatus(event.target.value as FilterStatus)}>
+            <option value="all">Semua status</option><option value="confirm">{PO_STATUS_LABELS.confirm}</option><option value="in_progress">{PO_STATUS_LABELS.in_progress}</option><option value="complete">{PO_STATUS_LABELS.complete}</option><option value="cancelled">{PO_STATUS_LABELS.cancelled}</option>
+          </select>}</Field>
+          <Field id="procurement-dashboard-fulfillment" label="Status pengiriman">{control => <select {...control} value={fulfillment} onChange={event => setFulfillment(event.target.value as FulfillmentFilter)}>
+            <option value="all">Semua</option><option value="undelivered">Belum terkirim</option><option value="partial">Terkirim sebagian</option><option value="complete">Terkirim penuh</option>
+          </select>}</Field>
+        </FilterBar>
       </div>
-
-      <div className="px-4 py-6 md:px-8">
-        {isLoading && (
-          <div className="rounded-2xl border border-gray-200 bg-white px-6 py-20 text-center text-sm text-gray-400 shadow-sm">
-            Memuat dashboard Pengadaan...
-          </div>
-        )}
-
-        {isError && (
-          <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 px-6 py-20 text-center text-sm text-red-500 shadow-sm">
-            Gagal memuat dashboard. <button onClick={() => refetch()} className="underline">Coba lagi</button>
-          </div>
-        )}
-
+      <div className="px-4 py-6 md:px-8 space-y-4">
+        {!isError && (isLoading || !data) && <Notice tone="info" title={fetchStatus === 'paused' ? 'Dashboard Pengadaan tertunda. Menunggu koneksi…' : 'Memuat dashboard Pengadaan...'} />}
+        {isError && <Notice tone="error" title="Gagal memuat dashboard." actions={<Button variant="secondary" onClick={() => { void refetch() }}>Coba lagi</Button>} />}
+        {!isError && data && (isFetching || fetchStatus === 'paused') && <Notice tone="info" title={fetchStatus === 'paused' ? 'Pembaruan dashboard tertunda. Menunggu koneksi; hasil terakhir tetap ditampilkan.' : 'Memperbarui dashboard… Menampilkan hasil terakhir sampai selesai.'} />}
         {!isLoading && !isError && data && (
           <div className="space-y-6">
             <section aria-label="Cakupan ringkasan PO" className="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-600">
@@ -203,7 +154,7 @@ export default function AthelDashboard() {
                 <div className="max-w-full overflow-x-auto" role="region" aria-label="Tabel Pelanggan Teratas" tabIndex={0}>
                   <table className="w-full min-w-[32rem] text-sm">
                     <thead>
-                      <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+                      <tr className="border-b border-gray-100 bg-gray-50 text-left text-[13px] uppercase tracking-wide text-gray-500">
                         <th className="px-4 py-3">#</th>
                         <th className="px-4 py-3">Pelanggan</th>
                         <th className="px-4 py-3 text-right">Total PO</th>
@@ -214,7 +165,7 @@ export default function AthelDashboard() {
                     <tbody>
                       {data.topCustomers.length === 0 && (
                         <tr>
-                          <td colSpan={5} className="px-4 py-10 text-center text-sm text-gray-400">Belum ada pelanggan pada filter ini.</td>
+                          <td colSpan={5} className="px-4 py-10 text-center text-sm text-brand-secondary">Belum ada pelanggan pada filter ini.</td>
                         </tr>
                       )}
                       {data.topCustomers.map(item => (
@@ -224,9 +175,7 @@ export default function AthelDashboard() {
                           <td className="px-4 py-3 text-right text-gray-700">{formatCompactCurrency(item.poValue)}</td>
                           <td className="px-4 py-3 text-right text-gray-700">{formatCompactCurrency(item.deliveredValue)}</td>
                           <td className="px-4 py-3 text-right">
-                            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
-                              {formatPercent(item.fulfillmentRate)}
-                            </span>
+                            <StatusBadge tone="neutral">{formatPercent(item.fulfillmentRate)}</StatusBadge>
                           </td>
                         </tr>
                       ))}
@@ -242,7 +191,7 @@ export default function AthelDashboard() {
                 <div className="max-w-full overflow-x-auto" role="region" aria-label="Tabel Rincian Barang Belum Terkirim" tabIndex={0}>
                   <table className="w-full min-w-[36rem] text-sm">
                     <thead>
-                      <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+                      <tr className="border-b border-gray-100 bg-gray-50 text-left text-[13px] uppercase tracking-wide text-gray-500">
                         <th className="px-4 py-3">#</th>
                         <th className="px-4 py-3">SKU</th>
                         <th className="px-4 py-3">Nama Barang</th>
@@ -253,13 +202,13 @@ export default function AthelDashboard() {
                     <tbody>
                       {data.outstandingItems.length === 0 && (
                         <tr>
-                          <td colSpan={5} className="px-4 py-10 text-center text-sm text-gray-400">Tidak ada outstanding item pada filter ini.</td>
+                          <td colSpan={5} className="px-4 py-10 text-center text-sm text-brand-secondary">Tidak ada outstanding item pada filter ini.</td>
                         </tr>
                       )}
                       {data.outstandingItems.map(item => (
                         <tr key={`${item.sku}-${item.rank}`} className="border-b border-gray-50">
                           <td className="px-4 py-3 text-gray-500">{item.rank}</td>
-                          <td className="max-w-[12rem] px-4 py-3 font-mono text-xs text-gray-500 [overflow-wrap:anywhere]">{item.sku}</td>
+                          <td className="max-w-[12rem] px-4 py-3 font-mono text-sm text-gray-500 [overflow-wrap:anywhere]">{item.sku}</td>
                           <td className="max-w-[20rem] px-4 py-3 font-medium text-gray-900 [overflow-wrap:anywhere]">{item.productName}</td>
                           <td className="px-4 py-3 text-right text-gray-700">{item.outstandingQty.toLocaleString('id-ID')}</td>
                           <td className="px-4 py-3 text-right text-gray-700">{formatCompactCurrency(item.outstandingValue)}</td>
@@ -273,6 +222,7 @@ export default function AthelDashboard() {
           </div>
         )}
       </div>
+      </MainContent>
     </div>
   )
 }

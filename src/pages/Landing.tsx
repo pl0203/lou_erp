@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import BrandLogo from '../components/BrandLogo'
 import AppNavigation from '../components/AppNavigation'
+import { Button } from '../components/ui/Button'
+import { Notice } from '../components/ui/Feedback'
+import { PageHeader } from '../components/ui/PageHeader'
 import { MainContent } from '../components/ui/MainContent'
 import NavigationIcon from '../components/NavigationIcon'
 import { moduleOptions } from '../components/navigationModules'
@@ -46,10 +49,7 @@ export default function Landing() {
       <MainContent className="min-h-screen flex flex-col items-center justify-center px-4 py-8">
       <div className="mb-10 text-center">
         <BrandLogo className="mx-auto mb-8" />
-        <h1 className="text-3xl font-bold text-gray-900">
-          Selamat datang, {profile?.full_name?.split(' ')[0]}
-        </h1>
-        <p className="text-gray-500 text-sm mt-2">Pilih sistem yang ingin Anda buka</p>
+        <PageHeader title={`Selamat datang, ${profile?.full_name?.split(' ')[0] ?? ''}`} description="Pilih sistem yang ingin Anda buka" />
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full max-w-2xl">
@@ -57,7 +57,7 @@ export default function Landing() {
           <Link
             key={mod.key}
             to={mod.path}
-            className="bg-white border border-gray-200 hover:border-brand-accent hover:shadow-md rounded-2xl p-8 text-left transition-all group"
+            className="bg-white border border-brand-control-border hover:border-brand-accent hover:shadow-md rounded-[14px] p-8 text-left transition-all group"
           >
             <div
               className="w-10 h-10 rounded-xl bg-brand-tint flex items-center justify-center mb-4"
@@ -67,18 +67,13 @@ export default function Landing() {
             <h2 className="text-lg font-semibold mb-1 text-brand-primary transition-colors">
               {mod.label}
             </h2>
-            <p className="text-sm text-gray-500">{mod.description}</p>
+            <p className="text-base text-brand-secondary">{mod.description}</p>
           </Link>
         ))}
       </div>
       
-      <button
-        onClick={handleSignOut}
-        className="w-20 h-10 border justify-center rounded-xl flex items-center border-gray-200 mt-12 text-xs text-gray-300 hover:shadow-md text-gray-800"
-      >
-        Keluar
-      </button>
-      {signOutError && <p role="alert">{signOutError}</p>}
+      <Button variant="secondary" onClick={handleSignOut} className="mt-12">Keluar</Button>
+      {signOutError && <Notice tone="error" title={signOutError} className="mt-4" />}
       </MainContent>
     </div>
   )

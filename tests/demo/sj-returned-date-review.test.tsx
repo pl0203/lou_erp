@@ -1,16 +1,17 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { transferableAbortController } from 'node:util'
+import { createMemoryRouter, RouterProvider } from 'react-router-dom'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
-const state = vi.hoisted(() => ({ send: vi.fn(), po: {} as any, sj: {} as any, joined: null as any, joinedError: null as any, joins: [] as string[] }))
+const state = vi.hoisted(() => ({ send: vi.fn(), po: {} as any, sj: {} as any, joined: null as any, joinedError: null as any, joins: [] as string[], heldPORead: null as Promise<any> | null }))
 vi.mock('../../src/lib/AuthContext', () => ({ useAuth: () => ({ user: { id: 'actor' }, profile: { id: 'actor', role: 'po_admin', is_active: true } }) }))
 vi.mock('../../src/components/AthelNav', () => ({ default: () => <a href="/athel/po">Procurement</a> }))
 vi.mock('../../src/components/TransactionRecovery', () => ({ default: () => null }))
 vi.mock('../../src/lib/orderTransactions', () => ({ useTransactionSender: () => Object.assign(state.send, { hasUnresolved: () => false }) }))
-vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn(), useParams: () => ({ id: 'po' }) }))
 vi.mock('../../src/lib/supabase', () => ({ supabase: {
  rpc: (_name: string, args: any) => { const q: any = { abortSignal: () => q, then: (resolve: any) => Promise.resolve({ data: { version: 1, as_of: state.po.updated_at, items: [], total: 0, page: 1, page_size: 100, po_updated_at: args.p_expected_updated_at, po_has_delivery_history: false }, error: null }).then(resolve) }; return q },
  from: (table: string) => { let projection = ''; const q: any = { select: (value: string) => { projection = value; return q }, eq: () => q, order: () => q, range: () => q, abortSignal: () => q,
-  single: async () => { if (table === 'surat_jalan' && projection.includes('purchase_orders')) { state.joins.push(projection); return { data: state.joined, error: state.joinedError } } return { data: state.po, error: null } },
+  single: async () => { if (table === 'purchase_orders' && state.heldPORead) return state.heldPORead; if (table === 'surat_jalan' && projection.includes('purchase_orders')) { state.joins.push(projection); return { data: state.joined, error: state.joinedError } } return { data: state.po, error: null } },
   then: (resolve: any) => Promise.resolve({ data: table === 'surat_jalan' ? [state.sj] : [], count: table === 'surat_jalan' ? 1 : 0, error: null }).then(resolve),
  }; return q },
 } }))
@@ -18,14 +19,15 @@ import PODetail from '../../src/pages/athel/PODetail'
 const clients: QueryClient[] = []
 const v1 = '2026-10-08T12:00:00Z', v2 = '2026-10-08T12:01:00Z'
 beforeEach(() => {
- state.send.mockReset(); state.joins = []; state.joinedError = null
+ state.send.mockReset(); state.joins = []; state.joinedError = null; state.heldPORead = null
  state.po = { id: 'po', po_number: 'PO-1', status: 'complete', completed_at: '2026-09-30T12:00:00Z', updated_at: v1, total_value: 10, order_date: '2026-09-30', customers: { name: 'Store' } }
  state.sj = { id: 'sj', purchase_order_id: 'po', sj_number: 'SJ-1', sj_date: '2026-09-30', sj_date_received: null, sj_date_returned: '2026-10-01', voided_at: null, void_reason: null }
  state.joined = { ...state.sj, sj_date_returned: '2026-10-09', purchase_orders: { ...state.po, updated_at: v2 } }
  vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-10-08T12:00:00Z'))
 })
-afterEach(() => { cleanup(); clients.splice(0).forEach(c => c.clear()) })
-function mount() { const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } }); clients.push(client); render(<QueryClientProvider client={client}><PODetail /></QueryClientProvider>); return client }
+const routers: ReturnType<typeof createMemoryRouter>[] = []
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); routers.splice(0).forEach(router => router.dispose()); clients.splice(0).forEach(c => c.clear()) })
+function mount() { const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } }); clients.push(client); renderRoute(client); return client }
 async function conflict() {
  state.send.mockRejectedValueOnce(Object.assign(new Error('PO berubah. Muat ulang dan periksa perubahan sebelum menyimpan kembali.'), { code: 'PT409' })).mockResolvedValueOnce({ id: 'sj', po_id: 'po', updated_at: v2 })
  const client = mount(); const trigger = await screen.findByRole('button', { name: 'Ubah tanggal SJ kembali' }); fireEvent.click(trigger)
@@ -113,4 +115,27 @@ test('native modal Tab behavior is preserved for browser date-input segments', a
   const event = new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }); date.dispatchEvent(event)
   expect(event.defaultPrevented).toBe(false)
  } finally { if (original) prototype.showModal = original; else delete prototype.showModal }
+})
+
+function renderRoute(client: QueryClient) { const router = createMemoryRouter([{ path: '/athel/po/:id', element: <PODetail /> }, { path: '*', element: <p>Destination</p> }], { initialEntries: ['/athel/po/po'] }); routers.push(router); return render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>) }
+
+// The real data router uses Node Request, which requires a Node-compatible signal.
+beforeEach(() => { vi.stubGlobal('AbortController', class { constructor() { return transferableAbortController() } }) })
+
+test('returned-date acknowledgement focuses a stable owner target while its connected opener is disabled by held authoritative refetch', async () => {
+ let release!: (value: any) => void
+ state.send.mockResolvedValue({ id: 'sj', po_id: 'po', updated_at: v2 })
+ const { trigger, date, save } = await openKeyboardDialog()
+ fireEvent.change(date, { target: { value: '2026-10-07' } })
+ state.heldPORead = new Promise(resolve => { release = resolve })
+ fireEvent.click(save)
+ await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+ expect(trigger.isConnected).toBe(true); expect((trigger as HTMLButtonElement).disabled).toBe(true)
+ const stable = document.activeElement
+ expect(stable).not.toBe(trigger); expect(stable?.getAttribute('tabindex')).toBe('-1')
+ expect(stable?.closest('#main-content')).toBeTruthy(); expect(stable?.textContent).toContain('PO-1')
+ state.po = { ...state.po, updated_at: v2 }; state.sj = { ...state.sj, sj_date_returned: '2026-10-07' }
+ await act(async () => release({ data: state.po, error: null }))
+ await waitFor(() => expect((trigger as HTMLButtonElement).disabled).toBe(false))
+ expect(document.activeElement).toBe(stable)
 })

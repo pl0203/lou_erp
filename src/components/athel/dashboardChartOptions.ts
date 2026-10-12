@@ -20,8 +20,8 @@ export function compactCurrency(value: number) {
 const base: DashboardChartOption = {
   animationDuration: 350,
   animationDurationUpdate: 200,
-  textStyle: { fontFamily: 'ui-sans-serif, system-ui, sans-serif', color: CHART_COLORS.text, fontSize: 12 },
-  tooltip: { renderMode: 'richText', confine: true, triggerOn: 'mousemove|click|mousewheel', backgroundColor: '#fff', borderColor: '#e2e8f0', padding: 12, textStyle: { color: '#0f172a', fontSize: 12 } },
+  textStyle: { fontFamily: '"Plus Jakarta Sans", system-ui, sans-serif', color: CHART_COLORS.text, fontSize: 13 },
+  tooltip: { renderMode: 'richText', confine: true, triggerOn: 'mousemove|click|mousewheel', backgroundColor: '#fff', borderColor: '#e2e8f0', padding: 12, textStyle: { color: '#0f172a', fontSize: 13 } },
 }
 const categoryAxis = {
   type: 'category' as const,

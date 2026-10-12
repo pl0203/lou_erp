@@ -33,7 +33,7 @@ test('fresh assigned detail gates private reason and blocks repeated approval cl
 })
 test('assigned cards show a status badge and collapse daily details without hiding decisions or balance context',async()=>{
  mount();await screen.findByRole('button',{name:'Tinjau Fictional employee'})
- expect(screen.getByLabelText('Status permintaan: Menunggu persetujuan cuti').className).toContain('rounded-full')
+ expect(screen.getByLabelText('Status permintaan: Menunggu persetujuan cuti').className).toContain('ui-status-badge--warning')
  fireEvent.click(screen.getByRole('button',{name:'Tinjau Fictional employee'}))
  await screen.findByText('Fictional private reason')
  const region=screen.getByRole('region',{name:'Detail permintaan ditugaskan'})
@@ -41,7 +41,7 @@ test('assigned cards show a status badge and collapse daily details without hidi
  expect(breakdown).toBeTruthy();expect(breakdown.hasAttribute('open')).toBe(false)
  expect(within(region).getByRole('region',{name:'Konteks saldo permohonan'}).closest('details')).toBeNull()
  expect(within(region).getByRole('button',{name:'Setujui cuti'}).closest('details')).toBeNull()
- expect(within(region).getByRole('button',{name:'Setujui cuti'}).classList.contains('bg-brand-primary')).toBe(true)
+ expect(within(region).getByRole('button',{name:'Setujui cuti'}).classList.contains('ui-action--primary')).toBe(true)
 })
 test('reject requires a reason, and shared authority suspension hides retained private input',async()=>{
  const {view,element}=mount();fireEvent.click(await screen.findByRole('button',{name:'Tinjau Fictional employee'}));const reason=await screen.findByLabelText('Alasan penolakan');expect((screen.getByRole('button',{name:'Tolak cuti'}) as HTMLButtonElement).disabled).toBe(true)

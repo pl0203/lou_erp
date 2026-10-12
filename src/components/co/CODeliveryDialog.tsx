@@ -1,15 +1,18 @@
+import { Field } from '../ui/Field';
+import { FormActions } from '../ui/FormActions';
+import { Button } from '../ui/Button';
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useBeforeSignOut } from '../../lib/AuthContext';
 import { useUnsavedChanges } from '../../lib/useUnsavedChanges';
-import ReturnedDateDialog from '../ReturnedDateDialog';
+import { Dialog } from '../ui/Dialog';
 import COCorrectionDialog from './COCorrectionDialog';
 import COSourceBoundary from './COSourceBoundary';
 import { completeCORead, fetchCompleteCOLines, fetchCompleteCOSJDraft, fetchCODetail, fetchCODetailSection } from '../../lib/co/rpc';
 import type { COOrderRecord, COOrderLine, CODeliveryRevision } from '../../lib/co/validation';
 import { useCOTransactionSender } from '../../lib/co/transactions';
 import type { COReceipt } from '../../lib/co/contracts';
-import { CO_BUTTON, CO_INPUT, CO_PRIMARY, COFailure, CORecoveryPanel, enteredQuantity, useCOActor, useCORead } from './COShared';
+import { CO_INPUT, COFailure, CORecoveryPanel, enteredQuantity, useCOActor, useCORead } from './COShared';
 type SJInput = {
     id: string;
     name: string;
@@ -245,46 +248,40 @@ function DeliveryEditor({ co, draftId, correctionSource, onClose, returnFocus, o
                 setPending(false);
         }
     }
-    return <>{unsaved.dialog}<ReturnedDateDialog labelledBy="co-sj-title" pending={pending || reviewPending} onClose={dismiss} returnFocus={returnFocus} fallbackFocus={() => null}>
+    return <>{unsaved.dialog}<Dialog labelledBy="co-sj-title" pending={pending || reviewPending} onClose={dismiss} returnFocus={returnFocus} fallbackFocus={() => null}>
     <h2 id="co-sj-title" className="font-semibold text-lg">{draftId ? 'Draft Surat Jalan' : 'Tambah Surat Jalan'}</h2>
-    <p className="mt-2 text-xs text-gray-500">Draft tidak menambah stok atau pendapatan. Post menambah stok tercatat pada tanggal SJ; bukan pendapatan.</p>
-    <p className="mt-1 text-xs text-gray-500">SJ Kembali adalah pengembalian dokumen, bukan retur barang.</p>
+    <p className="mt-2 text-[13px] text-brand-secondary">Draft tidak menambah stok atau pendapatan. Post menambah stok tercatat pada tanggal SJ; bukan pendapatan.</p>
+    <p className="mt-1 text-[13px] text-brand-secondary">SJ Kembali adalah pengembalian dokumen, bukan retur barang.</p>
     <div className="space-y-4 mt-4">{readFailure}
-    <CORecoveryPanel confirmed={!!confirmed} pending={pending || reviewPending} sender={sender} current={()=>actor.isCurrent()&&!pending&&!reviewPending} accept={recovered}/>{read.isError && <COFailure error={read.error}/>}{(stale || read.isError) && <button type="button" className={CO_BUTTON} disabled={pending || blocked} onClick={() => void refreshSources()}>Muat sumber SJ terbaru</button>}{!loaded && !read.isError && <p role="status">Memuat seluruh sumber CO…</p>}
+    <CORecoveryPanel confirmed={!!confirmed} pending={pending || reviewPending} sender={sender} current={()=>actor.isCurrent()&&!pending&&!reviewPending} accept={recovered}/>{read.isError && <COFailure error={read.error}/>}{(stale || read.isError) && <Button type="button" variant="secondary" disabled={pending || blocked} onClick={() => void refreshSources()}>Muat sumber SJ terbaru</Button>}{!loaded && !read.isError && <p role="status">Memuat seluruh sumber CO…</p>}
       {reviewing && (saved || voiding && sourceTarget) ? <COCorrectionDialog embedded ownUnsaved={false} operation={correction ? 'correct_sj' : 'post_sj'} customerId={co.customer_id} source={{ expected_co_version: binding.co_version, expected_customer_version: binding.customer_version, ...(voiding ? { action: 'void', ...sourceTarget } : { draft_id: saved!.id, expected_draft_version: saved!.draft_version, ...(correction ? { action: 'replace', ...sourceTarget } : {}) }) }} sender={sender} current={actor.isCurrent} blocked={readBlocked || !dataReady || pending} readFailure={readFailure} onDirtyChange={setReviewDirty} onPendingChange={setReviewPending} onClose={() => unsaved.confirmDiscard(() => { if(voiding)onClose();else { setReviewing(false); setReviewDirty(false); } })} onAuthorityFailure={error => { actor.rejectAuthority(error); onAuthorityFailure?.(error); }} confirmDiscard={message => unsaved.confirmDiscardDecision({ message })} onRecovered={recovered} onAccepted={async receipt => { setConfirmed(receipt); return importReceipt(receipt); }} returnFocus={returnFocus}/> : loaded && <>
         <fieldset disabled={pending || blocked || !dataReady} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <label className="text-sm">Nomor SJ<input aria-label="Nomor SJ" className={CO_INPUT} value={number} onChange={e => setNumber(e.target.value)}/>
-        </label>
-        <label className="text-sm">Tanggal SJ<input type="date" aria-label="Tanggal SJ" className={CO_INPUT} value={date} onChange={e => setDate(e.target.value)}/>
-        </label>
-        <label className="text-sm">Tanggal diterima<input type="date" aria-label="Tanggal diterima" className={CO_INPUT} value={received} onChange={e => setReceived(e.target.value)}/>
-        </label>
-        <label className="text-sm">Catatan SJ<textarea aria-label="Catatan SJ" className={CO_INPUT} value={notes} onChange={e => setNotes(e.target.value)}/>
-        </label>
+        <Field id="co-sj-number" label="Nomor SJ">{control => <input {...control} aria-label="Nomor SJ" className={CO_INPUT} value={number} onChange={e => setNumber(e.target.value)}/>}</Field>
+        <Field id="co-sj-date" label="Tanggal SJ">{control => <input {...control} type="date" aria-label="Tanggal SJ" className={CO_INPUT} value={date} onChange={e => setDate(e.target.value)}/>}</Field>
+        <Field id="co-sj-received" label="Tanggal diterima">{control => <input {...control} type="date" aria-label="Tanggal diterima" className={CO_INPUT} value={received} onChange={e => setReceived(e.target.value)}/>}</Field>
+        <Field id="co-sj-notes" label="Catatan SJ">{control => <textarea {...control} aria-label="Catatan SJ" className={CO_INPUT} value={notes} onChange={e => setNotes(e.target.value)}/>}</Field>
         </fieldset>
-        <label className="block text-xs">Tambahkan sumber CO<select aria-label="Tambahkan sumber CO" className={CO_INPUT} value="" disabled={pending || blocked || !dataReady} onChange={e => { const line = sources.find(l => l.id === e.target.value); if (line)
+        <Field id="co-sj-source" label="Tambahkan sumber CO">{control => <select {...control} aria-label="Tambahkan sumber CO" className={CO_INPUT} value="" disabled={pending || blocked || !dataReady} onChange={e => { const line = sources.find(l => l.id === e.target.value); if (line)
             setRows(prev => [...prev, { id: line.id, name: line.product_name, sku: line.display_sku, quantity: '0', pending: line.pending_quantity, available: true }]); }}>
-        <option value="">Pilih sumber CO untuk ditambahkan</option>{sources.filter(l => !rows.some(r => r.id === l.id)).map(l => <option key={l.id} value={l.id}>{l.display_sku} · {l.product_name}</option>)}</select>
-        </label>
-        <div className="space-y-2">{rows.map(row => <div key={row.id} className="rounded-lg border border-gray-100 p-3 text-sm">
+        <option value="">Pilih sumber CO untuk ditambahkan</option>{sources.filter(l => !rows.some(r => r.id === l.id)).map(l => <option key={l.id} value={l.id}>{l.display_sku} · {l.product_name}</option>)}</select>}</Field>
+        <div className="space-y-2">{rows.map(row => <div key={row.id} className="rounded-lg border border-brand-divider p-3 text-base">
             <p className="break-words">{row.name} · {row.sku}</p>{!row.available ? <div role="alert" className="text-amber-800">
                 <p>CO_SJ_SOURCE_UNAVAILABLE · Sumber {row.id} tidak tersedia. Jumlah tersimpan: {row.quantity}. Perbaiki secara sengaja sebelum menyimpan atau posting.</p>
-                <button type="button" className={CO_BUTTON} disabled={pending || blocked} onClick={() => setRows(prev => prev.filter(r => r.id !== row.id))}>Hapus sumber tidak tersedia</button>
-                </div> : <label className="block mt-2 text-xs">Jumlah dikirim (sisa {row.pending})<input type="text" inputMode="numeric" aria-label={`Jumlah dikirim ${row.name}`} className={CO_INPUT} value={row.quantity} disabled={pending || blocked || !dataReady} onChange={e => setRows(prev => prev.map(r => r.id === row.id ? { ...r, quantity: e.target.value } : r))}/>
-                </label>}</div>)}</div>
+                <Button type="button" variant="secondary" disabled={pending || blocked} onClick={() => setRows(prev => prev.filter(r => r.id !== row.id))}>Hapus sumber tidak tersedia</Button>
+                </div> : <Field id={`co-sj-quantity-${row.id}`} label={`Jumlah dikirim (sisa ${row.pending})`}>{control => <input {...control} type="text" inputMode="numeric" aria-label={`Jumlah dikirim ${row.name}`} className={CO_INPUT} value={row.quantity} disabled={pending || blocked || !dataReady} onChange={e => setRows(prev => prev.map(r => r.id === row.id ? { ...r, quantity: e.target.value } : r))}/>}</Field>}</div>)}</div>
         </>}
-      {confirmed && <div className="rounded-lg bg-amber-50 p-3 text-sm">
+      {confirmed && <div className="rounded-lg bg-amber-50 p-3 text-base">
         <p>SJ sudah tersimpan, tetapi hasil lengkap belum dapat dibuka. Jangan buat permintaan baru.</p>
-        <button type="button" className={CO_BUTTON} disabled={pending} onClick={() => { setPending(true); setError(''); void importReceipt(confirmed).catch(e => { actor.rejectAuthority(e); if (actor.isCurrent())
+        <Button type="button" variant="secondary" disabled={pending} onClick={() => { setPending(true); setError(''); void importReceipt(confirmed).catch(e => { actor.rejectAuthority(e); if (actor.isCurrent())
             setError((e as Error).message); }).finally(() => { if (actor.isCurrent())
-            setPending(false); }); }}>Buka hasil SJ tersimpan</button>
-        </div>}{saved && !saved.bindings_current && <p role="alert" className="text-amber-800">Sumber berubah. Periksa semua isian dan simpan ulang untuk mengikat versi terbaru.</p>}{error && <COFailure error={new Error(error)}/>}<div className="flex flex-wrap justify-end gap-2">
-    <button type="button" className={CO_BUTTON} onClick={dismiss} disabled={pending || reviewPending}>Batal</button>{!reviewing && <>
-        <button type="button" className={CO_PRIMARY} disabled={!dataReady || pending || blocked || unavailable || saved?.consumed || !allowed.includes(correction?'correct_sj':'save_sj_draft')} onClick={() => void execute(false)}>Simpan Draft SJ</button>
-        {!correction && <button type="button" className={CO_PRIMARY} disabled={!dataReady || pending || blocked || unavailable || !saved || dirty || !saved.bindings_current || saved.consumed || !allowed.includes('post_sj')} onClick={() => void execute(true)}>Post SJ</button>}
-        <button type="button" className={CO_PRIMARY} disabled={!dataReady || pending || blocked || unavailable || !saved || dirty || !saved.bindings_current || !saved.preparation_ready || saved.consumed || !allowed.includes(correction ? 'correct_sj' : 'post_sj')} onClick={() => setReviewing(true)}>Tinjau perubahan SJ</button>
-        </>}</div>
+            setPending(false); }); }}>Buka hasil SJ tersimpan</Button>
+        </div>}{saved && !saved.bindings_current && <p role="alert" className="text-amber-800">Sumber berubah. Periksa semua isian dan simpan ulang untuk mengikat versi terbaru.</p>}{error && <COFailure error={new Error(error)}/>}<FormActions>
+    <Button type="button" variant="secondary" onClick={dismiss} disabled={pending || reviewPending}>Batal</Button>{!reviewing && <>
+        <Button type="button"  disabled={!dataReady || pending || blocked || unavailable || saved?.consumed || !allowed.includes(correction?'correct_sj':'save_sj_draft')} onClick={() => void execute(false)}>Simpan Draft SJ</Button>
+        {!correction && <Button type="button"  disabled={!dataReady || pending || blocked || unavailable || !saved || dirty || !saved.bindings_current || saved.consumed || !allowed.includes('post_sj')} onClick={() => void execute(true)}>Post SJ</Button>}
+        <Button type="button"  disabled={!dataReady || pending || blocked || unavailable || !saved || dirty || !saved.bindings_current || !saved.preparation_ready || saved.consumed || !allowed.includes(correction ? 'correct_sj' : 'post_sj')} onClick={() => setReviewing(true)}>Tinjau perubahan SJ</Button>
+        </>}</FormActions>
     </div>
-    </ReturnedDateDialog>
+    </Dialog>
     </>;
 }

@@ -1,3 +1,6 @@
+import { Field } from '../ui/Field';
+import { FormActions } from '../ui/FormActions';
+import { Button } from '../ui/Button';
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useBeforeSignOut } from '../../lib/AuthContext';
@@ -7,8 +10,8 @@ import type { COOrderRecord } from '../../lib/co/validation';
 import type { COReceipt } from '../../lib/co/contracts';
 import { useCOTransactionSender } from '../../lib/co/transactions';
 import { isCOAuthorityError } from './COReportWorkspace';
-import ReturnedDateDialog from '../ReturnedDateDialog';
-import { CO_BUTTON, CO_INPUT, CO_PRIMARY, COFailure, CORecoveryPanel, enteredQuantity, useCOActor, useCORead } from './COShared';
+import { Dialog } from '../ui/Dialog';
+import { CO_INPUT, COFailure, CORecoveryPanel, enteredQuantity, useCOActor, useCORead } from './COShared';
 
 export default function COSettlementDialog({ co, operation, blocked, readFailure, returnFocus, onClose, onSaved, onAuthorityFailure }: {
     co: COOrderRecord;
@@ -169,34 +172,34 @@ export default function COSettlementDialog({ co, operation, blocked, readFailure
     }
     const dismiss = () => { if (!pending) unsaved.confirmDiscard(() => { departed.current = true; generation.current++; onClose(); }); };
     const label = operation === 'close_co' ? 'penutupan' : 'penyelesaian';
-    return <>{unsaved.dialog}<ReturnedDateDialog labelledBy="co-settlement-title" pending={pending} onClose={dismiss} returnFocus={returnFocus} fallbackFocus={() => null}>
+    return <>{unsaved.dialog}<Dialog labelledBy="co-settlement-title" pending={pending} onClose={dismiss} returnFocus={returnFocus} fallbackFocus={() => null}>
         <div className="space-y-4">
             <h2 id="co-settlement-title" className="font-semibold">{operation === 'recovery' ? 'Pulihkan penyelesaian CO' : operation === 'close_co' ? 'Tutup CO' : 'Selesaikan sisa belum dikirim'}</h2>
-            <p className="text-sm">{operation === 'recovery' ? 'Periksa hasil permintaan asli. Tindakan baru mengikuti izin CO terkini setelah pemulihan selesai.' : operation === 'close_co' ? 'Penutupan memerlukan stok nol, sisa rencana selesai dan laporan akhir bulan lengkap.' : 'Jumlah ini adalah tambahan pembatalan sisa rencana, bukan pengiriman atau retur. Tidak mengubah stok atau pendapatan.'}</p>
+            <p className="text-base">{operation === 'recovery' ? 'Periksa hasil permintaan asli. Tindakan baru mengikuti izin CO terkini setelah pemulihan selesai.' : operation === 'close_co' ? 'Penutupan memerlukan stok nol, sisa rencana selesai dan laporan akhir bulan lengkap.' : 'Jumlah ini adalah tambahan pembatalan sisa rencana, bukan pengiriman atau retur. Tidak mengubah stok atau pendapatan.'}</p>
             {readFailure}{error && <COFailure error={error}/>}{read.isError && <COFailure error={read.error} retry={() => void read.refetch()}/>}
             <CORecoveryPanel confirmed={!!confirmed} pending={pending} sender={sender} current={() => current() && !pending && !blocked} accept={recover}/>
-            {confirmed && <button className={CO_BUTTON} disabled={pending || blocked} onClick={() => {
+            {confirmed && <Button variant="secondary" disabled={pending || blocked} onClick={() => {
                 if (busy.current) return; busy.current = true; setPending(true);
                 void accept(confirmed).catch(failure).finally(() => { busy.current = false; if (current()) setPending(false); });
-            }}>Buka hasil penyelesaian tersimpan</button>}
-            {confirmed && <div><p className="text-sm">Sumber terkini dapat berbeda dari tanda terima asli. Periksa keadaan terkini sebelum tindakan berikutnya.</p>
-                <button className={CO_BUTTON} disabled={pending || blocked} onClick={() => void resolveCommittedConflict()}>Selesaikan konflik penyelesaian</button></div>}
-            {operation !== 'recovery' && <><button className={CO_BUTTON} disabled={pending || blocked || !!confirmed || sender.hasUnresolved()} onClick={() => void refresh()}>Muat sumber penyelesaian terbaru</button>
-            {!rechecked && refreshReady && <button className={CO_BUTTON} disabled={!canRecheck} onClick={recheck}>Saya sudah memeriksa sisa terbaru</button>}
+            }}>Buka hasil penyelesaian tersimpan</Button>}
+            {confirmed && <div><p className="text-base">Sumber terkini dapat berbeda dari tanda terima asli. Periksa keadaan terkini sebelum tindakan berikutnya.</p>
+                <Button variant="secondary" disabled={pending || blocked} onClick={() => void resolveCommittedConflict()}>Selesaikan konflik penyelesaian</Button></div>}
+            {operation !== 'recovery' && <><Button variant="secondary" disabled={pending || blocked || !!confirmed || sender.hasUnresolved()} onClick={() => void refresh()}>Muat sumber penyelesaian terbaru</Button>
+            {!rechecked && refreshReady && <Button variant="secondary" disabled={!canRecheck} onClick={recheck}>Saya sudah memeriksa sisa terbaru</Button>}
             <fieldset disabled={locked} className="space-y-3">
-                {retainedLines.current.map(line => <label key={line.id} className="block text-sm">{line.product_name} · sisa {line.pending_quantity}
-                    <input aria-label={`Jumlah dibatalkan ${line.product_name}`} inputMode="numeric" className={CO_INPUT} value={entries[line.id] ?? ''}
-                        onChange={e => { generation.current++; setEntries(old => ({ ...old, [line.id]: e.target.value })); }}/>
-                </label>)}
-                <label className="block">Alasan {label}<textarea aria-label={`Alasan ${label}`} className={CO_INPUT} value={reason}
-                    onChange={e => { generation.current++; setReason(e.target.value); }}/></label>
+                {retainedLines.current.map(line => <Field key={line.id} id={`co-settlement-quantity-${line.id}`} label={`${line.product_name} · sisa ${line.pending_quantity}`}>
+                    {control => <input {...control} aria-label={`Jumlah dibatalkan ${line.product_name}`} inputMode="numeric" className={CO_INPUT} value={entries[line.id] ?? ''}
+                        onChange={e => { generation.current++; setEntries(old => ({ ...old, [line.id]: e.target.value })); }}/>}
+                </Field>)}
+                <Field id="co-settlement-reason" label={`Alasan ${label}`}>{control => <textarea {...control} aria-label={`Alasan ${label}`} className={CO_INPUT} value={reason}
+                    onChange={e => { generation.current++; setReason(e.target.value); }}/>}</Field>
             </fieldset></>}
             {(stale || parentStale) && <p role="alert">Versi CO berubah. Isian dipertahankan; muat sumber penyelesaian terbaru.</p>}
             {closeBlocked && <p role="alert">CO belum memenuhi seluruh syarat penutupan.</p>}
-            <div className="flex flex-wrap gap-2">
-                <button className={CO_BUTTON} disabled={pending} onClick={dismiss}>Batal</button>
-                {operation !== 'recovery' && <button className={CO_PRIMARY} disabled={locked || !reason.trim()} onClick={() => void submit()}>Konfirmasi {label}</button>}
-            </div>
+            <FormActions>
+                <Button variant="secondary" disabled={pending} onClick={dismiss}>Batal</Button>
+                {operation !== 'recovery' && <Button disabled={locked || !reason.trim()} onClick={() => void submit()}>Konfirmasi {label}</Button>}
+            </FormActions>
         </div>
-    </ReturnedDateDialog></>;
+    </Dialog></>;
 }

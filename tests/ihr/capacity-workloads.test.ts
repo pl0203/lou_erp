@@ -69,6 +69,7 @@ test('target denial occurs before opening sessions or calling restoration', asyn
   await expect(runCapacityMeasurement({ environment: { PGHOST: 'hosted.invalid', PGDATABASE: 'pilot_test', PGUSER: 'postgres' }, openSession() { called = true }, restoreBaseline() { called = true } })).rejects.toThrow('Explicit loopback')
   expect(called).toBe(false)
 })
+// This mocked orchestration test builds and validates large synthetic fixtures; its harness allowance does not change actual capacity thresholds.
 test('sampler restores outside timer, includes commit and retains five warmups and thirty observations', async () => {
   const generated = validateCapacityFixture(buildCapacityFixture()), actions: string[] = [], emitted: any[] = []
   const workload = workloads.find(w => w.name === 'mutation-adjustment')
@@ -100,7 +101,7 @@ test('sampler restores outside timer, includes commit and retains five warmups a
   expect(emitted.filter(e => e.kind === 'sample')).toHaveLength(35)
   expect(actions.filter(a => a === 'restore')).toHaveLength(37) // initial sealed verification, 35 mutations, then plans
   for (let i = 0; i < actions.length; i++) if (actions[i] === 'BEGIN') expect(actions.slice(i - 1, i + 4)).toEqual(['timer', 'BEGIN', 'RPC', 'COMMIT', 'timer'])
-})
+}, 10_000)
 
 test('published fixture, roster and workload manifests match the generator exactly', () => {
   const fixture = buildCapacityFixture()

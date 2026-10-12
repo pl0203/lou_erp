@@ -1,3 +1,5 @@
+import { transferableAbortController } from 'node:util'
+import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
@@ -5,7 +7,6 @@ const state = vi.hoisted(() => ({ send: vi.fn(), complete: true, completedAt: '2
 vi.mock('../../src/lib/supabase', () => ({ supabase: {} }))
 vi.mock('../../src/components/AthelNav', () => ({ default: () => null }))
 vi.mock('../../src/components/TransactionRecovery', () => ({ default: () => null }))
-vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn(), useParams: () => ({ id: 'po' }) }))
 vi.mock('../../src/lib/orderTransactions', () => ({ useTransactionSender: () => Object.assign(state.send, { hasUnresolved: () => false }) }))
 vi.mock('../../src/lib/reads/usePagedRead', () => ({ usePagedRead: (name: string) => ({ data: { items: name === 'surat_jalan' ? [{ id: 'sj', sj_number: 'SJ-1', sj_date: '2026-09-30', sj_date_returned: null, voided_at: null }] : [], total: 1 }, page: 1, isPending: false, isError: false, setFilters: state.setFilters, setPage: state.setPage }) }))
 vi.mock('@tanstack/react-query', async original => ({ ...await original<any>(), useQuery: ({ queryKey }: any) => ({ data: queryKey[0] === 'po' ? { id: 'po', po_number: 'PO-1', status: state.complete ? 'complete' : 'in_progress', completed_at: state.completedAt, updated_at: 'v1', total_value: 10, order_date: '2026-09-30', customers: { name: 'Store' }, sales_attribution_state: 'unassigned' }
@@ -13,12 +14,13 @@ vi.mock('@tanstack/react-query', async original => ({ ...await original<any>(), 
 import PODetail from '../../src/pages/athel/PODetail'
 const clients: QueryClient[] = []
 beforeEach(() => { state.send.mockReset(); state.complete = true; state.completedAt = '2026-09-30T12:00:00Z'; vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-10-08T12:00:00Z')) })
-afterEach(() => { cleanup(); clients.splice(0).forEach(c => c.clear()) })
-function mount() { const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } }); clients.push(client); render(<QueryClientProvider client={client}><PODetail /></QueryClientProvider>) }
+const routers: ReturnType<typeof createMemoryRouter>[] = []
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); routers.splice(0).forEach(router => router.dispose()); clients.splice(0).forEach(c => c.clear()) })
+function mount() { const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } }); clients.push(client); renderRoute(client) }
 test.each([8, 14])('day %i exposes only the dedicated returned-date action, never full SJ or completed PO editing', async day => {
  vi.spyOn(Date, 'now').mockReturnValue(Date.parse(`2026-10-${String(day).padStart(2, '0')}T12:00:00Z`))
  state.send.mockResolvedValue({ id: 'sj', po_id: 'po', updated_at: 'v2' }); mount()
- expect(screen.queryByRole('button', { name: 'Ubah' })).toBeNull(); expect(screen.queryByRole('button', { name: 'Ubah PO' })).toBeNull()
+ expect(screen.queryByRole('button', { name: 'Ubah' })).toBeNull(); expect(screen.queryByRole('link', { name: 'Ubah PO' })).toBeNull()
  fireEvent.click(screen.getByRole('button', { name: 'Ubah tanggal SJ kembali' }))
  expect(screen.queryByRole('textbox', { name: 'Nomor SJ' })).toBeNull()
  const date = screen.getByLabelText('Tanggal SJ kembali'); fireEvent.change(date, { target: { value: '2026-10-07' } })
@@ -63,5 +65,12 @@ test('returned-date adapter uses the shared dialog and keeps pending Escape lock
  expect(state.send).toHaveBeenCalledTimes(1)
  finish({ id: 'sj', po_id: 'po', updated_at: 'v2' })
  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
- expect(document.activeElement).toBe(trigger)
+ expect(document.activeElement).not.toBe(trigger)
+ expect(document.activeElement?.getAttribute('tabindex')).toBe('-1')
+ expect(document.activeElement?.closest('#main-content')).toBeTruthy()
 })
+
+function renderRoute(client: QueryClient) { const router = createMemoryRouter([{ path: '/athel/po/:id', element: <PODetail /> }, { path: '*', element: <p>Destination</p> }], { initialEntries: ['/athel/po/po'] }); routers.push(router); return render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>) }
+
+// The real data router uses Node Request, which requires a Node-compatible signal.
+beforeEach(() => { vi.stubGlobal('AbortController', class { constructor() { return transferableAbortController() } }) })

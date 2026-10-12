@@ -1,3 +1,5 @@
+import { transferableAbortController } from 'node:util'
+import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
@@ -7,7 +9,6 @@ vi.mock('../../src/lib/AuthContext', () => ({ useAuth: () => ({ user: { id: 'act
 vi.mock('../../src/components/AthelNav', () => ({ default: () => null }))
 vi.mock('../../src/components/TransactionRecovery', () => ({ default: () => null }))
 vi.mock('../../src/components/poImport/PODocumentImport', () => ({ default: () => null }))
-vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn(), useParams: () => ({ id: 'po' }), useBlocker: () => ({ state: 'unblocked' }), useBeforeUnload: () => {} }))
 vi.mock('../../src/lib/orderTransactions', async original => ({ ...await original<any>(), useTransactionSender: () => Object.assign(state.send, { hasUnresolved: () => state.unresolved }) }))
 const productId = '11111111-1111-4111-8111-111111111111'
 vi.mock('@tanstack/react-query', async original => ({ ...await original<any>(), useQuery: ({ queryKey }: any) => ({
@@ -22,10 +23,12 @@ import { PromoStockWarningError } from '../../src/lib/promotionStock'
 const warning = (remaining = 2, version = 1) => new PromoStockWarningError({ code: 'PROMO_STOCK_WARNING', shortages: [{ promotion_id: productId, product_id: productId, product_name: 'Tiles', sku: 'SKU', remaining_quantity: remaining, requested_quantity: 5, incremental_quantity: 5, shortfall: 5 - remaining, stock_version: version }], ack: { opaque: { stock_version: version } } })
 const clients: QueryClient[] = []
 beforeEach(() => { state.send.mockReset(); state.unresolved = false })
-afterEach(() => { cleanup(); clients.splice(0).forEach(c => c.clear()) })
+const routers: ReturnType<typeof createMemoryRouter>[] = []
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); routers.splice(0).forEach(router => router.dispose()); clients.splice(0).forEach(c => c.clear()) })
 function mount(kind: 'new' | 'edit') {
+ const router = createMemoryRouter([{ path: kind === 'new' ? '/athel/po/new' : '/athel/po/:id/edit', element: kind === 'new' ? <PONew /> : <POEdit /> }, { path: '*', element: <p>Destination</p> }], { initialEntries: [kind === 'new' ? '/athel/po/new' : '/athel/po/po/edit'] }); routers.push(router)
  const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } }); clients.push(client)
- render(<QueryClientProvider client={client}>{kind === 'new' ? <PONew /> : <POEdit />}</QueryClientProvider>)
+ render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>)
  if (kind === 'new') {
   fireEvent.change(screen.getByRole('combobox', { name: 'Pelanggan' }), { target: { value: 'Store' } }); fireEvent.click(screen.getByRole('option', { name: /Store/ }))
   fireEvent.change(screen.getByPlaceholderText('mis. PO-2024-001'), { target: { value: 'PO' } })
@@ -125,3 +128,6 @@ test('an empty refreshed allocation list still presents review before Continue',
  fireEvent.click(screen.getByRole('button', { name: 'Lanjutkan' })); await waitFor(() => expect(state.send).toHaveBeenCalledTimes(2))
  expect(state.send.mock.calls[1][1].promo_stock_ack).toEqual(notice.warning.ack); expect(state.send.mock.calls[1][1].items[0].unit_price).toBe(71)
 })
+
+// The real data router uses Node Request, which requires a Node-compatible signal.
+beforeEach(() => { vi.stubGlobal('AbortController', class { constructor() { return transferableAbortController() } }) })

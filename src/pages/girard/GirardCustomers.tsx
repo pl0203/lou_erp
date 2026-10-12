@@ -404,7 +404,7 @@ export default function GirardCustomers() {
                         <Link to={`/girard/customer/${c.id}`} className="font-medium text-brand-primary underline decoration-brand-accent underline-offset-2 hover:text-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary [overflow-wrap:anywhere]">{c.name}</Link>
                         {c.phone && <p className="text-[13px] text-brand-secondary mt-0.5">{c.phone}</p>}
                       </td>
-                      <td className="px-5 py-4 text-brand-secondary text-[13px]">
+                      <td className="px-5 py-4 text-brand-secondary">
                         {[c.address, c.city].filter(Boolean).join(', ') || '—'}
                       </td>
                       <td className="px-5 py-4">
@@ -417,7 +417,7 @@ export default function GirardCustomers() {
                         <StatusBadge tone="neutral">{TIER_LABELS[c.pricing_tier] ?? c.pricing_tier}</StatusBadge>
                       </td>
                       <td className="px-5 py-4">{formatCustomerCategory(c.customer_category)}</td>
-                      <td className="px-5 py-4 text-brand-secondary text-[13px]">
+                      <td className="px-5 py-4 text-brand-secondary">
                         {frequencyLabel(c.visit_frequency_days)}
                       </td>
                       <td className="px-5 py-4">

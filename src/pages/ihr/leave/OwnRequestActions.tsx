@@ -1,4 +1,8 @@
-import { useContext,useEffect,useLayoutEffect,useMemo,useRef,useState } from 'react'
+import { FormActions } from '../../../components/ui/FormActions'
+import { Notice } from '../../../components/ui/Feedback'
+import { Button } from '../../../components/ui/Button'
+import { Field } from '../../../components/ui/Field'
+import { useId, useContext,useEffect,useLayoutEffect,useMemo,useRef,useState  } from 'react'
 import { UNSAFE_DataRouterContext } from 'react-router-dom'
 import { useQuery,useQueryClient } from '@tanstack/react-query'
 import { LEAVE_BACKEND } from '../../../lib/leave/queryKeys'
@@ -16,6 +20,7 @@ type Props={actorId:string;scopeVersion:string;requestId:string;requestVersion:n
 const blockers:Record<string,string>={CANCELLATION_RULES_UNCONFIRMED:'Aturan pembatalan belum dikonfirmasi HR.',CANCELLATION_PAST_DATE_BLOCKED:'Aturan HR tidak mengizinkan pembatalan tanggal yang sudah lewat.',CANCELLATION_REPEAT_BLOCKED:'Aturan HR tidak mengizinkan permintaan pembatalan ulang.',APPROVER_UNAVAILABLE:'Penyetuju pembatalan belum tersedia.'}
 const success=(receipt:TransitionReceipt)=>receipt.operation==='withdraw_request'?'Pengajuan cuti telah ditarik. Reservasi saldo dilepas.':'Permintaan pembatalan telah dikirim. Pemakaian saldo tetap berlaku sampai pembatalan disetujui.'
 export default function OwnRequestActions({actorId,scopeVersion,requestId,requestVersion,readState,onDirtyChange}:Props){
+ const fieldId=useId()
  const client=useQueryClient(),router=useContext(UNSAFE_DataRouterContext),authority=useOwnRequestAuthority(actorId,scopeVersion,JSON.stringify(['actions',requestId,requestVersion]))
  const [open,setOpen]=useState(false),[reason,setReason]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[completedVersion,setCompletedVersion]=useState<number|null>(null)
  const alive=useRef(true),active=useRef<AbortController|null>(null),mutating=useRef(false),first=useRef<HTMLTextAreaElement>(null),opener=useRef<HTMLButtonElement>(null)
@@ -53,17 +58,17 @@ export default function OwnRequestActions({actorId,scopeVersion,requestId,reques
  const completed=completedVersion!==null&&(!state.data||state.data.version<=completedVersion)
  return <section aria-label="Tindakan pengajuan cuti" className="space-y-3 border-t pt-3">
   {router&&<NavigationGuard dirty={dirty}/>}
-  {readState!=='ready'?<p role="status">Memeriksa akses tindakan...</p>:<>
-   {notice&&<p role="status">{notice}</p>}{error&&<p role="alert">{error}</p>}
-   {authority.denied?<div role="alert"><p>Akses tindakan belum dapat dikonfirmasi.</p><button type="button" onClick={authority.retry}>Coba lagi tindakan</button></div>:!authority.ready?<p role="status">Memeriksa akses tindakan...</p>:unresolved?<div><p>Hasil tindakan sebelumnya belum dikonfirmasi.</p><button type="button" disabled={busy} onClick={()=>void send(true)}>Pulihkan hasil tindakan</button></div>:state.isError?<div role="alert"><p>Status tindakan belum dapat dimuat.</p><button type="button" onClick={authority.retry}>Coba lagi tindakan</button></div>:!visible?<p role="status">Memuat status tindakan...</p>:state.data&&!completed&&<>
-    {state.data.canWithdraw&&<button type="button" disabled={busy} className="rounded border px-3 py-2" onClick={()=>void send(false,{operation:'withdraw_request',requestId,expectedVersion:state.data!.version})}>Tarik pengajuan</button>}
+  {readState!=='ready'?<p role="status" className="ui-notice ui-notice--info">Memeriksa akses tindakan...</p>:<>
+   {notice&&<p role="status" className="ui-notice ui-notice--info">{notice}</p>}{error&&<Notice tone="error" title={<> {error} </>}/>}
+   {authority.denied?<div role="alert" className="ui-notice ui-notice--error"><p>Akses tindakan belum dapat dikonfirmasi.</p><Button type="button" onClick={authority.retry} variant="secondary">Coba lagi tindakan</Button></div>:!authority.ready?<p role="status" className="ui-notice ui-notice--info">Memeriksa akses tindakan...</p>:unresolved?<div><p>Hasil tindakan sebelumnya belum dikonfirmasi.</p><Button type="button" disabled={busy} onClick={()=>void send(true)} variant="secondary">Pulihkan hasil tindakan</Button></div>:state.isError?<div role="alert" className="ui-notice ui-notice--error"><p>Status tindakan belum dapat dimuat.</p><Button type="button" onClick={authority.retry} variant="secondary">Coba lagi tindakan</Button></div>:!visible?<p role="status" className="ui-notice ui-notice--info">Memuat status tindakan...</p>:state.data&&!completed&&<>
+    {state.data.canWithdraw&&<Button type="button" disabled={busy} variant="danger" onClick={()=>void send(false,{operation:'withdraw_request',requestId,expectedVersion:state.data!.version})}>Tarik pengajuan</Button>}
     {state.data.cancellationBlocker&&<p>{blockers[state.data.cancellationBlocker]??'Pembatalan belum tersedia berdasarkan aturan dan akses terbaru.'}</p>}
-    {state.data.canRequestCancellation&&!open&&<button ref={opener} type="button" disabled={busy} className="rounded border px-3 py-2" onClick={()=>{setOpen(true);setNotice('')}}>Minta pembatalan seluruh pengajuan</button>}
+    {state.data.canRequestCancellation&&!open&&<button ref={opener} type="button" disabled={busy} className="ui-action ui-action--secondary" onClick={()=>{setOpen(true);setNotice('')}}>Minta pembatalan seluruh pengajuan</button>}
     {open&&state.data.canRequestCancellation&&<form className="space-y-3" onSubmit={event=>{event.preventDefault();void send(false,{operation:'request_cancellation',requestId,expectedVersion:state.data!.version,reason})}}>
      <p>Pembatalan berlaku untuk seluruh pengajuan. Pemakaian saldo tetap berlaku sampai penyetuju menerima pembatalan.</p>
-     <label className="block">Alasan pembatalan<textarea ref={first} maxLength={1000} disabled={busy} value={reason} onChange={event=>setReason(event.target.value)} className="block w-full rounded border p-2"/></label>
-     <p className="text-sm">Kewajiban mengisi alasan mengikuti aturan HR. Isian disimpan hanya selama rincian ini terbuka.</p>
-     <div className="flex gap-3"><button type="submit" disabled={busy} className="rounded bg-brand-primary px-3 py-2 text-white">Kirim permintaan pembatalan</button><button type="button" disabled={busy} onClick={close}>Tutup pembatalan</button></div>
+     <Field id={`${fieldId}-1`} label="Alasan pembatalan">{control=><textarea {...control} ref={first} maxLength={1000} disabled={busy} value={reason} onChange={event=>setReason(event.target.value)} />}</Field>
+     <p className="text-base">Kewajiban mengisi alasan mengikuti aturan HR. Isian disimpan hanya selama rincian ini terbuka.</p>
+     <FormActions ><Button type="submit" disabled={busy} variant="primary">Kirim permintaan pembatalan</Button><Button type="button" disabled={busy} onClick={close} variant="secondary">Tutup pembatalan</Button></FormActions>
     </form>}
    </>}
   </>}

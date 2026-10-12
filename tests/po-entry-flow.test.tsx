@@ -1,3 +1,5 @@
+import { transferableAbortController } from 'node:util'
+import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import React from 'react'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -7,7 +9,6 @@ const state = vi.hoisted(() => ({ send: vi.fn(), products: [] as any[], customer
 vi.mock('../src/lib/supabase', () => ({ supabase: {} }))
 vi.mock('../src/components/AthelNav', () => ({ default: () => null }))
 vi.mock('../src/components/TransactionRecovery', () => ({ default: () => null }))
-vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn(), useParams: () => ({ id: 'po' }), useBlocker: () => ({ state: 'unblocked' }), useBeforeUnload: () => {} }))
 vi.mock('../src/lib/orderTransactions', async original => ({ ...await original<any>(), useTransactionSender: () => Object.assign(state.send, { hasUnresolved: () => false }) }))
 vi.mock('@tanstack/react-query', async original => ({ ...await original<any>(), useQuery: ({ queryKey }: any) => ({
  data: queryKey[0] === 'customers' ? state.customers : queryKey[0] === 'products' ? state.products
@@ -26,10 +27,12 @@ beforeEach(() => {
  state.products = [product('p', 'SKU')]
  state.lines = [{ id: 'l', product_name: 'Historical', sku: 'OLD', quantity: 2, unit_price: 123.45, delivered_quantity: 0, has_delivery_history: false }]
 })
-afterEach(() => { cleanup(); clients.splice(0).forEach(c => c.clear()) })
+const routers: ReturnType<typeof createMemoryRouter>[] = []
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); routers.splice(0).forEach(router => router.dispose()); clients.splice(0).forEach(c => c.clear()) })
 function mount(kind: 'new' | 'edit' = 'new') {
+ const router = createMemoryRouter([{ path: kind === 'new' ? '/athel/po/new' : '/athel/po/:id/edit', element: kind === 'new' ? <PONew /> : <POEdit /> }, { path: '*', element: <p>Destination</p> }], { initialEntries: [kind === 'new' ? '/athel/po/new' : '/athel/po/po/edit'] }); routers.push(router)
  const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } }); clients.push(client)
- return render(<QueryClientProvider client={client}>{kind === 'new' ? <PONew /> : <POEdit />}</QueryClientProvider>)
+ return render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>)
 }
 function customer(name = 'Alpha') {
  fireEvent.change(screen.getByRole('combobox', { name: 'Pelanggan' }), { target: { value: name } })
@@ -234,3 +237,6 @@ test.each(['new', 'edit'] as const)('%s explains manual item scope before entry 
  expect(screen.getByText(/Barang manual hanya disimpan pada PO ini/)).toBeTruthy()
  expect(screen.getByText(/tidak menambahkan produk baru ke katalog/)).toBeTruthy()
 })
+
+// The real data router uses Node Request, which requires a Node-compatible signal.
+beforeEach(() => { vi.stubGlobal('AbortController', class { constructor() { return transferableAbortController() } }) })

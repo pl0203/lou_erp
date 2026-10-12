@@ -1,7 +1,10 @@
+import { Button } from '../../components/ui/Button'
+import { Field } from '../../components/ui/Field'
+import { useTargetEditorLock, type TargetEditorLock, type TargetEditorLayout } from '../../components/ui/useTargetEditorLock'
 import { salesMonthLabel } from '../../lib/reads/useSalesMetrics'
 import { formatAuditTimestamp } from '../../lib/displayDate'
 import { SalesMetricsPanel } from '../../components/sales/SalesMetricSummary'
-import { useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import { usePagedRead } from '../../lib/reads/usePagedRead'
@@ -37,16 +40,16 @@ export const fetchCustomerPerformance = fetchCustomerPerformancePage
 
 function SalesPctBar({ actual, target }: { actual: string; target: string | null }) {
   if (target == null || /^0+(?:\.0+)?$/.test(target)) {
-    return <span className="text-gray-300 text-xs">—</span>
+    return <span className="text-brand-secondary text-sm">—</span>
   }
   const pctText = moneyPercentage(actual, target)
   const pct = Number(pctText)
   return (
     <div className="flex flex-col items-end gap-1">
-      <span className={`text-xs font-medium ${
-        pct >= 100 ? 'text-green-600'
-        : pct >= 70  ? 'text-yellow-600'
-        : 'text-red-500'
+      <span className={`text-sm font-medium ${
+        pct >= 100 ? 'text-green-800'
+        : pct >= 70  ? 'text-yellow-800'
+        : 'text-red-700'
       }`}>
         {pctText}%
       </span>
@@ -65,73 +68,93 @@ function SalesPctBar({ actual, target }: { actual: string; target: string | null
 }
 
 function InlineTargetEdit({
-  customerId, yearMonth, currentTarget, canEdit, onSaved,
+  customerId, yearMonth, currentTarget, canEdit, onSaved, targetEditors, layout, compact = false,
 }: {
   customerId: string
   yearMonth: string
   currentTarget: string | null
   canEdit: boolean
-  onSaved: () => void
+  onSaved: (refreshActive: boolean) => void
+  compact?: boolean
+  layout: TargetEditorLayout
+  targetEditors: TargetEditorLock
 }) {
+  const fieldId = useId()
+  const [owner] = useState(() => Symbol())
+  const release = targetEditors.release
   const [editing, setEditing] = useState(false)
   const [value, setValue] = useState('')
+  const latestValue = useRef('')
+  const saving = useRef(false)
+  const editor = useRef(0)
+  const mounted = useRef(false)
+  useEffect(() => {
+    mounted.current = true
+    return () => { mounted.current = false; release(owner) }
+  }, [owner, release])
 
   const mutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (submitted: { targetValue: number; editor: number; onSaved: (refreshActive: boolean) => void }) => {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Tidak terautentikasi')
-      await upsertCustomerTarget(customerId, yearMonth, parseFloat(value) || 0, user.id)
+      await upsertCustomerTarget(customerId, yearMonth, submitted.targetValue, user.id)
     },
-    onSuccess: () => { setEditing(false); onSaved() },
+    onSuccess: (_result, submitted) => {
+      const currentOwner = mounted.current && editor.current === submitted.editor
+      if (currentOwner) { setEditing(false); release(owner) }
+      submitted.onSaved(currentOwner)
+    },
+    onSettled: () => { saving.current = false },
   })
 
-  if (!canEdit) {
-    return (
-      <span className="text-gray-600 text-xs">
-        {currentTarget != null ? `Rp ${formatMoney(currentTarget, 'full')}` : '—'}
-      </span>
-    )
+  const save = () => {
+    if (saving.current || !editing || !canEdit) return
+    saving.current = true
+    mutation.mutate({ targetValue: parseFloat(latestValue.current) || 0, editor: editor.current, onSaved })
+  }
+  const cancel = () => {
+    if (saving.current) return
+    editor.current++
+    setEditing(false)
+    release(owner)
   }
 
-  if (editing) {
-    return (
-      <div className="flex items-center gap-1 justify-end">
-        <input
-          type="number"
-          value={value}
-          onChange={e => setValue(e.target.value)}
-          onKeyDown={e => {
-            if (e.key === 'Enter') mutation.mutate()
-            if (e.key === 'Escape') setEditing(false)
-          }}
-          placeholder="0"
-          autoFocus
-          className="w-24 border border-green-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-brand-primary text-right"
-        />
-        <button
-          onClick={() => mutation.mutate()}
-          disabled={mutation.isPending}
-          className="text-brand-primary hover:text-brand-hover text-xs font-medium"
-        >
-          {mutation.isPending ? '...' : '✓'}
-        </button>
-        <button onClick={() => setEditing(false)} className="text-gray-600 hover:text-gray-600 text-xs">
-          ✕
-        </button>
-      </div>
-    )
-  }
+  if (!canEdit) return <span className={`text-brand-secondary ${compact ? 'text-sm' : 'text-base'}`}>
+    {currentTarget != null ? `Rp ${formatMoney(currentTarget, 'full')}` : '—'}
+  </span>
 
-  return (
-    <button
-      onClick={() => { setValue(currentTarget?.toString() ?? ''); setEditing(true) }}
-      className="text-right w-full group"
-    >
-      <span className="text-gray-600 text-xs group-hover:text-brand-primary transition-colors">
-        {currentTarget != null ? `Rp ${formatMoney(currentTarget, 'full')}` : '+ Atur target'}
-      </span>
-    </button>
-  )
+  if (editing) return <div className="flex flex-wrap items-end justify-end gap-2">
+    <Field id={fieldId} label="Target penjualan (Rp)" className="w-40 max-w-full">
+      {control => <input {...control}
+        type="number"
+        value={value}
+        disabled={mutation.isPending}
+        onChange={event => { latestValue.current = event.target.value; setValue(event.target.value) }}
+        onKeyDown={event => {
+          if (event.key === 'Enter') { event.preventDefault(); save() }
+          if (event.key === 'Escape') { event.preventDefault(); cancel() }
+        }}
+        placeholder="0"
+        autoFocus
+        className="text-base text-right focus:outline-none focus:ring-2 focus:ring-brand-primary"
+      />}
+    </Field>
+    <Button onClick={save} pending={mutation.isPending}>Simpan target</Button>
+    <Button variant="secondary" onClick={cancel} disabled={mutation.isPending}>Batal</Button>
+    {mutation.isError && <p role="alert" className="basis-full text-sm text-red-700">Penyimpanan target mengalami kendala. Coba simpan lagi atau pilih Batal.</p>}
+  </div>
+
+  return <Button variant="secondary" className="w-full" disabled={targetEditors.busy}
+    aria-describedby={targetEditors.busy ? targetEditors.descriptionId : undefined} onClick={() => {
+    if (saving.current || !targetEditors.claim(owner, layout)) return
+    editor.current++
+    latestValue.current = currentTarget?.toString() ?? ''
+    setValue(latestValue.current)
+    mutation.reset()
+    setEditing(true)
+  }}>
+    {currentTarget != null ? `Rp ${formatMoney(currentTarget, 'full')}` : '+ Atur target'}
+  </Button>
 }
 
 export function CustomerPerformanceContent() {
@@ -141,17 +164,21 @@ export function CustomerPerformanceContent() {
 export function CustomerActivityContent() {
   const { profile } = useAuth()
   const queryClient = useQueryClient()
-  const { data: receivedPage, filters, setFilters, setPage, isPending, isError, refetch } = usePagedRead('customer_performance', { yearMonth: currentYearMonth() }, (filters, page, signal) => fetchCustomerPerformancePage(profile!.id, profile!.role, filters.yearMonth, page, signal))
+  const { data: receivedPage, filters, page, setFilters, setPage, isPending, isError, refetch } = usePagedRead('customer_performance', { yearMonth: currentYearMonth() }, (filters, page, signal) => fetchCustomerPerformancePage(profile!.id, profile!.role, filters.yearMonth, page, signal))
   const pageData = isPending ? undefined : receivedPage
   const yearMonth = filters.yearMonth
   const setYearMonth = (yearMonth: string) => setFilters({ yearMonth })
   const isLoading = !pageData && isPending
 
+  const readIdentity = `${profile?.id ?? ''}:${profile?.role ?? ''}`
+  const editorScope = JSON.stringify([readIdentity, yearMonth, page])
+  const targetEditors = useTargetEditorLock(editorScope)
+
   const canEditTargets = profile?.role === 'sales_head' || profile?.role === 'executive'
 
   const data = pageData?.items ?? []
 
-  if (isError) return <div role="alert" className="p-6 text-red-600">Data performa tidak tersedia. <button onClick={() => refetch()} className="underline">Coba lagi</button></div>
+  if (isError) return <div role="alert" className="p-6 text-red-700">Data performa tidak tersedia. <Button variant="secondary" onClick={() => refetch()}>Coba lagi</Button></div>
 
   const summary = pageData?.summary
   const totalSales = summary?.total_sales ?? '0'
@@ -162,7 +189,10 @@ export function CustomerActivityContent() {
   const topCustomer = summary?.top_customer
   const selectedLabel = salesMonthLabel(yearMonth)
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['customer_performance'] })
+  const invalidate = (refreshActive: boolean) => queryClient.invalidateQueries({
+    queryKey: ['customer_performance', readIdentity, { yearMonth }],
+    refetchType: refreshActive ? 'active' : 'none',
+  })
 
   const showManagerCol = profile?.role === 'sales_head' || profile?.role === 'executive'
 
@@ -173,14 +203,14 @@ export function CustomerActivityContent() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-lg font-semibold text-gray-900">Aktivitas dan Target Pelanggan</h2>
-          <p className="text-sm text-gray-500 mt-0.5">Periode aktivitas: {selectedLabel}</p>
+          <p className="text-sm text-brand-secondary mt-0.5">Periode aktivitas: {selectedLabel}</p>
         </div>
-        <label className="text-sm text-gray-600">Bulan aktivitas pelanggan
-          <input aria-label="Bulan aktivitas pelanggan" type="month" value={yearMonth} onChange={e => { if (/^(?!0000)\d{4}-(?:0[1-9]|1[0-2])$/.test(e.target.value)) setYearMonth(e.target.value) }} className="ml-2 rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+        <label className="text-sm text-brand-secondary">Bulan aktivitas pelanggan
+          <input aria-label="Bulan aktivitas pelanggan" type="month" value={yearMonth} onChange={e => { if (/^(?!0000)\d{4}-(?:0[1-9]|1[0-2])$/.test(e.target.value)) setYearMonth(e.target.value) }} className="ml-2 rounded-lg border border-brand-control-border px-3 py-2 text-base min-h-11" />
         </label>
       </div>
 
-      <div className="rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-600">
+      <div className="rounded-lg border border-gray-200 bg-white p-4 text-sm text-brand-secondary">
         <p>Filter bulan aktivitas ini tidak mengubah Metrik Sales. Cakupan: pelanggan dan penanggung jawab toko saat ini sesuai izin akun; ringkasan mencakup semua halaman.</p>
         <p className="mt-1">Nilai pembanding target: pengiriman PO berstatus Dalam proses atau Selesai, berdasarkan tanggal SJ pada {selectedLabel}. Jumlah pesanan memakai tanggal PO. Kunjungan memakai waktu pencatatan, dengan batas bulan menurut zona waktu perangkat.</p>
       </div>
@@ -190,86 +220,88 @@ export function CustomerActivityContent() {
       {/* Top metrics */}
       {pageData && (      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-xs text-gray-600 mb-1">Nilai pembanding target</p>
+          <p className="text-[13px] text-brand-secondary mb-1">Nilai pembanding target</p>
           <p className="text-xl font-bold text-gray-900 [overflow-wrap:anywhere]">
             Rp {formatMoney(totalSales, 'full')}
           </p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-xs text-gray-600 mb-1">Pelanggan Aktif</p>
+          <p className="text-[13px] text-brand-secondary mb-1">Pelanggan Aktif</p>
           <p className="text-xl font-bold text-gray-900 [overflow-wrap:anywhere]">{activePelanggan}</p>
-          <p className="text-xs text-gray-600 mt-1">dari {summary?.total_customers} total</p>
+          <p className="text-[13px] text-brand-secondary mt-1">dari {summary?.total_customers} total</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-xs text-gray-600 mb-1">Total Kunjungan</p>
+          <p className="text-[13px] text-brand-secondary mb-1">Total Kunjungan</p>
           <p className="text-xl font-bold text-gray-900 [overflow-wrap:anywhere]">{totalVisits}</p>
-          <p className="text-xs text-gray-600 mt-1">target {totalTarget}</p>
+          <p className="text-[13px] text-brand-secondary mt-1">target {totalTarget}</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-xs text-gray-600 mb-1">Teratas pada basis aktivitas</p>
-          <p className="text-sm font-bold text-gray-900 [overflow-wrap:anywhere]">
+          <p className="text-[13px] text-brand-secondary mb-1">Teratas pada basis aktivitas</p>
+          <p className="text-base font-bold text-gray-900 [overflow-wrap:anywhere]">
             {topCustomer?.name ?? '—'}
           </p>
           {topCustomer && !/^0+(?:\.0+)?$/.test(topCustomer.total_sales) && (
-            <p className="text-xs text-gray-600 mt-1">
+            <p className="text-[13px] text-brand-secondary mt-1">
               Rp {formatMoney(topCustomer.total_sales, 'full')}
             </p>
           )}
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-xs text-gray-600 mb-1">Kunjungan %</p>
+          <p className="text-[13px] text-brand-secondary mb-1">Kunjungan %</p>
           <p className={`text-xl font-bold ${
-            visitPct >= 80 ? 'text-green-600'
-            : visitPct >= 50 ? 'text-yellow-600'
-            : 'text-red-500'
+            visitPct >= 80 ? 'text-green-700'
+            : visitPct >= 50 ? 'text-yellow-800'
+            : 'text-red-700'
           }`}>
             {visitPct}%
           </p>
-          <p className="text-xs text-gray-600 mt-1">{totalVisits}/{totalTarget} kunjungan</p>
+          <p className="text-[13px] text-brand-secondary mt-1">{totalVisits}/{totalTarget} kunjungan</p>
         </div>
       </div>
       )}
 
       {isLoading && (
-        <div className="text-center text-gray-600 text-sm py-12">Memuat data...</div>
+        <div className="text-center text-brand-secondary text-sm py-12">Memuat data...</div>
       )}
 
       {!isLoading && data.length === 0 && (
         <div className="text-center py-12">
-          <p className="text-gray-600 text-sm">Tidak ada data untuk bulan ini.</p>
+          <p className="text-brand-secondary text-sm">Tidak ada data untuk bulan ini.</p>
         </div>
       )}
 
       {!isLoading && data.length > 0 && (
         <>
           {canEditTargets && (
-            <p className="text-xs text-gray-600">
+            <p className="text-[13px] text-brand-secondary">
               Klik pada kolom Target Penjualan untuk mengatur target per pelanggan.
             </p>
           )}
 
+          {targetEditors.busy && <p id={targetEditors.descriptionId} className="text-sm text-brand-secondary">Simpan atau batalkan target yang sedang diedit sebelum mengubah target lain.</p>}
+
           {/* Desktop table */}
-          <div className="hidden md:block bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <p className="px-5 py-2 text-xs text-gray-600">Geser tabel untuk melihat semua kolom.</p>
+          <div className={`${targetEditors.layout === 'desktop' ? 'block' : targetEditors.layout === 'mobile' ? 'hidden' : 'hidden md:block'} bg-white rounded-xl border border-gray-200 overflow-hidden`}>
+            <p className="px-5 py-2 text-[13px] text-brand-secondary">Geser tabel untuk melihat semua kolom.</p>
             <div role="region" aria-label="Tabel aktivitas pelanggan" tabIndex={0} className="max-w-full overflow-x-auto">
             <table className="w-full min-w-[72rem] text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Pelanggan</th>
+                  <th className="text-left px-5 py-3 font-medium text-brand-secondary">Pelanggan</th>
                   {showManagerCol && (
-                    <th className="text-left px-5 py-3 font-medium text-gray-500">Penanggung Jawab Toko</th>
+                    <th className="text-left px-5 py-3 font-medium text-brand-secondary">Penanggung Jawab Toko</th>
                   )}
-                  <th className="text-center px-5 py-3 font-medium text-gray-500">Kunjungan (Aktual/Target)</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Kunjungan Terakhir</th>
-                  <th className="text-center px-5 py-3 font-medium text-gray-500">Pesanan</th>
-                  <th className="text-right px-5 py-3 font-medium text-gray-500">Nilai pembanding target</th>
-                  <th className="text-right px-5 py-3 font-medium text-gray-500">
+                  <th className="text-center px-5 py-3 font-medium text-brand-secondary">Kunjungan (Aktual/Target)</th>
+                  <th className="text-left px-5 py-3 font-medium text-brand-secondary">Kunjungan Terakhir</th>
+                  <th className="text-center px-5 py-3 font-medium text-brand-secondary">Pesanan</th>
+                  <th className="text-right px-5 py-3 font-medium text-brand-secondary">Nilai pembanding target</th>
+                  <th className="text-right px-5 py-3 font-medium text-brand-secondary">
                     Target Penjualan
                     {canEditTargets && (
-                      <span className="text-gray-300 ml-1 font-normal">(klik untuk ubah)</span>
+                      <span className="text-brand-secondary ml-1 font-normal">(klik untuk ubah)</span>
                     )}
                   </th>
-                  <th className="text-right px-5 py-3 font-medium text-gray-500">% Pembanding target</th>
+                  <th className="text-right px-5 py-3 font-medium text-brand-secondary">% Pembanding target</th>
                 </tr>
               </thead>
               <tbody>
@@ -279,15 +311,15 @@ export function CustomerActivityContent() {
                     <tr key={r.id} className="border-b border-gray-50 hover:bg-gray-50">
                       <td className="min-w-[14rem] px-5 py-4 font-medium text-gray-900">{r.name}</td>
                       {showManagerCol && (
-                        <td className="px-5 py-4 text-gray-600 text-xs">{r.manager_name ?? '—'}</td>
+                        <td className="px-5 py-4 text-brand-secondary">{r.manager_name ?? '—'}</td>
                       )}
                       <td className="px-5 py-4 text-center">
-                        <span className={`font-medium ${onTrack ? 'text-green-600' : 'text-red-500'}`}>
+                        <span className={`font-medium ${onTrack ? 'text-green-800' : 'text-red-700'}`}>
                           {r.actual_visits}
                         </span>
-                        <span className="text-gray-600">/{r.target_visits}</span>
+                        <span className="text-brand-secondary">/{r.target_visits}</span>
                       </td>
-                      <td className="px-5 py-4 text-xs text-gray-600">
+                      <td className="px-5 py-4 text-brand-secondary">
                         {r.last_visit_date
                           ? formatAuditTimestamp(r.last_visit_date)
                           : 'Belum pernah'}
@@ -297,12 +329,15 @@ export function CustomerActivityContent() {
                         {`Rp ${formatMoney(r.total_sales, 'full')}`}
                       </td>
                       <td className="px-5 py-4 text-right font-medium text-gray-900">
-                        <InlineTargetEdit key={`${r.id}:${yearMonth}`}
+                        <InlineTargetEdit key={`${editorScope}:${r.id}`}
                           customerId={r.id}
                           yearMonth={yearMonth}
                           currentTarget={r.sales_target}
+                          layout="desktop"
+                          compact
                           canEdit={canEditTargets && !isPending}
                           onSaved={invalidate}
+                          targetEditors={targetEditors}
                         />
                       </td>
                       <td className="px-5 py-4 text-right">
@@ -317,32 +352,32 @@ export function CustomerActivityContent() {
           </div>
 
           {/* Mobile cards */}
-          <div className="md:hidden space-y-3">
+          <div className={`${targetEditors.layout === 'mobile' ? 'block' : targetEditors.layout === 'desktop' ? 'hidden' : 'md:hidden'} space-y-3`}>
             {data.map(r => {
               const onTrack = r.actual_visits >= r.target_visits
               return (
                 <div key={r.id} className="bg-white rounded-xl border border-gray-200 p-4">
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-gray-900 text-sm [overflow-wrap:anywhere]">{r.name}</p>
+                      <p className="font-semibold text-gray-900 text-base [overflow-wrap:anywhere]">{r.name}</p>
                       {r.manager_name && (
-                        <p className="text-xs text-gray-600 mt-0.5">{r.manager_name}</p>
+                        <p className="text-[13px] text-brand-secondary mt-0.5">{r.manager_name}</p>
                       )}
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 text-xs mb-3">
+                  <div className="grid grid-cols-2 gap-2 text-base mb-3">
                     <div>
-                      <p className="text-gray-600">Kunjungan</p>
+                      <p className="text-brand-secondary">Kunjungan</p>
                       <p className="mt-0.5">
-                        <span className={`font-semibold ${onTrack ? 'text-green-600' : 'text-red-500'}`}>
+                        <span className={`font-semibold ${onTrack ? 'text-green-800' : 'text-red-700'}`}>
                           {r.actual_visits}
                         </span>
-                        <span className="text-gray-600">/{r.target_visits}</span>
+                        <span className="text-brand-secondary">/{r.target_visits}</span>
                       </p>
                     </div>
                     <div>
-                      <p className="text-gray-600">Kunjungan Terakhir</p>
+                      <p className="text-brand-secondary">Kunjungan Terakhir</p>
                       <p className="text-gray-700 mt-0.5">
                         {r.last_visit_date
                           ? formatAuditTimestamp(r.last_visit_date)
@@ -350,11 +385,11 @@ export function CustomerActivityContent() {
                       </p>
                     </div>
                     <div>
-                      <p className="text-gray-600">Pesanan</p>
+                      <p className="text-brand-secondary">Pesanan</p>
                       <p className="text-gray-700 mt-0.5">{r.order_count}</p>
                     </div>
                     <div>
-                      <p className="text-gray-600">Nilai pembanding target</p>
+                      <p className="text-brand-secondary">Nilai pembanding target</p>
                       <p className="font-semibold text-gray-900 mt-0.5">
                         {`Rp ${formatMoney(r.total_sales, 'full')}`}
                       </p>
@@ -363,18 +398,19 @@ export function CustomerActivityContent() {
 
                   {/* Visit progress bar */}
                   <div className="pt-2 border-t border-gray-100">
-                      <p className="text-xs text-gray-600 mb-1">Target Penjualan
-                      <InlineTargetEdit key={`${r.id}:${yearMonth}`}
+                      <p className="text-[13px] text-brand-secondary mb-1">Target Penjualan</p>
+                      <InlineTargetEdit key={`${editorScope}:${r.id}`}
                         customerId={r.id}
                         yearMonth={yearMonth}
                         currentTarget={r.sales_target}
+                        layout="mobile"
                         canEdit={canEditTargets && !isPending}
                         onSaved={invalidate}
+                        targetEditors={targetEditors}
                       />
-                      </p>
                     </div>
                   <div className="pt-2 border-t border-gray-100">
-                    <p className="text-xs text-gray-600 mb-1">% Kunjungan</p>
+                    <p className="text-[13px] text-brand-secondary mb-1">% Kunjungan</p>
                     <div className="flex items-center gap-2">
                       <div className="flex-1 bg-gray-100 rounded-full h-1.5">
                         <div
@@ -388,7 +424,7 @@ export function CustomerActivityContent() {
                           }}
                         />
                       </div>
-                      <span className="text-xs text-gray-600">
+                      <span className="text-[13px] text-brand-secondary">
                         {r.target_visits > 0
                           ? Math.round((r.actual_visits / r.target_visits) * 100)
                           : 0}%
@@ -396,7 +432,7 @@ export function CustomerActivityContent() {
                     </div>
                   </div>
                   <div className="pt-2 border-t border-gray-100">
-                    <p className="text-xs text-gray-600 mb-1">% Pembanding target</p>
+                    <p className="text-[13px] text-brand-secondary mb-1">% Pembanding target</p>
                     <div className="flex items-center gap-2">
                       <div className="flex-1 bg-gray-100 rounded-full h-1.5">
                         <div
@@ -408,7 +444,7 @@ export function CustomerActivityContent() {
                           }}
                         />
                       </div>
-                      <span className="text-xs text-gray-600">
+                      <span className="text-[13px] text-brand-secondary">
                         {moneyPercentage(r.total_sales, r.sales_target ?? '0')}%
                       </span>
                     </div>

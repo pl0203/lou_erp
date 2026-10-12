@@ -1,9 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { downloadEvidence, fetchEvidence, fetchEvidenceSelection, prepareEvidenceFile, uploadEvidence, useEvidenceSender } from '../../lib/co/evidence';
 import type { EvidenceRecord, EvidenceReceipt, EvidenceRecovery } from '../../lib/co/evidence';
-import { CO_BUTTON, COFailure, useCOActor } from './COShared';
+import { COFailure, useCOActor } from './COShared';
 import { isCOAuthorityError } from './COReportWorkspace';
 import type { COReportWorkspace, EvidenceDraftBinding } from './COReportWorkspace';
+import { Button } from '../ui/Button';
+import { Field } from '../ui/Field';
+import { Section } from '../ui/Section';
+import { Notice } from '../ui/Feedback';
 
 /** Downloads have no retained URL. Every click makes an authenticated, reauthorized read. */
 function saveBlob(blob: Blob, name: string, current: () => boolean) {
@@ -45,7 +49,7 @@ export function CORevisionAttachment({ customerId, revisionId, onAuthorityFailur
         finally { lock.current = false; if (live()) setBusy(false); }
     }
     if (!actor.enabled) return null;
-    return <div className="text-sm space-y-2"><p>Lampiran revisi (opsional)</p>{error ? <COFailure error={error} retry={() => setRetry(n => n + 1)}/> : loading ? <p role="status">Memuat lampiran…</p> : record ? <button type="button" className={CO_BUTTON} disabled={busy} onClick={() => void download()}>Unduh {record.filename}</button> : <p>Tidak ada lampiran untuk revisi ini.</p>}</div>;
+    return <Section title="Lampiran revisi (opsional)" className="text-sm"><div className="min-w-0 space-y-2">{error ? <COFailure error={error} retry={() => setRetry(n => n + 1)}/> : loading ? <p role="status">Memuat lampiran…</p> : record ? <Button type="button" variant="secondary" disabled={busy} onClick={() => void download()}>Unduh {record.filename}</Button> : <p>Tidak ada lampiran untuk revisi ini.</p>}</div></Section>;
 }
 
 type EvidenceResult =
@@ -199,19 +203,22 @@ export default function COEvidenceAttachment({ work, blocked = false, sourceFing
             const value: EvidenceResult={kind:'observation',evidence:e,binding:b};setResult(value);await importResult(value,live);
         }
     }
+    const inputId = useId();
     const disabled=busy||blocked||work.evidenceBlocked||outstanding||loading;
-    return <section className="rounded-lg border border-gray-200 p-3 text-sm space-y-2" aria-label="Lampiran laporan opsional">
-        <p>Lampiran laporan (opsional)</p><p>PDF, PNG, atau JPEG, maksimum 10 MiB. Berkas hanya diunduh, tidak ditampilkan atau diimpor.</p>
-        {selected && <button type="button" className={CO_BUTTON} disabled={busy||blocked} onClick={()=>void run(async live=>saveBlob(await downloadEvidence(selected,live),selected.filename,live),true)}>Unduh {selected.filename}</button>}
+    return <Section title="Lampiran laporan (opsional)" className="text-sm" aria-label="Lampiran laporan opsional" aria-labelledby={undefined}>
+        <div className="min-w-0 space-y-2">
+        <p>PDF, PNG, atau JPEG, maksimum 10 MiB. Berkas hanya diunduh, tidak ditampilkan atau diimpor.</p>
+        {selected && <Button type="button" variant="secondary" disabled={busy||blocked} onClick={()=>void run(async live=>saveBlob(await downloadEvidence(selected,live),selected.filename,live),true)}>Unduh {selected.filename}</Button>}
         {!selected&&!loading&&<p>Tanpa lampiran tetap dapat disimpan dan diposting.</p>}
-        {usable&&<><label>Pilih lampiran<input ref={input} aria-label="Pilih lampiran" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" disabled={disabled} onChange={event=>{const chosen=event.target.files?.[0];if(!chosen)return;void run(async live=>{const prepared=await prepareEvidenceFile(chosen,live);if(live())setFile(prepared);});}}/></label>
+        {usable&&<><Field id={`co-evidence-${inputId}`} label="Pilih lampiran">{control => <input {...control} ref={input} aria-label="Pilih lampiran" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" disabled={disabled} onChange={event=>{const chosen=event.target.files?.[0];if(!chosen)return;void run(async live=>{const prepared=await prepareEvidenceFile(chosen,live);if(live())setFile(prepared);});}}/>}</Field>
         {file&&<p>{file.filename} · belum terpasang</p>}{record&&<p role="status">{record.state==='pending'?'Unggahan belum terverifikasi. Periksa lalu lanjutkan dengan berkas yang sama.':'Berkas terverifikasi, pemasangan belum dikonfirmasi.'}</p>}
-        <button type="button" className={CO_BUTTON} disabled={disabled||(!file&&!record)} onClick={()=>void run(attach)}>Verifikasi dan pasang lampiran</button>
-        {(file||record)&&!outstanding&&<button type="button" className={CO_BUTTON} disabled={busy} onClick={()=>{setFile(null);setRecord(null);if(input.current)input.current.value='';}}>Batalkan pilihan lampiran</button>}</>}
-        {sender.hasUnresolved()&&!busy&&!result&&<button type="button" className={CO_BUTTON} disabled={busy||blocked||work.pending} onClick={()=>void run(async live=>{const recovered=await sender.reconcile();if(live())setRecovery(recovered);},true)}>Pulihkan permintaan lampiran</button>}
-        {recovery?.status==='committed'&&!result&&<><p>Hasil lampiran ditemukan. Periksa sebelum melanjutkan.</p><button type="button" className={CO_BUTTON} disabled={busy} onClick={()=>void run(async live=>{const value: EvidenceResult={kind:'command',receipt:recovery.receipt};setResult(value);await importResult(value,live);},true)}>Buka hasil lampiran tersimpan</button><button type="button" className={CO_BUTTON} disabled={busy} onClick={()=>setRecovery(null)}>Pertahankan isian lampiran</button></>}
+        <Button type="button" variant="secondary" disabled={disabled||(!file&&!record)} onClick={()=>void run(attach)}>Verifikasi dan pasang lampiran</Button>
+        {(file||record)&&!outstanding&&<Button type="button" variant="secondary" disabled={busy} onClick={()=>{setFile(null);setRecord(null);if(input.current)input.current.value='';}}>Batalkan pilihan lampiran</Button>}</>}
+        {sender.hasUnresolved()&&!busy&&!result&&<Button type="button" variant="secondary" disabled={busy||blocked||work.pending} onClick={()=>void run(async live=>{const recovered=await sender.reconcile();if(live())setRecovery(recovered);},true)}>Pulihkan permintaan lampiran</Button>}
+        {recovery?.status==='committed'&&!result&&<><p>Hasil lampiran ditemukan. Periksa sebelum melanjutkan.</p><Button type="button" variant="secondary" disabled={busy} onClick={()=>void run(async live=>{const value: EvidenceResult={kind:'command',receipt:recovery.receipt};setResult(value);await importResult(value,live);},true)}>Buka hasil lampiran tersimpan</Button><Button type="button" variant="secondary" disabled={busy} onClick={()=>setRecovery(null)}>Pertahankan isian lampiran</Button></>}
         {recovery?.status==='abandoned'&&<p>Permintaan sebelumnya tidak tersimpan. Pilih kembali untuk melanjutkan.</p>}
-        {result&&<><p role="alert">Lampiran sudah tersimpan; hasil lengkap belum diimpor. Isian laporan tetap dipertahankan.</p><button type="button" className={CO_BUTTON} disabled={busy||work.pending} onClick={()=>void run(live=>importResult(result,live),true)}>Coba buka hasil lampiran</button>{confirmDiscard&&<button type="button" className={CO_BUTTON} disabled={busy||blocked||work.pending} onClick={()=>void run(live=>resolveConflict(result,live),true)}>Selesaikan konflik lampiran</button>}</>}
+        {result&&<><Notice tone="warning" title="Lampiran sudah tersimpan; hasil lengkap belum diimpor. Isian laporan tetap dipertahankan."/><Button type="button" variant="secondary" disabled={busy||work.pending} onClick={()=>void run(live=>importResult(result,live),true)}>Coba buka hasil lampiran</Button>{confirmDiscard&&<Button type="button" variant="secondary" disabled={busy||blocked||work.pending} onClick={()=>void run(live=>resolveConflict(result,live),true)}>Selesaikan konflik lampiran</Button>}</>}
         {busy&&<p role="status">Memeriksa lampiran…</p>}{error&&<COFailure error={error} retry={()=>setRetry(n=>n+1)}/>}
-    </section>;
+        </div>
+    </Section>;
 }

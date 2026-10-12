@@ -79,7 +79,7 @@ test('dirty new PO guards app links and refresh while clean forms do not prompt'
   expect(router.state.location.pathname).toBe('/athel/po/new')
   fireEvent.click(screen.getByRole('button', { name: 'Tetap mengedit' }))
   expect((screen.getByPlaceholderText('Nama produk') as HTMLInputElement).value).toBe('Barang A')
-  fireEvent.click(screen.getByRole('button', { name: /Kembali/ }))
+  fireEvent.click(screen.getByRole('link', { name: /Kembali/ }))
   fireEvent.click(await screen.findByRole('button', { name: 'Buang perubahan' }))
   await waitFor(() => expect(router.state.location.pathname).toBe('/athel/po'))
 })

@@ -1,4 +1,7 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, matchPath, useLocation } from 'react-router-dom'
+import { useEffect } from 'react'
+import { MainContent } from './components/ui/MainContent'
+import { Notice } from './components/ui/Feedback'
 import { useAuth } from './lib/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import COMonthlyReports from './pages/athel/co/COMonthlyReports'
@@ -58,14 +61,40 @@ function RoleBasedSchedule() {
   return <ManagerSchedule />
 }
 
+const routeTitles: [string, string][] = [
+  ['/login', 'Masuk'], ['/forgot-password', 'Reset kata sandi'], ['/reset-password', 'Buat kata sandi baru'],
+  ['/landing', 'Pilih sistem'], ['/athel/dashboard', 'Dashboard Procurement'],
+  ['/athel/po/new', 'Buat purchase order'], ['/athel/po/:id/edit', 'Ubah purchase order'],
+  ['/athel/po/:id', 'Detail purchase order'], ['/athel/po', 'Purchase order'],
+  ['/athel/customers', 'Daftar pelanggan Procurement'], ['/athel/products', 'Daftar barang'],
+  ['/athel/sales-orders', 'Pesanan penjualan'], ['/athel/promotions', 'Promosi Procurement'],
+  ['/athel/co/reports/:customerId/:month', 'Laporan konsinyasi bulanan'],
+  ['/athel/co/reports', 'Laporan konsinyasi'], ['/athel/co/stock/*', 'Stok konsinyasi'],
+  ['/athel/co/new', 'Buat pesanan konsinyasi'], ['/athel/co/:id/edit', 'Ubah pesanan konsinyasi'],
+  ['/athel/co/:id', 'Detail pesanan konsinyasi'], ['/athel/co', 'Pesanan konsinyasi'],
+  ['/girard/visit-requests', 'Permintaan kunjungan'], ['/girard/visit-history', 'Riwayat kunjungan saya'],
+  ['/girard/schedule', 'Jadwal kunjungan'], ['/girard/visit/:scheduleId', 'Detail kunjungan'],
+  ['/girard/customer/:id', 'Detail pelanggan Sales'], ['/girard/outlet/:id', 'Detail outlet'],
+  ['/girard/my-sales', 'Ringkasan penjualan saya'], ['/girard/my-orders', 'Riwayat pesanan saya'],
+  ['/girard/my-visits', 'Kunjungan saya'], ['/girard/team', 'Tim Sales'],
+  ['/girard/dashboard', 'Dashboard Sales'], ['/girard/my-customers', 'Pelanggan saya'],
+  ['/girard/customers', 'Daftar pelanggan Sales'], ['/girard/managers', 'Manajer Sales'],
+  ['/girard/promotions', 'Promosi Sales'], ['/ihr/users', 'Manajemen pengguna'], ['/ihr/leave', 'Manajemen cuti'],
+]
+
 export default function App() {
   const { loading } = useAuth()
+  const { pathname } = useLocation()
+  useEffect(() => {
+    const title = routeTitles.find(([path]) => matchPath(path, pathname))?.[1]
+    document.title = title ? `${title} | Padiwan` : 'Padiwan'
+  }, [pathname])
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-400 text-sm">Loading...</p>
-      </div>
+      <MainContent className="min-h-screen flex items-center justify-center px-4">
+        <Notice tone="info" title="Memuat..." />
+      </MainContent>
     )
   }
 

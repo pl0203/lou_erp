@@ -13,6 +13,16 @@ test('no inferred timezone, Sunday or holiday acceptance; no publication without
  expect((screen.getByLabelText('Daftar hari libur dikonfirmasi') as HTMLInputElement).checked).toBe(false)
  expect((screen.getByRole('button',{name:'Terbitkan roster'}) as HTMLButtonElement).disabled).toBe(true)
 })
+test('group anchor label visibly separates the group name and targets its native select',()=>{
+ render(<LeaveRotaSettings calendar={calendar} send={vi.fn()} preview={vi.fn()} previewCalendar={vi.fn()}/>)
+ const select=screen.getByRole('combobox',{name:'Giliran A pada acuan'}) as HTMLSelectElement
+ const label=Array.from(document.querySelectorAll('label')).find(node=>node.htmlFor===select.id)!
+ expect(label).toBeTruthy()
+ expect(label.textContent).toBe('Giliran A pada acuan')
+ expect(label.control).toBe(select)
+ expect(select.labels?.item(0)).toBe(label)
+ expect(select.getAttribute('aria-label')).toBe('Giliran A pada acuan')
+})
 test('preview and publish are separate and publication uses server fingerprint/version',async()=>{
  const send=vi.fn().mockResolvedValue({id,version:2,operation:'publish_roster'}),preview=vi.fn().mockResolvedValue(response)
  render(<LeaveRotaSettings calendar={calendar} previewCalendar={vi.fn().mockResolvedValue({calendarId:id,calendarVersion:1,fingerprint:'calendar-fp',impacts:response.impacts})} send={send} preview={preview}/> );fill()

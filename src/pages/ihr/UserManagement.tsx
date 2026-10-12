@@ -1,7 +1,15 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import IHRNav from '../../components/IHRNav'
+import { Button } from '../../components/ui/Button'
+import { Dialog } from '../../components/ui/Dialog'
+import { Field } from '../../components/ui/Field'
+import { FilterBar } from '../../components/ui/FilterBar'
+import { FormActions } from '../../components/ui/FormActions'
+import { MainContent } from '../../components/ui/MainContent'
+import { PageHeader } from '../../components/ui/PageHeader'
+import { EmptyState, Notice, StatusBadge } from '../../components/ui/Feedback'
 
 type UserProfile = {
   id: string
@@ -41,15 +49,6 @@ const ROLES = [
   { value: 'sales_head',    label: 'Sales Head' },
   { value: 'executive',     label: 'Executive' },
 ]
-
-const ROLE_STYLES: Record<string, string> = {
-  po_admin:      'bg-blue-100 text-blue-700',
-  co_admin:      'bg-blue-100 text-blue-700',
-  sales_person:  'bg-gray-100 text-gray-700',
-  sales_manager: 'bg-purple-100 text-purple-700',
-  sales_head:    'bg-orange-100 text-orange-700',
-  executive:     'bg-green-100 text-green-700',
-}
 
 async function fetchUsers(): Promise<UserProfile[]> {
   const { data, error } = await supabase
@@ -127,6 +126,20 @@ export default function UserManagement() {
   const formGeneration = useRef(0)
   const inFlight = useRef(false)
   const [saving, setSaving] = useState(false)
+  const savingGeneration = useRef(-1)
+  const formReturnFocus = useRef<HTMLElement | null>(null)
+  const deactivateReturnFocus = useRef<HTMLElement | null>(null)
+  const directoryFocus = useRef<HTMLDivElement>(null)
+  const feedbackFocus = useRef<HTMLDivElement>(null)
+  const [feedback, setFeedback] = useState('')
+  const [directoryError, setDirectoryError] = useState('')
+  const [deactivateError, setDeactivateError] = useState('')
+  const deactivationInFlight = useRef(false)
+  const deactivateOwner = useRef<string | null>(null)
+  const reactivationInFlight = useRef(new Set<string>())
+  const [reactivatingIds, setReactivatingIds] = useState<Set<string>>(() => new Set())
+  const formSaving = saving && savingGeneration.current === formGeneration.current
+  useEffect(() => { if (feedback) feedbackFocus.current?.focus() }, [feedback])
   const [formError, setFormError] = useState('')
   const [inviteReviews, setInviteReviews] = useState<Record<string, string>>(readInviteReviews)
   const inviteReviewsRef = useRef(inviteReviews)
@@ -150,7 +163,11 @@ export default function UserManagement() {
     if (generation === formGeneration.current) setFormError(error.message)
   }
 
-  const { data: users, isLoading, isError: usersFailed, refetch } = useQuery({
+  const dismissForm = () => {
+    if (!editingUser || !inFlight.current || savingGeneration.current !== formGeneration.current) closeForm()
+  }
+
+  const { data: users, isPending, fetchStatus, isError: usersFailed, refetch } = useQuery({
     queryKey: ['users'],
     queryFn: fetchUsers,
   })
@@ -163,7 +180,7 @@ export default function UserManagement() {
     mutationFn: ({ payload }: { payload: Parameters<typeof updateUser>[0]; generation: number }) => updateUser(payload),
     onSuccess: (_result, variables) => {
       queryClient.invalidateQueries({ queryKey: ['users'] })
-      if (variables.generation === formGeneration.current) closeForm()
+      if (variables.generation === formGeneration.current) { closeForm(); setFeedback('User updated.') }
     },
     onError: (error, variables) => saveError(error, variables.generation),
     onSettled: finishSave,
@@ -194,7 +211,7 @@ export default function UserManagement() {
     },
     onSuccess: (_result, variables) => {
       queryClient.invalidateQueries({ queryKey: ['users'] })
-      if (variables.generation === formGeneration.current) closeForm()
+      if (variables.generation === formGeneration.current) { closeForm(); setFeedback('Invitation request accepted. Delivery is not confirmed; contact an administrator if follow-up is needed.') }
     },
     onError: (error, variables) => {
       saveError(error, variables.generation)
@@ -205,13 +222,21 @@ export default function UserManagement() {
   const deactivateMutation = useMutation({
     mutationFn: async (id: string) => {
       const user = users?.find(u => u.id === id)
-      if (!user) return
+      if (!user) return 'target-unavailable' as const
       await updateUser({ ...user, is_active: false })
+      return 'applied' as const
     },
-    onSuccess: () => {
+    onSuccess: (outcome, id) => {
       queryClient.invalidateQueries({ queryKey: ['users'] })
-      setDeactivateId(null)
+      if (deactivateOwner.current !== id) return
+      if (outcome === 'applied') {
+        setDeactivateId(null); deactivateOwner.current = null; setFeedback('User deactivated.')
+      } else {
+        setDeactivateError('User unavailable. Reload the user list before trying again. No deactivation was confirmed.')
+      }
     },
+    onError: (error, id) => { if (deactivateOwner.current === id) setDeactivateError(error.message) },
+    onSettled: () => { deactivationInFlight.current = false },
   })
 
   const reactivateMutation = useMutation({
@@ -221,16 +246,45 @@ export default function UserManagement() {
       await updateUser({ ...user, is_active: true })
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
+    onError: error => setDirectoryError(error.message),
+    onSettled: (_result, _error, id) => {
+      reactivationInFlight.current.delete(id)
+      setReactivatingIds(new Set(reactivationInFlight.current))
+    },
   })
 
-  const openCreate = () => {
+  const openDeactivate = (id: string, opener: HTMLElement) => {
+    if (deactivationInFlight.current) return
+    deactivateReturnFocus.current = opener; deactivateOwner.current = id
+    setDeactivateError(''); setFeedback(''); setDeactivateId(id)
+  }
+  const dismissDeactivate = () => {
+    if (deactivationInFlight.current) return
+    deactivateOwner.current = null; setDeactivateId(null); setDeactivateError('')
+  }
+  const handleDeactivate = () => {
+    if (deactivationInFlight.current || !deactivateId) return
+    deactivationInFlight.current = true; setDeactivateError('')
+    deactivateMutation.mutate(deactivateId)
+  }
+  const handleReactivate = (id: string) => {
+    if (reactivationInFlight.current.has(id)) return
+    reactivationInFlight.current.add(id)
+    setReactivatingIds(new Set(reactivationInFlight.current))
+    setDirectoryError(''); setFeedback('')
+    reactivateMutation.mutate(id)
+  }
+
+  const openCreate = (opener: HTMLElement) => {
+    formReturnFocus.current = opener; setFeedback('')
     formGeneration.current++; setFormError('')
     setEditingUser(null)
     setForm(EMPTY_FORM)
     setShowForm(true)
   }
 
-  const openEdit = (u: UserProfile) => {
+  const openEdit = (u: UserProfile, opener: HTMLElement) => {
+    formReturnFocus.current = opener; setFeedback('')
     formGeneration.current++; setFormError('')
     setEditingUser(u)
     setForm({
@@ -246,10 +300,10 @@ export default function UserManagement() {
 
   const handleSave = () => {
     if (inFlight.current || reviewRequired) return
-    if (!form.full_name.trim()) return alert('Full name is required.')
-    if (!form.email.trim()) return alert('Email is required.')
+    if (!form.full_name.trim()) return setFormError('Full name is required.')
+    if (!form.email.trim()) return setFormError('Email is required.')
 
-    inFlight.current = true; setSaving(true); setFormError('')
+    inFlight.current = true; savingGeneration.current = formGeneration.current; setSaving(true); setFormError('')
     if (editingUser) {
       updateMutation.mutate({ generation: formGeneration.current, payload: {
         id: editingUser.id,
@@ -277,300 +331,125 @@ export default function UserManagement() {
 
   const needsManager = ['sales_person', 'sales_manager', 'sales_head'].includes(form.role)
 
+  const hasUsers = users !== undefined
+  const waitingForConnection = isPending && fetchStatus === 'paused'
+  const countDescription = hasUsers ? `${users.filter(user => user.is_active).length} active users`
+    : usersFailed ? 'User list unavailable' : waitingForConnection ? 'Waiting for connection' : 'Loading users...'
+
   return (
     <div className="min-h-screen bg-brand-canvas">
       <IHRNav />
-
-      <div className="px-4 md:px-8 py-6 max-w-6xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-xl font-semibold text-gray-900">User Management</h1>
-            <p className="text-sm text-gray-500 mt-0.5">
-              {usersFailed ? 'User list unavailable' : `${users?.filter(u => u.is_active).length ?? 0} active users`}
-            </p>
-          </div>
-          <button
-            onClick={openCreate}
-            className="bg-brand-primary hover:bg-brand-hover text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-          >
-            + Invite User
-          </button>
-        </div>
-
-        {/* Filters */}
-        <div className="flex flex-wrap gap-3 mb-4">
-          <input
-            type="text"
-            placeholder="Search by name or email..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full md:w-72 focus:outline-none focus:ring-2 focus:ring-brand-primary"
-          />
-          <select
-            value={roleFilter}
-            onChange={e => setRoleFilter(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
-          >
-            <option value="all">All roles</option>
-            {ROLES.map(r => (
-              <option key={r.value} value={r.value}>{r.label}</option>
-            ))}
-          </select>
-        </div>
-
-        {isLoading && (
-          <div className="text-gray-400 text-sm py-12 text-center">Loading users...</div>
-        )}
-
-        {usersFailed && <div role="alert" className="text-red-600 text-sm py-6">
-          Unable to load users. Check the connection before creating or editing accounts.
-          <button onClick={() => void refetch()} className="ml-3 underline">Retry</button>
+      <MainContent className="px-4 md:px-8 py-6 max-w-6xl mx-auto space-y-4">
+        <PageHeader title="User Management" description={countDescription}
+          actions={<Button onClick={event => openCreate(event.currentTarget)}>+ Invite User</Button>} />
+        <FilterBar label="Filter users">
+          <Field id="user-search" label="Search users" className="w-full md:w-72">
+            {control => <input {...control} type="text" placeholder="Search by name or email..." value={search} onChange={event => setSearch(event.target.value)} />}
+          </Field>
+          <Field id="user-role-filter" label="Filter by role">
+            {control => <select {...control} value={roleFilter} onChange={event => setRoleFilter(event.target.value)}>
+              <option value="all">All roles</option>
+              {ROLES.map(role => <option key={role.value} value={role.value}>{role.label}</option>)}
+            </select>}
+          </Field>
+        </FilterBar>
+        {feedback && <div ref={feedbackFocus} tabIndex={-1}>
+          <Notice tone="success" title={feedback} aria-label="User administration result" />
         </div>}
-        {!isLoading && !usersFailed && (
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Name</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500 hidden md:table-cell">Email</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Role</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500 hidden md:table-cell">Manager</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500 hidden md:table-cell">Status</th>
-                  <th className="text-right px-5 py-3 font-medium text-gray-500">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered?.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="text-center text-gray-400 py-12">
-                      No users found.
-                    </td>
+        {directoryError && <Notice tone="error" title={directoryError} />}
+        {!hasUsers && isPending && <Notice tone="info" title={waitingForConnection ? 'Waiting for connection' : 'Loading users...'}>
+          {waitingForConnection && 'The user list will load when the connection returns.'}
+        </Notice>}
+        {usersFailed && <Notice tone="error" title="Unable to load users. Check the connection before creating or editing accounts."
+          actions={<Button variant="secondary" onClick={() => void refetch()}>Retry</Button>} />}
+        <div ref={directoryFocus} tabIndex={-1} aria-label="User directory" className="min-w-0">
+          {hasUsers && (filtered?.length === 0 ? <EmptyState title="No users found." /> : (
+            <div className="bg-white rounded-[14px] border border-brand-divider overflow-x-auto">
+              <table className="w-full text-sm">
+                <caption className="sr-only">User directory</caption>
+                <thead><tr className="bg-brand-canvas border-b border-brand-divider">
+                  <th scope="col" className="text-left px-5 py-3 font-medium text-brand-secondary">Name</th>
+                  <th scope="col" className="text-left px-5 py-3 font-medium text-brand-secondary hidden md:table-cell">Email</th>
+                  <th scope="col" className="text-left px-5 py-3 font-medium text-brand-secondary">Role</th>
+                  <th scope="col" className="text-left px-5 py-3 font-medium text-brand-secondary hidden md:table-cell">Manager</th>
+                  <th scope="col" className="text-left px-5 py-3 font-medium text-brand-secondary hidden md:table-cell">Status</th>
+                  <th scope="col" className="text-right px-5 py-3 font-medium text-brand-secondary">Actions</th>
+                </tr></thead>
+                <tbody>{filtered?.map(user => {
+                  const manager = users.find(candidate => candidate.id === user.manager_id)
+                  return <tr key={user.id} className={`border-b border-brand-divider ${user.is_active ? 'hover:bg-brand-canvas' : 'bg-brand-canvas'}`}>
+                    <td className="px-5 py-4"><div className="flex items-center gap-3">
+                      <div aria-hidden="true" className="w-8 h-8 rounded-full bg-brand-tint text-brand-primary text-[13px] font-semibold flex items-center justify-center shrink-0">
+                        {user.full_name.split(' ').map(name => name[0]).slice(0, 2).join('').toUpperCase()}
+                      </div>
+                      <div><p className="font-medium text-brand-primary">{user.full_name}</p><p className="text-[13px] text-brand-secondary md:hidden">{user.email}</p></div>
+                    </div></td>
+                    <td className="px-5 py-4 text-brand-secondary hidden md:table-cell">{user.email}</td>
+                    <td className="px-5 py-4"><StatusBadge tone="neutral">{ROLES.find(role => role.value === user.role)?.label ?? user.role}</StatusBadge></td>
+                    <td className="px-5 py-4 text-brand-secondary hidden md:table-cell">{manager?.full_name ?? '—'}</td>
+                    <td className="px-5 py-4 hidden md:table-cell"><StatusBadge tone={user.is_active ? 'success' : 'neutral'}>{user.is_active ? 'Active' : 'Inactive'}</StatusBadge></td>
+                    <td className="px-5 py-4"><FormActions>
+                      <Button variant="secondary" onClick={event => openEdit(user, event.currentTarget)}>Edit</Button>
+                      {user.is_active ? <Button variant="danger" onClick={event => openDeactivate(user.id, event.currentTarget)}>Deactivate</Button>
+                        : <Button variant="secondary" pending={reactivatingIds.has(user.id)} onClick={() => handleReactivate(user.id)}>{reactivatingIds.has(user.id) ? 'Reactivating...' : 'Reactivate'}</Button>}
+                    </FormActions></td>
                   </tr>
-                )}
-                {filtered?.map(u => {
-                  const manager = users?.find(m => m.id === u.manager_id)
-                  return (
-                    <tr
-                      key={u.id}
-                      className={`border-b border-gray-50 transition-colors ${
-                        u.is_active ? 'hover:bg-gray-50' : 'opacity-50 bg-gray-50'
-                      }`}
-                    >
-                      <td className="px-5 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 text-xs font-semibold flex items-center justify-center shrink-0">
-                            {u.full_name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}
-                          </div>
-                          <div>
-                            <p className="font-medium text-gray-900">{u.full_name}</p>
-                            <p className="text-xs text-gray-400 md:hidden">{u.email}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-5 py-4 text-gray-600 hidden md:table-cell">{u.email}</td>
-                      <td className="px-5 py-4">
-                        <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${ROLE_STYLES[u.role] ?? 'bg-gray-100 text-gray-600'}`}>
-                          {ROLES.find(r => r.value === u.role)?.label ?? u.role}
-                        </span>
-                      </td>
-                      <td className="px-5 py-4 text-gray-600 hidden md:table-cell">
-                        {manager?.full_name ?? '—'}
-                      </td>
-                      <td className="px-5 py-4 hidden md:table-cell">
-                        <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          u.is_active
-                            ? 'bg-green-100 text-green-700'
-                            : 'bg-gray-100 text-gray-500'
-                        }`}>
-                          {u.is_active ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
-                      <td className="px-5 py-4 text-right">
-                        <button
-                          onClick={() => openEdit(u)}
-                          className="text-brand-primary hover:text-brand-hover text-xs font-medium mr-3"
-                        >
-                          Edit
-                        </button>
-                        {u.is_active ? (
-                          <button
-                            onClick={() => setDeactivateId(u.id)}
-                            className="text-red-400 hover:text-red-600 text-xs font-medium"
-                          >
-                            Deactivate
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => reactivateMutation.mutate(u.id)}
-                            className="text-brand-primary hover:text-brand-hover text-xs font-medium"
-                          >
-                            Reactivate
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* Create / Edit modal */}
-      {showForm && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-md shadow-xl max-h-[90vh] overflow-y-auto">
-            <div className="px-6 py-5 border-b border-gray-100">
-              <h3 className="text-base font-semibold text-gray-900">
-                {editingUser ? 'Edit User' : 'Invite New User'}
-              </h3>
-              {!editingUser && (
-                <p className="text-xs text-gray-400 mt-0.5">
-                  An email will be sent to the user to set their password.
-                </p>
-              )}
+                })}</tbody>
+              </table>
             </div>
-
-            <div className="px-6 py-4 space-y-4">
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">Full Name *</label>
-                <input
-                  type="text"
-                  value={form.full_name}
-                  onChange={e => setForm(p => ({ ...p, full_name: e.target.value }))}
-                  placeholder="e.g. Budi Santoso"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">Email *</label>
-                <input
-                  type="email"
-                  value={form.email}
-                  onChange={e => setForm(p => ({ ...p, email: e.target.value }))}
-                  placeholder="budi@company.com"
-                  disabled={!!editingUser}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary disabled:bg-gray-50 disabled:text-gray-400"
-                />
-                {editingUser && (
-                  <p className="text-xs text-gray-400 mt-1">Email cannot be changed after invitation.</p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">Role *</label>
-                <select
-                  value={form.role}
-                  onChange={e => setForm(p => ({ ...p, role: e.target.value, manager_id: '' }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
-                >
-                  {ROLES.map(r => (
-                    <option key={r.value} value={r.value}>{r.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              {needsManager && (
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">
-                    Assigned To <span className="text-gray-400">(optional)</span>
-                  </label>
-                  <select
-                    value={form.manager_id}
-                    onChange={e => setForm(p => ({ ...p, manager_id: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
-                  >
-                    <option value="">No manager assigned</option>
-                    {managers.map(m => (
-                      <option key={m.id} value={m.id}>{m.full_name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">
-                    Phone <span className="text-gray-400">(optional)</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={form.phone}
-                    onChange={e => setForm(p => ({ ...p, phone: e.target.value }))}
-                    placeholder="e.g. 0812-3456-7890"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">
-                    Birth Date <span className="text-gray-400">(optional)</span>
-                  </label>
-                  <input
-                    type="date"
-                    value={form.birth_date}
-                    onChange={e => setForm(p => ({ ...p, birth_date: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
-              <button
-                onClick={closeForm}
-                className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={saving || !!reviewRequired}
-                className="px-4 py-2 text-sm font-medium bg-brand-primary text-white rounded-lg hover:bg-brand-hover disabled:opacity-50"
-              >
-                {saving
-                  ? 'Saving...'
-                  : editingUser ? 'Save Changes' : 'Send Invite'}
-              </button>
-            </div>
-
-            {!saving && (reviewRequired || formError) && (
-              <p className="text-red-500 text-xs px-6 pb-4 text-right">
-                {reviewRequired || formError}
-              </p>
-            )}
-          </div>
+          ))}
         </div>
-      )}
+      </MainContent>
 
-      {/* Deactivate confirmation */}
-      {deactivateId && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 max-w-sm w-full mx-4 shadow-xl">
-            <h3 className="text-base font-semibold text-gray-900 mb-2">Deactivate user?</h3>
-            <p className="text-sm text-gray-500 mb-5">
-              <strong>{deactivateTarget?.full_name}</strong> will no longer be able to log in.
-              You can reactivate them at any time.
-            </p>
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setDeactivateId(null)}
-                className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => deactivateMutation.mutate(deactivateId)}
-                disabled={deactivateMutation.isPending}
-                className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
-              >
-                {deactivateMutation.isPending ? 'Deactivating...' : 'Deactivate'}
-              </button>
-            </div>
+      {showForm && <Dialog labelledBy="user-form-title" pending={!!editingUser && formSaving} onClose={dismissForm}
+        returnFocus={formReturnFocus.current} fallbackFocus={() => directoryFocus.current}>
+        <h2 id="user-form-title" className="ui-dialog__title">{editingUser ? 'Edit User' : 'Invite New User'}</h2>
+        {!editingUser && <p className="ui-dialog__description">Request an invitation so the user can set their password. Email delivery is not confirmed here.</p>}
+        <form noValidate onSubmit={event => { event.preventDefault(); handleSave() }} className="space-y-4 mt-4">
+          <Field id="user-full-name" label="Full Name *">
+            {control => <input {...control} type="text" disabled={formSaving} value={form.full_name} onChange={event => setForm(previous => ({ ...previous, full_name: event.target.value }))} placeholder="e.g. Budi Santoso" />}
+          </Field>
+          <Field id="user-email" label="Email *" hint={editingUser ? 'Email cannot be changed after invitation.' : undefined}>
+            {control => <input {...control} type="email" disabled={!!editingUser || formSaving} value={form.email} onChange={event => setForm(previous => ({ ...previous, email: event.target.value }))} placeholder="budi@company.com" />}
+          </Field>
+          <Field id="user-role" label="Role *">
+            {control => <select {...control} disabled={formSaving} value={form.role} onChange={event => setForm(previous => ({ ...previous, role: event.target.value, manager_id: '' }))}>
+              {ROLES.map(role => <option key={role.value} value={role.value}>{role.label}</option>)}
+            </select>}
+          </Field>
+          {needsManager && <Field id="user-manager" label="Assigned To (optional)">
+            {control => <select {...control} disabled={formSaving} value={form.manager_id} onChange={event => setForm(previous => ({ ...previous, manager_id: event.target.value }))}>
+              <option value="">No manager assigned</option>
+              {managers.map(manager => <option key={manager.id} value={manager.id}>{manager.full_name}</option>)}
+            </select>}
+          </Field>}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field id="user-phone" label="Phone (optional)">
+              {control => <input {...control} type="text" disabled={formSaving} value={form.phone} onChange={event => setForm(previous => ({ ...previous, phone: event.target.value }))} placeholder="e.g. 0812-3456-7890" />}
+            </Field>
+            <Field id="user-birth-date" label="Birth Date (optional)">
+              {control => <input {...control} type="date" disabled={formSaving} value={form.birth_date} onChange={event => setForm(previous => ({ ...previous, birth_date: event.target.value }))} />}
+            </Field>
           </div>
-        </div>
-      )}
+          {!formSaving && (reviewRequired || formError) && <Notice tone="error" title={reviewRequired || formError} />}
+          <FormActions>
+            <Button variant="secondary" disabled={!!editingUser && formSaving} onClick={dismissForm}>Cancel</Button>
+            <Button type="submit" pending={formSaving} disabled={saving || !!reviewRequired}>{formSaving ? 'Saving...' : editingUser ? 'Save Changes' : 'Send Invite'}</Button>
+          </FormActions>
+        </form>
+      </Dialog>}
+
+      {deactivateId && <Dialog labelledBy="deactivate-user-title" pending={deactivateMutation.isPending} onClose={dismissDeactivate}
+        returnFocus={deactivateReturnFocus.current} fallbackFocus={() => directoryFocus.current}>
+        <h2 id="deactivate-user-title" className="ui-dialog__title">Deactivate user?</h2>
+        <p className="ui-dialog__description"><strong>{deactivateTarget?.full_name}</strong> will no longer be able to log in. You can reactivate them at any time.</p>
+        {deactivateError && <Notice tone="error" title={deactivateError} className="mt-4"
+          actions={<Button variant="secondary" onClick={() => void refetch()}>Reload user list</Button>} />}
+        <FormActions className="mt-6">
+          <Button variant="secondary" disabled={deactivateMutation.isPending} onClick={dismissDeactivate}>Cancel</Button>
+          <Button variant="danger" pending={deactivateMutation.isPending} onClick={handleDeactivate}>{deactivateMutation.isPending ? 'Deactivating...' : 'Deactivate'}</Button>
+        </FormActions>
+      </Dialog>}
     </div>
   )
 }

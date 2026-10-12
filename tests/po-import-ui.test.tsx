@@ -1,3 +1,5 @@
+import { transferableAbortController } from 'node:util'
+import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import React from 'react'
 import { cleanup, fireEvent, render, screen, waitFor, within, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -10,7 +12,6 @@ vi.mock('../src/lib/supabase', () => ({ supabase: {} }))
 vi.mock('../src/lib/AuthContext', () => ({ useAuth: () => ({ user: state.actor ? { id: state.actor } : null, profile: state.actor ? { id: state.actor, role: state.role, is_active: state.profileActive } : null, loading: false, error: null }) }))
 vi.mock('../src/components/AthelNav', () => ({ default: () => null }))
 vi.mock('../src/components/TransactionRecovery', () => ({ default: () => null }))
-vi.mock('react-router-dom', async () => { const { useEffect } = await import('react'); return { useNavigate: () => state.navigate, useBlocker: () => ({ state: 'unblocked' }), useBeforeUnload: (callback: any) => useEffect(() => { window.addEventListener('beforeunload', callback); return () => window.removeEventListener('beforeunload', callback) }, [callback]) } })
 vi.mock('../src/lib/orderTransactions', async original => ({ ...await original<any>(), useTransactionSender: () => Object.assign(state.send, { hasUnresolved: () => false }) }))
 vi.mock('@tanstack/react-query', async original => ({ ...await original<any>(), useQuery: ({ queryKey }: any) => ({ data: queryKey[0] === 'customers' ? state.customers : state.products, isFetching: state.fetching, isError: state.error, refetch: vi.fn() }) }))
 vi.mock('../src/lib/poImport/reader', () => ({ readPODocument: (...args: any[]) => state.read(...args) }))
@@ -46,8 +47,9 @@ beforeEach(() => {
  vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, media: '(min-width: 768px)', addEventListener: vi.fn(), removeEventListener: vi.fn() })))
  vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:synthetic'), revokeObjectURL: vi.fn() }))
 })
-afterEach(() => { cleanup(); clients.splice(0).forEach(c => c.clear()); vi.useRealTimers() })
-function mount() { const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } }); clients.push(client); return render(<QueryClientProvider client={client}><PONew /></QueryClientProvider>) }
+const routers: ReturnType<typeof createMemoryRouter>[] = []
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); routers.splice(0).forEach(router => router.dispose()); clients.splice(0).forEach(c => c.clear()); vi.useRealTimers() })
+function mount() { const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } }); clients.push(client); return renderRoute(client) }
 function upload(name = 'synthetic.png') { fireEvent.change(screen.getByLabelText('Dokumen PO'), { target: { files: [new File(['synthetic'], name, { type: 'image/png' })] } }) }
 async function review() { fireEvent.click(screen.getByRole('button', { name: 'Import dokumen PO' })); upload(); await screen.findByRole('button', { name: 'Terapkan ke formulir' }) }
 function confirmReview() { fireEvent.click(screen.getByLabelText('Saya sudah memeriksa satuan barang 1')); fireEvent.click(screen.getByLabelText('Saya memastikan nilai harga dalam IDR tanpa konversi')) }
@@ -412,3 +414,8 @@ test.each(['  Reviewed delivery only\nKeep these exact spaces  ', ''])('real App
  expect((screen.getByPlaceholderText('Catatan (opsional)...') as HTMLTextAreaElement).value).toBe(reviewed)
  expect(state.send).not.toHaveBeenCalled()
 })
+
+function renderRoute(client: QueryClient) { const router = createMemoryRouter([{ path: '/athel/po/new', element: <PONew /> }, { path: '*', element: <p>Destination</p> }], { initialEntries: ['/athel/po/new'] }); routers.push(router); return render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>) }
+
+// The real data router uses Node Request, which requires a Node-compatible signal.
+beforeEach(() => { vi.stubGlobal('AbortController', class { constructor() { return transferableAbortController() } }) })

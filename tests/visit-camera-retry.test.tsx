@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cacheProbe } from './scalability/cache-probe'
 const state = vi.hoisted(() => ({ checkIn: vi.fn(), imageFailure: false }))
-vi.mock('react-router-dom', () => ({ useNavigate: () => () => {}, useParams: () => ({ scheduleId: 's' }) }))
+vi.mock('react-router-dom', () => ({ Link: ({ to, children, ...props }: any) => <a href={to} {...props}>{children}</a>, useNavigate: () => () => {}, useParams: () => ({ scheduleId: 's' }) }))
 vi.mock('../src/lib/useUnsavedChanges', () => ({ hasOrderItemChanges: () => false, useUnsavedChanges: () => ({ dialog: null, runWithoutPrompt: (action: () => void) => action() }) }))
 vi.mock('../src/components/StorePOContext', () => ({ default: () => null }))
 vi.mock('../src/components/GirardNav', () => ({ default: () => null }))
@@ -166,4 +166,19 @@ test('stale schedule refusal discards the old capture and keeps entered notes fo
  expect(screen.queryByAltText('Foto check-in')).toBeNull();expect((screen.getByLabelText('Catatan kunjungan') as HTMLTextAreaElement).value).toBe('Keep this note')
  expect((screen.getByRole('button',{name:'Konfirmasi Check-in'}) as HTMLButtonElement).disabled).toBe(true)
  expect(state.checkIn.mock.calls[0][0]).toMatchObject({expected_schedule_version:1,customer_id:'c',scheduled_date:'2026-10-08',notes:'Keep this note'})
+})
+
+test('camera retry, cancellation and location use visible actions while the deliberate capture controls retain their sizes', async () => {
+  media.mockRejectedValueOnce(new Error('denied')).mockResolvedValue(stream)
+  mount()
+  expect(screen.getByRole('button', { name: /Ketuk untuk membuka kamera/ }).classList.contains('h-36')).toBe(true)
+  expect(screen.getByRole('button', { name: 'Dapatkan lokasi' }).classList.contains('ui-action')).toBe(true)
+  expect(screen.getByRole('button', { name: /Kembali/ }).classList.contains('ui-action')).toBe(true)
+  fireEvent.click(screen.getByRole('button', { name: /Ketuk untuk membuka kamera/ }))
+  await screen.findByText(/Akses kamera ditolak/)
+  expect(screen.getByRole('button', { name: 'Coba lagi' }).classList.contains('ui-action')).toBe(true)
+  expect(screen.getByRole('button', { name: 'Batal' }).classList.contains('ui-action')).toBe(true)
+  fireEvent.click(screen.getByRole('button', { name: 'Coba lagi' }))
+  await waitFor(() => expect(document.querySelector('video')?.srcObject).toBe(stream))
+  expect(screen.getByRole('button', { name: 'Ambil foto' }).classList.contains('h-14')).toBe(true)
 })

@@ -139,7 +139,7 @@ function OwnVisitHistoryPage() {
                   { label: 'Waktu check-in', value: formatVisitTimestamp(visit.checked_in_at) },
                   { label: 'Lokasi', value: visit.lat === null || visit.lng === null ? 'Tidak dicatat' : `${visit.lat}, ${visit.lng}` },
                 ]} />
-                {visit.schedule_id && <ActionLink variant="secondary" to={`/girard/visit/${visit.schedule_id}`}>Lihat detail kunjungan</ActionLink>}
+                {visit.schedule_id && <ActionLink variant="secondary" to={`/girard/visit/${visit.schedule_id}`} aria-label={`Lihat detail kunjungan di ${visit.customers?.name ?? 'Toko tidak tersedia'}`}>Lihat detail kunjungan</ActionLink>}
                 <VisitNoteEditor visit={visit} onDirtyChange={noteDirtyChanged} confirmDiscard={unsaved.confirmDiscard} />
               </article>
             </li>)}

@@ -1,3 +1,7 @@
+import { RecordList } from '../../../components/ui/RecordList'
+import { FormActions } from '../../../components/ui/FormActions'
+import { EmptyState, Notice } from '../../../components/ui/Feedback'
+import { Button } from '../../../components/ui/Button'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import type { LeaveContext } from '../../../lib/leave/contracts'
@@ -32,14 +36,14 @@ function Administration({actorId,context,readState,onDirtyChange}:Props){
  useEffect(()=>{if(target&&targets.data){const current=targets.data.rows.find(row=>row.id===target.id);if(!current){setDirty(false);setTarget(null)}else if(JSON.stringify(current.capabilities)!==JSON.stringify(target.capabilities)){setDirty(false);setTarget(current)}}},[target,targets.data])
  const visible=readState==='ready'&&targets.available
  return <section aria-label="Pengaturan cuti" className="space-y-4">
-  {target&&readState==='ready'&&!targets.available&&!targets.isFetching&&<div role="alert"><p>Akses anggota belum dapat dikonfirmasi.</p><button type="button" onClick={()=>void targets.refetch()}>Muat ulang akses anggota</button></div>}
+  {target&&readState==='ready'&&!targets.available&&!targets.isFetching&&<div role="alert" className="ui-notice ui-notice--error"><p>Akses anggota belum dapat dikonfirmasi.</p><Button type="button" onClick={()=>void targets.refetch()} variant="secondary">Muat ulang akses anggota</Button></div>}
   {rota?<LeaveAdminRotaPanel actorId={actorId} context={context} readState={readState} onDirtyChange={setDirty} onClose={()=>{setDirty(false);setRota(false)}}/>:!target&&<>
-   {!visible?<div role={targets.isError?'alert':'status'}><p>Daftar anggota berizin belum dapat ditampilkan.</p>{readState==='ready'&&<button type="button" onClick={()=>void targets.refetch()}>Muat ulang anggota</button>}</div>:<>
+   {!visible?<div role={targets.isError?'alert':'status'}><p>Daftar anggota berizin belum dapat ditampilkan.</p>{readState==='ready'&&<Button type="button" onClick={()=>void targets.refetch()} variant="secondary">Muat ulang anggota</Button>}</div>:<>
     <h2 className="font-semibold">Anggota dalam lingkup izin Anda</h2>
-    {context.capabilities.configure&&<button type="button" className="min-h-11 underline" onClick={()=>setRota(true)}>Kalender dan roster perusahaan</button>}
-    {!targets.data?.rows.length&&<p>Tidak ada anggota dalam lingkup izin ini.</p>}
-    <ul className="space-y-3">{targets.data?.rows.map(row=><li key={row.id} className="rounded-xl border bg-white p-4"><p>{row.name}</p><p className="text-xs">{[row.capabilities.configure&&'Konfigurasi',row.capabilities.adjust&&'Penyesuaian',row.capabilities.readPrivate&&'Pembacaan privat',row.capabilities.calendar&&'Kalender',row.capabilities.manageAccess&&'Pengelolaan akses'].filter(Boolean).join(' · ')}</p><button type="button" className="mt-2 min-h-11 underline" aria-label={`Atur ${row.name}`} onClick={()=>setTarget(row)}>Buka anggota</button></li>)}</ul>
-    <div className="flex flex-wrap gap-4"><button type="button" disabled={page===1} onClick={()=>setPage(page-1)}>Anggota sebelumnya</button><button type="button" disabled={page*25>=(targets.data?.total??0)} onClick={()=>setPage(page+1)}>Anggota berikutnya</button></div>
+    {context.capabilities.configure&&<Button type="button" variant="secondary" className="underline" onClick={()=>setRota(true)}>Kalender dan roster perusahaan</Button>}
+    {!targets.data?.rows.length&&<EmptyState title="Tidak ada anggota dalam lingkup izin ini."/>}
+    <RecordList  label="Anggota berizin">{targets.data?.rows.map(row=><li key={row.id} className="rounded-[14px] border bg-white p-4"><p>{row.name}</p><p className="text-[13px]">{[row.capabilities.configure&&'Konfigurasi',row.capabilities.adjust&&'Penyesuaian',row.capabilities.readPrivate&&'Pembacaan privat',row.capabilities.calendar&&'Kalender',row.capabilities.manageAccess&&'Pengelolaan akses'].filter(Boolean).join(' · ')}</p><Button type="button" variant="secondary" className="mt-2 underline" aria-label={`Atur ${row.name}`} onClick={()=>setTarget(row)}>Buka anggota</Button></li>)}</RecordList>
+    <FormActions ><Button type="button" disabled={page===1} onClick={()=>setPage(page-1)} variant="secondary">Anggota sebelumnya</Button><Button type="button" disabled={page*25>=(targets.data?.total??0)} onClick={()=>setPage(page+1)} variant="secondary">Anggota berikutnya</Button></FormActions>
    </>}
   </>}
   {target&&<TargetSettings key={`${target.id}:${JSON.stringify(target.capabilities)}`} actorId={actorId} context={context} target={target} readState={visible?readState:readState==='error'||targets.isError?'error':'pending'} onDirtyChange={setDirty} onClose={close}/>}
@@ -97,11 +101,11 @@ function PolicySettings({actorId,context,target,readState,onDirtyChange}:{actorI
  }
  return <div className="space-y-4">
 
-  {recovery&&readState==='ready'&&<div role="status"><p>Perubahan sebelumnya perlu dipulihkan sebelum percobaan berikutnya.</p><button type="button" disabled={busy} onClick={()=>void recover()}>Pulihkan hasil pengaturan</button></div>}
-  {error&&readState==='ready'&&<p role="alert">{error}</p>}
+  {recovery&&readState==='ready'&&<div role="status" className="ui-notice ui-notice--info"><p>Perubahan sebelumnya perlu dipulihkan sebelum percobaan berikutnya.</p><Button type="button" disabled={busy} onClick={()=>void recover()} variant="secondary">Pulihkan hasil pengaturan</Button></div>}
+  {error&&readState==='ready'&&<Notice tone="error" title={<> {error} </>}/>}
   {(caps.configure||caps.manageAccess)&&<LeaveAdminSettings actorId={actorId} employeeId={target.id} scopeVersion={context.scopeVersion} dataScopeVersion={context.scopeVersion} authorityKey={denied?'':grantKey.current} authorityReady={fresh&&!recovery} canConfigure={caps.configure} canManageAccess={caps.manageAccess} canReadPrivate={caps.readPrivate} settings={targetRead.data?.settings} access={targetRead.data?.access} requests={targetRead.data?.requests?.rows} send={send} onRefresh={refresh} onDirtyChange={setDraftDirty}/>}
-  {readState==='ready'&&!targetRead.available&&!targetRead.isFetching&&<div role="alert"><p>Data anggota belum dapat dikonfirmasi.</p><button type="button" onClick={()=>void targetRead.refetch()}>Muat ulang pengaturan</button></div>}
-  {fresh&&caps.configure&&caps.readPrivate&&<div className="flex gap-3"><button type="button" disabled={draftDirty||busy||!cursors.length} onClick={()=>{setBefore(cursors.at(-1)!);setCursors(cursors.slice(0,-1))}}>Permohonan lebih baru</button><button type="button" disabled={draftDirty||busy||targetRead.data?.requests?.nextBefore==null} onClick={()=>{setCursors([...cursors,before]);setBefore(targetRead.data?.requests?.nextBefore??null)}}>Permohonan lebih lama</button></div>}
+  {readState==='ready'&&!targetRead.available&&!targetRead.isFetching&&<div role="alert" className="ui-notice ui-notice--error"><p>Data anggota belum dapat dikonfirmasi.</p><Button type="button" onClick={()=>void targetRead.refetch()} variant="secondary">Muat ulang pengaturan</Button></div>}
+  {fresh&&caps.configure&&caps.readPrivate&&<FormActions ><Button type="button" disabled={draftDirty||busy||!cursors.length} onClick={()=>{setBefore(cursors.at(-1)!);setCursors(cursors.slice(0,-1))}} variant="secondary">Permohonan lebih baru</Button><Button type="button" disabled={draftDirty||busy||targetRead.data?.requests?.nextBefore==null} onClick={()=>{setCursors([...cursors,before]);setBefore(targetRead.data?.requests?.nextBefore??null)}} variant="secondary">Permohonan lebih lama</Button></FormActions>}
 
  </div>
 }
@@ -113,7 +117,7 @@ function TargetSettings(props:{actorId:string;context:LeaveContext;target:LeaveA
  useEffect(()=>{onDirtyChange(dirty);return()=>onDirtyChange(false)},[dirty,onDirtyChange])
  function select(id:string){if(id!==selected&&(!dirty||window.confirm(discardLeaveDraftMessage))){setDirty(false);setSelected(id)}}
  return <div className="space-y-4">
-  {readState==='ready'&&<><h2 className="font-semibold">{target.name}</h2><button type="button" className="min-h-11 underline" onClick={onClose}>Kembali ke daftar anggota</button><nav aria-label="Pengaturan anggota terpilih" className="flex flex-wrap gap-2">{panels.map(panel=><button type="button" key={panel.id} aria-pressed={selected===panel.id} className="min-h-11 rounded border px-3" onClick={()=>select(panel.id)}>{panel.label}</button>)}</nav></>}
+  {readState==='ready'&&<><h2 className="font-semibold">{target.name}</h2><Button type="button" variant="secondary" className="underline" onClick={onClose}>Kembali ke daftar anggota</Button><nav aria-label="Pengaturan anggota terpilih" className="flex flex-wrap gap-2">{panels.map(panel=><Button type="button" key={panel.id} aria-pressed={selected===panel.id} variant="secondary" onClick={()=>select(panel.id)}>{panel.label}</Button>)}</nav></>}
   {selected==='policy'&&<PolicySettings {...props} onDirtyChange={setDirty}/>}
   {selected==='member'&&<LeaveAdminMemberPanel {...props} onDirtyChange={setDirty}/>}
   {selected==='balance'&&<LeaveAdminBalancePanel key={props.context.scopeVersion} {...props} onDirtyChange={setDirty}/>}

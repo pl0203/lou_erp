@@ -137,7 +137,7 @@ function CustomerDetailView({ id, identity, enabled }: { id?: string; identity: 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 text-center break-words [overflow-wrap:anywhere]">
                 <p className="text-[13px] text-brand-secondary mb-1">Last Visit</p>
-                <p className={`text-base font-semibold ${overdue ? 'text-red-500' : 'text-gray-900'}`}>
+                <p className={`text-base font-semibold ${overdue ? 'text-red-700' : 'text-gray-900'}`}>
                   {customer.last_visit_date
                     ? parseCalendarDate(customer.last_visit_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
                     : 'Never'}

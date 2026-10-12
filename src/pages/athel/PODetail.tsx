@@ -1,3 +1,10 @@
+import { Notice } from '../../components/ui/Feedback'
+import { Dialog } from '../../components/ui/Dialog'
+import { Button } from '../../components/ui/Button'
+import { ActionLink } from '../../components/ui/ActionLink'
+import { MainContent } from '../../components/ui/MainContent'
+import { Field } from '../../components/ui/Field'
+import { FormActions } from '../../components/ui/FormActions'
 import { PO_STATUS_LABELS, summarizePOAudit } from '../../lib/orderPresentation'
 import { formatDisplayDate, formatAuditTimestamp } from '../../lib/displayDate'
 import ReturnedDateDialog from '../../components/ReturnedDateDialog'
@@ -11,7 +18,7 @@ import { useTransactionSender } from '../../lib/orderTransactions'
 import type { TransactionSender } from '../../lib/orderTransactions'
 import { isPOConflict, retryUnlessPOConflict } from '../../lib/poConflict'
 import { singleRelation } from '../../lib/relations'
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
@@ -138,6 +145,12 @@ export default function PODetail() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const sendTransaction = useTransactionSender(`po:${id}`)
+  const latestSender = useRef(sendTransaction)
+  const senderGeneration = useRef(0)
+  if (latestSender.current !== sendTransaction) senderGeneration.current++
+  latestSender.current = sendTransaction
+  const mounted = useRef(false)
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
   const [editVersion, setEditVersion] = useState('')
   const [actionVersion, setActionVersion] = useState('')
   const [actionReason, setActionReason] = useState('')
@@ -155,6 +168,12 @@ export default function PODetail() {
   const [returnedDate, setReturnedDate] = useState('')
   const returnedBusy = useRef(false)
   const returnedTrigger = useRef<HTMLElement | null>(null)
+  const dialogTrigger = useRef<HTMLElement | null>(null)
+  const dialogCommitted = useRef(false)
+  const dialogBusy = useRef(false)
+  const dialogEpoch = useRef(0)
+  const successFocus = useRef<HTMLDivElement>(null)
+  const [, refreshRecovery] = useState(0)
   const returnedBackground = useRef<HTMLDivElement>(null)
   const [returnedReview, setReturnedReview] = useState<ReturnedDateReview | null>(null)
   const returnedReviewRequired = useRef(false)
@@ -165,6 +184,7 @@ export default function PODetail() {
   const [refreshingPO, setRefreshingPO] = useState(false)
   const activePO = useRef({ id, generation: 0 })
   if (activePO.current.id !== id) activePO.current = { id, generation: activePO.current.generation + 1 }
+  const [recoveredReceipt, setRecoveredReceipt] = useState<{ sender: TransactionSender; record: typeof activePO.current; reference: string } | null>(null)
   const refreshSequence = useRef(0)
   const { data: po, isLoading, isError: poError, isFetching: poFetching, refetch: refetchPO } = useQuery({
     queryKey: ['po', id], queryFn: () => fetchPO(id!),
@@ -204,12 +224,19 @@ export default function PODetail() {
   const [preparingSJ, setPreparingSJ] = useState(false)
   const [preparationError, setPreparationError] = useState(false)
   const preparation = useRef<AbortController | null>(null)
-  useEffect(() => () => { preparation.current?.abort(); returnedRead.current?.abort() }, [])
-  useEffect(() => {
-    refreshSequence.current++; setRefreshingPO(false)
-    audits.setFilters({ poId: id! }); deliveries.setFilters({ poId: id! })
-    setSelectedSJId(null); preparation.current?.abort()
+  const supersedePreparation = useCallback(() => {
+    preparation.current?.abort(); preparation.current = null
     setPreparingSJ(false); setPreparationError(false)
+  }, [])
+  const takePresentation = () => {
+    dialogEpoch.current++; supersedePreparation(); setRecoveredReceipt(null)
+  }
+  useEffect(() => () => { preparation.current?.abort(); returnedRead.current?.abort() }, [])
+  useEffect(() => { supersedePreparation() }, [id, sendTransaction, supersedePreparation])
+  useEffect(() => {
+    refreshSequence.current++; setRefreshingPO(false); setRecoveredReceipt(null)
+    audits.setFilters({ poId: id! }); deliveries.setFilters({ poId: id! })
+    setSelectedSJId(null)
     setShowSJModal(false); setEditingSJ(null); setSjLines([])
     setShowDeleteConfirm(false); setDeletingSJId(null); setActionReason(''); setReturnedTarget(null); setReturnedReview(null); returnedReviewRequired.current = false; returnedReadSequence.current++; returnedRead.current?.abort()
   }, [id, audits.setFilters, deliveries.setFilters])
@@ -223,16 +250,18 @@ export default function PODetail() {
   const sjMutation = useMutation({
     retry: false,
     mutationFn: (payload: Parameters<typeof createSJ>[0]) => createSJ(payload, sendTransaction),
-    onSuccess: () => { invalidate(); closeSJModal() },
+    onSuccess: () => { dialogCommitted.current = true; invalidate(); closeSJModal() },
+    onSettled: () => { dialogBusy.current = false },
   })
 
   const updateSJMutation = useMutation({
     retry: false,
     mutationFn: (payload: Parameters<typeof updateSJ>[0]) => updateSJ(payload, sendTransaction),
-    onSuccess: () => { invalidate(); closeSJModal() },
+    onSuccess: () => { dialogCommitted.current = true; invalidate(); closeSJModal() },
+    onSettled: () => { dialogBusy.current = false },
   })
 
-  const closeReturnedDate = () => { returnedReadSequence.current++; returnedRead.current?.abort(); returnedReviewRequired.current = false; setReturnedReview(null); setReturnedTarget(null) }
+  const closeReturnedDate = () => { dialogEpoch.current++; returnedReadSequence.current++; returnedRead.current?.abort(); returnedReviewRequired.current = false; setReturnedReview(null); setReturnedTarget(null) }
   const refreshReturnedDate = async () => {
     if (!returnedTarget || returnedBusy.current) return
     const target = returnedTarget, poId = id!, generation = activePO.current.generation, sequence = ++returnedReadSequence.current
@@ -257,10 +286,10 @@ export default function PODetail() {
   const returnedMutation = useMutation({
     retry: false,
     mutationFn: (payload: { sj_id: string; expected_updated_at: string; sj_date_returned: string | null }) => sendTransaction('edit_sj_returned_date', payload),
-    onSuccess: () => { invalidate(); closeReturnedDate() },
+    onSuccess: () => { dialogCommitted.current = true; invalidate(); closeReturnedDate() },
   })
   const saveReturnedDate = async () => {
-    if (!returnedTarget || returnedBusy.current || returnedReviewRequired.current || returnedTarget.version !== po?.updated_at) return
+    if (!returnedTarget || sendTransaction.hasUnresolved() || returnedBusy.current || returnedReviewRequired.current || returnedTarget.version !== po?.updated_at) return
     returnedBusy.current = true
     try { await returnedMutation.mutateAsync({ sj_id: returnedTarget.id, expected_updated_at: returnedTarget.version, sj_date_returned: returnedDate || null }) }
     catch (error) { if (isPOConflict(error)) { returnedReviewRequired.current = true; setReturnedReview({ status: 'needed' }) } /* Keep the exact date draft visible. */ }
@@ -270,19 +299,22 @@ export default function PODetail() {
   const deleteSJMutation = useMutation({
     retry: false,
     mutationFn: (sjId: string) => sendTransaction('void_delivery', { sj_id: sjId, expected_updated_at: actionVersion, reason: actionReason }),
-    onSuccess: () => { invalidate(); setDeletingSJId(null) },
+    onSuccess: () => { dialogCommitted.current = true; invalidate(); setDeletingSJId(null) },
+    onSettled: () => { dialogBusy.current = false },
   })
 
   const deleteMutation = useMutation({
     retry: false,
     mutationFn: () => sendTransaction('cancel_po', { po_id: id!, expected_updated_at: actionVersion, reason: actionReason }),
-    onSuccess: () => { invalidate(); navigate('/athel/po') },
+    onSuccess: () => { dialogCommitted.current = true; invalidate(); navigate('/athel/po') },
+    onSettled: () => { dialogBusy.current = false },
   })
 
   const outstanding = Object.fromEntries((lineItems ?? []).map(line => [line.id, Math.max(0, line.quantity - line.delivered_quantity)]))
 
-  const openNewSJModal = () => {
+  const openNewSJModal = (trigger: HTMLElement) => {
     if (!lineReady || !lineItems) return
+    takePresentation(); dialogTrigger.current = trigger; dialogCommitted.current = false
     setEditVersion(lineState!.po_updated_at)
     setSjNumber('')
     setSjDate(new Date().toISOString().split('T')[0])
@@ -300,16 +332,19 @@ export default function PODetail() {
     setShowSJModal(true)
   }
 
-  const openEditSJModal = async (header: DeliveryHeader) => {
+  const openEditSJModal = async (header: DeliveryHeader, trigger: HTMLElement) => {
     if (!lineReady || !lineItems || preparingSJ) return
-    preparation.current?.abort()
+    takePresentation(); dialogTrigger.current = trigger; dialogCommitted.current = false
     const controller = new AbortController(); preparation.current = controller
+    const record = activePO.current, epoch = dialogEpoch.current, version = lineState!.po_updated_at
+    const current = () => mounted.current && !controller.signal.aborted && preparation.current === controller &&
+      activePO.current === record && latestSender.current === sendTransaction && dialogEpoch.current === epoch
     setPreparingSJ(true); setPreparationError(false)
     try {
-      const items = await fetchDeliveryForEdit(id!, header.id, lineState!.po_updated_at, controller.signal)
-      if (controller.signal.aborted) return
+      const items = await fetchDeliveryForEdit(record.id!, header.id, version, controller.signal)
+      if (!current()) return
       const sj = { ...header, sj_line_items: items }
-      setEditVersion(lineState!.po_updated_at)
+      setEditVersion(version)
       setSjNumber(sj.sj_number); setSjDate(sj.sj_date)
       setSjDateReceived(sj.sj_date_received ?? ''); setSjDateReturned(sj.sj_date_returned ?? '')
       setSjLines(lineItems.map(li => {
@@ -320,11 +355,12 @@ export default function PODetail() {
           quantity_to_deliver: existing?.quantity_delivered ?? 0 }
       }))
       setEditingSJ(sj); setShowSJModal(true)
-    } catch { if (!controller.signal.aborted) setPreparationError(true) }
-    finally { if (!controller.signal.aborted) setPreparingSJ(false) }
+    } catch { if (current()) setPreparationError(true) }
+    finally { if (current()) { preparation.current = null; setPreparingSJ(false) } }
   }
 
   const closeSJModal = () => {
+    dialogEpoch.current++
     setShowSJModal(false)
     setEditingSJ(null)
     setSjNumber('')
@@ -345,12 +381,13 @@ export default function PODetail() {
   const deliveryWillComplete = sjLines.some(line => line.quantity_to_deliver > 0) && sjLines.every(line => line.quantity_to_deliver >= line.quantity_outstanding)
 
   const handleSaveSJ = async () => {
-    if (!lineReady || editVersion !== lineState?.po_updated_at) return
+    if (dialogBusy.current || returnedBusy.current || transactionLocked || !lineReady || editVersion !== lineState?.po_updated_at) return
     if (!sjNumber.trim()) return alert('Nomor SJ wajib diisi.')
     if (!sjDate) return alert('Tanggal SJ wajib diisi.')
     if (sjLines.every(l => l.quantity_to_deliver === 0))
       return alert('Isi jumlah pengiriman untuk minimal satu barang.')
 
+    dialogBusy.current = true
     if (editingSJ) {
       updateSJMutation.mutate({
         sj_id: editingSJ.id,
@@ -381,9 +418,29 @@ export default function PODetail() {
     }
   }
 
-  if (isLoading) return <div className="p-8 text-gray-400 text-sm">Memuat...</div>
-  if (poError || !po) return <div role="alert" className="p-8 text-red-500 text-sm">Data PO belum tersedia. <button onClick={() => refetchPO()}>Coba lagi</button><TransactionRecovery send={sendTransaction} onCommitted={() => queryClient.invalidateQueries()} /></div>
-  
+  const writePending = sjMutation.isPending || updateSJMutation.isPending || deleteSJMutation.isPending || deleteMutation.isPending || returnedMutation.isPending
+  const transactionLocked = writePending || sendTransaction.hasUnresolved()
+  const activeModal = showSJModal || !!deletingSJId || showDeleteConfirm || !!returnedTarget
+  const recoveryRecord = activePO.current, recoveryEpoch = dialogEpoch.current
+  const currentReceipt = recoveredReceipt?.sender === sendTransaction && recoveredReceipt.record === recoveryRecord ? recoveredReceipt.reference : null
+  const receipt = currentReceipt ? <Notice tone="success" className="m-4" title={`Periksa hasil tersimpan (referensi ${currentReceipt}).`} /> : null
+  const recoveryIsCurrent = () => mounted.current && activePO.current === recoveryRecord && latestSender.current === sendTransaction && dialogEpoch.current === recoveryEpoch
+  const recovery = currentReceipt ? null : <TransactionRecovery key={`${senderGeneration.current}:${recoveryRecord.generation}`} send={sendTransaction} onAbandoned={() => { if (recoveryIsCurrent()) refreshRecovery(value => value + 1) }} onCommitted={result => {
+    invalidate()
+    if (!recoveryIsCurrent()) {
+      if (mounted.current && latestSender.current === sendTransaction) refreshRecovery(value => value + 1)
+      return
+    }
+    supersedePreparation()
+    setRecoveredReceipt({ sender: sendTransaction, record: recoveryRecord, reference: result.id })
+    dialogCommitted.current = true; closeSJModal(); setDeletingSJId(null); setShowDeleteConfirm(false); closeReturnedDate()
+  }} />
+  const restoreDialogFocus = () => !dialogCommitted.current && dialogTrigger.current?.isConnected ? dialogTrigger.current : successFocus.current
+  const restoreReturnedFocus = () => !dialogCommitted.current && returnedTrigger.current?.isConnected ? returnedTrigger.current : successFocus.current
+
+  if (isLoading) return <div className="min-h-screen bg-brand-canvas"><AthelNav /><MainContent>{receipt}{recovery}<p role="status" className="p-8 text-brand-secondary">Memuat...</p></MainContent></div>
+  if (poError || !po) return <div className="min-h-screen bg-brand-canvas"><AthelNav /><MainContent>{receipt}{recovery}<div role="alert" className="p-8 text-red-700">Data PO belum tersedia. <Button variant="secondary" onClick={() => refetchPO()}>Coba lagi</Button></div></MainContent></div>
+
   const isInProgress = po.status === 'in_progress'
   const isComplete = po.status === 'complete'
   const isCancelled = po.status === 'cancelled'
@@ -398,53 +455,45 @@ export default function PODetail() {
 
   return (
     <div className="min-h-screen bg-brand-canvas">
-      <div ref={returnedBackground} inert={!!returnedTarget} aria-hidden={returnedTarget ? true : undefined}>
+      <div ref={returnedBackground} inert={activeModal} aria-hidden={activeModal ? true : undefined}>
       <AthelNav />
-        <TransactionRecovery send={sendTransaction} onCommitted={() => { invalidate(); closeSJModal(); setDeletingSJId(null); setShowDeleteConfirm(false); closeReturnedDate() }} />
+      <MainContent>
+        {receipt}
+        {!activeModal && recovery}
 
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex flex-col items-stretch gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div ref={successFocus} tabIndex={-1} className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex flex-col items-stretch gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-4">
-          <button
-            onClick={() => navigate('/athel/po')}
-            className="shrink-0 text-gray-400 hover:text-gray-600 text-sm"
-          >
-            ← Kembali
-          </button>
+          <ActionLink variant="secondary" to="/athel/po" className="shrink-0">← Kembali</ActionLink>
           <div className="min-w-0 [overflow-wrap:anywhere]">
             <div className="flex flex-wrap items-center gap-3">
               <h1 className="text-xl font-semibold text-gray-900">{po.po_number}</h1>
-              <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLES[po.status] ?? 'bg-gray-100 text-gray-600'}`}>
+              <span className={`px-2.5 py-0.5 rounded-full text-[13px] font-medium ${STATUS_STYLES[po.status] ?? 'bg-gray-100 text-gray-600'}`}>
                 {PO_STATUS_LABELS[po.status] ?? po.status}
               </span>
             </div>
-            <p className="text-sm text-gray-500 mt-0.5">{po.customers?.name}</p>
+            <p className="text-sm text-brand-secondary mt-0.5">{po.customers?.name}</p>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2 flex-wrap justify-end">
           {!isComplete && !isCancelled && (
-            <button
-              onClick={() => navigate(`/athel/po/${po.id}/edit`)}
-              className="text-sm font-medium text-brand-primary hover:text-brand-hover border border-blue-200 hover:border-blue-400 px-3 py-1.5 rounded-lg transition-colors"
-            >
-              Ubah PO
-            </button>
+            <ActionLink variant="secondary" to={`/athel/po/${po.id}/edit`}>Ubah PO</ActionLink>
           )}
-          <button
+          <Button variant="danger"
             disabled={isCancelled}
-            onClick={() => { setActionVersion(po.updated_at); setActionReason(''); setShowDeleteConfirm(true) }}
-            className="text-sm text-red-500 hover:text-red-700 border border-red-200 hover:border-red-400 px-3 py-1.5 rounded-lg transition-colors"
+            onClick={event => { takePresentation(); dialogTrigger.current = event.currentTarget; dialogCommitted.current = false; setActionVersion(po.updated_at); setActionReason(''); setShowDeleteConfirm(true) }}
+
           >
             Batalkan PO
-          </button>
+          </Button>
         </div>
       </div>
 
       <div className="px-4 md:px-8 py-6 max-w-4xl mx-auto space-y-6">
 
-        {(!lineReady || preparationError) && <div role={linesError || preparationError ? 'alert' : 'status'} className="text-sm text-red-600">
+        {(!lineReady || preparationError) && <div role={linesError || preparationError ? 'alert' : 'status'} className="text-sm text-red-700">
           {isPOConflict(lineError) ? 'PO berubah. Muat ulang sebelum melanjutkan.' : linesError || preparationError ? 'Data barang atau pengiriman belum lengkap. Pengiriman belum dapat diubah.' : 'Memuat seluruh barang PO…'}
-          <button className="ml-2 underline" onClick={() => void refreshPO()} disabled={refreshingPO}>Coba lagi</button>
+          <Button variant="secondary" className="ml-2" onClick={() => void refreshPO()} disabled={refreshingPO}>Coba lagi</Button>
         </div>}
         {/* Status card */}
         <div className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
@@ -456,7 +505,7 @@ export default function PODetail() {
                   ${po.status === s
                     ? STATUS_STYLES[s]
                     : ['confirm', 'in_progress', 'complete'].indexOf(po.status) > i
-                      ? 'bg-gray-100 text-gray-400'
+                      ? 'bg-gray-100 text-brand-secondary'
                       : 'bg-gray-50 text-gray-300'
                   }`}
                 >
@@ -469,18 +518,18 @@ export default function PODetail() {
               </div>
             ))}
             {canAddSJ && (
-              <button
+              <Button variant="primary"
                 disabled={!lineReady || preparingSJ}
-                  onClick={openNewSJModal}
-                className="ml-auto bg-brand-primary hover:bg-brand-hover text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+                  onClick={event => openNewSJModal(event.currentTarget)}
+                className="ml-auto"
               >
                 + Surat Jalan
-              </button>
+              </Button>
             )}
           </div>
           <p className="mt-3 text-sm text-gray-600">Dikirim berarti jumlah barang tercatat pada SJ aktif. Selesai berarti seluruh jumlah PO sudah tercatat dikirim, bukan konfirmasi penerimaan toko.</p>
           {isComplete && (
-            <p className="text-sm text-green-600 mt-3 font-medium">
+            <p className="text-sm text-green-800 mt-3 font-medium">
               ✓ Semua jumlah barang sudah tercatat dikirim.
             </p>
           )}
@@ -491,26 +540,26 @@ export default function PODetail() {
           <h2 className="text-base font-medium text-gray-900 mb-4">Rincian Pesanan</h2>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm [overflow-wrap:anywhere]">
             <div>
-              <p className="text-gray-400 mb-1">Pelanggan</p>
+              <p className="text-brand-secondary mb-1">Pelanggan</p>
               <p className="text-gray-900">{po.customers?.name}</p>
             </div>
             <div>
-              <p className="text-gray-400 mb-1">Tanggal PO</p>
+              <p className="text-brand-secondary mb-1">Tanggal PO</p>
               <p className="text-gray-900">{formatDisplayDate(po.order_date)}</p>
             </div>
             <div>
-              <p className="text-gray-400 mb-1">Tanggal Kedaluwarsa PO</p>
+              <p className="text-brand-secondary mb-1">Tanggal Kedaluwarsa PO</p>
               <p className="text-gray-900">{formatDisplayDate(po.expected_delivery_date)}</p>
             </div>
             <div>
-              <p className="text-gray-400 mb-1">Total</p>
+              <p className="text-brand-secondary mb-1">Total</p>
               <p className="text-gray-900 font-semibold">
                 Rp {po.total_value.toLocaleString('id-ID')}
               </p>
             </div>
             {po.notes && (
               <div className="sm:col-span-3">
-                <p className="text-gray-400 mb-1">Catatan</p>
+                <p className="text-brand-secondary mb-1">Catatan</p>
                 <p className="text-gray-900">{po.notes}</p>
               </div>
             )}
@@ -520,35 +569,35 @@ export default function PODetail() {
         <section aria-label="Kredit salesperson" className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6">
           <h2 className="text-base font-medium text-brand-primary">Kredit salesperson</h2>
           <p className="mt-2 text-sm font-semibold text-brand-primary">{po.sales_attribution_state === 'unassigned' ? 'Unassigned' : po.sales_attribution_state === 'assigned' && po.sales_person_id_at_creation ? po.sales_person_at_creation?.full_name || `Salesperson ${po.sales_person_id_at_creation}` : 'Legacy / belum diketahui'}</p>
-          <p className="mt-1 text-xs text-gray-600">Kredit ditetapkan saat PO dibuat dan tetap setelah perubahan penugasan toko. PO Unassigned tidak otomatis diberi kredit kemudian.</p>
-          {po.sales_attributed_at && <p className="mt-1 text-xs text-gray-500">Snapshot: {formatAuditTimestamp(po.sales_attributed_at)}</p>}
+          <p className="mt-1 text-[13px] text-gray-600">Kredit ditetapkan saat PO dibuat dan tetap setelah perubahan penugasan toko. PO Unassigned tidak otomatis diberi kredit kemudian.</p>
+          {po.sales_attributed_at && <p className="mt-1 text-[13px] text-brand-secondary">Snapshot: {formatAuditTimestamp(po.sales_attributed_at)}</p>}
         </section>
 
         {/* Line Items */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100">
             <h2 className="text-base font-medium text-gray-900">Daftar Barang</h2>
-            <p className="mt-1 text-xs text-gray-600">Geser tabel untuk melihat semua kolom.</p>
+            <p className="mt-1 text-[13px] text-gray-600">Geser tabel untuk melihat semua kolom.</p>
           </div>
           <div className="max-w-full overflow-x-auto" role="region" aria-label="Daftar barang PO" tabIndex={0}>
           <table className="w-full min-w-[40rem] text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-100">
-                <th className="text-left px-6 py-3 text-gray-500 font-medium">Produk</th>
-                <th className="text-left px-6 py-3 text-gray-500 font-medium">SKU</th>
-                <th className="text-right px-6 py-3 text-gray-500 font-medium">Dipesan</th>
+                <th className="text-left px-6 py-3 text-brand-secondary font-medium">Produk</th>
+                <th className="text-left px-6 py-3 text-brand-secondary font-medium">SKU</th>
+                <th className="text-right px-6 py-3 text-brand-secondary font-medium">Dipesan</th>
                 {isInProgress && (
-                  <th className="text-right px-6 py-3 text-gray-500 font-medium">Sisa dikirim</th>
+                  <th className="text-right px-6 py-3 text-brand-secondary font-medium">Sisa dikirim</th>
                 )}
-                <th className="text-right px-6 py-3 text-gray-500 font-medium">Harga Satuan</th>
-                <th className="text-right px-6 py-3 text-gray-500 font-medium">Total</th>
+                <th className="text-right px-6 py-3 text-brand-secondary font-medium">Harga Satuan</th>
+                <th className="text-right px-6 py-3 text-brand-secondary font-medium">Total</th>
               </tr>
             </thead>
             <tbody>
               {lineItems?.map(item => (
                 <tr key={item.id} className="border-b border-gray-50">
                   <td className="px-6 py-3 text-gray-900">{item.product_name}</td>
-                  <td className="px-6 py-3 text-gray-500 font-mono text-xs uppercase">
+                  <td className="px-6 py-3 text-brand-secondary font-mono uppercase">
                     {item.sku ?? '—'}
                   </td>
                   <td className="px-6 py-3 text-right text-gray-700">{item.quantity}</td>
@@ -556,8 +605,8 @@ export default function PODetail() {
                     <td className="px-6 py-3 text-right">
                       <span className={`font-medium ${
                         (outstanding[item.id] ?? 0) === 0
-                          ? 'text-green-600'
-                          : 'text-orange-500'
+                          ? 'text-green-800'
+                          : 'text-orange-700'
                       }`}>
                         {outstanding[item.id] ?? 0}
                       </span>
@@ -574,7 +623,7 @@ export default function PODetail() {
             </tbody>
             <tfoot>
               <tr className="bg-gray-50">
-                <td colSpan={isInProgress ? 5 : 4} className="px-6 py-3 text-right text-sm text-gray-500 font-medium">
+                <td colSpan={isInProgress ? 5 : 4} className="px-6 py-3 text-right text-sm text-brand-secondary font-medium">
                   Total
                 </td>
                 <td className="px-6 py-3 text-right text-gray-900 font-semibold">
@@ -589,29 +638,29 @@ export default function PODetail() {
         {/* Delivery headers are presentation only; quantities come from lineState. */}
         <div role="region" aria-label="Riwayat pengiriman" className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
           <h2 className="text-base font-medium text-gray-900">Pengiriman (Daftar Surat Jalan)</h2>
-          {deliveries.isError ? <p role="alert">Riwayat pengiriman gagal dimuat. <button onClick={() => deliveries.refetch()}>Coba lagi</button></p>
+          {deliveries.isError ? <p role="alert">Riwayat pengiriman gagal dimuat. <Button variant="secondary" onClick={() => deliveries.refetch()}>Coba lagi</Button></p>
             : <div aria-busy={deliveries.isPending}>
               {(sjList ?? []).map(sj => <div key={sj.id} className="py-4 border-b border-gray-100">
                 <div className="flex flex-wrap justify-between gap-3"><div className="min-w-0 [overflow-wrap:anywhere]">
                   <span className="font-medium text-sm">{sj.sj_number}</span>
-                  {sj.voided_at && <p className="text-xs text-red-600">Dibatalkan: {sj.void_reason} · {formatAuditTimestamp(sj.voided_at)}</p>}
-                  <p className="text-xs text-gray-400">Tanggal SJ: {formatDisplayDate(sj.sj_date)}</p>
-                  {sj.sj_date_received && <p className="text-xs text-gray-400">Diterima Toko: {formatDisplayDate(sj.sj_date_received)}</p>}
-                  {sj.sj_date_returned && <p className="text-xs text-gray-400">SJ Kembali: {formatDisplayDate(sj.sj_date_returned)}</p>}
+                  {sj.voided_at && <p className="text-[13px] text-red-600">Dibatalkan: {sj.void_reason} · {formatAuditTimestamp(sj.voided_at)}</p>}
+                  <p className="text-[13px] text-brand-secondary">Tanggal SJ: {formatDisplayDate(sj.sj_date)}</p>
+                  {sj.sj_date_received && <p className="text-[13px] text-brand-secondary">Diterima Toko: {formatDisplayDate(sj.sj_date_received)}</p>}
+                  {sj.sj_date_returned && <p className="text-[13px] text-brand-secondary">SJ Kembali: {formatDisplayDate(sj.sj_date_returned)}</p>}
                 </div><div className="flex flex-wrap gap-3">
-                  <button disabled={deliveries.isPending} onClick={() => setSelectedSJId(selectedSJId === sj.id ? null : sj.id)} className="text-brand-primary text-xs">{selectedSJId === sj.id ? 'Tutup barang' : 'Lihat barang'}</button>
-                  {canEditReturnedDate && !sj.voided_at && <button type="button" disabled={poFetching || deliveries.isPending || returnedMutation.isPending} onClick={event => { returnedTrigger.current = event.currentTarget; returnedReadSequence.current++; returnedRead.current?.abort(); returnedReviewRequired.current = false; setReturnedReview(null); setReturnedTarget({ id: sj.id, number: sj.sj_number, version: po.updated_at }); setReturnedDate(sj.sj_date_returned ?? ''); returnedMutation.reset() }} className="text-brand-primary text-xs underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-accent">Ubah tanggal SJ kembali</button>}
+                  <Button variant="secondary" disabled={deliveries.isPending} onClick={() => setSelectedSJId(selectedSJId === sj.id ? null : sj.id)} >{selectedSJId === sj.id ? 'Tutup barang' : 'Lihat barang'}</Button>
+                  {canEditReturnedDate && !sj.voided_at && <Button variant="secondary" type="button" disabled={poFetching || deliveries.isPending || returnedMutation.isPending} onClick={event => { takePresentation(); returnedTrigger.current = event.currentTarget; dialogCommitted.current = false; returnedReadSequence.current++; returnedRead.current?.abort(); returnedReviewRequired.current = false; setReturnedReview(null); setReturnedTarget({ id: sj.id, number: sj.sj_number, version: po.updated_at }); setReturnedDate(sj.sj_date_returned ?? ''); returnedMutation.reset() }} >Ubah tanggal SJ kembali</Button>}
                   {canAddSJ && !sj.voided_at && <>
-                    <button disabled={!lineReady || preparingSJ || deliveries.isPending} onClick={() => openEditSJModal(sj)} className="text-brand-primary text-xs">Ubah</button>
-                    <button disabled={deliveries.isPending} onClick={() => { setActionVersion(po.updated_at); setActionReason(''); setDeletingSJId(sj.id) }} className="text-red-500 text-xs">Batalkan</button>
+                    <Button variant="secondary" disabled={!lineReady || preparingSJ || deliveries.isPending} onClick={event => void openEditSJModal(sj, event.currentTarget)} >Ubah</Button>
+                    <Button variant="danger" disabled={deliveries.isPending} onClick={event => { takePresentation(); dialogTrigger.current = event.currentTarget; dialogCommitted.current = false; setActionVersion(po.updated_at); setActionReason(''); setDeletingSJId(sj.id) }} >Batalkan</Button>
                   </>}
                 </div></div>
-                {selectedSJId === sj.id && (selectedLines.isError ? <p role="alert">Barang pengiriman gagal dimuat. <button onClick={() => selectedLines.refetch()}>Coba lagi</button></p>
-                  : selectedLines.isPending ? <p role="status">Memuat barang…</p> : <div className="mt-3 max-w-full overflow-x-auto" role="region" aria-label={`Barang ${sj.sj_number}`} tabIndex={0}><table className="w-full min-w-[24rem] text-xs"><thead><tr><th className="text-left">Item</th><th>SKU</th><th>Qty Terkirim</th></tr></thead><tbody>
+                {selectedSJId === sj.id && (selectedLines.isError ? <p role="alert">Barang pengiriman gagal dimuat. <Button variant="secondary" onClick={() => selectedLines.refetch()}>Coba lagi</Button></p>
+                  : selectedLines.isPending ? <p role="status">Memuat barang…</p> : <div className="mt-3 max-w-full overflow-x-auto" role="region" aria-label={`Barang ${sj.sj_number}`} tabIndex={0}><table className="w-full min-w-[24rem] text-sm"><thead><tr><th className="text-left">Item</th><th>SKU</th><th>Qty Terkirim</th></tr></thead><tbody>
                     {selectedLines.data?.map(sli => { const li = lineItems?.find(line => line.id === sli.po_line_item_id); return <tr key={sli.id}><td>{li?.product_name ?? '—'}</td><td>{li?.sku ?? '—'}</td><td>{sli.quantity_delivered}</td></tr> })}
                   </tbody></table></div>)}
               </div>)}
-              {!deliveries.isPending && sjList?.length === 0 && <p className="text-sm text-gray-400">Belum ada pengiriman.</p>}
+              {!deliveries.isPending && sjList?.length === 0 && <p className="text-sm text-brand-secondary">Belum ada pengiriman.</p>}
               <PaginationControls page={deliveries.page} total={deliveries.data?.total ?? 0} pageSize={20} pending={deliveries.isPending} onPageChange={deliveries.setPage} />
             </div>}
         </div>
@@ -619,8 +668,8 @@ export default function PODetail() {
         {/* Audit Log */}
         <div className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
           <h2 className="text-base font-medium text-gray-900 mb-4">Riwayat Perubahan</h2>
-          {audits.isError ? <p role="alert">Riwayat perubahan gagal dimuat. <button onClick={() => audits.refetch()}>Coba lagi</button></p> : !audits.isPending && auditLog?.length === 0 ? (
-            <p className="text-sm text-gray-400">Belum ada perubahan tercatat.</p>
+          {audits.isError ? <p role="alert">Riwayat perubahan gagal dimuat. <Button variant="secondary" onClick={() => audits.refetch()}>Coba lagi</Button></p> : !audits.isPending && auditLog?.length === 0 ? (
+            <p className="text-sm text-brand-secondary">Belum ada perubahan tercatat.</p>
           ) : (
             <div className="space-y-3">
               {auditLog?.map(entry => (
@@ -628,8 +677,8 @@ export default function PODetail() {
                   <div className="w-1 rounded-full bg-blue-200 shrink-0" />
                   <div className="min-w-0 [overflow-wrap:anywhere]">
                     <p className="text-gray-900">{summarizePOAudit(entry)}</p>
-                    <p className="text-gray-600 text-xs mt-0.5">{formatAuditTimestamp(entry.changed_at)}</p>
-                    <details className="mt-2 text-xs text-gray-600">
+                    <p className="text-gray-600 text-[13px] mt-0.5">{formatAuditTimestamp(entry.changed_at)}</p>
+                    <details className="mt-2 text-[13px] text-gray-600">
                       <summary className="cursor-pointer font-medium">Detail teknis audit</summary>
                       <dl className="mt-2 space-y-1">
                         <dt>Peristiwa asli</dt><dd>{entry.field_changed}</dd>
@@ -648,15 +697,18 @@ export default function PODetail() {
 
       </div>
 
+      </MainContent>
+      </div>
       {/* SJ Modal */}
       {showSJModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-lg shadow-xl max-h-[90vh] overflow-y-auto">
+        <Dialog labelledBy="sj-dialog-title" pending={transactionLocked} onClose={() => { if (!transactionLocked && !dialogBusy.current) closeSJModal() }} returnFocus={null} fallbackFocus={restoreDialogFocus} className="max-w-lg">
+          <div className="min-w-0">
             <div className="px-6 py-5 border-b border-gray-100">
-              <h3 className="text-base font-semibold text-gray-900">
+              <h3 id="sj-dialog-title" className="ui-dialog__title">
                 {editingSJ ? 'Ubah Surat Jalan' : 'Surat Jalan Baru'}
               </h3>
-              <p className="text-xs text-gray-400 mt-0.5">
+              {recovery}
+              <p className="text-[13px] text-brand-secondary mt-0.5">
                 Masukkan jumlah pengiriman. Dibatasi sesuai sisa per barang.
               </p>
             </div>
@@ -666,58 +718,24 @@ export default function PODetail() {
                 <p>SJ kembali berarti dokumen surat jalan kembali, bukan retur barang.</p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">Nomor SJ *</label>
-                  <input
+                <Field id="sj-number" label="Nomor SJ *">{control => <input {...control} disabled={transactionLocked}
                     type="text"
                     aria-label="Nomor SJ"
                     value={sjNumber}
                     onChange={e => setSjNumber(e.target.value)}
                     placeholder="mis. SJ-2024-001"
-                    className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">Tanggal SJ *</label>
-                  <input
-                    type="date"
-                    aria-label="Tanggal SJ"
-                    value={sjDate}
-                    onChange={e => setSjDate(e.target.value)}
-                    className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">
-                    Tanggal SJ Diterima Toko <span className="text-gray-400"></span>
-                  </label>
-                  <input
-                    type="date"
-                    aria-label="Tanggal SJ Diterima Toko"
-                    value={sjDateReceived}
-                    onChange={e => setSjDateReceived(e.target.value)}
-                    className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1">
-                    Tanggal SJ Kembali <span className="text-gray-400"></span>
-                  </label>
-                  <input
-                    type="date"
-                    aria-label="Tanggal SJ Kembali"
-                    value={sjDateReturned}
-                    onChange={e => setSjDateReturned(e.target.value)}
-                    className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
-                  />
-                </div>
+                    className="min-w-0 max-w-full w-full border border-brand-control-border rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                  />}</Field>
+                <Field id="sj-date" label="Tanggal SJ *">{control => <input {...control} type="date" aria-label="Tanggal SJ" disabled={transactionLocked} value={sjDate} onChange={e => setSjDate(e.target.value)} />}</Field>
+                <Field id="sj-received" label="Tanggal SJ Diterima Toko">{control => <input {...control} type="date" aria-label="Tanggal SJ Diterima Toko" disabled={transactionLocked} value={sjDateReceived} onChange={e => setSjDateReceived(e.target.value)} />}</Field>
+                <Field id="sj-returned" label="Tanggal SJ Kembali">{control => <input {...control} type="date" aria-label="Tanggal SJ Kembali" disabled={transactionLocked} value={sjDateReturned} onChange={e => setSjDateReturned(e.target.value)} />}</Field>
               </div>
 
               <div>
-                <p className="mb-2 text-xs text-gray-500 sm:hidden">Geser untuk melihat dan mengisi jumlah barang.</p>
+                <p className="mb-2 text-[13px] text-brand-secondary sm:hidden">Geser untuk melihat dan mengisi jumlah barang.</p>
                 <div className="max-w-full overflow-x-auto" role="region" aria-label="Jumlah barang surat jalan" tabIndex={0}>
                   <div className="min-w-[26rem]">
-                    <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_5.5rem_5rem] gap-2 text-xs text-gray-400 font-medium px-1 mb-2">
+                    <div className="grid grid-cols-[minmax(0,1fr)_4.5rem_5.5rem_5rem] gap-2 text-[13px] text-brand-secondary font-medium px-1 mb-2">
                       <div className="min-w-0">Item</div>
                       <div className="min-w-0 [overflow-wrap:anywhere] text-right">Dipesan</div>
                       <div className="min-w-0 [overflow-wrap:anywhere] text-right">Sisa dikirim</div>
@@ -729,29 +747,27 @@ export default function PODetail() {
                           <div className="min-w-0 [overflow-wrap:anywhere]">
                             <p className="text-sm text-gray-900">{line.product_name}</p>
                             {line.sku && (
-                              <p className="text-xs text-gray-400 font-mono uppercase">{line.sku}</p>
+                              <p className="text-[13px] text-brand-secondary font-mono uppercase">{line.sku}</p>
                             )}
                           </div>
-                          <div className="min-w-0 [overflow-wrap:anywhere] text-right text-sm text-gray-500">
+                          <div className="min-w-0 [overflow-wrap:anywhere] text-right text-sm text-brand-secondary">
                             {line.quantity_ordered}
                           </div>
                           <div className="min-w-0 [overflow-wrap:anywhere] text-right text-sm font-medium">
-                            <span className={line.quantity_outstanding === 0 ? 'text-green-500' : 'text-orange-500'}>
+                            <span className={line.quantity_outstanding === 0 ? 'text-green-800' : 'text-orange-700'}>
                               {line.quantity_outstanding}
                             </span>
                           </div>
-                          <div className="min-w-0">
-                            <input
+                          <Field id={`sj-quantity-${line.po_line_item_id}`} label={<span className="sr-only">Jumlah dikirim {line.product_name}</span>} className="min-w-0">{control => <input {...control}
                               type="number"
                               aria-label={`Jumlah dikirim ${line.product_name}`}
                               min={0}
                               max={line.quantity_outstanding}
                               value={line.quantity_to_deliver}
                               onChange={e => updateSJLine(i, parseInt(e.target.value) || 0)}
-                              disabled={line.quantity_outstanding === 0}
-                              className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-brand-primary disabled:bg-gray-50 disabled:text-gray-300"
-                            />
-                          </div>
+                              disabled={transactionLocked || line.quantity_outstanding === 0}
+                              className="min-w-0 max-w-full w-full border border-brand-control-border rounded-lg px-2 py-1.5 text-base text-right focus:outline-none focus:ring-2 focus:ring-brand-primary disabled:bg-gray-50 disabled:text-gray-300"
+                            />}</Field>
                         </div>
                       ))}
                     </div>
@@ -764,101 +780,103 @@ export default function PODetail() {
                 ? <><p>PO saat ini berstatus Selesai.</p><p>Tidak ada sisa jumlah barang untuk surat jalan baru.</p></>
                 : deliveryWillComplete ? <><p>Setelah disimpan, PO akan berstatus Selesai karena seluruh jumlah pesanan sudah tercatat dikirim.</p><p>Status Selesai tetap berlaku jika tanggal penerimaan belum diisi. Catat penerimaan toko dan kembalinya dokumen SJ secara terpisah.</p></> : <p>Masih ada sisa barang yang belum tercatat dikirim; PO belum selesai.</p>}
             </div>
-            <div className="px-6 py-4 border-t border-gray-100 flex flex-wrap justify-end gap-3">
-              <button
-                onClick={closeSJModal}
-                className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
+            <FormActions className="px-6 py-4 border-t border-gray-100">
+              <Button variant="secondary"
+                disabled={transactionLocked} onClick={() => { if (!transactionLocked && !dialogBusy.current) closeSJModal() }}
+
               >
                 Batal
-              </button>
-              <button
-                onClick={handleSaveSJ}
-                disabled={sjMutation.isPending || updateSJMutation.isPending || !lineReady || editVersion !== lineState?.po_updated_at}
-                className="px-4 py-2 text-sm font-medium bg-brand-primary text-white rounded-lg hover:bg-brand-hover disabled:opacity-50"
+              </Button>
+              <Button variant="primary"
+                pending={sjMutation.isPending || updateSJMutation.isPending} onClick={handleSaveSJ}
+                disabled={transactionLocked || !lineReady || editVersion !== lineState?.po_updated_at}
+
               >
                 {sjMutation.isPending || updateSJMutation.isPending
                   ? 'Menyimpan...'
                   : editingSJ ? 'Simpan Perubahan SJ' : 'Simpan SJ'}
-              </button>
-            </div>
-            {(!lineReady || editVersion !== lineState?.po_updated_at) && <p className="px-6 pb-4 text-sm text-red-600">Data PO belum lengkap atau berubah. Tutup formulir lalu muat ulang sebelum menyimpan; isian Anda tetap terlihat sampai formulir ditutup.</p>}
+              </Button>
+            </FormActions>
+            {(!lineReady || editVersion !== lineState?.po_updated_at) && <p role="alert" className="px-6 pb-4 text-sm text-red-600">Data PO belum lengkap atau berubah. Tutup formulir lalu muat ulang sebelum menyimpan; isian Anda tetap terlihat sampai formulir ditutup.</p>}
             {(sjMutation.isError || updateSJMutation.isError) && (
-              <p className="text-red-500 text-xs px-6 pb-4 text-right">
+              <p className="text-red-700 text-[13px] px-6 pb-4 text-right">
                 {((sjMutation.error || updateSJMutation.error) as Error)?.message}
               </p>
             )}
           </div>
-        </div>
+        </Dialog>
       )}
 
       {/* Delete SJ confirmation */}
       {deletingSJId && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 max-w-sm w-full mx-4 shadow-xl">
-            <h3 className="text-base font-semibold text-gray-900 mb-2">Batalkan Surat Jalan?</h3>
-            <p className="text-sm text-gray-500 mb-5">
+        <Dialog labelledBy="cancel-sj-title" pending={transactionLocked} onClose={() => { if (!transactionLocked && !dialogBusy.current) { dialogEpoch.current++; setDeletingSJId(null) } }} returnFocus={null} fallbackFocus={restoreDialogFocus}>
+          <div className="min-w-0">
+            <h3 id="cancel-sj-title" className="ui-dialog__title">Batalkan Surat Jalan?</h3>
+            {recovery}
+            <p className="text-sm text-brand-secondary mb-5">
               Apakah Anda yakin ingin membatalkan <strong>{deletingSJ?.sj_number}</strong>?
               Jumlah tidak lagi dihitung sebagai pengiriman aktif. Riwayat tetap disimpan.
             </p>
-            <textarea aria-label="Alasan pembatalan" value={actionReason} onChange={e => setActionReason(e.target.value)} placeholder="Alasan pembatalan (wajib)" className="min-w-0 max-w-full w-full border rounded-lg p-2 mb-3 text-sm" />
-            {(deleteSJMutation.isError || deleteMutation.isError) && <p className="text-red-600 text-xs mb-3">{((deleteSJMutation.error || deleteMutation.error) as Error).message}</p>}
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setDeletingSJId(null)}
-                className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
+            <Field id="cancel-sj-reason" label="Alasan pembatalan">{control => <textarea {...control} disabled={transactionLocked} aria-label="Alasan pembatalan" value={actionReason} onChange={e => setActionReason(e.target.value)} placeholder="Alasan pembatalan (wajib)" />}</Field>
+            {(deleteSJMutation.isError || deleteMutation.isError) && <p className="text-red-600 text-[13px] mb-3">{((deleteSJMutation.error || deleteMutation.error) as Error).message}</p>}
+            <FormActions className="mt-4">
+              <Button variant="secondary"
+                disabled={transactionLocked} onClick={() => { if (!transactionLocked && !dialogBusy.current) { dialogEpoch.current++; setDeletingSJId(null) } }}
+
               >
                 Batal
-              </button>
-              <button
-                onClick={() => deleteSJMutation.mutate(deletingSJId)}
-                disabled={deleteSJMutation.isPending || !actionReason.trim()}
-                className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+              </Button>
+              <Button variant="danger"
+                pending={deleteSJMutation.isPending} onClick={() => { if (!transactionLocked && !dialogBusy.current && actionReason.trim()) { dialogBusy.current = true; deleteSJMutation.mutate(deletingSJId) } }}
+                disabled={transactionLocked || !actionReason.trim()}
+
               >
                 {deleteSJMutation.isPending ? 'Membatalkan...' : 'Ya, batalkan'}
-              </button>
-            </div>
+              </Button>
+            </FormActions>
           </div>
-        </div>
+        </Dialog>
       )}
 
       {/* Delete PO confirmation */}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-6 max-w-sm w-full mx-4 shadow-xl">
-            <h3 className="text-base font-semibold text-gray-900 mb-2">
+        <Dialog labelledBy="cancel-po-title" pending={transactionLocked} onClose={() => { if (!transactionLocked && !dialogBusy.current) { dialogEpoch.current++; setShowDeleteConfirm(false) } }} returnFocus={null} fallbackFocus={restoreDialogFocus}>
+          <div className="min-w-0">
+            <h3 id="cancel-po-title" className="ui-dialog__title">
               Batalkan {po.po_number}?
             </h3>
-            <p className="text-sm text-gray-500 mb-5">
+            {recovery}
+            <p className="text-sm text-brand-secondary mb-5">
              PO <strong>{po.po_number}</strong> dibatalkan tanpa menghapus riwayat. Pengiriman aktif harus diselesaikan melalui koreksi terlebih dahulu.
             </p>
-            <textarea aria-label="Alasan pembatalan" value={actionReason} onChange={e => setActionReason(e.target.value)} placeholder="Alasan pembatalan (wajib)" className="min-w-0 max-w-full w-full border rounded-lg p-2 mb-3 text-sm" />
-            {(deleteSJMutation.isError || deleteMutation.isError) && <p className="text-red-600 text-xs mb-3">{((deleteSJMutation.error || deleteMutation.error) as Error).message}</p>}
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setShowDeleteConfirm(false)}
-                className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
+            <Field id="cancel-po-reason" label="Alasan pembatalan">{control => <textarea {...control} disabled={transactionLocked} aria-label="Alasan pembatalan" value={actionReason} onChange={e => setActionReason(e.target.value)} placeholder="Alasan pembatalan (wajib)" />}</Field>
+            {(deleteSJMutation.isError || deleteMutation.isError) && <p className="text-red-600 text-[13px] mb-3">{((deleteSJMutation.error || deleteMutation.error) as Error).message}</p>}
+            <FormActions className="mt-4">
+              <Button variant="secondary"
+                disabled={transactionLocked} onClick={() => { if (!transactionLocked && !dialogBusy.current) { dialogEpoch.current++; setShowDeleteConfirm(false) } }}
+
               >
                 Batal
-              </button>
-              <button
-                onClick={() => deleteMutation.mutate()}
-                disabled={deleteMutation.isPending || !actionReason.trim()}
-                className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+              </Button>
+              <Button variant="danger"
+                pending={deleteMutation.isPending} onClick={() => { if (!transactionLocked && !dialogBusy.current && actionReason.trim()) { dialogBusy.current = true; deleteMutation.mutate() } }}
+                disabled={transactionLocked || !actionReason.trim()}
+
               >
                 {deleteMutation.isPending ? 'Membatalkan...' : 'Ya, batalkan'}
-              </button>
-            </div>
+              </Button>
+            </FormActions>
           </div>
-        </div>
+        </Dialog>
       )}
-      </div>
-      {returnedTarget && <ReturnedDateDialog pending={returnedMutation.isPending} onClose={() => { if (!returnedBusy.current) closeReturnedDate() }} returnFocus={returnedTrigger.current} fallbackFocus={() => returnedBackground.current?.querySelector<HTMLElement>('button:not(:disabled), a[href]') ?? null}>
-          <h2 id="returned-date-title" className="text-base font-semibold text-brand-primary">Tanggal SJ kembali · {returnedTarget.number}</h2>
-          {isComplete && returnedDeadline !== null && <p className="mt-2 text-xs text-gray-600">Batas pengubahan: {new Date(returnedDeadline).toLocaleString('id-ID')}. Waktu dan izin diperiksa oleh server saat menyimpan.</p>}
+      {returnedTarget && <ReturnedDateDialog pending={transactionLocked} onClose={() => { if (!transactionLocked && !returnedBusy.current) closeReturnedDate() }} returnFocus={null} fallbackFocus={restoreReturnedFocus}>
+          <h2 id="returned-date-title" className="ui-dialog__title">Tanggal SJ kembali · {returnedTarget.number}</h2>
+          {recovery}
+          {isComplete && returnedDeadline !== null && <p className="mt-2 text-[13px] text-gray-600">Batas pengubahan: {new Date(returnedDeadline).toLocaleString('id-ID')}. Waktu dan izin diperiksa oleh server saat menyimpan.</p>}
           <label htmlFor="returned-date" className="mt-4 block text-sm text-gray-700">Tanggal SJ kembali</label>
-          <input id="returned-date" type="date" value={returnedDate} disabled={returnedMutation.isPending} onChange={event => setReturnedDate(event.target.value)} className="mt-1 w-full rounded-lg border border-gray-200 p-2 focus:outline-none focus:ring-2 focus:ring-brand-accent" />
+          <input id="returned-date" type="date" value={returnedDate} disabled={transactionLocked} onChange={event => setReturnedDate(event.target.value)} className="mt-1 w-full rounded-lg border border-brand-control-border p-2 focus:outline-none focus:ring-2 focus:ring-brand-accent" />
           {returnedMutation.isError && <p role="alert" className="mt-3 text-sm text-red-600">{(returnedMutation.error as Error).message}</p>}
-          {(isPOConflict(returnedMutation.error) || returnedTarget.version !== po.updated_at || returnedReview) && <button type="button" onClick={() => void refreshReturnedDate()} disabled={returnedReview?.status === 'loading' || returnedMutation.isPending} className="mt-2 text-sm text-brand-primary underline">Muat ulang PO</button>}
+          {(isPOConflict(returnedMutation.error) || returnedTarget.version !== po.updated_at || returnedReview) && <Button variant="secondary" type="button" onClick={() => void refreshReturnedDate()} disabled={returnedReview?.status === 'loading' || transactionLocked} className="mt-2">Muat ulang PO</Button>}
           {returnedReview?.status === 'loading' && <p role="status" className="mt-3 text-sm">Memuat SJ dan versi PO terbaru…</p>}
           {returnedReview?.message && <p role="alert" className="mt-3 text-sm text-red-600">{returnedReview.message}</p>}
           {returnedReview?.value && <div className="mt-3 space-y-2 text-sm text-gray-600">
@@ -866,12 +884,12 @@ export default function PODetail() {
             {returnedReview.value.sj.void_reason && <p>Alasan pembatalan: {returnedReview.value.sj.void_reason}</p>}
             <p>Periksa data tersimpan ini sebelum menggunakan versi baru. Tanggal yang Anda isi tetap dipertahankan.</p>
             {!returnedReviewEligible && <p className="text-red-600">SJ tidak dapat diubah atau data berubah lagi. Muat ulang sebelum melanjutkan.</p>}
-            <button type="button" disabled={!returnedReviewEligible || returnedMutation.isPending} onClick={adoptReturnedDateReview} className="text-brand-primary underline">Gunakan versi PO terbaru</button>
+            <Button variant="secondary" type="button" disabled={!returnedReviewEligible || transactionLocked} onClick={adoptReturnedDateReview} >Gunakan versi PO terbaru</Button>
           </div>}
-          <div className="mt-5 flex flex-wrap justify-end gap-3">
-            <button type="button" disabled={returnedMutation.isPending} onClick={() => { if (!returnedBusy.current) closeReturnedDate() }} className="rounded-lg border px-4 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-accent">Batal</button>
-            <button type="button" onClick={() => void saveReturnedDate()} disabled={returnedMutation.isPending || returnedReviewRequired.current || poFetching || refreshingPO || returnedTarget.version !== po.updated_at} className="rounded-lg bg-brand-primary px-4 py-2 text-sm text-white hover:bg-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-accent disabled:opacity-50">{returnedMutation.isPending ? 'Menyimpan...' : 'Simpan tanggal kembali'}</button>
-          </div>
+          <FormActions className="mt-5">
+            <Button variant="secondary" type="button" disabled={transactionLocked} onClick={() => { if (!transactionLocked && !returnedBusy.current) closeReturnedDate() }} >Batal</Button>
+            <Button variant="primary" type="button" pending={returnedMutation.isPending} onClick={() => void saveReturnedDate()} disabled={transactionLocked || returnedReviewRequired.current || poFetching || refreshingPO || returnedTarget.version !== po.updated_at} >{returnedMutation.isPending ? 'Menyimpan...' : 'Simpan tanggal kembali'}</Button>
+          </FormActions>
       </ReturnedDateDialog>}
     </div>
   )

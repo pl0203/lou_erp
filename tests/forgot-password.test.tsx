@@ -57,7 +57,7 @@ test.each(['', '   '])('rejects empty or whitespace-only input: %j', async email
   mount()
   fill(email)
   submit()
-  await screen.findByText('Masukkan email Anda.')
+  expect(await screen.findByRole('alert')).toHaveProperty('textContent', expect.stringContaining('Masukkan email Anda.'))
   expect(mocks.resetPasswordForEmail).not.toHaveBeenCalled()
 })
 
@@ -67,7 +67,7 @@ test.each(['not-an-email', 'person@', '@example.test', 'person@example', 'a b@ex
     mount()
     fill(email)
     submit()
-    await screen.findByText('Masukkan alamat email yang valid.')
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', expect.stringContaining('Masukkan alamat email yang valid.'))
     expect(mocks.resetPasswordForEmail).not.toHaveBeenCalled()
   },
 )
@@ -90,8 +90,8 @@ test('guards repeated Enter and clicks synchronously while the request is pendin
   const email = screen.getByPlaceholderText('anda@perusahaan.com')
   const button = screen.getByRole('button', { name: 'Kirim tautan reset' }) as HTMLButtonElement
   act(() => {
-    fireEvent.keyDown(email, { key: 'Enter' })
-    fireEvent.keyDown(email, { key: 'Enter' })
+    fireEvent.submit((email as HTMLInputElement).form!)
+    fireEvent.submit((email as HTMLInputElement).form!)
     fireEvent.click(button)
   })
   expect(mocks.resetPasswordForEmail).toHaveBeenCalledTimes(1)
@@ -142,7 +142,7 @@ test('allows returning to login while a request is pending without late navigati
   mount()
   fill('person@example.test')
   submit()
-  fireEvent.click(screen.getByRole('button', { name: /Kembali ke halaman masuk/ }))
+  fireEvent.click(screen.getByRole('link', { name: /Kembali ke halaman masuk/ }))
   await screen.findByText('Login route')
   await act(async () => finish({ error: null }))
   await waitFor(() => expect(screen.getByText('Login route')).toBeTruthy())

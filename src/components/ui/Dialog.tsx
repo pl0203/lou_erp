@@ -10,6 +10,11 @@ type Props = Omit<DialogHTMLAttributes<HTMLDialogElement>, 'children' | 'open' |
   fallbackFocus: () => HTMLElement | null
 }
 
+type DialogOwner = { node: HTMLDialogElement; focusInside: () => void }
+// Mount order matches modal order. Only the topmost owner may contain focus.
+const owners: DialogOwner[] = []
+const activeOwner = () => owners.at(-1)
+
 /** Mount only while open. The owner keeps dismissal and transaction decisions. */
 export function Dialog({ labelledBy, children, pending, onClose, returnFocus, fallbackFocus, className, ...props }: Props) {
   const dialog = useRef<HTMLDialogElement>(null)
@@ -20,22 +25,30 @@ export function Dialog({ labelledBy, children, pending, onClose, returnFocus, fa
   useEffect(() => {
     const node = dialog.current
     if (!node) return
+    const owner = { node, focusInside }
+    owners.push(owner)
     if (typeof node.showModal === 'function') { nativeModal.current = true; node.showModal() }
     else node.setAttribute('open', '')
     focusInside()
-    const contain = (event: FocusEvent) => { if (!node.contains(event.target as Node)) focusInside() }
+    const contain = (event: FocusEvent) => { if (activeOwner() === owner && !node.contains(event.target as Node)) focusInside() }
     document.addEventListener('focusin', contain)
     return () => {
+      const wasActive = activeOwner() === owner
       document.removeEventListener('focusin', contain)
+      owners.splice(owners.indexOf(owner), 1)
       if (node.open && typeof node.close === 'function') node.close()
       else node.removeAttribute('open')
+      if (!wasActive) return
       const target = returnFocus?.isConnected ? returnFocus : fallbackFocus()
-      target?.focus()
+      const next = activeOwner()
+      if (next && (!target || !next.node.contains(target))) next.focusInside()
+      else target?.focus()
     }
   }, [])
   return <dialog {...props} ref={dialog} role="dialog" tabIndex={-1} aria-modal="true" aria-labelledby={labelledBy}
-    onCancel={event => { event.preventDefault(); if (!pending) onClose() }}
+    onCancel={event => { event.preventDefault(); if (activeOwner()?.node === dialog.current && !pending) onClose() }}
     onKeyDown={event => {
+      if (activeOwner()?.node !== dialog.current) return
       if (event.key === 'Escape') { event.preventDefault(); if (!pending) onClose(); return }
       if (event.key !== 'Tab') return
       const targets = controls(), first = targets[0], last = targets.at(-1)

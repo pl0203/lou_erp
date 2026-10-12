@@ -6,9 +6,15 @@ import { formatCOReportMonth } from '../../../lib/co/presentation';
 import { formatDisplayDate } from '../../../lib/displayDate';
 import { coKeys } from '../../../lib/co/queryKeys';
 import { isCOAuthorityError } from '../../../components/co/COReportWorkspace';
-import { CO_BUTTON, CO_INPUT, CO_PRIMARY, COFailure, COFreshness, COPagination, useCOActor, useCORead } from '../../../components/co/COShared';
+import { CO_INPUT, COFailure, COFreshness, COPagination, useCOActor, useCORead } from '../../../components/co/COShared';
 import COStockHistory from '../../../components/co/COStockHistory';
 import COReturnDialog from '../../../components/co/COReturnDialog';
+import { PageHeader } from '../../../components/ui/PageHeader';
+import { Button } from '../../../components/ui/Button';
+import { Field } from '../../../components/ui/Field';
+import { FilterBar } from '../../../components/ui/FilterBar';
+import { SummaryList } from '../../../components/ui/SummaryList';
+import { EmptyState } from '../../../components/ui/Feedback';
 
 function monthEnd(month: string) {
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return null;
@@ -68,66 +74,67 @@ export default function COCustomerStock() {
     };
     const blocked = stock.isFetching || stock.isError || !stock.data;
     const readFailure = stock.isError ? <COFailure error={stock.error} retry={() => void stock.refetch()}/> : null;
-    return <div className="max-w-6xl mx-auto space-y-5">
-        <h2 className="text-xl font-semibold">Stok pelanggan</h2>
-        <p className="text-sm text-gray-500">Stok buku tercatat. Stok terkini memakai pergerakan bulan berjalan sampai cakupan server; angka ini bukan verifikasi fisik langsung.</p>
-        <div className="grid gap-3 sm:grid-cols-3 rounded-xl border bg-white p-4">
-            <label>Pelanggan<select aria-label="Pelanggan stok" className={CO_INPUT} value={customer} onChange={e => update('customer', e.target.value)}>
+    return <div className="min-w-0 max-w-6xl mx-auto space-y-5">
+        <PageHeader title="Stok pelanggan" description="Stok buku tercatat. Stok terkini memakai pergerakan bulan berjalan sampai cakupan server."/>
+        <p className="text-base text-brand-secondary">Stok pelanggan mencakup semua CO pada cakupan dipilih. Retur berlaku untuk pelanggan.</p>
+        <FilterBar label="Filter stok pelanggan">
+            <Field id="co-stock-customer-filter" label="Pelanggan stok" className="flex-1 basis-56">{control => <select {...control} aria-label="Pelanggan stok" className={CO_INPUT} value={customer} onChange={e => update('customer', e.target.value)}>
                 <option value="">Semua pelanggan</option>{customers.data?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select></label>
-            <label>Cari SKU<input aria-label="Cari SKU stok" className={CO_INPUT} value={search} onChange={e => update('search', e.target.value)}/></label>
-            <label>Bulan akhir stok<input aria-label="Bulan akhir stok" className={CO_INPUT} type="month" value={period}
+            </select>}</Field>
+            <Field id="co-stock-search-filter" label="Cari SKU stok" className="flex-1 basis-56">{control => <input {...control} aria-label="Cari SKU stok" className={CO_INPUT} value={search} onChange={e => update('search', e.target.value)}/>}</Field>
+            <Field id="co-stock-month-filter" label="Bulan akhir stok" className="flex-1 basis-56">{control => <input {...control} aria-label="Bulan akhir stok" className={CO_INPUT} type="month" value={period}
                 max={(stock.data?.as_of ?? new Date().toISOString()).slice(0, 7)} onChange={e => {
                     const end = e.target.value ? monthEnd(e.target.value) : null;
                     const today = (stock.data?.as_of ?? new Date().toISOString()).slice(0, 10);
                     if (end && end > today) { setError('Pilih akhir bulan yang sudah selesai menurut tanggal UTC server.'); return; }
                     setError(''); update('month', e.target.value);
-                }}/></label>
-        </div>
-        <button className={CO_BUTTON} onClick={() => update('month', '')}>Stok terkini</button>
+                }}/>}</Field>
+        </FilterBar>
+        <Button variant="secondary" onClick={() => update('month', '')}>Stok terkini</Button>
         {period && !asOf && <COFailure error={new Error('Bulan stok tidak valid. Pilih bulan kalender.')}/>}
         {error && <COFailure error={new Error(error)}/>}
         {customers.isError && <COFailure error={customers.error} retry={() => void customers.refetch()}/>}
-        {customer && <button className={CO_PRIMARY} disabled={blocked} onClick={e => { trigger.current = e.currentTarget; setReturning(true); }}>Retur barang belum terjual</button>}
+        {customer && <Button variant="primary" disabled={blocked} onClick={e => { trigger.current = e.currentTarget; setReturning(true); }}>Retur barang belum terjual</Button>}
         {!returning && readFailure}
         {!stock.data && !stock.isError && <p role="status">Memuat stok…</p>}
         {stock.data && !stock.isError && <>
             <p className="text-sm">Periode {formatDisplayDate(stock.data.period_start)} sampai {formatDisplayDate(stock.data.coverage_date)} (tanggal UTC server) · {asOf ? 'Akhir bulan, riwayat efektif dinyatakan ulang' : 'Stok terkini, bulan berjalan'}</p>
             <p className="text-sm">Total seluruh hasil filter: {stock.data.summary.opening_quantity} + {stock.data.summary.delivered_quantity} − {stock.data.summary.sold_quantity} − {stock.data.summary.returned_quantity} = {stock.data.summary.recorded_quantity}</p>
             {stock.data.reporting_freshness && <COFreshness value={stock.data.reporting_freshness}/>}
-            {!stock.data.reporting_freshness && <p className="text-xs text-gray-700">Angka tercatat berdasarkan laporan, bukan verifikasi stok fisik saat ini.</p>}
-            {stock.data.rows.some(row => !row.has_delivery_history) && <p className="text-xs text-gray-700">Belum ada riwayat pengiriman pada barang bertanda Belum dikirim. Nol tercatat tidak membuktikan saldo fisik awal.</p>}
-            <table aria-label="Stok pelanggan tercatat" className="block w-full md:table md:table-fixed md:border-collapse text-sm">
-                <thead className="hidden md:table-header-group text-left text-gray-700">
+            {!stock.data.reporting_freshness && <p className="text-[13px] text-brand-secondary">Angka tercatat berdasarkan laporan, bukan verifikasi stok fisik saat ini.</p>}
+            {stock.data.rows.some(row => !row.has_delivery_history) && <p className="text-[13px] text-brand-secondary">Belum ada riwayat pengiriman pada barang bertanda Belum dikirim. Nol tercatat tidak membuktikan saldo fisik awal.</p>}
+            <div role="region" aria-label="Daftar stok pelanggan" tabIndex={0} className="min-w-0 max-w-full overflow-x-auto rounded-[14px] focus-visible:outline-2 focus-visible:outline-brand-primary"><table aria-label="Stok pelanggan tercatat" className="block w-full md:table md:table-fixed md:border-collapse text-sm">
+                <thead className="hidden md:table-header-group text-left text-brand-secondary">
                     <tr><th className="p-3 w-[28%]">Pelanggan / barang</th><th className="p-3 w-[24%]">Jumlah stok</th><th className="p-3 w-[28%]">Pelaporan</th><th className="p-3 w-[20%]">Riwayat</th></tr>
                 </thead>
                 <tbody className="block md:table-row-group">{stock.data.rows.map(row => <tr key={`${row.customer_id}:${row.id}`}
-                    className="mb-3 block rounded-xl border border-gray-200 bg-white md:table-row md:rounded-none">
+                    className="mb-3 block rounded-xl border border-brand-divider bg-brand-surface md:table-row md:rounded-none">
                     <td className="block p-3 align-top md:table-cell">
                         <p className="font-semibold break-words">{customerIdentity(row.customer_id)}</p>
                         <h3 className="font-medium break-words">{row.display_sku} · {row.product_name}</h3>
-                        {!row.has_delivery_history && <p className="text-xs mt-2 text-gray-700">Belum dikirim</p>}
+                        {!row.has_delivery_history && <p className="text-[13px] mt-2 text-brand-secondary">Belum dikirim</p>}
                     </td>
                     <td className="block p-3 align-top md:table-cell">
-                        <dl aria-label="Jumlah stok" className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs tabular-nums">
-                            {[['Awal', row.opening_quantity], ['Dikirim', row.delivered_quantity], ['Terjual', row.sold_quantity], ['Retur', row.returned_quantity], ['Sisa tercatat', row.recorded_quantity]].map(([label, quantity]) => <div key={label} className="contents"><dt className="text-gray-700">{label}</dt><dd className="text-right font-medium break-all">{quantity}</dd></div>)}
-                        </dl>
+                        <SummaryList aria-label="Jumlah stok" className="tabular-nums [&_.ui-summary-list__item]:grid [&_.ui-summary-list__item]:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] [&_dd]:text-right [&_dd]:font-medium [&_dd]:break-all" items={[
+                            { label: 'Awal', value: row.opening_quantity }, { label: 'Dikirim', value: row.delivered_quantity },
+                            { label: 'Terjual', value: row.sold_quantity }, { label: 'Retur', value: row.returned_quantity }, { label: 'Sisa tercatat', value: row.recorded_quantity },
+                        ].map(item => ({ ...item, value: <span style={{ fontSize: '14px' }}>{item.value}</span> }))}/>
                         <p className="sr-only">{row.opening_quantity} + {row.delivered_quantity} − {row.sold_quantity} − {row.returned_quantity} = {row.recorded_quantity}</p>
                     </td>
                     <td className="block p-3 align-top md:table-cell">
-                        <p className="text-xs">Laporan terakhir: {formatCOReportMonth(row.last_report_month)} · Cakupan sampai: {row.coverage_through_date ? formatDisplayDate(row.coverage_through_date) : 'Belum ada'} (UTC)
+                        <p className="text-[13px]">Laporan terakhir: {formatCOReportMonth(row.last_report_month)} · Cakupan sampai: {row.coverage_through_date ? formatDisplayDate(row.coverage_through_date) : 'Belum ada'} (UTC)
                             {row.coverage_through_date && row.coverage_through_date !== monthEnd(row.coverage_through_date.slice(0, 7)) ? ' · bulan parsial' : ''}</p>
                         <COFreshness value={row.reporting_freshness} compact/>
                     </td>
                     <td className="block p-3 align-top md:table-cell">
-                        <button className={`${CO_BUTTON} w-full px-2`} aria-label={`Lihat pergerakan ${customerIdentity(row.customer_id)} · ${row.display_sku}`} onClick={() => {
+                        <Button variant="secondary" className="w-full px-2" aria-label={`Lihat pergerakan ${customerIdentity(row.customer_id)} · ${row.display_sku}`} onClick={() => {
                             const next = new URLSearchParams(params);
                             next.set('customer', row.customer_id); next.set('sku', row.id); setParams(next);
-                        }}>Pergerakan</button>
+                        }}>Pergerakan</Button>
                     </td>
                 </tr>)}</tbody>
-            </table>
-            {stock.data.total === '0' && <p>Tidak ada kunci stok sesuai filter. Saldo historis awal tidak diasumsikan.</p>}
+            </table></div>
+            {stock.data.total === '0' && <EmptyState title="Tidak ada kunci stok sesuai filter.">Saldo historis awal tidak diasumsikan.</EmptyState>}
             <COPagination page={page} total={stock.data.total} pending={stock.isFetching} onPage={setPage}/>
         </>}
         {customer && sku && <COStockHistory key={`${actor.scope}:${sku}:${asOf}`} customerId={customer} stockKeyId={sku} asOf={asOf} onAuthorityFailure={rejectAuthority}/>}

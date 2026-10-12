@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { fetchCOStockMovements } from '../../lib/co/rpc';
 import { isCOAuthorityError } from './COReportWorkspace';
 import { COCard, COFailure, COPagination, useCOActor, useCORead } from './COShared';
+import { RecordList } from '../ui/RecordList';
+import { EmptyState } from '../ui/Feedback';
 
 export default function COStockHistory({ customerId, stockKeyId, asOf, onAuthorityFailure }: {
     customerId: string;
@@ -29,15 +31,15 @@ export default function COStockHistory({ customerId, stockKeyId, asOf, onAuthori
     }, [read.error]);
     const reload = () => { binding.current = null; setPage(1); setEpoch(n => n + 1); };
     return <COCard title="Riwayat stok pelanggan/SKU">
-        <p className="text-xs break-all">Pelanggan {customerId} · kunci SKU {stockKeyId} · {asOf ?? 'Current'}</p>
+        <p className="text-[13px] break-all">Pelanggan {customerId} · kunci SKU {stockKeyId} · {asOf ?? 'Current'}</p>
         <p className="text-sm my-3">Riwayat efektif yang telah dinyatakan ulang. Penjualan dicatat pada batas cakupan laporan, bukan tanggal penjualan harian.</p>
         {read.isError ? <COFailure error={read.error} retry={reload}/> : !read.data ? <p role="status">Memuat riwayat stok…</p> : <>
-            <ul className="divide-y divide-gray-100">{read.data.rows.map(row => <li key={row.id} className="py-3 text-sm break-words">
+            <RecordList label="Pergerakan stok tercatat">{read.data.rows.map(row => <li key={row.id} className="border-b border-brand-divider py-3 text-sm break-words">
                 <p>{row.effective_date} · {row.kind === 'sold' ? 'Penjualan pada checkpoint laporan' : row.kind === 'return' ? 'Retur belum terjual' : 'Pengiriman'} · {row.quantity_delta}</p>
                 <Link className="text-brand-primary" to={`/athel/co/${row.co_id}`}>Bukti CO sumber</Link>
-                <p className="text-xs break-all">Batch asli {row.batch_id} · baris revisi {row.delivery_revision_line_id ?? row.return_revision_line_id ?? row.report_revision_line_id}</p>
-            </li>)}</ul>
-            {read.data.total === '0' && <p>Belum ada pergerakan tercatat pada cakupan ini.</p>}
+                <p className="text-[13px] break-all">Batch asli {row.batch_id} · baris revisi {row.delivery_revision_line_id ?? row.return_revision_line_id ?? row.report_revision_line_id}</p>
+            </li>)}</RecordList>
+            {read.data.total === '0' && <EmptyState title="Belum ada pergerakan tercatat pada cakupan ini."/>}
             <COPagination page={page} total={read.data.total} pending={read.isFetching} onPage={setPage}/>
         </>}
     </COCard>;

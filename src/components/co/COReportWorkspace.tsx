@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { coKeys } from '../../lib/co/queryKeys';
 import { completeCORead, fetchCOReport, fetchCOReportRows } from '../../lib/co/rpc';
 import type { COReadOptions } from '../../lib/co/rpc';
@@ -9,6 +9,9 @@ import { useCOTransactionSender, sendCOCommand } from '../../lib/co/transactions
 import type { COTransactionSender } from '../../lib/co/transactions';
 import { CO_INPUT, COFailure, enteredQuantity, useCOActor, useCORead } from './COShared';
 import COMonthlySalesGrid from './COMonthlySalesGrid';
+import { Field } from '../ui/Field';
+import { Section } from '../ui/Section';
+import { Notice } from '../ui/Feedback';
 export function reportBinding(header: COReportHeader): COReportPreviewPayload {
     if (!header.draft_id || !header.draft_version || !header.eligible_set_fingerprint || header.consumed || header.context_issue)
         throw new Error('Draft perlu diperbarui sebelum dilanjutkan.');
@@ -396,7 +399,8 @@ export function COReportFields({ work, allocation }: {
     work: COReportWorkspace;
     allocation?: (row: COReportRow) => React.ReactNode;
 }) {
-    return <div className="space-y-4">{work.root.isError && <COFailure error={work.root.error} retry={() => void work.root.refetch()}/>}<fieldset disabled={work.frozen || !work.editing} className="grid gap-3 sm:grid-cols-2">{(['report_reference', 'received_date', 'notes'] as const).map(k => <label key={k} className="text-sm">{{ report_reference: 'Referensi laporan', received_date: 'Tanggal diterima', notes: 'Catatan laporan' }[k]}<input className={CO_INPUT} type={k === 'received_date' ? 'date' : 'text'} aria-label={{ report_reference: 'Referensi laporan', received_date: 'Tanggal diterima', notes: 'Catatan laporan' }[k]} value={work.meta[k]} onChange={e => work.editMeta(k, e.target.value)}/></label>)}</fieldset>
+    const fieldId = useId();
+    return <Section title="Isian laporan pelanggan" className="space-y-4">{work.root.isError && <COFailure error={work.root.error} retry={() => void work.root.refetch()}/>}<fieldset disabled={work.frozen || !work.editing} className="grid gap-4 sm:grid-cols-2 mb-4">{(['report_reference', 'received_date', 'notes'] as const).map(k => <Field key={k} id={`co-report-${fieldId}-${k}`} label={{ report_reference: 'Referensi laporan', received_date: 'Tanggal diterima', notes: 'Catatan laporan' }[k]}>{control => <input {...control} className={CO_INPUT} type={k === 'received_date' ? 'date' : 'text'} aria-label={{ report_reference: 'Referensi laporan', received_date: 'Tanggal diterima', notes: 'Catatan laporan' }[k]} value={work.meta[k]} onChange={e => work.editMeta(k, e.target.value)}/>}</Field>)}</fieldset>
     {work.rowsRead.isError && <COFailure error={work.rowsRead.error} retry={() => void work.rowsRead.refetch()}/>} {work.rowsRead.data ? <COMonthlySalesGrid rows={work.rows} entries={work.entries} editable={work.editing} disabled={work.frozen || work.rowsRead.isFetching} onChange={work.editRow} page={work.page} total={work.header!.row_count} onPage={work.setPage} allocation={allocation}/> : !work.rowsRead.isError && <p role="status">Memuat baris laporan…</p>}
-    {work.header && <p className="text-sm">{work.header.entered_count} dari {work.header.row_count} baris tersimpan terisi · {work.header.missing_count} belum diisi</p>}{work.error && <COFailure error={work.error}/>} {work.stale && <p role="alert">Versi atau sumber berubah. Isian tetap disimpan di editor; perbarui sumber dan tinjau kembali.</p>}</div>;
+    {work.header && <p className="mt-4 text-sm">{work.header.entered_count} dari {work.header.row_count} baris tersimpan terisi · {work.header.missing_count} belum diisi</p>}{work.error && <COFailure error={work.error}/>} {work.stale && <Notice tone="warning" title="Versi atau sumber berubah. Isian tetap disimpan di editor; perbarui sumber dan tinjau kembali."/>}</Section>;
 }

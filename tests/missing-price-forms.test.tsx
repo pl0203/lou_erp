@@ -1,3 +1,5 @@
+import { transferableAbortController } from 'node:util'
+import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import React from 'react'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -8,7 +10,6 @@ vi.mock('../src/lib/AuthContext', () => ({ useAuth: () => ({ user: { id: 'u' }, 
 vi.mock('../src/components/AthelNav', () => ({ default: () => null }))
 vi.mock('../src/components/GirardNav', () => ({ default: () => null }))
 vi.mock('../src/components/TransactionRecovery', () => ({ default: () => null }))
-vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn(), useParams: () => ({ id: 'po', scheduleId: 's' }), useBlocker: () => ({ state: 'unblocked' }), useBeforeUnload: () => {} }))
 vi.mock('../src/lib/orderTransactions', async original => ({ ...await original<any>(), useTransactionSender: () => Object.assign(state.send, { hasUnresolved: () => false }) }))
 vi.mock('@tanstack/react-query', async original => ({ ...await original<any>(), useQuery: ({ queryKey }: any) => {
  const product = { id: 'p', name: 'Unknown-price product', sku: 'SKU', unit_price: 999, luar_kota: 500, dalam_kota: state.prices, harga_pokok: 0, depo_bangunan: null }
@@ -26,10 +27,11 @@ import POEdit from '../src/pages/athel/POEdit'
 import VisitPage from '../src/pages/girard/VisitPage'
 const clients: QueryClient[] = []
 beforeEach(() => { state.tier = 'others'; state.prices = null; state.send.mockReset().mockResolvedValue({ id: 'saved' }) })
-afterEach(() => { cleanup(); clients.splice(0).forEach(c => c.clear()) })
+const routers: ReturnType<typeof createMemoryRouter>[] = []
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); routers.splice(0).forEach(router => router.dispose()); clients.splice(0).forEach(c => c.clear()) })
 function mount(kind: 'po' | 'visit' | 'edit') {
  const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } }); clients.push(client)
- render(<QueryClientProvider client={client}>{kind === 'po' ? <PONew /> : kind === 'edit' ? <POEdit /> : <VisitPage />}</QueryClientProvider>)
+ renderRoute(client, kind)
  if (kind === 'po') { selectCustomer('Customer'); fireEvent.change(screen.getByPlaceholderText('mis. PO-2024-001'), { target: { value: 'TEST-PO' } }) }
  if (kind === 'visit') fireEvent.click(screen.getByRole('button', { name: '+ Pesanan Baru' }))
 }
@@ -69,7 +71,7 @@ test('PO edit preserves historical line price despite Others and null catalog, i
 })
 test('Sales visit has no promotion selection or new ordering for a missing tier', () => {
  state.tier = 'dalam_kota'; state.prices = 100
- const client = new QueryClient(); clients.push(client); render(<QueryClientProvider client={client}><VisitPage /></QueryClientProvider>)
+ const client = new QueryClient(); clients.push(client); renderRoute(client, 'visit')
  expect(screen.queryByRole('button', { name: '+ Pesanan Baru' })).toBeNull(); expect(screen.queryByRole('button', { name: 'Harga belum diisi' })).toBeNull(); expect(state.send).not.toHaveBeenCalled()
 })
 
@@ -82,8 +84,13 @@ test('new manual line starts with no implied free price', async () => {
 })
 
 test('Sales visit has no order tier or price controls for Others', () => {
- const client = new QueryClient(); clients.push(client); render(<QueryClientProvider client={client}><VisitPage /></QueryClientProvider>)
+ const client = new QueryClient(); clients.push(client); renderRoute(client, 'visit')
  expect(screen.queryByLabelText('Harga satuan')).toBeNull(); expect(screen.queryByRole('button', { name: '+ Pesanan Baru' })).toBeNull(); expect(state.send).not.toHaveBeenCalled()
 })
 vi.mock('../src/components/StorePOContext', () => ({ default: () => null }))
 vi.mock('../src/lib/reads/usePagedRead', () => ({ usePagedRead: () => ({ data: { items: [], total: 0 }, page: 1, isPending: false, setPage: vi.fn() }) }))
+
+// Real router navigation requires Node-compatible Request signals in jsdom.
+beforeEach(() => { vi.stubGlobal('AbortController', class { constructor() { return transferableAbortController() } }) })
+
+function renderRoute(client: QueryClient, kind: 'po' | 'edit' | 'visit') { const router = createMemoryRouter([{ path: kind === 'po' ? '/athel/po/new' : kind === 'edit' ? '/athel/po/:id/edit' : '/girard/visit/:scheduleId', element: kind === 'po' ? <PONew /> : kind === 'edit' ? <POEdit /> : <VisitPage /> }, { path: '*', element: <p>Destination</p> }], { initialEntries: [kind === 'po' ? '/athel/po/new' : kind === 'edit' ? '/athel/po/po/edit' : '/girard/visit/s'] }); routers.push(router); return render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>) }

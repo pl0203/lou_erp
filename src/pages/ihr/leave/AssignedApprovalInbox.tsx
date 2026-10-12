@@ -1,4 +1,9 @@
-import { useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,useSyncExternalStore } from 'react'
+import { RecordList } from '../../../components/ui/RecordList'
+import { FormActions } from '../../../components/ui/FormActions'
+import { StatusBadge, Notice, EmptyState } from '../../../components/ui/Feedback'
+import { Button } from '../../../components/ui/Button'
+import { Field } from '../../../components/ui/Field'
+import { useId, useCallback,useEffect,useLayoutEffect,useMemo,useRef,useState,useSyncExternalStore  } from 'react'
 import { useQuery,useQueryClient } from '@tanstack/react-query'
 import type { QueryClient } from '@tanstack/react-query'
 import type { LeaveContext } from '../../../lib/leave/contracts'
@@ -69,6 +74,7 @@ export default function AssignedApprovalInbox(props:Props){
  return permitted(props.context)?<Inbox key={`${props.actorId}:${props.context.scopeVersion}`} {...props}/>:null
 }
 function Inbox({actorId,context,readState='ready',onDirtyChange,onBusyChange}:Props){
+ const fieldId=useId()
  const client=useQueryClient(),[before,setBefore]=useState<number|null>(null),[cursors,setCursors]=useState<(number|null)[]>([])
  const [selected,setSelected]=useState<string|null>(null),[reason,setReason]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState(''),[recovery,setRecovery]=useState(false)
  const alive=useRef(true),working=useRef(false),detailHeading=useRef<HTMLHeadingElement>(null),alert=useRef<HTMLDivElement>(null),openers=useRef(new Map<string,HTMLButtonElement>())
@@ -109,34 +115,34 @@ function Inbox({actorId,context,readState='ready',onDirtyChange,onBusyChange}:Pr
   }catch{if(alive.current){setRecovery(true);setError('Hasil keputusan belum pasti. Periksa akses lalu pulihkan kembali.')}}
   finally{working.current=false;if(alive.current)setBusy(false)}
  }
- if(readState!=='ready')return <section aria-label="Daftar persetujuan"><p role="status">Memeriksa akses persetujuan...</p></section>
+ if(readState!=='ready')return <section aria-label="Daftar persetujuan"><p role="status" className="ui-notice ui-notice--info">Memeriksa akses persetujuan...</p></section>
  return <section aria-label="Daftar persetujuan" className="space-y-4">
-  <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-semibold">Permintaan yang ditugaskan kepada Anda</h2><button type="button" disabled={busy} onClick={()=>{void inbox.refetch();if(selected)void detail.refetch()}} className="underline">Muat ulang daftar</button></div>
-  {message&&<p role="status">{message}</p>}
-  {error&&<div ref={alert} tabIndex={-1} role="alert" className="rounded border border-red-200 bg-red-50 p-3">{error}</div>}
-  {recovery&&<div className="rounded border border-amber-200 bg-amber-50 p-3"><p>Keputusan sebelumnya perlu dipulihkan.</p><button type="button" disabled={busy} onClick={()=>void recover()}>{busy?'Memeriksa hasil...':'Pulihkan hasil keputusan'}</button></div>}
-  {inbox.isError?<p role="alert">Daftar persetujuan belum dapat dimuat. Coba muat ulang daftar.</p>:inbox.isFetching||inbox.isPending?<p role="status">Memuat permintaan...</p>:inbox.data&&<>
-   {!inbox.data.rows.length&&<p>Tidak ada permintaan yang menunggu keputusan.</p>}
-   <ul className="space-y-3">{inbox.data.rows.map(row=><li key={row.id} className="space-y-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-semibold text-gray-900">{row.employee.name}</p><p className="mt-1 text-gray-500">{row.startDate} sampai {row.endDate}</p></div><p className="font-semibold text-gray-900">{formatLeaveMinutes(row.totalMinutes)}</p></div><div className="flex flex-wrap items-center justify-between gap-3"><span aria-label={`Status permintaan: ${row.status==='cancellation_pending'?'Menunggu pembatalan seluruh cuti':'Menunggu persetujuan cuti'}`} className="inline-flex rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800">{row.status==='cancellation_pending'?'Menunggu pembatalan seluruh cuti':'Menunggu persetujuan cuti'}</span><button ref={el=>{if(el)openers.current.set(row.id,el);else openers.current.delete(row.id)}} type="button" disabled={busy||recovery} aria-label={`Tinjau ${row.employee.name}`} onClick={()=>select(row.id)} className="min-h-11 rounded-lg px-3 py-2 font-medium text-brand-primary hover:bg-brand-tint focus-visible:outline-2 focus-visible:outline-brand-primary disabled:opacity-50">Tinjau permintaan</button></div></li>)}</ul>
-   <div className="flex gap-4"><button type="button" disabled={!cursors.length||busy||recovery} onClick={()=>{if(select(null)){setBefore(cursors.at(-1)!);setCursors(cursors.slice(0,-1))}}}>Lebih baru</button><button type="button" disabled={inbox.data.nextBefore===null||busy||recovery} onClick={()=>{if(select(null)){setCursors([...cursors,before]);setBefore(inbox.data.nextBefore)}}}>Lebih lama</button></div>
+  <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-semibold">Permintaan yang ditugaskan kepada Anda</h2><Button type="button" disabled={busy} onClick={()=>{void inbox.refetch();if(selected)void detail.refetch()}} variant="secondary" className="underline">Muat ulang daftar</Button></div>
+  {message&&<p role="status" className="ui-notice ui-notice--info">{message}</p>}
+  {error&&<div ref={alert} tabIndex={-1} role="alert" className="ui-notice ui-notice--error">{error}</div>}
+  {recovery&&<div className="ui-notice ui-notice--warning"><p>Keputusan sebelumnya perlu dipulihkan.</p><Button type="button" disabled={busy} onClick={()=>void recover()} variant="secondary">{busy?'Memeriksa hasil...':'Pulihkan hasil keputusan'}</Button></div>}
+  {inbox.isError?<Notice tone="error" title={<> Daftar persetujuan belum dapat dimuat. Coba muat ulang daftar. </>}/>:inbox.isFetching||inbox.isPending?<p role="status" className="ui-notice ui-notice--info">Memuat permintaan...</p>:inbox.data&&<>
+   {!inbox.data.rows.length&&<EmptyState title="Tidak ada permintaan yang menunggu keputusan."/>}
+   <RecordList  label="Permintaan ditugaskan">{inbox.data.rows.map(row=><li key={row.id} className="space-y-3 rounded-[14px] border border-brand-divider bg-white p-4 shadow-sm"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-semibold text-brand-primary">{row.employee.name}</p><p className="mt-1 text-brand-secondary">{row.startDate} sampai {row.endDate}</p></div><p className="font-semibold text-brand-primary">{formatLeaveMinutes(row.totalMinutes)}</p></div><div className="flex flex-wrap items-center justify-between gap-3"><StatusBadge tone="warning" aria-label={`Status permintaan: ${row.status==='cancellation_pending'?'Menunggu pembatalan seluruh cuti':'Menunggu persetujuan cuti'}`}>{row.status==='cancellation_pending'?'Menunggu pembatalan seluruh cuti':'Menunggu persetujuan cuti'}</StatusBadge><button ref={el=>{if(el)openers.current.set(row.id,el);else openers.current.delete(row.id)}} type="button" disabled={busy||recovery} aria-label={`Tinjau ${row.employee.name}`} onClick={()=>select(row.id)} className="ui-action ui-action--secondary">Tinjau permintaan</button></div></li>)}</RecordList>
+   <FormActions ><Button type="button" disabled={!cursors.length||busy||recovery} onClick={()=>{if(select(null)){setBefore(cursors.at(-1)!);setCursors(cursors.slice(0,-1))}}} variant="secondary">Lebih baru</Button><Button type="button" disabled={inbox.data.nextBefore===null||busy||recovery} onClick={()=>{if(select(null)){setCursors([...cursors,before]);setBefore(inbox.data.nextBefore)}}} variant="secondary">Lebih lama</Button></FormActions>
   </>}
-  {selected&&<section aria-label="Detail permintaan ditugaskan" className="space-y-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-6">
-   <button type="button" disabled={busy||recovery} onClick={()=>select(null)} className="underline">Tutup detail</button>
-   {detail.isError?<div role="alert"><p>Detail tidak tersedia atau penugasan berubah.</p><button type="button" onClick={()=>void detail.refetch()}>Muat ulang detail</button></div>:detail.isPending||detail.isFetching?<p role="status">Memuat detail...</p>:detail.data&&<>
+  {selected&&<section aria-label="Detail permintaan ditugaskan" className="ui-section space-y-4">
+   <Button type="button" disabled={busy||recovery} onClick={()=>select(null)} variant="secondary" className="underline">Tutup detail</Button>
+   {detail.isError?<div role="alert" className="ui-notice ui-notice--error"><p>Detail tidak tersedia atau penugasan berubah.</p><Button type="button" onClick={()=>void detail.refetch()} variant="secondary">Muat ulang detail</Button></div>:detail.isPending||detail.isFetching?<p role="status" className="ui-notice ui-notice--info">Memuat detail...</p>:detail.data&&<>
     <h3 ref={detailHeading} tabIndex={-1} className="font-semibold">{detail.data.employee.name} · {formatLeaveMinutes(detail.data.totalMinutes)}</h3>
-    <p className="text-gray-500">{detail.data.startDate} sampai {detail.data.endDate}</p>
+    <p className="text-brand-secondary">{detail.data.startDate} sampai {detail.data.endDate}</p>
     <p>Durasi: {detail.data.duration.mode==='full_scheduled_day'?'Sehari sesuai jadwal':`${formatLeaveMinutes(detail.data.duration.minutes)} per hari kerja`}</p>
     <p>{detail.data.reason}</p><p>Penyetuju: {detail.data.approverName}</p>
-    <details className="rounded-xl border border-gray-200 px-4 py-2"><summary className="cursor-pointer py-2 font-medium text-gray-700 focus-visible:outline-2 focus-visible:outline-brand-primary">Rincian tanggal dan periode</summary><div className="space-y-2 py-2"><p className="text-xs text-gray-500">Versi permohonan: {detail.data.version}</p>
+    <details className="rounded-[14px] border border-brand-divider px-4 py-2"><summary className="cursor-pointer py-2 font-medium text-brand-secondary focus-visible:outline-2 focus-visible:outline-brand-primary">Rincian tanggal dan periode</summary><div className="space-y-2 py-2"><p className="text-[13px] text-brand-secondary">Versi permohonan: {detail.data.version}</p>
     <ul>{detail.data.days.map(day=><li key={day.date}>{day.date} · Jadwal {formatLeaveMinutes(day.scheduledMinutes)} · Diminta {formatLeaveMinutes(day.chargedMinutes)}{day.exclusion==='holiday'?' · Libur kalender':day.exclusion==='off_duty'?' · Tidak bertugas':''}{day.groupName&&` · ${day.groupName}`}</li>)}</ul>
     <ul>{detail.data.allocations.map(a=><li key={a.year}>Periode {a.year}: {formatLeaveMinutes(a.chargedMinutes)}</li>)}</ul>
     </div></details>
-    <section aria-label="Konteks saldo permohonan" className="space-y-2 rounded-xl bg-gray-50 p-4"><h4 className="font-semibold text-gray-900">Saldo terkini untuk periode permohonan</h4><p>Dibaca pada {detail.data.balanceContext.asOf}. Termasuk reservasi dan pemakaian saat ini; bukan saldo saat pengajuan.</p>
+    <section aria-label="Konteks saldo permohonan" className="space-y-2 rounded-[14px] bg-brand-canvas p-4"><h4 className="font-semibold text-brand-primary">Saldo terkini untuk periode permohonan</h4><p>Dibaca pada {detail.data.balanceContext.asOf}. Termasuk reservasi dan pemakaian saat ini; bukan saldo saat pengajuan.</p>
      <ul>{detail.data.balanceContext.periods.map(period=><li key={period.year}>Periode {period.year}: {period.reconciled?<>Tersedia: {formatLeaveMinutes(period.availableMinutes!)} · Reservasi: {formatLeaveMinutes(period.reservedMinutes!)} · Pemakaian: {formatLeaveMinutes(period.usedMinutes!)}{period.expiredMinutes!>0&&<> · Kedaluwarsa: {formatLeaveMinutes(period.expiredMinutes!)}</>}</>:'Saldo awal belum diverifikasi.'}</li>)}</ul>
     </section>
-    {detail.data.cancellation&&<div className="rounded bg-amber-50 p-3"><h4 className="font-semibold">Permintaan pembatalan seluruh cuti</h4><p>{detail.data.cancellation.reason}</p><p>Penyetuju pembatalan: {detail.data.cancellation.approverName}</p><p>Pemakaian dan tanggal tetap terpakai sampai pembatalan disetujui. Pengembalian masuk ke periode asal; jatah kedaluwarsa tetap tidak tersedia.</p></div>}
-    <label className="block">Alasan penolakan<textarea maxLength={1000} disabled={busy||recovery} value={reason} onChange={e=>setReason(e.target.value)} className="mt-1 block w-full rounded border p-2"/></label>
-    <div className="flex flex-wrap gap-3"><button type="button" disabled={busy||recovery} onClick={()=>void decide(true)} className="min-h-11 rounded-lg bg-brand-primary px-4 py-2 font-semibold text-white hover:bg-brand-hover focus-visible:outline-2 focus-visible:outline-brand-primary disabled:opacity-50">{busy?'Memproses...':detail.data.cancellation?'Setujui pembatalan':'Setujui cuti'}</button><button type="button" disabled={busy||recovery||!reason.trim()} onClick={()=>void decide(false)} className="min-h-11 rounded-lg border border-gray-200 px-4 py-2 font-medium hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-brand-primary disabled:opacity-50">{detail.data.cancellation?'Tolak pembatalan':'Tolak cuti'}</button></div>
+    {detail.data.cancellation&&<div className="ui-notice ui-notice--warning"><h4 className="font-semibold">Permintaan pembatalan seluruh cuti</h4><p>{detail.data.cancellation.reason}</p><p>Penyetuju pembatalan: {detail.data.cancellation.approverName}</p><p>Pemakaian dan tanggal tetap terpakai sampai pembatalan disetujui. Pengembalian masuk ke periode asal; jatah kedaluwarsa tetap tidak tersedia.</p></div>}
+    <Field id={`${fieldId}-1`} label="Alasan penolakan">{control=><textarea {...control} maxLength={1000} disabled={busy||recovery} value={reason} onChange={e=>setReason(e.target.value)} />}</Field>
+    <FormActions ><Button type="button" disabled={busy||recovery} onClick={()=>void decide(true)} variant="primary">{busy?'Memproses...':detail.data.cancellation?'Setujui pembatalan':'Setujui cuti'}</Button><Button type="button" disabled={busy||recovery||!reason.trim()} onClick={()=>void decide(false)} variant="secondary">{detail.data.cancellation?'Tolak pembatalan':'Tolak cuti'}</Button></FormActions>
    </>}
   </section>}
  </section>

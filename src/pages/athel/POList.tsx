@@ -1,7 +1,10 @@
+import { Field } from '../../components/ui/Field'
+import { Button } from '../../components/ui/Button'
+import { ActionLink } from '../../components/ui/ActionLink'
+import { MainContent } from '../../components/ui/MainContent'
 import { PO_STATUS_LABELS } from '../../lib/orderPresentation'
 import { formatDisplayDate } from '../../lib/displayDate'
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { fetchPOPage } from '../../lib/reads/orders'
 import type { POStatusFilter } from '../../lib/reads/contracts'
 import { usePagedRead } from '../../lib/reads/usePagedRead'
@@ -13,11 +16,10 @@ const STATUS_STYLES: Record<string, string> = {
   confirm:     'bg-blue-100 text-blue-700',
   in_progress: 'bg-yellow-100 text-yellow-700',
   complete:    'bg-green-100 text-green-700',
-  cancelled:   'bg-gray-200 text-gray-500',
+  cancelled:   'bg-gray-200 text-brand-secondary',
 }
 
 export default function POList() {
-  const navigate = useNavigate()
   const [search, setSearch] = useState('')
   const { data, filters, setFilters, setPage, isPending, isError, refetch } = usePagedRead('purchase_orders', { status: 'all' as POStatusFilter, search: '' }, fetchPOPage)
   useEffect(() => {
@@ -31,66 +33,64 @@ export default function POList() {
   return (
     <div className="min-h-screen bg-brand-canvas">
       <AthelNav />
+      <MainContent>
 
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Pesanan Pembelian</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{isError ? 'Data tidak tersedia' : totalItems === undefined ? 'Memuat pesanan…' : `${totalItems} pesanan`}</p>
+          <p className="text-sm text-brand-secondary mt-0.5">{isError ? 'Data tidak tersedia' : totalItems === undefined ? 'Memuat pesanan…' : `${totalItems} pesanan`}</p>
         </div>
-        <button
-          onClick={() => navigate('/athel/po/new')}
-          className="bg-brand-primary hover:bg-brand-hover text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-        >
-          + PO Baru
-        </button>
+        <ActionLink variant="primary" to={'/athel/po/new'}
+
+        >+ PO Baru</ActionLink>
       </div>
 
       <div className="px-4 md:px-8 py-3 flex flex-col sm:flex-row gap-2 bg-white border-b border-gray-100">
-        <input
+        <Field id="po-list-search" label="Cari PO" className="w-full sm:w-80">{control => <input {...control}
           type="text"
           placeholder="Cari nomor PO, pelanggan, atau SJ..."
           value={search}
           onChange={e => setSearch(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full sm:w-80 focus:outline-none focus:ring-2 focus:ring-brand-primary"
-        />
-        <select
+          className="border border-brand-control-border rounded-lg px-3 py-2 text-base w-full sm:w-80 focus:outline-none focus:ring-2 focus:ring-brand-primary"
+        />}</Field>
+        <Field id="po-list-status" label="Status PO">{control => <select {...control}
           value={filters.status}
           onChange={e => setFilters(previous => ({ ...previous, status: e.target.value as POStatusFilter }))}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
+          className="border border-brand-control-border rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-primary"
         >
           <option value="all">Semua status</option>
           <option value="confirm">Dikonfirmasi</option>
           <option value="in_progress">Dalam proses</option>
           <option value="complete">Selesai</option>
-        </select>
+        </select>}</Field>
       </div>
 
       <div className="px-4 md:px-8 py-6">
         {!isError && data && <PaginationControls page={data.page} total={data.total} pageSize={data.page_size} pending={isPending} onPageChange={setPage} />}
         {isLoading && (
-          <div className="text-center text-gray-400 py-24 text-sm">Memuat pesanan pembelian...</div>
+          <div className="text-center text-brand-secondary py-24 text-sm">Memuat pesanan pembelian...</div>
         )}
         {isError && (
-          <div role="alert" className="text-center text-red-500 py-24 text-sm">Gagal memuat data. Periksa koneksi Anda. <button onClick={() => refetch()} className="underline">Coba lagi</button></div>
+          <div role="alert" className="text-center text-red-700 py-24 text-sm">Gagal memuat data. Periksa koneksi Anda. <Button variant="secondary" onClick={() => refetch()} >Coba lagi</Button></div>
         )}
         {!isLoading && !isError && pos.length === 0 && (
-          <div className="text-center text-gray-400 py-24 text-sm">Tidak ada pesanan pembelian ditemukan.</div>
+          <div className="text-center text-brand-secondary py-24 text-sm">Tidak ada pesanan pembelian ditemukan.</div>
         )}
 
         {!isLoading && !isError && pos.length > 0 && (
           <>
             {/* Desktop table */}
-            <p className="hidden md:block mb-2 text-xs text-gray-600">Geser tabel untuk melihat semua kolom; kolom Aksi tetap terlihat di kanan.</p>
+            <p className="hidden md:block mb-2 text-[13px] text-gray-600">Geser tabel untuk melihat semua kolom; kolom Aksi tetap terlihat di kanan.</p>
             <div className="hidden md:block bg-white rounded-xl border border-gray-200 overflow-x-auto" role="region" aria-label="Daftar pesanan pembelian" tabIndex={0}>
               <table className="w-full min-w-[56rem] text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50">
-                    <th className="text-left px-5 py-3 font-medium text-gray-500">Nomor PO</th>
-                    <th className="text-left px-5 py-3 font-medium text-gray-500">Pelanggan</th>
-                    <th className="text-left px-5 py-3 font-medium text-gray-500">Status</th>
-                    <th className="text-left px-5 py-3 font-medium text-gray-500">Tanggal Pesanan</th>
-                    <th className="text-left px-5 py-3 font-medium text-gray-500">Tanggal Kedaluwarsa PO</th>
-                    <th className="text-right px-5 py-3 font-medium text-gray-500">Total Nilai</th>
+                    <th className="text-left px-5 py-3 font-medium text-brand-secondary">Nomor PO</th>
+                    <th className="text-left px-5 py-3 font-medium text-brand-secondary">Pelanggan</th>
+                    <th className="text-left px-5 py-3 font-medium text-brand-secondary">Status</th>
+                    <th className="text-left px-5 py-3 font-medium text-brand-secondary">Tanggal Pesanan</th>
+                    <th className="text-left px-5 py-3 font-medium text-brand-secondary">Tanggal Kedaluwarsa PO</th>
+                    <th className="text-right px-5 py-3 font-medium text-brand-secondary">Total Nilai</th>
                     <th className="sticky right-0 z-10 bg-gray-50 text-right px-5 py-3 font-medium text-gray-700 shadow-[-4px_0_6px_-4px_#9ca3af]">Aksi</th>
                   </tr>
                 </thead>
@@ -100,7 +100,7 @@ export default function POList() {
                       <td className="min-w-36 px-5 py-4 font-medium text-gray-900">{po.po_number}</td>
                       <td className="min-w-48 max-w-72 px-5 py-4 text-gray-700 break-words">{po.customers?.name ?? '—'}</td>
                       <td className="px-5 py-4">
-                        <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLES[po.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                        <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[13px] font-medium ${STATUS_STYLES[po.status] ?? 'bg-gray-100 text-gray-600'}`}>
                           {PO_STATUS_LABELS[po.status] ?? po.status}
                         </span>
                       </td>
@@ -110,20 +110,14 @@ export default function POList() {
                         Rp {formatMoney(po.total_value, 'full')}
                       </td>
                       <td className="sticky right-0 z-10 min-w-36 max-w-52 bg-white px-5 py-4 text-right shadow-[-4px_0_6px_-4px_#9ca3af]">
-                        <button
-                          onClick={() => navigate(`/athel/po/${po.id}`)}
-                          className="text-brand-primary hover:text-brand-hover text-xs font-medium mr-3"
-                        >
-                          Lihat
-                        </button>
-                        {!['confirm', 'in_progress'].includes(po.status) && <span className="text-xs text-gray-400">{po.status === 'cancelled' ? 'PO dibatalkan: tidak dapat diubah' : po.status === 'complete' ? 'PO selesai: tidak dapat diubah' : 'Status PO tidak dapat diubah'}</span>}
+                        <ActionLink variant="secondary" to={`/athel/po/${po.id}`}
+                          className="mr-3"
+                        >Lihat</ActionLink>
+                        {!['confirm', 'in_progress'].includes(po.status) && <span className="text-[13px] text-brand-secondary">{po.status === 'cancelled' ? 'PO dibatalkan: tidak dapat diubah' : po.status === 'complete' ? 'PO selesai: tidak dapat diubah' : 'Status PO tidak dapat diubah'}</span>}
                         {['confirm', 'in_progress'].includes(po.status) && (
-                          <button
-                            onClick={() => navigate(`/athel/po/${po.id}/edit`)}
-                            className="text-gray-500 hover:text-gray-800 text-xs font-medium"
-                          >
-                            Ubah
-                          </button>
+                          <ActionLink variant="secondary" to={`/athel/po/${po.id}/edit`}
+
+                          >Ubah</ActionLink>
                         )}
                       </td>
                     </tr>
@@ -139,41 +133,35 @@ export default function POList() {
                   <div className="flex items-start justify-between gap-2 mb-3">
                     <div className="min-w-0 [overflow-wrap:anywhere]">
                       <p className="font-semibold text-gray-900 text-sm">{po.po_number}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">{po.customers?.name ?? '—'}</p>
+                      <p className="text-[13px] text-brand-secondary mt-0.5">{po.customers?.name ?? '—'}</p>
                     </div>
-                    <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium shrink-0 ${STATUS_STYLES[po.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                    <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[13px] font-medium shrink-0 ${STATUS_STYLES[po.status] ?? 'bg-gray-100 text-gray-600'}`}>
                       {PO_STATUS_LABELS[po.status] ?? po.status}
                     </span>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 text-xs mb-3">
+                  <div className="grid grid-cols-2 gap-2 text-[13px] mb-3">
                     <div>
-                      <p className="text-gray-400">Tanggal Pesanan</p>
+                      <p className="text-brand-secondary">Tanggal Pesanan</p>
                       <p className="text-gray-700 font-medium">{formatDisplayDate(po.order_date)}</p>
                     </div>
                     <div>
-                      <p className="text-gray-400">Tanggal Kedaluwarsa PO</p>
+                      <p className="text-brand-secondary">Tanggal Kedaluwarsa PO</p>
                       <p className="text-gray-700 font-medium">{formatDisplayDate(po.expected_delivery_date)}</p>
                     </div>
                     <div className="col-span-2">
-                      <p className="text-gray-400">Total Nilai</p>
+                      <p className="text-brand-secondary">Total Nilai</p>
                       <p className="text-gray-900 font-semibold [overflow-wrap:anywhere]">Rp {formatMoney(po.total_value, 'full')}</p>
                     </div>
                   </div>
                   <div className="flex gap-2 pt-3 border-t border-gray-100">
-                    <button
-                      onClick={() => navigate(`/athel/po/${po.id}`)}
-                      className="flex-1 text-center text-brand-primary text-xs font-medium py-2 rounded-lg bg-brand-tint hover:bg-brand-canvas transition-colors"
-                    >
-                      Lihat
-                    </button>
-                    {!['confirm', 'in_progress'].includes(po.status) && <span className="text-xs text-gray-400">{po.status === 'cancelled' ? 'PO dibatalkan: tidak dapat diubah' : po.status === 'complete' ? 'PO selesai: tidak dapat diubah' : 'Status PO tidak dapat diubah'}</span>}
+                    <ActionLink variant="secondary" to={`/athel/po/${po.id}`}
+                      className="flex-1"
+                    >Lihat</ActionLink>
+                    {!['confirm', 'in_progress'].includes(po.status) && <span className="text-[13px] text-brand-secondary">{po.status === 'cancelled' ? 'PO dibatalkan: tidak dapat diubah' : po.status === 'complete' ? 'PO selesai: tidak dapat diubah' : 'Status PO tidak dapat diubah'}</span>}
                         {['confirm', 'in_progress'].includes(po.status) && (
-                      <button
-                        onClick={() => navigate(`/athel/po/${po.id}/edit`)}
-                        className="flex-1 text-center text-gray-600 text-xs font-medium py-2 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors"
-                      >
-                        Ubah
-                      </button>
+                      <ActionLink variant="secondary" to={`/athel/po/${po.id}/edit`}
+                        className="flex-1"
+                      >Ubah</ActionLink>
                     )}
                   </div>
                 </div>
@@ -183,6 +171,7 @@ export default function POList() {
           </>
         )}
       </div>
+      </MainContent>
     </div>
   )
 }

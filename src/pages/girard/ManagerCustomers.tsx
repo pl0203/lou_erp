@@ -51,10 +51,10 @@ function CustomerTable({ customers, referenceInstant }: { customers: CustomerWit
             return (
               <tr key={c.id} className="border-b border-gray-50 hover:bg-gray-50">
                 <td className="px-5 py-4 font-medium text-brand-primary [overflow-wrap:anywhere]">{c.name}</td>
-                <td className="px-5 py-4 text-brand-secondary text-[13px]">
+                <td className="px-5 py-4 text-brand-secondary">
                   {[c.address, c.city].filter(Boolean).join(', ') || '—'}
                 </td>
-                <td className="px-5 py-4 text-brand-secondary text-[13px]">
+                <td className="px-5 py-4 text-brand-secondary">
                   {frequencyLabel(c.visit_frequency_days)}
                 </td>
                 <td className="px-5 py-4 text-center text-brand-secondary">{c.target_visits}</td>

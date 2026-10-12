@@ -1,3 +1,8 @@
+import { Button } from '../../components/ui/Button'
+import { ActionLink } from '../../components/ui/ActionLink'
+import { MainContent } from '../../components/ui/MainContent'
+import { Field } from '../../components/ui/Field'
+import { FormActions } from '../../components/ui/FormActions'
 import PromoStockWarning, { usePromoStockSubmission } from '../../components/PromoStockWarning'
 import { POCustomerLookup, POProductLookup } from '../../components/POLookup'
 import { POLineItemsHeader, POLineRow, exactCatalogIdentity } from '../../components/POLineItems'
@@ -109,6 +114,8 @@ export default function POEdit() {
   const [notes, setNotes] = useState('')
   const [lineItems, setLineItems] = useState<LineItemRow[]>([])
   const productSearch = useRef<HTMLInputElement>(null)
+  const stockTrigger = useRef<HTMLElement | null>(null)
+  const formFocus = useRef<HTMLDivElement>(null)
   const quantityInputs = useRef<Record<string, HTMLInputElement | null>>({})
   const nameInputs = useRef<Record<string, HTMLInputElement | null>>({})
   const priceInputs = useRef<Record<string, HTMLInputElement | null>>({})
@@ -196,6 +203,7 @@ export default function POEdit() {
   })
 
   const stockSubmission = usePromoStockSubmission((draft: Parameters<typeof saveEdits>[1]) => mutation.mutateAsync(draft))
+  const formLocked = mutation.isPending
 
   useEffect(() => {
     refreshSequence.current++; setRefreshingPO(false); mutation.reset()
@@ -283,6 +291,7 @@ export default function POEdit() {
   const total = visibleLines.reduce((sum, l) => sum + l.quantity * l.unit_price, 0)
 
   const handleSave = () => {
+    if (mutation.isPending) return
     if (!customerId) return alert('Pilih pelanggan terlebih dahulu.')
     if (visibleLines.length === 0) {
       alert('PO harus memiliki minimal satu barang.')
@@ -308,126 +317,105 @@ export default function POEdit() {
     return (
       <div className="min-h-screen bg-brand-canvas">
         {unsaved.dialog}
-        <AthelNav />
+        <AthelNav /><MainContent>
         {recovery}
-        <div className="p-8 text-gray-400 text-sm text-center">Memuat...</div>
+        <div className="p-8 text-brand-secondary text-sm text-center">Memuat...</div>
+        </MainContent>
       </div>
     )
   }
 
   if (poError || linesError || !po || !existingLines || !lineState || (initialized && lineState.po_updated_at !== initialVersion)) {
-    return <div className="min-h-screen bg-brand-canvas">{unsaved.dialog}<AthelNav />{recovery}<div role="alert" className="p-8 text-red-600">
+    return <div className="min-h-screen bg-brand-canvas">{unsaved.dialog}<AthelNav /><MainContent>{recovery}<div role="alert" className="p-8 text-red-700">
       <p>{isPOConflict(lineError) ? 'PO berubah. Muat ulang sebelum melanjutkan.' : 'Data PO atau riwayat pengiriman belum dapat dimuat. Pengubahan belum tersedia.'}</p>
-      <button type="button" onClick={() => void refreshPO()} disabled={refreshingPO} className="mt-2 underline">Coba lagi</button>
-    </div></div>
+      <Button variant="secondary" type="button" onClick={() => void refreshPO()} disabled={refreshingPO} className="mt-2">Coba lagi</Button>
+    </div></MainContent></div>
   }
   if (!['confirm', 'in_progress'].includes(po.status)) {
-    return <div className="min-h-screen bg-brand-canvas">{unsaved.dialog}<AthelNav />{recovery}<div className="p-8">
+    return <div className="min-h-screen bg-brand-canvas">{unsaved.dialog}<AthelNav /><MainContent>{recovery}<div className="p-8">
       <p>PO {po.status === 'cancelled' ? 'yang dibatalkan' : po.status === 'complete' ? 'yang selesai' : 'dengan status ini'} tidak dapat diubah.</p>
-      <button type="button" onClick={() => navigate(`/athel/po/${id}`)} className="mt-2 underline">Kembali ke PO</button>
-    </div></div>
+      <ActionLink variant="secondary" to={`/athel/po/${id}`} className="mt-2">Kembali ke PO</ActionLink>
+    </div></MainContent></div>
   }
 
   return (
     <div className="min-h-screen bg-brand-canvas">
       {unsaved.dialog}
-      <AthelNav />
-        {recovery}
-        {stockSubmission.warning && <PromoStockWarning warning={stockSubmission.warning} pending={mutation.isPending} onContinue={() => void stockSubmission.continue()} onCancel={() => { stockSubmission.cancel(); mutation.reset() }} />}
+      {stockSubmission.warning && <PromoStockWarning warning={stockSubmission.warning} returnFocus={stockTrigger.current} fallbackFocus={() => formFocus.current} pending={mutation.isPending} onContinue={() => void stockSubmission.continue()} onCancel={() => { stockSubmission.cancel(); mutation.reset() }} />}
+      <div inert={!!stockSubmission.warning} aria-hidden={stockSubmission.warning ? true : undefined}>
+      <AthelNav /><MainContent>
+        {!stockSubmission.warning && recovery}
 
-      <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center gap-4">
-        <button
-          type="button"
-          onClick={() => navigate(`/athel/po/${id}`)}
-          className="shrink-0 text-gray-400 hover:text-gray-600 text-sm"
-        >
-          ← Kembali
-        </button>
+      <div ref={formFocus} tabIndex={-1} className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center gap-4">
+        <ActionLink variant="secondary" to={`/athel/po/${id}`} className="shrink-0">← Kembali</ActionLink>
         <div className="min-w-0 [overflow-wrap:anywhere]">
           <h1 className="text-xl font-semibold text-gray-900">Ubah {po?.po_number}</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Perubahan akan tercatat di riwayat audit</p>
+          <p className="text-sm text-brand-secondary mt-0.5">Perubahan akan tercatat di riwayat audit</p>
         </div>
       </div>
 
       <div className="px-4 md:px-8 py-6 max-w-4xl mx-auto space-y-6">
 
-        {(customersError || productsError) && <div role="alert" className="text-sm text-red-600">Pilihan pelanggan atau produk belum lengkap. <button className="underline" onClick={() => { refetchCustomers(); refetchProducts() }}>Coba lagi</button></div>}
+        {(customersError || productsError) && <div role="alert" className="text-sm text-red-700">Pilihan pelanggan atau produk belum lengkap. <Button variant="secondary"  onClick={() => { refetchCustomers(); refetchProducts() }}>Coba lagi</Button></div>}
         {(poFetching || linesFetching) && <p role="status" className="text-sm text-blue-600">Memperbarui data PO… Penyimpanan menunggu data lengkap; isian Anda tetap tersimpan di formulir.</p>}
         {/* Detail PO */}
-        <fieldset disabled={mutation.isPending} className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
+        <fieldset disabled={formLocked} className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
           <h2 className="text-base font-medium text-gray-900 mb-4">Detail PO</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm text-gray-600 mb-1">Pelanggan</label>
-              <POCustomerLookup customers={customers ?? []} selectedId={customerId} selectedLabel={po.customers?.name}
-                disabled={hasDeliveryHistory || !readReady || !customers || customersError || customersFetching || mutation.isPending}
-                onSelect={customer => setCustomerId(customer.id)} />
-              {hasDeliveryHistory && <p className="text-xs text-gray-500 mt-1">Pelanggan terkunci karena PO memiliki riwayat pengiriman.</p>}
+              <Field id="po-customer" label="Pelanggan">{control => <POCustomerLookup {...control} customers={customers ?? []} selectedId={customerId} selectedLabel={po.customers?.name}
+                disabled={hasDeliveryHistory || !readReady || !customers || customersError || customersFetching || formLocked}
+                onSelect={customer => setCustomerId(customer.id)} />}</Field>
+              {hasDeliveryHistory && <p className="text-[13px] text-brand-secondary mt-1">Pelanggan terkunci karena PO memiliki riwayat pengiriman.</p>}
               {selectedCustomer && (
-                <p className="text-xs text-blue-600 mt-1">
+                <p className="text-[13px] text-blue-600 mt-1">
                   Tier harga: <span className="font-medium">{TIER_LABELS[pricingTier]}</span>
                 </p>
               )}
             </div>
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">Nomor PO</label>
-              <input
+            <Field id="po-number" label="Nomor PO">{control => <input {...control}
                 type="text"
                 value={po?.po_number ?? ''}
                 disabled
-                className="min-w-0 max-w-full w-full border border-gray-100 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-400 cursor-not-allowed"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">Tanggal PO</label>
-              <input
+                className="min-w-0 max-w-full w-full border border-gray-100 rounded-lg px-3 py-2 text-base bg-gray-50 text-brand-secondary cursor-not-allowed"
+              />}</Field>
+            <Field id="po-order-date" label="Tanggal PO">{control => <input {...control}
                 type="text"
                 value={po?.order_date ?? ''}
                 disabled
-                className="min-w-0 max-w-full w-full border border-gray-100 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-400 cursor-not-allowed"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">Tanggal Kedaluwarsa PO (opsional)</label>
-              <p className="text-xs text-gray-400 mb-1">Jika PO pelanggan memiliki tanggal kedaluwarsa. Bukan tanggal pengiriman.</p>
-              <input
+                className="min-w-0 max-w-full w-full border border-gray-100 rounded-lg px-3 py-2 text-base bg-gray-50 text-brand-secondary cursor-not-allowed"
+              />}</Field>
+            <Field id="po-expiry" label="Tanggal Kedaluwarsa PO (opsional)" hint="Jika PO pelanggan memiliki tanggal kedaluwarsa. Bukan tanggal pengiriman.">{control => <input {...control}
                 type="date"
                 value={expectedDelivery}
-                aria-label="Tanggal Kedaluwarsa PO (opsional)"
                 onChange={e => setExpectedDelivery(e.target.value)}
-                className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
-              />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="block text-sm text-gray-600 mb-1">Catatan</label>
-              <textarea
+                className="min-w-0 max-w-full w-full border border-brand-control-border rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-primary"
+              />}</Field>
+            <Field id="po-notes" label="Catatan" className="sm:col-span-2">{control => <textarea {...control}
                 value={notes}
                 onChange={e => setNotes(e.target.value)}
                 rows={2}
                 placeholder="Catatan (opsional)..."
-                className="min-w-0 max-w-full w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary resize-none"
-              />
-            </div>
+                className="min-w-0 max-w-full w-full border border-brand-control-border rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-primary resize-none"
+              />}</Field>
           </div>
         </fieldset>
 
         {/* Daftar Barang */}
-        <fieldset disabled={mutation.isPending} className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
+        <fieldset disabled={formLocked} className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
           <h2 className="text-base font-medium text-gray-900 mb-1">Daftar Barang</h2>
-          <p className="text-xs text-gray-400 mb-4">
+          <p className="text-[13px] text-brand-secondary mb-4">
             Barang tanpa riwayat pengiriman dapat diganti atau dihapus. Untuk barang yang pernah dikirim, hanya jumlah yang dapat diubah sesuai batas terkirim aktif.
           </p>
 
           <div className="mb-4 min-w-0">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Cari SKU atau nama barang</label>
-            <POProductLookup products={products ?? []} inputRef={productSearch} onSelect={addProduct}
-              disabled={!readReady || !initialized || !selectedCustomer || !products || !customers || customersError || productsError || customersFetching || productsFetching || mutation.isPending} />
-            <p className="text-xs text-gray-500 mt-1">Ketik SKU tepat lalu Enter, atau klik hasil pencarian untuk menambahkan barang. Ulangi pencarian untuk barang berikutnya.</p>
-            {entryNotice && <p role="status" className="text-xs text-blue-700 mt-2">{entryNotice}</p>}
+            <Field id="po-product-search" label="Cari SKU atau nama barang" hint="Ketik SKU tepat lalu Enter, atau klik hasil pencarian untuk menambahkan barang. Ulangi pencarian untuk barang berikutnya.">{control => <POProductLookup {...control} products={products ?? []} inputRef={productSearch} onSelect={addProduct}
+              disabled={!readReady || !initialized || !selectedCustomer || !products || !customers || customersError || productsError || customersFetching || productsFetching || formLocked} />}</Field>
+            {entryNotice && <p role="status" className="text-[13px] text-blue-700 mt-2">{entryNotice}</p>}
           </div>
 
           {visibleLines.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-gray-500">Belum ada barang. Cari SKU atau nama untuk menambahkan barang.</p>
+            <p className="rounded-lg border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-brand-secondary">Belum ada barang. Cari SKU atau nama untuk menambahkan barang.</p>
           ) : (
             <div className="min-w-0 space-y-2">
               <POLineItemsHeader />
@@ -455,16 +443,16 @@ export default function POEdit() {
             </div>
           )}
 
-          <p className="mt-4 text-xs text-gray-600">Barang manual hanya disimpan pada PO ini; tidak menambahkan produk baru ke katalog. Nama, SKU, jumlah, dan harga dicatat sebagai rincian pesanan.</p>
+          <p className="mt-4 text-[13px] text-gray-600">Barang manual hanya disimpan pada PO ini; tidak menambahkan produk baru ke katalog. Nama, SKU, jumlah, dan harga dicatat sebagai rincian pesanan.</p>
           <div className="flex flex-wrap items-center justify-between gap-3 mt-4 pt-4 border-t border-gray-100">
-            <button
+            <Button variant="secondary"
               type="button"
               onClick={addLine}
-              className="text-brand-primary hover:text-brand-hover text-sm font-medium"
+
             >
               + Tambah barang manual
-            </button>
-            <div className="min-w-0 text-sm text-gray-500 [overflow-wrap:anywhere]">
+            </Button>
+            <div className="min-w-0 text-sm text-brand-secondary [overflow-wrap:anywhere]">
               Total: <span className="text-gray-900 font-semibold text-base ml-1">
                 {Number.isFinite(total) ? `Rp ${total.toLocaleString('id-ID')}` : 'Harga belum lengkap'}
               </span>
@@ -473,30 +461,28 @@ export default function POEdit() {
         </fieldset>
 
         {/* Actions */}
-        <div className="flex flex-wrap justify-end gap-3 pb-8">
-          <button
+        <FormActions className="pb-8">
+          <ActionLink variant="secondary" to={`/athel/po/${id}`}
+
+          >Batal</ActionLink>
+          <Button variant="primary"
             type="button"
-            onClick={() => navigate(`/athel/po/${id}`)}
-            className="px-5 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-200 rounded-lg"
-          >
-            Batal
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={mutation.isPending || isPOConflict(mutation.error) || !readReady || !initialized || !customers || !products || customersError || productsError || customersFetching || productsFetching}
-            className="px-5 py-2 text-sm font-medium bg-brand-primary hover:bg-brand-hover text-white rounded-lg disabled:opacity-50 transition-colors"
+            pending={mutation.isPending} onClick={event => { stockTrigger.current = event.currentTarget; handleSave() }}
+            disabled={formLocked || isPOConflict(mutation.error) || !readReady || !initialized || !customers || !products || customersError || productsError || customersFetching || productsFetching}
+
           >
             {mutation.isPending ? 'Menyimpan...' : 'Simpan Perubahan'}
-          </button>
-        </div>
+          </Button>
+        </FormActions>
 
         {mutation.isError && (
-          <div role="alert" className="text-red-500 text-sm text-right">
+          <div role="alert" className="text-red-700 text-sm text-right">
             {(mutation.error as Error).message}
-            {isPOConflict(mutation.error) && <button type="button" onClick={() => void refreshPO()} disabled={refreshingPO} className="ml-2 underline">Muat ulang PO</button>}
+            {isPOConflict(mutation.error) && <Button variant="secondary" type="button" onClick={() => void refreshPO()} disabled={refreshingPO} className="ml-2">Muat ulang PO</Button>}
           </div>
         )}
+      </div>
+      </MainContent>
       </div>
     </div>
   )

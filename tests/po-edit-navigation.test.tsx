@@ -44,7 +44,7 @@ test('canceling an invalid edit renders complete detail data without leaking the
   fireEvent.click(screen.getByRole('button', { name: 'Simpan Perubahan' }))
   await screen.findByText('Jumlah barang harus berupa bilangan bulat positif.')
   expect(mocks.rpc.mock.calls.some(([name])=>name==='pilot_order_transaction')).toBe(false)
-  fireEvent.click(screen.getByRole('button', { name: 'Batal' }))
+  fireEvent.click(screen.getByRole('link', { name: 'Batal' }))
   fireEvent.click(await screen.findByRole('button', { name: 'Buang perubahan' }))
   await waitFor(() => expect(screen.getByText('Dummy product')).toBeTruthy())
   expect(screen.queryByText('Unexpected detail crash')).toBeNull()

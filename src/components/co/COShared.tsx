@@ -1,3 +1,6 @@
+import { Notice, StatusBadge } from '../ui/Feedback';
+import { Section } from '../ui/Section';
+import { Button } from '../ui/Button';
 import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -10,9 +13,9 @@ import type { COTransactionSender } from '../../lib/co/transactions';
 import { parseEnteredQuantity } from '../../lib/co/validation';
 import type { COReportingFreshness } from '../../lib/co/validation';
 import { formatCOReportMonth } from '../../lib/co/presentation';
-export const CO_INPUT = 'min-w-0 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary disabled:bg-gray-50 disabled:text-gray-500';
-export const CO_BUTTON = 'rounded-lg border border-gray-200 px-4 py-2 text-sm disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-brand-primary';
-export const CO_PRIMARY = `${CO_BUTTON} bg-brand-primary text-white hover:bg-brand-hover`;
+export const CO_INPUT = 'min-w-0 w-full min-h-11 rounded-[10px] border border-brand-control-border px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-primary disabled:bg-brand-canvas disabled:text-brand-secondary';
+export const CO_BUTTON = 'ui-action ui-action--secondary';
+export const CO_PRIMARY = 'ui-action ui-action--primary';
 export const quantityText = (value: string) => value.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 export function enteredQuantity(text: string, allowZero = false) {
     if (!/^(0|[1-9]\d*)$/.test(text))
@@ -48,14 +51,13 @@ export function COFailure({ error, retry }: {
     error: unknown;
     retry?: () => void;
 }) {
-    return <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error instanceof Error ? error.message : 'Data CO belum tersedia.'} {retry && <button type="button" className="underline" onClick={retry}>Coba lagi</button>}</div>;
+    return <Notice tone="error" title={error instanceof Error ? error.message : 'Data CO belum tersedia.'} actions={retry && <Button type="button" variant="secondary" onClick={retry}>Coba lagi</Button>}/>;
 }
 export function COCard({ title, children }: {
     title: string;
     children: ReactNode;
 }) {
-    return <section className="min-w-0 rounded-xl border border-gray-200 bg-white p-4 sm:p-6">
-    <h2 className="mb-4 text-base font-medium text-gray-900">{title}</h2>{children}</section>;
+    return <Section title={title}>{children}</Section>;
 }
 export function COPagination({ page, total, pageSize = 20, pending, onPage }: {
     page: number;
@@ -73,12 +75,12 @@ export function COPagination({ page, total, pageSize = 20, pending, onPage }: {
     const start = count === 0n ? 0n : BigInt(page - 1) * BigInt(pageSize) + 1n;
     const finish = BigInt(page) * BigInt(pageSize);
     const end = finish < count ? finish : count;
-    return <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm text-gray-500" aria-busy={pending}>
+    return <div className="ui-pagination" aria-busy={pending}>
     <p>{quantityText(start.toString())}–{quantityText(end.toString())} dari {quantityText(total)}</p>
     <nav aria-label="Halaman hasil" className="flex flex-wrap items-center gap-3">
-    <button type="button" className={CO_BUTTON} disabled={pending || page <= 1} onClick={() => onPage(page - 1)}>Sebelumnya</button>
+    <Button type="button" variant="secondary" disabled={pending || page <= 1} onClick={() => onPage(page - 1)}>Sebelumnya</Button>
     <span>Halaman {page} dari {quantityText(last.toString())}</span>
-    <button type="button" className={CO_BUTTON} disabled={pending || BigInt(page) >= last || page >= 2147483647} onClick={() => onPage(page + 1)}>Berikutnya</button>
+    <Button type="button" variant="secondary" disabled={pending || BigInt(page) >= last || page >= 2147483647} onClick={() => onPage(page + 1)}>Berikutnya</Button>
     </nav>
   </div>;
 }
@@ -89,8 +91,8 @@ export function COBadges({ status, progress }: {
     progress: keyof typeof CO_PROGRESS;
 }) {
     return <div className="flex flex-wrap gap-2">
-    <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs text-blue-700">{CO_LIFECYCLE[status]}</span>
-    <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-700">{CO_PROGRESS[progress]}</span>
+    <StatusBadge tone={status === 'cancelled' ? 'warning' : status === 'closed' ? 'success' : 'neutral'}>{CO_LIFECYCLE[status]}</StatusBadge>
+    <StatusBadge tone="neutral">{CO_PROGRESS[progress]}</StatusBadge>
     </div>;
 }
 export function COFreshness({ value, compact = false }: {
@@ -98,10 +100,10 @@ export function COFreshness({ value, compact = false }: {
     compact?: boolean;
 }) {
     const labels = { no_recorded_activity: 'Belum ada aktivitas stok tercatat', complete: 'Laporan periode wajib lengkap', missing_completed_period: 'Laporan bulan selesai belum lengkap', current_unreported: 'Bulan berjalan belum dilaporkan', current_partial: 'Laporan bulan berjalan masih parsial' };
-    if (compact) return <div className="mt-2 space-y-1 text-xs text-amber-900"><p className="inline-block rounded bg-amber-50 px-2 py-1">{labels[value.status]}</p>{value.next_required_report_month && <p>Berikutnya: {formatCOReportMonth(value.next_required_report_month)} · {quantityText(value.pending_report_month_count)} belum lengkap</p>}{value.zero_stock_reporting_pending && <p>Stok nol; laporan masih wajib.</p>}</div>;
-    return <div className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
-    <p>{labels[value.status]}</p>{value.next_required_report_month && <p>Periode berikutnya yang perlu dilengkapi: {formatCOReportMonth(value.next_required_report_month)} · {quantityText(value.pending_report_month_count)} periode belum lengkap</p>}{value.zero_stock_reporting_pending && <p>Stok tercatat nol; laporan wajib tetap perlu diselesaikan.</p>}<p>Angka tercatat berdasarkan laporan, bukan verifikasi stok fisik saat ini.</p>
-    </div>;
+    if (compact) return <div className="mt-2 space-y-1 text-[13px] text-amber-900"><StatusBadge tone="warning">{labels[value.status]}</StatusBadge>{value.next_required_report_month && <p>Berikutnya: {formatCOReportMonth(value.next_required_report_month)} · {quantityText(value.pending_report_month_count)} belum lengkap</p>}{value.zero_stock_reporting_pending && <p>Stok nol; laporan masih wajib.</p>}</div>;
+    // Reporting freshness is static source metadata, so this opt-in adapter has no live role.
+    return <div className="ui-notice ui-notice--warning mt-3"><p className="ui-notice__title">{labels[value.status]}</p><div className="ui-notice__content">{value.next_required_report_month && <p>Periode berikutnya yang perlu dilengkapi: {formatCOReportMonth(value.next_required_report_month)} · {quantityText(value.pending_report_month_count)} periode belum lengkap</p>}{value.zero_stock_reporting_pending && <p>Stok tercatat nol; laporan wajib tetap perlu diselesaikan.</p>}<p>Angka tercatat berdasarkan laporan, bukan verifikasi stok fisik saat ini.</p>
+    </div></div>;
 }
 /** Recovery asks to inspect first; only an explicit result acceptance may replace dirty work. */
 export function CORecoveryPanel({ sender, accept, current, pending = false, confirmed = false }: {
@@ -144,17 +146,16 @@ export function CORecoveryPanel({ sender, accept, current, pending = false, conf
                 setBusy(false);
         }
     }
-    if (pending) return <p role="status" aria-live="polite" className="rounded-lg bg-blue-50 p-3 text-sm text-blue-800">Sedang memproses. Mohon tunggu hasilnya.</p>;
+    if (pending) return <Notice tone="info" aria-live="polite" title="Sedang memproses. Mohon tunggu hasilnya."/>;
     // The owning form presents its known saved result and explicit readback action.
     if (confirmed) return error ? <COFailure error={new Error(error)}/> : null;
     if (acknowledged || !unresolved && !result && !error)
         return null;
-    return <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm space-y-2">
-    <p>{result?.status === 'abandoned' && !unresolved ? 'Pemeriksaan selesai. Permintaan sebelumnya tidak tersimpan.' : 'Hasil penyimpanan sebelumnya perlu dipulihkan. Permintaan yang sudah dikirim tidak dibatalkan oleh perpindahan halaman.'}</p>
+    return <Notice tone="warning" title={result?.status === 'abandoned' && !unresolved ? 'Pemeriksaan selesai. Permintaan sebelumnya tidak tersimpan.' : 'Hasil penyimpanan sebelumnya perlu dipulihkan. Permintaan yang sudah dikirim tidak dibatalkan oleh perpindahan halaman.'}>
     {error && <p role="alert">{error}</p>}
     {result?.status === 'unknown' && <p role="alert">Hasil belum dapat dipastikan. Jangan buat permintaan baru.</p>}
     {result?.status === 'abandoned' && !unresolved && <p>Permintaan lama dibatalkan secara aman. Anda dapat menyimpan kembali.</p>}
-    {result?.status === 'committed' ? <button type="button" className={CO_BUTTON} disabled={busy} onClick={() => void run(async () => { const accepted = await accept(result.receipt); if (accepted === true && current()) setResult(null); })}>Lihat hasil tersimpan</button> : unresolved && <button type="button" className={CO_BUTTON} disabled={busy} onClick={() => void run(async () => { const recovered = await sender.reconcile(); if (current())
-        setResult(recovered); })}>Pulihkan hasil penyimpanan</button>}
-  </div>;
+    {result?.status === 'committed' ? <Button type="button" variant="secondary" disabled={busy} onClick={() => void run(async () => { const accepted = await accept(result.receipt); if (accepted === true && current()) setResult(null); })}>Lihat hasil tersimpan</Button> : unresolved && <Button type="button" variant="secondary" disabled={busy} onClick={() => void run(async () => { const recovered = await sender.reconcile(); if (current())
+        setResult(recovered); })}>Pulihkan hasil penyimpanan</Button>}
+  </Notice>;
 }

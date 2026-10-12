@@ -270,3 +270,44 @@ test('monthly chart states the narrow selected PO period and explains outside-fi
   expect(region.textContent).toContain('bukan bukti tidak ada pesanan')
   expect(state.charts['Nilai PO vs Pengiriman PO Bulanan'].series[0].data).toEqual([...Array(9).fill(0), 10000, 10000, 10000])
 })
+
+test('reachable chart actions use the shared control contract with readable supporting and data text', async () => {
+  state.data.dailySeries = Array.from({ length: 16 }, (_, index) => ({ key: `day-${index}`, label: `Day ${index}`, deliveredValue: String(index), sjCount: index % 3 }))
+  render(<Dashboard />)
+  const region = await screen.findByRole('region', { name: 'Nilai PO vs Pengiriman PO Bulanan' })
+  const toggle = within(region).getByRole('button', { name: 'PO terkirim' })
+  expect(toggle.classList.contains('ui-action')).toBe(true)
+  expect(toggle.classList.contains('min-h-9')).toBe(false)
+  fireEvent.click(toggle)
+  expect(toggle.getAttribute('aria-pressed')).toBe('false')
+  expect(toggle.className).not.toMatch(/text-slate-400|text-xs/)
+  const reset = screen.getByRole('button', { name: 'Tampilkan semua tanggal' })
+  expect(reset.classList.contains('ui-action')).toBe(true)
+  for (const table of document.querySelectorAll('table')) expect(table.classList.contains('text-sm')).toBe(true)
+  expect(document.querySelectorAll('[class~="text-xs"]')).toHaveLength(0)
+  for (const summary of document.querySelectorAll('summary')) expect(summary.tagName).toBe('SUMMARY')
+})
+
+test('reachable dashboard empty table and chart explanations use legible secondary text', async () => {
+  state.data.customerShare = []; state.data.statusBreakdown = []
+  render(<Dashboard />)
+  await screen.findByRole('region', { name: 'Kontribusi Pelanggan' })
+  for (const copy of screen.getAllByText('Belum ada data pada filter ini.')) expect(copy.classList.contains('text-brand-secondary')).toBe(true)
+  for (const title of ['Pelanggan Teratas', 'Rincian Barang Belum Terkirim']) {
+    const region = screen.getByRole('region', { name: `Tabel ${title}` })
+    expect(within(region).getByRole('cell').classList.contains('text-brand-secondary')).toBe(true)
+  }
+})
+
+test('native chart ranges and disclosures opt into the approved hit-area contract without replacing native semantics', async () => {
+  state.data.dailySeries = Array.from({ length: 16 }, (_, index) => ({ key: `day-${index}`, label: `Day ${index}`, deliveredValue: String(index), sjCount: index % 3 }))
+  render(<Dashboard />)
+  const region = await screen.findByRole('region', { name: 'Tren Pengiriman PO Harian' })
+  for (const input of within(region).getAllByRole('slider')) { expect(input.tagName).toBe('INPUT'); expect(input.classList.contains('min-h-11')).toBe(true) }
+  for (const summary of document.querySelectorAll('summary')) {
+    expect(summary.classList.contains('min-h-11')).toBe(true)
+    expect(summary.classList.contains('py-2')).toBe(true)
+    expect(summary.className).not.toMatch(/list-none|marker:hidden/)
+    expect(summary.parentElement?.tagName).toBe('DETAILS')
+  }
+})

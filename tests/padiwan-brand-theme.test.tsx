@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 
@@ -101,10 +101,15 @@ test('login shows the Padiwan lockup and navy controls while validation remains 
   render(<MemoryRouter><Login /></MemoryRouter>)
   expect(screen.getByRole('img', { name: 'Padiwan' }).getAttribute('src')).toBe('/brand/padiwan-logo.svg')
   const signIn = screen.getByRole('button', { name: 'Masuk' })
-  expect(signIn.classList.contains('bg-brand-primary')).toBe(true)
-  expect(screen.getByPlaceholderText('anda@perusahaan.com').classList.contains('focus:ring-brand-primary')).toBe(true)
+  expect(signIn.classList.contains('ui-action--primary')).toBe(true)
+  expect(screen.getByPlaceholderText('anda@perusahaan.com').parentElement?.classList.contains('ui-field')).toBe(true)
+  expect(css).toMatch(/:where\(button, a, input, select, textarea, summary\):focus-visible\s*\{[^}]*var\(--color-brand-primary\)/s)
   fireEvent.click(signIn)
-  expect(screen.getByText('Masukkan email dan kata sandi Anda.').classList.contains('text-red-500')).toBe(true)
+  const summary = screen.getByRole('group', { name: 'Ringkasan kesalahan masuk' })
+  const alert = within(summary).getByRole('alert')
+  expect(alert.classList.contains('ui-notice--error')).toBe(true)
+  expect(within(alert).getByText('Masukkan email dan kata sandi Anda.')).toBeTruthy()
+  expect(actionCss).toMatch(/\.ui-notice--error\s*\{[^}]*var\(--color-red-800\)/s)
 })
 
 test('the module chooser has one Padiwan identity and retains all module links', () => {

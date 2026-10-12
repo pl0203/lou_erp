@@ -1,3 +1,5 @@
+import { transferableAbortController } from 'node:util'
+import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import React from 'react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, within, waitFor } from '@testing-library/react'
@@ -20,13 +22,13 @@ vi.mock('../../src/lib/supabase', () => ({ supabase: {
 } }))
 vi.mock('../../src/components/AthelNav',()=>({default:()=>null}))
 vi.mock('../../src/lib/AuthContext',()=>({useAuth:()=>({user:{id:'u'},profile:{id:'u',role:'staff'}})}))
-vi.mock('react-router-dom',()=>({useParams:()=>({id:'po'}),useNavigate:()=>vi.fn(),useBlocker:()=>({state:'unblocked'}),useBeforeUnload:()=>{}}))
 import POEdit from '../../src/pages/athel/POEdit'
 import PODetail from '../../src/pages/athel/PODetail'
 const clients:QueryClient[]=[]
-function mount(Page:React.ComponentType){const client=new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}});clients.push(client);return render(<QueryClientProvider client={client}><Page/></QueryClientProvider>)}
+function mount(Page:React.ComponentType){const client=new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}});clients.push(client);const router = createMemoryRouter([{ path: Page === POEdit ? '/athel/po/:id/edit' : '/athel/po/:id', element: <Page /> }, { path: '*', element: <p>Destination</p> }], { initialEntries: [Page === POEdit ? '/athel/po/po/edit' : '/athel/po/po'] }); routers.push(router); return render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>)}
 beforeEach(()=>{state.failLines=false;state.stale=false;state.failDeliveryLines=false;state.audit=[];state.writes=[];state.history=[];state.lines=[{id:'l0',product_id:null,product_name:'Item 0',sku:'SKU0',quantity:10,unit_price:'10.00',line_total:'100.00',delivered_quantity:4,has_delivery_history:true}]})
-afterEach(()=>{cleanup();clients.splice(0).forEach(c=>c.clear());localStorage.clear()})
+const routers: ReturnType<typeof createMemoryRouter>[] = []
+afterEach(()=>{cleanup(); vi.unstubAllGlobals(); routers.splice(0).forEach(router => router.dispose());clients.splice(0).forEach(c=>c.clear());localStorage.clear()})
 test('edit locks historical identity and delivered minimum even when displayed delivery history is empty',async()=>{
  mount(POEdit);const name=await screen.findByDisplayValue('Item 0');expect((name as HTMLInputElement).disabled).toBe(true)
  expect((screen.getByRole('combobox', { name: 'Pelanggan' }) as HTMLInputElement).disabled).toBe(true)
@@ -120,3 +122,6 @@ test('delivery modal stacks phone date fields and scrolls the full quantity edit
   expect(items.tabIndex).toBe(0)
   expect(within(items).getByRole('spinbutton', { name: 'Jumlah dikirim Item 0' })).toBeTruthy()
 })
+
+// Real router navigation requires Node-compatible Request signals in jsdom.
+beforeEach(() => { vi.stubGlobal('AbortController', class { constructor() { return transferableAbortController() } }) })
