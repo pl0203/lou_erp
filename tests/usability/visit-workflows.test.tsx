@@ -1,3 +1,4 @@
+import { MemoryRouter } from 'react-router-dom'
 import React from 'react'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -9,7 +10,6 @@ vi.mock('../../src/components/GirardNav', () => ({ default: () => null }))
 vi.mock('../../src/components/ActivePromotionsBanner', () => ({ default: () => null }))
 vi.mock('../../src/lib/CustomerStats', () => ({ fetchCustomerStatsBatch: async () => [{ customer_id: 'c1', order_count: 1, total_sales: '50000', top_items: [] }] }))
 vi.mock('../../src/lib/useUnsavedChanges', () => ({ useUnsavedChanges: () => ({ dialog: null, confirmDiscard: (fn: () => void) => fn() }) }))
-vi.mock('react-router-dom', () => ({ useNavigate: () => state.navigate, useSearchParams: () => [new URLSearchParams(state.search), vi.fn()] }))
 const customers = [
  { id: 'c1', name: 'Synthetic Company', city: 'Bandung', address: 'Cabang Utara', last_visit_date: null, visit_frequency_days: 7 },
  { id: 'c2', name: 'Synthetic Company', city: 'Jakarta', address: 'Cabang Selatan', last_visit_date: null, visit_frequency_days: 7 },
@@ -24,7 +24,7 @@ import DailySchedule from '../../src/pages/girard/DailySchedule'
 import MyVisits from '../../src/pages/girard/MyVisits'
 import { calendarDateKey } from '../../src/lib/calendarDate'
 const clients: QueryClient[] = []
-function mount(Page: React.ComponentType) { const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } }); clients.push(client); render(<QueryClientProvider client={client}><Page /></QueryClientProvider>) }
+function mount(Page: React.ComponentType) { const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } }); clients.push(client); render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[`/girard/schedule?${state.search}`]}><Page /></MemoryRouter></QueryClientProvider>) }
 const schedule = (extras = {}) => ({ id: 'schedule', version: 1, outlet_id: 'c1', sales_person_id: 'rep', scheduled_date: calendarDateKey(), status: 'pending', notes: null, customers: customers[0], users: { id: 'rep', full_name: 'Sales One' }, outlet_visits: [], ...extras })
 beforeEach(() => { state.role = 'executive'; state.search = ''; state.schedules = []; state.requests = []; state.send.mockReset().mockResolvedValue({ id: 'saved', version: 1 }); state.navigate.mockReset() })
 afterEach(() => { cleanup(); clients.splice(0).forEach(c => c.clear()) })

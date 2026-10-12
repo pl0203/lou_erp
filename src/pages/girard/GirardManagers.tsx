@@ -1,3 +1,9 @@
+import { PageHeader } from '../../components/ui/PageHeader'
+import { ActionLink } from '../../components/ui/ActionLink'
+import { EmptyState, Notice } from '../../components/ui/Feedback'
+import { RecordList } from '../../components/ui/RecordList'
+import { SummaryList } from '../../components/ui/SummaryList'
+import { MainContent } from '../../components/ui/MainContent'
 import { calendarDateKey } from '../../lib/calendarDate'
 import { visitScheduleHref } from '../../lib/visitUsability'
 import ReadFailure from '../../components/ReadFailure'
@@ -54,71 +60,61 @@ async function fetchManagersData(signal?: AbortSignal): Promise<ManagerData[]> {
 }
 
 export default function GirardManagers() {
-  const { data: managers, isLoading, isError: readError, refetch } = useQuery({
+  const { data: managers, isError: readError, refetch } = useQuery({
     queryKey: ['managers_data'],
     queryFn: ({ signal }) => fetchManagersData(signal),
   })
+  const isLoading = managers === undefined && !readError
 
-  if (readError) return <div className="min-h-screen bg-brand-canvas"><GirardNav /><ReadFailure onRetry={() => { void refetch() }} /></div>
+  if (readError) return <div className="min-h-screen bg-brand-canvas"><GirardNav /><MainContent><PageHeader title="Manajer" description="Jumlah manajer belum tersedia" className="bg-white border-b border-brand-divider px-4 md:px-8 py-5" /><ReadFailure onRetry={() => { void refetch() }} /></MainContent></div>
 
   return (
     <div className="min-h-screen bg-brand-canvas">
       <GirardNav />
+      <MainContent>
 
-      <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5">
-        <h1 className="text-xl font-semibold text-gray-900">Manajer</h1>
-        <p className="text-sm text-gray-500 mt-0.5">
-          {managers?.length ?? 0} manajer penjualan
-        </p>
-      </div>
+      <PageHeader title="Manajer" description={isLoading ? 'Memuat jumlah manajer…' : `${managers?.length ?? 0} manajer penjualan`}
+        className="bg-white border-b border-brand-divider px-4 md:px-8 py-5" />
 
       <div className="px-4 md:px-8 py-6">
         {isLoading && (
-          <div className="text-center text-gray-600 text-sm py-24">Memuat...</div>
+          <Notice tone="info" title="Memuat..." />
         )}
 
-        {!isLoading && (!managers || managers.length === 0) && (
-          <div className="text-center py-24">
-            <p className="text-gray-600 text-sm">Tidak ada manajer penjualan ditemukan.</p>
-          </div>
+        {!isLoading && managers?.length === 0 && (
+          <EmptyState title="Tidak ada manajer penjualan ditemukan." />
         )}
 
         {!isLoading && managers && managers.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          <RecordList label="Manajer penjualan" className="grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {managers.map(m => (
-              <div key={m.id} className="bg-white rounded-xl border border-gray-200 p-5">
+              <li key={m.id} className="min-w-0 bg-white rounded-[14px] border border-brand-divider p-5">
                 {/* Manager info */}
                 <div className="flex items-center gap-3 mb-4">
                   <div className="w-10 h-10 rounded-full bg-green-100 text-green-700 text-sm font-semibold flex items-center justify-center shrink-0">
                     {m.full_name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}
                   </div>
                   <div className="min-w-0">
-                    <p className="font-semibold text-gray-900 truncate">{m.full_name}</p>
-                    <p className="text-xs text-gray-600 truncate">{m.email}</p>
+                    <p className="font-semibold text-brand-primary [overflow-wrap:anywhere]">{m.full_name}</p>
+                    <p className="text-[13px] text-brand-secondary [overflow-wrap:anywhere]">{m.email}</p>
                   </div>
                 </div>
 
-                <a aria-label={`Lihat jadwal tim ${m.full_name}`} className="mb-4 inline-block text-sm font-semibold text-brand-primary underline" href={visitScheduleHref(calendarDateKey(), undefined, m.id)}>Lihat jadwal tim</a>
+                <ActionLink variant="secondary" aria-label={`Lihat jadwal tim ${m.full_name}`} className="mb-4" to={visitScheduleHref(calendarDateKey(), undefined, m.id)}>Lihat jadwal tim</ActionLink>
                 {/* Stats */}
-                <div className="grid grid-cols-2 gap-3 mb-4">
-                  <div className="bg-gray-50 rounded-lg p-3 text-center">
-                    <p className="text-xs text-gray-600 mb-1">Pelanggan</p>
-                    <p className="text-xl font-bold text-gray-900">{m.customers.length}</p>
-                  </div>
-                  <div className="bg-gray-50 rounded-lg p-3 text-center">
-                    <p className="text-xs text-gray-600 mb-1">Sales</p>
-                    <p className="text-xl font-bold text-gray-900">{m.team.length}</p>
-                  </div>
-                </div>
+                <SummaryList className="mb-4 rounded-lg bg-brand-canvas p-3" items={[
+                  { label: 'Pelanggan', value: m.customers.length },
+                  { label: 'Sales', value: m.team.length },
+                ]} />
 
                 {/* Team list */}
                 {m.team.length > 0 && (
                   <div className="mb-3">
-                    <p className="text-xs text-gray-600 mb-2">Tim</p>
+                    <p className="text-[13px] text-brand-secondary mb-2">Tim</p>
                     <div className="space-y-1">
                       {m.team.map(sp => (
                         <div key={sp.id} className="flex items-center gap-2">
-                          <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-600 text-xs font-semibold flex items-center justify-center shrink-0">
+                          <div className="w-5 h-5 rounded-full bg-blue-100 text-blue-600 text-[13px] font-semibold flex items-center justify-center shrink-0">
                             {sp.full_name[0]}
                           </div>
                           <a className="text-sm text-brand-primary underline" href={visitScheduleHref(calendarDateKey(), sp.id)}>{sp.full_name}</a>
@@ -131,22 +127,23 @@ export default function GirardManagers() {
                 {/* Customer list */}
                 {m.customers.length > 0 && (
                   <div>
-                    <p className="text-xs text-gray-600 mb-2">Pelanggan Ditugaskan</p>
+                    <p className="text-[13px] text-brand-secondary mb-2">Pelanggan Ditugaskan</p>
                     <div className="space-y-1">
                       {m.customers.slice(0, 3).map(c => (
-                        <p key={c.id} className="text-xs text-gray-600 truncate">• {c.name}</p>
+                        <p key={c.id} className="text-[13px] text-brand-secondary [overflow-wrap:anywhere]">• {c.name}</p>
                       ))}
                       {m.customers.length > 3 && (
-                        <p className="text-xs text-gray-600">+{m.customers.length - 3} lainnya</p>
+                        <p className="text-[13px] text-brand-secondary">+{m.customers.length - 3} lainnya</p>
                       )}
                     </div>
                   </div>
                 )}
-              </div>
+              </li>
             ))}
-          </div>
+          </RecordList>
         )}
       </div>
+      </MainContent>
     </div>
   )
 }

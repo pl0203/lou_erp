@@ -1,3 +1,6 @@
+import { Button } from './ui/Button'
+import { EmptyState, Notice, StatusBadge } from './ui/Feedback'
+import { RecordList } from './ui/RecordList'
 import { useQuery } from '@tanstack/react-query'
 import { fetchPromotions, isCurrentlyActive, promotionStatus } from '../lib/promotions'
 import { useAuth } from '../lib/AuthContext'
@@ -10,21 +13,21 @@ export default function ActivePromotionsBanner() {
     staleTime: 0, refetchInterval: 30_000, refetchIntervalInBackground: false, refetchOnWindowFocus: true, refetchOnReconnect: true,
   })
   if (!actorKey) return null
-  if (promotions.isError) return <div role="alert" className="rounded-xl border border-brand-accent bg-brand-tint p-4 text-sm text-brand-primary">Promosi belum dapat dimuat. <button type="button" className="underline" onClick={() => void promotions.refetch()}>Coba lagi</button></div>
-  if (promotions.isPending) return <p role="status" className="text-sm text-gray-500">Memuat promosi…</p>
+  if (promotions.isError) return <Notice tone="error" title="Promosi belum dapat dimuat." actions={<Button variant="secondary" onClick={() => void promotions.refetch()}>Coba lagi</Button>} />
+  if (promotions.isPending) return <Notice tone="info" title="Memuat promosi…" />
   const visible = (promotions.data ?? []).filter(isCurrentlyActive)
-  if (!visible.length) return <div>{promotions.isFetching && <p role="status" className="text-sm text-gray-500">Memperbarui promosi…</p>}<p className="text-sm text-gray-500">Belum ada promosi produk aktif.</p></div>
+  if (!visible.length) return <div>{promotions.isFetching && <p role="status" className="text-sm text-brand-secondary">Memperbarui promosi…</p>}<EmptyState title="Belum ada promosi produk aktif." /></div>
   return <section aria-label="Promosi produk" className="rounded-xl border border-brand-accent bg-brand-tint p-4">
     <h2 className="mb-3 text-sm font-medium text-brand-primary">Promosi Produk</h2>
-    {promotions.isFetching && <p role="status" className="mb-3 text-xs text-gray-500">Memperbarui promosi…</p>}
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {visible.map(promo => <article key={promo.id} className="min-w-0 rounded-lg border border-gray-200 bg-white p-3">
+    {promotions.isFetching && <p role="status" className="mb-3 text-[13px] text-brand-secondary">Memperbarui promosi…</p>}
+    <RecordList label="Promosi produk aktif" className="grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+      {visible.map(promo => <li key={promo.id}><article className="min-w-0 rounded-[14px] border border-brand-divider bg-white p-4">
         <PromotionImage key={promo.image_path} promotion={promo} />
-        <h3 className="mt-2 text-sm font-semibold text-brand-primary">{promo.product_name}</h3>
-        <p className="text-xs text-gray-500">{promo.sku}{promo.size ? ` · ${promo.size}` : ''}</p>
-        <p className="mt-2 text-sm text-brand-primary">{promo.stock_managed ? `Stok tersedia: ${promo.remaining_quantity}` : 'Legacy · stok belum ditetapkan'}</p>
-        <p className="mt-1 text-xs text-gray-500">{promotionStatus(promo)}</p>
-      </article>)}
-    </div>
+        <h3 className="mt-2 text-base font-semibold text-brand-primary [overflow-wrap:anywhere]">{promo.product_name}</h3>
+        <p className="text-[13px] text-brand-secondary">{promo.sku}{promo.size ? ` · ${promo.size}` : ''}</p>
+        <p className="mt-2 text-base text-brand-primary">{promo.stock_managed ? `Stok tersedia: ${promo.remaining_quantity}` : 'Legacy · stok belum ditetapkan'}</p>
+        <StatusBadge tone="neutral" className="mt-2">{promotionStatus(promo)}</StatusBadge>
+      </article></li>)}
+    </RecordList>
   </section>
 }

@@ -18,6 +18,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/AuthContext'
 import GirardNav from '../../components/GirardNav'
+import { MainContent } from '../../components/ui/MainContent'
+import { formatVisitTimestamp } from '../../lib/visitTimestamp'
 
 type Schedule = {
   version: number
@@ -240,13 +242,13 @@ function VisitPageContent(){
  const handleCheckIn=()=>{if(!photoBlob||!photoBinding||busy.current)return;busy.current=true;checkInMutation.mutate({schedule_id:scheduleId!,...photoBinding,photo_blob:photoBlob,lat:location?.lat??null,lng:location?.lng??null,notes})}
  const getLocation=()=>{setLocationStatus('loading');if(!navigator.geolocation){setLocationStatus('unavailable');return}navigator.geolocation.getCurrentPosition(pos=>{setLocation({lat:pos.coords.latitude,lng:pos.coords.longitude});setLocationStatus('granted')},()=>setLocationStatus('unavailable'),{timeout:10000,enableHighAccuracy:true})}
  const recovery=<TransactionRecovery send={sendVisit} onCommitted={saved}/>
- if(scheduleLoading||visitLoading)return <div><GirardNav/>{recovery}<p className="p-8">Memuat...</p></div>
- if(!schedule||!schedule.customers)return <div><GirardNav/>{recovery}<p className="p-8 text-red-600">{scheduleError ? scheduleError instanceof ScheduleCustomerUnavailableError ? scheduleError.message:'Gagal memuat jadwal. Silakan muat ulang halaman untuk mencoba lagi.' : !schedule?'Jadwal tidak ditemukan atau Anda tidak memiliki akses.':'Pelanggan untuk jadwal ini tidak tersedia. Hubungi administrator.'}</p></div>
+ if(scheduleLoading||visitLoading)return <div><GirardNav/>{recovery}<MainContent><p role="status" className="p-8">Memuat...</p></MainContent></div>
+ if(!schedule||!schedule.customers)return <div><GirardNav/>{recovery}<MainContent><p role="alert" className="p-8 text-red-600">{scheduleError ? scheduleError instanceof ScheduleCustomerUnavailableError ? scheduleError.message:'Gagal memuat jadwal. Silakan muat ulang halaman untuk mencoba lagi.' : !schedule?'Jadwal tidak ditemukan atau Anda tidak memiliki akses.':'Pelanggan untuk jadwal ini tidak tersedia. Hubungi administrator.'}</p></MainContent></div>
  const customer=schedule.customers
  const canCheckIn=!visit && !visitError && schedule.status==='pending' && schedule.sales_person_id===profile?.id
  return <div className="min-h-screen bg-brand-canvas"><GirardNav/>{unsaved.dialog}{recovery}<header className="bg-white border-b px-4 md:px-8 py-5"><button onClick={()=>navigate(-1)}>← Kembali</button><h1 className="text-xl font-semibold">{customer.name}</h1><p>{[customer.address,customer.city].filter(Boolean).join(', ')}</p><p className="text-sm">Jadwal: {schedule.scheduled_date}</p></header>
- <main className="max-w-2xl mx-auto p-4 space-y-4"><StorePOContext customerId={customer.id}/><section className="bg-white border rounded-2xl p-5 space-y-4"><h2 className="font-medium">Check-in</h2>
- {visitError ? <p role="alert">Status kunjungan belum tersedia. <button onClick={()=>retryVisit()}>Coba lagi</button></p> : visit ? <><p>Sudah check-in</p><p>{new Date(visit.checked_in_at).toLocaleString('id-ID')}</p>{visit.lat!==null && visit.lng!==null && <p>📍 {visit.lat}, {visit.lng}</p>}{visit.visit_photos?.[0] && <CheckInPhoto storagePath={visit.visit_photos[0].storage_path}/>}{visit.sales_person_id===profile?.id ? <VisitNoteEditor visit={visit} onDirtyChange={noteDirtyChanged} confirmDiscard={unsaved.confirmDiscard}/> : <p className="whitespace-pre-wrap">Catatan kunjungan: {visit.notes||'Belum ada catatan.'}</p>}</> : canCheckIn ? <>
+ <MainContent className="max-w-2xl mx-auto p-4 space-y-4"><StorePOContext customerId={customer.id}/><section className="bg-white border rounded-2xl p-5 space-y-4"><h2 className="font-medium">Check-in</h2>
+ {visitError ? <p role="alert">Status kunjungan belum tersedia. <button onClick={()=>retryVisit()}>Coba lagi</button></p> : visit ? <><p>Sudah check-in</p><p>{formatVisitTimestamp(visit.checked_in_at)}</p>{visit.lat!==null && visit.lng!==null && <p>📍 {visit.lat}, {visit.lng}</p>}{visit.visit_photos?.[0] && <CheckInPhoto storagePath={visit.visit_photos[0].storage_path}/>}{visit.sales_person_id===profile?.id ? <VisitNoteEditor visit={visit} onDirtyChange={noteDirtyChanged} confirmDiscard={unsaved.confirmDiscard}/> : <p className="whitespace-pre-wrap">Catatan kunjungan: {visit.notes||'Belum ada catatan.'}</p>}</> : canCheckIn ? <>
  {staleMessage && <p role="alert">{staleMessage}</p>}
  {showCamera ? <><LiveCamera onCapture={handleCapture}/><button onClick={()=>setShowCamera(false)}>Batal</button></> : photoPreview ? <><p>Foto berhasil diambil</p><img src={photoPreview} alt="Foto check-in" className="w-full h-48 object-cover rounded-xl"/><button disabled={checkInMutation.isPending||sendVisit.hasUnresolved()} onClick={openCamera}>Ambil ulang</button></> : <button className="w-full h-36 border-2 border-dashed rounded-xl" onClick={openCamera} disabled={sendVisit.hasUnresolved()}>📷 Ketuk untuk membuka kamera</button>}
  <label className="block">Catatan kunjungan<textarea className="block w-full border rounded p-2" aria-label="Catatan kunjungan" maxLength={2000} value={notes} disabled={checkInMutation.isPending||sendVisit.hasUnresolved()} onChange={e=>setNotes(e.target.value)}/></label>
@@ -255,5 +257,5 @@ function VisitPageContent(){
  {checkInMutation.isError && <p role="alert">{checkInMutation.error.message}</p>}
  </> : <p>Check-in hanya tersedia untuk pemilik jadwal yang masih pending.</p>}
  </section>{visit && <section className="bg-white border rounded-2xl"><h2 className="p-5 font-medium">Riwayat pesanan kunjungan</h2><VisitOrderHistory customerId={customer.id} visitId={visit.id}/></section>}<button onClick={()=>navigate('/girard/my-orders')}>Riwayat pesanan saya</button><button className="ml-4" onClick={()=>navigate('/girard/visit-history')}>Riwayat kunjungan saya</button>
- </main></div>
+ </MainContent></div>
 }

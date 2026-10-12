@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, MouseEvent, ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { Link, NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
 import BrandLogo from './BrandLogo'
 import NavigationIcon from './NavigationIcon'
@@ -61,7 +61,7 @@ function MobileDrawer({ children, onClose, opener }: { children: ReactNode; onCl
 
 export default function AppNavigation({ module, links, beforeSignOut }: { module: NavigationModule; links: NavigationLink[]; beforeSignOut?: () => boolean }) {
   const { profile, signOut } = useAuth()
-  const navigate = useNavigate(), location = useLocation()
+  const location = useLocation()
   const mobile = useMobileNavigation()
   const [collapsed, setCollapsed] = useState(readCollapsed)
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -123,7 +123,9 @@ export default function AppNavigation({ module, links, beforeSignOut }: { module
       onBlur: () => setTooltip(null),
     }
   }
-  function go(to: string) { closeDrawer(); navigate(to) }
+  function closeAfterNavigation(event: MouseEvent<HTMLAnchorElement>) {
+    if (!event.defaultPrevented && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && event.button === 0) closeDrawer()
+  }
   async function handleSignOut() {
     if (signingOut || (beforeSignOut && !beforeSignOut())) return
     setSigningOut(true); setSignOutError('')
@@ -150,11 +152,11 @@ export default function AppNavigation({ module, links, beforeSignOut }: { module
       </button>}
       {showSwitcher && <div id={switcherId} role="group" aria-label="Pilihan modul" className="navigation-popover navigation-module-options">
         <p className="navigation-popover-title">Ganti modul</p>
-        {options.map(option => <button type="button" key={option.to} onClick={() => go(option.to)} className="navigation-module-option"><NavigationIcon name={option.icon} /><span><strong>{option.label}</strong><small>{option.description}</small></span></button>)}
+        {options.map(option => <Link key={option.to} to={option.to} onClick={closeAfterNavigation} className="navigation-module-option"><NavigationIcon name={option.icon} /><span><strong>{option.label}</strong><small>{option.description}</small></span></Link>)}
       </div>}
     </div>
     <nav id={navId} aria-label={`Navigasi ${label}`} className="navigation-links">
-      {links.map(link => <NavLink key={link.to} to={link.to} aria-label={link.badge && link.badge > 0 ? `${link.label}, ${link.badge} menunggu` : link.label} className={({ isActive }) => `navigation-link ${isActive ? 'navigation-link-active' : ''}`} onClick={event => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && event.button === 0) closeDrawer() }} {...tooltipEvents(link.label)}>
+      {links.map(link => <NavLink key={link.to} to={link.to} aria-label={link.badge && link.badge > 0 ? `${link.label}, ${link.badge} menunggu` : link.label} className={({ isActive }) => `navigation-link ${isActive ? 'navigation-link-active' : ''}`} onClick={closeAfterNavigation} {...tooltipEvents(link.label)}>
         <NavigationIcon name={link.icon} /><span className="navigation-label">{link.label}</span>
         {!!link.badge && link.badge > 0 && <span aria-hidden="true" className="navigation-badge">{link.badge > 99 ? '99+' : link.badge}</span>}
       </NavLink>)}
@@ -165,7 +167,7 @@ export default function AppNavigation({ module, links, beforeSignOut }: { module
       </button>
       {showUser && <div id={accountId} role="group" aria-label="Akun pengguna" className="navigation-popover navigation-account-options">
         <div className="navigation-account-info"><strong>{profile?.full_name}</strong><small>{profile?.role?.replace(/_/g, ' ')}</small></div>
-        <button type="button" onClick={() => go(roleHome(profile?.role))}><NavigationIcon name="home" /><span>{profile?.role === 'executive' ? 'Ganti modul' : 'Kembali ke modul'}</span></button>
+        <Link to={roleHome(profile?.role)} onClick={closeAfterNavigation}><NavigationIcon name="home" /><span>{profile?.role === 'executive' ? 'Ganti modul' : 'Kembali ke modul'}</span></Link>
         <button type="button" onClick={() => void handleSignOut()} disabled={signingOut} className="navigation-sign-out"><NavigationIcon name="logout" /><span>{signingOut ? 'Keluar…' : 'Keluar'}</span></button>
         {signOutError && <p role="alert" className="navigation-sign-out-error">{signOutError}</p>}
       </div>}
@@ -174,6 +176,12 @@ export default function AppNavigation({ module, links, beforeSignOut }: { module
   </>
 
   return <div className="app-navigation" data-collapsed={compact}>
+    <a href="#main-content" className="ui-skip-link" onClick={event => {
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return
+      // A page owns this explicit target; navigation never discovers or moves
+      // page content, changes routes, or creates an additional main landmark.
+      document.getElementById('main-content')?.focus()
+    }}>Lewati ke konten utama</a>
     {mobile ? <>
       <header className="navigation-mobile-header"><button ref={opener} type="button" className="navigation-toggle" aria-label="Buka menu" aria-expanded={mobileOpen} aria-controls={navId} onClick={() => setMobileOpen(true)}><NavigationIcon name="menu" /></button><BrandLogo variant="mark" decorative /><span>{label}</span></header>
       {mobileOpen && <MobileDrawer onClose={closeDrawer} opener={opener}>{menu}</MobileDrawer>}

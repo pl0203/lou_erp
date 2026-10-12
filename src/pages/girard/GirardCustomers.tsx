@@ -1,3 +1,13 @@
+import { PageHeader } from '../../components/ui/PageHeader'
+import { Button } from '../../components/ui/Button'
+import { Field } from '../../components/ui/Field'
+import { FilterBar } from '../../components/ui/FilterBar'
+import { FormActions } from '../../components/ui/FormActions'
+import { Dialog } from '../../components/ui/Dialog'
+import { EmptyState, Notice, StatusBadge } from '../../components/ui/Feedback'
+import { RecordList } from '../../components/ui/RecordList'
+import { SummaryList } from '../../components/ui/SummaryList'
+import { MainContent } from '../../components/ui/MainContent'
 import CustomerPricingHelp from '../../components/CustomerPricingHelp'
 import { hasInvalidCustomerCategories } from '../../lib/customerCategoryRows'
 import CustomerCategorySelect from '../../components/CustomerCategorySelect'
@@ -173,6 +183,8 @@ export default function GirardCustomers() {
   const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null)
   const [originalCustomer, setOriginalCustomer] = useState<Customer | null>(null)
   const [originalAssignment, setOriginalAssignment] = useState<Assignment | null>(null)
+  const dialogOpener = useRef<HTMLElement | null>(null)
+  const searchInput = useRef<HTMLInputElement>(null)
   const writeBusy = useRef(false)
   const ownerChanged = useRef(false)
   const createCustomerId = useRef<string | null>(null)
@@ -183,7 +195,7 @@ export default function GirardCustomers() {
   const [existingManagerId, setExistingManagerId] = useState('')
   const [existingPricingTier, setExistingPricingTier] = useState('luar_kota')
 
-  const { data: customers, isLoading, isError: customerReadError, refetch: retryCustomers } = useQuery({
+  const { data: customers, isError: customerReadError, refetch: retryCustomers } = useQuery({
     queryKey: ['all_customers'],
     queryFn: ({ signal }) => fetchAllCustomers(signal),
   })
@@ -237,6 +249,8 @@ export default function GirardCustomers() {
     },
     onSettled: settleWrite,
     onSuccess: () => {
+      // Refreshed authorization or concurrent edits can remove the old row.
+      dialogOpener.current = null
       closeModal()
     },
   })
@@ -254,6 +268,8 @@ export default function GirardCustomers() {
     },
     onSettled: settleWrite,
     onSuccess: () => {
+      // Refreshed authorization or concurrent edits can remove the old row.
+      dialogOpener.current = null
       closeModal()
     },
   })
@@ -268,6 +284,8 @@ export default function GirardCustomers() {
     },
     onSettled: settleWrite,
     onSuccess: () => {
+      // Refreshed authorization or concurrent edits can remove the old row.
+      dialogOpener.current = null
       closeModal()
     },
   })
@@ -287,8 +305,9 @@ export default function GirardCustomers() {
     setExistingPricingTier('luar_kota')
   }
 
-  const openEdit = (c: Customer) => {
+  const openEdit = (c: Customer, opener: HTMLElement) => {
     if (writeBusy.current) return
+    dialogOpener.current = opener
     const assignment = assignmentMap[c.id]
     createMutation.reset(); assignExistingMutation.reset(); updateMutation.reset()
     setOriginalCustomer(c)
@@ -315,119 +334,94 @@ export default function GirardCustomers() {
   const errorMessage = ((createMutation.error || assignExistingMutation.error || updateMutation.error) as Error)?.message
 
   const tierSelect = (value: string, onChange: (v: string) => void) => (
-    <div><select
-      aria-label="Tier Harga"
-      aria-describedby="sales-customer-pricing-help"
-      value={value}
-      onChange={e => onChange(e.target.value)}
-      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
-    >
-      <option value="harga_pokok">Harga Pokok</option>
-      <option value="luar_kota">Luar Kota</option>
-      <option value="dalam_kota">Dalam Kota</option>
-      <option value="depo_bangunan">Depo Bangunan</option>
-      <option value="others">Others</option>
-    </select><CustomerPricingHelp id="sales-customer-pricing-help" /></div>
+    <Field id="sales-customer-pricing-tier" label="Tier Harga" hint={<CustomerPricingHelp id="sales-customer-pricing-help" />}>
+      {control => <select {...control} value={value} onChange={e => onChange(e.target.value)}>
+        <option value="harga_pokok">Harga Pokok</option>
+        <option value="luar_kota">Luar Kota</option>
+        <option value="dalam_kota">Dalam Kota</option>
+        <option value="depo_bangunan">Depo Bangunan</option>
+        <option value="others">Others</option>
+      </select>}
+    </Field>
   )
 
   const readError = customerReadError || managerReadError || assignmentReadError || hasInvalidCustomerCategories(customers ?? [])
+  const isLoading = customers === undefined && !customerReadError
 
   return (
     <div className="min-h-screen bg-brand-canvas">
       <GirardNav />
+      <MainContent>
       {readError && <ReadFailure onRetry={() => { void retryCustomers(); void retryManagers(); void retryAssignments() }} />}
 
-      <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900">Pelanggan</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{customers?.length ?? 0} total pelanggan</p>
-        </div>
-        <div className="flex gap-2">
-          {!readError && unassignedCustomers.length > 0 && (
-            <button
-              onClick={() => { if (writeBusy.current) return; closeModal(); setModalMode('assign-existing'); setShowModal(true) }}
-              disabled={isPending}
-              className="border border-brand-primary text-brand-primary hover:bg-brand-tint text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-            >
-              Tugaskan yang Ada
-            </button>
-          )}
-          <button
-            onClick={() => { if (writeBusy.current) return; closeModal(); setModalMode('create'); setShowModal(true) }}
-            disabled={readError || isPending}
-            className="bg-brand-primary hover:bg-brand-hover text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-          >
-            + Pelanggan Baru
-          </button>
-        </div>
-      </div>
+      <PageHeader title="Pelanggan" description={readError ? 'Jumlah pelanggan belum tersedia' : isLoading ? 'Memuat jumlah pelanggan…' : `${customers?.length ?? 0} total pelanggan`}
+        className="bg-white border-b border-brand-divider px-4 md:px-8 py-5" actions={<>
+          {!readError && unassignedCustomers.length > 0 && <Button variant="secondary"
+            onClick={event => { if (writeBusy.current) return; dialogOpener.current = event.currentTarget; closeModal(); setModalMode('assign-existing'); setShowModal(true) }}
+            disabled={isPending}>Tugaskan yang Ada</Button>}
+          <Button onClick={event => { if (writeBusy.current) return; dialogOpener.current = event.currentTarget; closeModal(); setModalMode('create'); setShowModal(true) }}
+            disabled={readError || isPending}>+ Pelanggan Baru</Button>
+        </>} />
 
       <div className="px-4 md:px-8 py-6">
-        <input
-          type="text"
-          placeholder="Cari berdasarkan nama atau kota..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full sm:w-80 mb-4 focus:outline-none focus:ring-2 focus:ring-brand-primary"
-        />
+        <FilterBar label="Filter pelanggan" className="mb-4">
+          <Field id="sales-customer-search" label="Cari pelanggan">
+            {control => <input {...control} ref={searchInput} type="search" placeholder="Cari berdasarkan nama atau kota..."
+              value={search} onChange={e => setSearch(e.target.value)} />}
+          </Field>
+        </FilterBar>
 
         {isLoading && (
-          <div className="text-center text-gray-400 text-sm py-24">Memuat data pelanggan...</div>
+          <Notice tone="info" title="Memuat data pelanggan..." />
         )}
 
+        {!isLoading && !readError && filtered?.length === 0 && <EmptyState title="Tidak ada pelanggan ditemukan." />}
+
         {/* Desktop table */}
-        {!isLoading && !readError && (
-          <div className="hidden md:block bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <table className="w-full text-sm">
+        {!isLoading && !readError && !!filtered?.length && (
+          <div role="region" aria-label="Tabel pelanggan" tabIndex={0} className="hidden md:block bg-white rounded-[14px] border border-brand-divider overflow-x-auto">
+            <p className="px-4 py-2 text-[13px] text-brand-secondary">Geser tabel untuk melihat semua kolom.</p>
+            <table className="w-full min-w-[1100px] text-sm">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Pelanggan</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Lokasi</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Penanggung Jawab Toko</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Tier Harga</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Kategori Pelanggan</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Frekuensi Kunjungan</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Kunjungan Terakhir</th>
-                  <th className="text-right px-5 py-3 font-medium text-gray-500">Aksi</th>
+                <tr className="bg-gray-50 border-b border-brand-divider">
+                  <th className="text-left px-5 py-3 font-medium text-brand-secondary">Pelanggan</th>
+                  <th className="text-left px-5 py-3 font-medium text-brand-secondary">Lokasi</th>
+                  <th className="text-left px-5 py-3 font-medium text-brand-secondary">Penanggung Jawab Toko</th>
+                  <th className="text-left px-5 py-3 font-medium text-brand-secondary">Tier Harga</th>
+                  <th className="text-left px-5 py-3 font-medium text-brand-secondary">Kategori Pelanggan</th>
+                  <th className="text-left px-5 py-3 font-medium text-brand-secondary">Frekuensi Kunjungan</th>
+                  <th className="text-left px-5 py-3 font-medium text-brand-secondary">Kunjungan Terakhir</th>
+                  <th className="text-right px-5 py-3 font-medium text-brand-secondary">Aksi</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered?.length === 0 && (
-                  <tr>
-                    <td colSpan={8} className="text-center text-gray-400 py-12">
-                      Tidak ada pelanggan ditemukan.
-                    </td>
-                  </tr>
-                )}
                 {filtered?.map(c => {
                   const assignment = assignmentMap[c.id]
                   const overdue = isOverdue(c.last_visit_date, c.visit_frequency_days)
                   return (
                     <tr key={c.id} className="border-b border-gray-50 hover:bg-gray-50">
                       <td className="px-5 py-4">
-                        <Link to={`/girard/customer/${c.id}`} className="font-medium text-brand-primary underline decoration-brand-accent underline-offset-2 hover:text-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary">{c.name}</Link>
-                        {c.phone && <p className="text-xs text-gray-400 mt-0.5">{c.phone}</p>}
+                        <Link to={`/girard/customer/${c.id}`} className="font-medium text-brand-primary underline decoration-brand-accent underline-offset-2 hover:text-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary [overflow-wrap:anywhere]">{c.name}</Link>
+                        {c.phone && <p className="text-[13px] text-brand-secondary mt-0.5">{c.phone}</p>}
                       </td>
-                      <td className="px-5 py-4 text-gray-600 text-xs">
+                      <td className="px-5 py-4 text-brand-secondary text-[13px]">
                         {[c.address, c.city].filter(Boolean).join(', ') || '—'}
                       </td>
                       <td className="px-5 py-4">
                         {assignment?.manager_id
-                          ? <span className="text-gray-900">{assignment.managers?.full_name}</span>
-                          : <span className="text-xs text-gray-300">Belum ditugaskan</span>
+                          ? <span className="text-brand-primary">{assignment.managers?.full_name}</span>
+                          : <span className="text-[13px] text-brand-secondary">Belum ditugaskan</span>
                         }
                       </td>
                       <td className="px-5 py-4">
-                        <span className="text-xs bg-blue-50 text-blue-700 px-2.5 py-0.5 rounded-full font-medium">
-                          {TIER_LABELS[c.pricing_tier] ?? c.pricing_tier}
-                        </span>
+                        <StatusBadge tone="neutral">{TIER_LABELS[c.pricing_tier] ?? c.pricing_tier}</StatusBadge>
                       </td>
                       <td className="px-5 py-4">{formatCustomerCategory(c.customer_category)}</td>
-                      <td className="px-5 py-4 text-gray-600 text-xs">
+                      <td className="px-5 py-4 text-brand-secondary text-[13px]">
                         {frequencyLabel(c.visit_frequency_days)}
                       </td>
                       <td className="px-5 py-4">
-                        <span className={`text-xs ${overdue ? 'text-red-500 font-medium' : 'text-gray-600'}`}>
+                        <span className={`text-[13px] ${overdue ? 'text-red-700 font-medium' : 'text-brand-secondary'}`}>
                           {c.last_visit_date
                             ? new Date(c.last_visit_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
                             : 'Belum pernah'}
@@ -435,12 +429,7 @@ export default function GirardCustomers() {
                         </span>
                       </td>
                       <td className="px-5 py-4 text-right">
-                        <button
-                          onClick={() => openEdit(c)}
-                          className="text-brand-primary hover:text-brand-hover text-xs font-medium"
-                        >
-                          Ubah
-                        </button>
+                        <Button variant="secondary" onClick={event => openEdit(c, event.currentTarget)}>Ubah</Button>
                       </td>
                     </tr>
                   )
@@ -451,71 +440,47 @@ export default function GirardCustomers() {
         )}
 
         {/* Mobile cards */}
-        {!isLoading && !readError && (
-          <div className="md:hidden space-y-3">
+        {!isLoading && !readError && !!filtered?.length && (
+          <RecordList label="Pelanggan" className="md:hidden">
             {filtered?.map(c => {
               const assignment = assignmentMap[c.id]
               const overdue = isOverdue(c.last_visit_date, c.visit_frequency_days)
               return (
-                <div key={c.id} className="bg-white rounded-xl border border-gray-200 p-4">
-                  <div className="flex items-start justify-between mb-3">
+                <li key={c.id} className="bg-white rounded-[14px] border border-brand-divider p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
                     <div className="flex-1 min-w-0">
-                      <Link to={`/girard/customer/${c.id}`} className="font-semibold text-brand-primary text-sm underline decoration-brand-accent underline-offset-2 hover:text-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary break-words [overflow-wrap:anywhere]">{c.name}</Link>
-                      {c.city && <p className="text-xs text-gray-400 mt-0.5">{c.city}</p>}
+                      <Link to={`/girard/customer/${c.id}`} className="font-semibold text-brand-primary text-base underline decoration-brand-accent underline-offset-2 hover:text-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary break-words [overflow-wrap:anywhere]">{c.name}</Link>
+                      {c.city && <p className="text-[13px] text-brand-secondary mt-0.5">{c.city}</p>}
                     </div>
-                    <button
-                      onClick={() => openEdit(c)}
-                      className="text-brand-primary text-xs font-medium ml-3 shrink-0"
-                    >
-                      Ubah
-                    </button>
+                    <Button variant="secondary" onClick={event => openEdit(c, event.currentTarget)}>Ubah</Button>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div><p className="text-gray-400">Kategori Pelanggan</p><p className="text-gray-700 mt-0.5">{formatCustomerCategory(c.customer_category)}</p></div>
-                    <div>
-                      <p className="text-gray-400">Penanggung Jawab Toko</p>
-                      <p className="text-gray-700 mt-0.5">{assignment?.managers?.full_name ?? '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-400">Tier Harga</p>
-                      <p className="text-blue-700 font-medium mt-0.5">
-                        {TIER_LABELS[c.pricing_tier] ?? c.pricing_tier}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-gray-400">Frekuensi</p>
-                      <p className="text-gray-700 mt-0.5">{frequencyLabel(c.visit_frequency_days)}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-400">Kunjungan Terakhir</p>
-                      <p className={`mt-0.5 ${overdue ? 'text-red-500 font-medium' : 'text-gray-700'}`}>
-                        {c.last_visit_date
-                          ? new Date(c.last_visit_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
-                          : 'Belum pernah'}
-                        {overdue && ' ⚠'}
-                      </p>
-                    </div>
-                  </div>
-                </div>
+                  <SummaryList items={[
+                    { label: 'Kategori Pelanggan', value: formatCustomerCategory(c.customer_category) },
+                    { label: 'Penanggung Jawab Toko', value: assignment?.managers?.full_name ?? '—' },
+                    { label: 'Tier Harga', value: <StatusBadge tone="neutral">{TIER_LABELS[c.pricing_tier] ?? c.pricing_tier}</StatusBadge> },
+                    { label: 'Frekuensi', value: frequencyLabel(c.visit_frequency_days) },
+                    { label: 'Kunjungan Terakhir', value: <span className={overdue ? 'font-medium text-red-700' : undefined}>{c.last_visit_date ? new Date(c.last_visit_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : 'Belum pernah'}{overdue && ' ⚠'}</span> },
+                  ]} />
+                </li>
               )
             })}
-          </div>
+          </RecordList>
         )}
       </div>
 
       {/* Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-md shadow-xl max-h-[90vh] overflow-y-auto">
-            <div className="px-6 py-5 border-b border-gray-100">
-              <h3 className="text-base font-semibold text-gray-900">
+        <Dialog labelledBy="sales-customer-dialog-title" pending={isPending} onClose={() => { if (!writeBusy.current) closeModal() }}
+          returnFocus={null} fallbackFocus={() => dialogOpener.current?.isConnected ? dialogOpener.current : searchInput.current}>
+            <div className="pb-4 border-b border-brand-divider">
+              <h2 id="sales-customer-dialog-title" className="ui-dialog__title">
                 {modalMode === 'create' ? 'Pelanggan Baru'
                   : modalMode === 'assign-existing' ? 'Tugaskan Pelanggan yang Ada'
                   : 'Ubah Penugasan Pelanggan'}
-              </h3>
+              </h2>
             </div>
 
-            <fieldset disabled={isPending} className="px-6 py-4 space-y-4">
+            <fieldset disabled={isPending} className="py-4 space-y-4 [&_select]:min-h-11 [&_select]:border-brand-control-border [&_select]:text-base [&_p]:text-[13px]">
               {modalMode !== 'assign-existing' && <CustomerCategorySelect value={form.customer_category}
                 allowUnclassified={modalMode === 'edit' && originalCustomer?.customer_category === null}
                 onChange={value => setForm(p => ({ ...p, customer_category: value }))} />}
@@ -530,60 +495,30 @@ export default function GirardCustomers() {
                     { label: 'Telepon', field: 'phone', placeholder: 'mis. 021-5551234' },
                     { label: 'Email', field: 'email', placeholder: 'mis. toko@example.com' },
                   ].map(({ label, field, placeholder }) => (
-                    <div key={field}>
-                      <label className="block text-sm text-gray-600 mb-1">{label}</label>
-                      <input
-                        type="text"
-                        placeholder={placeholder}
+                    <Field key={field} id={`sales-customer-${field}`} label={label}>
+                      {control => <input {...control} type="text" placeholder={placeholder}
                         value={form[field as keyof CustomerForm] as string}
-                        onChange={e => setForm(p => ({ ...p, [field]: e.target.value }))}
-                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
-                      />
-                    </div>
+                        onChange={e => setForm(p => ({ ...p, [field]: e.target.value }))} />}
+                    </Field>
                   ))}
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">Frekuensi Kunjungan *</label>
-                    <select
-                      aria-label="Frekuensi Kunjungan"
-                      value={form.visit_frequency_days}
-                      onChange={e => setForm(p => ({ ...p, visit_frequency_days: parseInt(e.target.value) }))}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
-                    >
-                      {FREQUENCY_OPTIONS.map(f => (
-                        <option key={f.days} value={f.days}>{f.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">Tier Harga *</label>
-                    {tierSelect(form.pricing_tier, v => setForm(p => ({ ...p, pricing_tier: v })))}
-                  </div>
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">
-                      Tugaskan ke Penanggung Jawab Toko <span className="text-gray-400">(opsional)</span>
-                    </label>
-                    <select
-                      aria-label="Penanggung Jawab Toko"
-                      value={form.manager_id}
-                      onChange={e => setForm(p => ({ ...p, manager_id: e.target.value }))}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
-                    >
+                  <Field id="sales-customer-frequency" label="Frekuensi Kunjungan">{control => <select {...control} value={form.visit_frequency_days} onChange={e => setForm(p => ({ ...p, visit_frequency_days: parseInt(e.target.value) }))}>
+                    {FREQUENCY_OPTIONS.map(f => <option key={f.days} value={f.days}>{f.label}</option>)}
+                  </select>}</Field>
+                  {tierSelect(form.pricing_tier, v => setForm(p => ({ ...p, pricing_tier: v })))}
+                  <Field id="sales-customer-owner" label="Penanggung Jawab Toko" hint="Opsional untuk pelanggan baru.">
+                    {control => <select {...control} value={form.manager_id} onChange={e => setForm(p => ({ ...p, manager_id: e.target.value }))}>
                       <option value="">Belum ditugaskan</option>
-                      {managers?.map(m => (
-                        <option key={m.id} value={m.id}>{m.full_name}</option>
-                      ))}
-                    </select>
-                  </div>
+                      {managers?.map(m => <option key={m.id} value={m.id}>{m.full_name}</option>)}
+                    </select>}
+                  </Field>
                 </>
               )}
 
               {/* ASSIGN EXISTING */}
               {modalMode === 'assign-existing' && (
                 <>
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">Pilih Pelanggan *</label>
-                    <select
-                      aria-label="Pilih Pelanggan"
+                  <Field id="sales-customer-existing" label="Pilih Pelanggan" hint="Hanya menampilkan pelanggan yang belum ditugaskan ke penanggung jawab toko.">
+                    {control => <select {...control}
                       value={selectedExistingId}
                       onChange={e => {
                         setSelectedExistingId(e.target.value)
@@ -592,98 +527,46 @@ export default function GirardCustomers() {
                         const customer = customers?.find(c => c.id === e.target.value)
                         if (customer) { setExistingFrequency(customer.visit_frequency_days); setExistingPricingTier(customer.pricing_tier) }
                       }}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
                     >
                       <option value="">Pilih pelanggan...</option>
                       {(customers ?? []).filter(c => !assignmentMap[c.id]?.manager_id || c.id === selectedExistingId).map(c => (
                         <option key={c.id} value={c.id}>{c.name}</option>
                       ))}
-                    </select>
-                    <p className="text-xs text-gray-400 mt-1">
-                      Hanya menampilkan pelanggan yang belum ditugaskan ke penanggung jawab toko.
-                    </p>
-                  </div>
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">Frekuensi Kunjungan *</label>
-                    <select
-                      aria-label="Frekuensi Kunjungan"
-                      value={existingFrequency}
-                      onChange={e => setExistingFrequency(parseInt(e.target.value))}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
-                    >
-                      {FREQUENCY_OPTIONS.map(f => (
-                        <option key={f.days} value={f.days}>{f.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">Tier Harga *</label>
-                    {tierSelect(existingPricingTier, setExistingPricingTier)}
-                  </div>
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">Tugaskan ke Penanggung Jawab Toko *</label>
-                    <select
-                      aria-label="Penanggung Jawab Toko"
-                      value={existingManagerId}
-                      onChange={e => setExistingManagerId(e.target.value)}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
-                    >
+                    </select>}
+                  </Field>
+                  <Field id="sales-customer-frequency" label="Frekuensi Kunjungan">{control => <select {...control} value={existingFrequency} onChange={e => setExistingFrequency(parseInt(e.target.value))}>
+                    {FREQUENCY_OPTIONS.map(f => <option key={f.days} value={f.days}>{f.label}</option>)}
+                  </select>}</Field>
+                  {tierSelect(existingPricingTier, setExistingPricingTier)}
+                  <Field id="sales-customer-owner" label="Penanggung Jawab Toko" hint="Pilih penanggung jawab toko sesuai penugasan.">
+                    {control => <select {...control} value={existingManagerId} onChange={e => setExistingManagerId(e.target.value)}>
                       <option value="">Pilih penanggung jawab toko...</option>
-                      {managers?.map(m => (
-                        <option key={m.id} value={m.id}>{m.full_name}</option>
-                      ))}
-                    </select>
-                  </div>
+                      {managers?.map(m => <option key={m.id} value={m.id}>{m.full_name}</option>)}
+                    </select>}
+                  </Field>
                 </>
               )}
 
               {/* EDIT */}
               {modalMode === 'edit' && (
                 <>
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">Frekuensi Kunjungan</label>
-                    <select
-                      aria-label="Frekuensi Kunjungan"
-                      value={form.visit_frequency_days}
-                      onChange={e => setForm(p => ({ ...p, visit_frequency_days: parseInt(e.target.value) }))}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
-                    >
-                      {FREQUENCY_OPTIONS.map(f => (
-                        <option key={f.days} value={f.days}>{f.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">Tier Harga</label>
-                    {tierSelect(form.pricing_tier, v => setForm(p => ({ ...p, pricing_tier: v })))}
-                  </div>
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">Penanggung Jawab Toko</label>
-                    <select
-                      aria-label="Penanggung Jawab Toko"
-                      value={form.manager_id}
-                      onChange={e => setForm(p => ({ ...p, manager_id: e.target.value }))}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary"
-                    >
+                  <Field id="sales-customer-frequency" label="Frekuensi Kunjungan">{control => <select {...control} value={form.visit_frequency_days} onChange={e => setForm(p => ({ ...p, visit_frequency_days: parseInt(e.target.value) }))}>
+                    {FREQUENCY_OPTIONS.map(f => <option key={f.days} value={f.days}>{f.label}</option>)}
+                  </select>}</Field>
+                  {tierSelect(form.pricing_tier, v => setForm(p => ({ ...p, pricing_tier: v })))}
+                  <Field id="sales-customer-owner" label="Penanggung Jawab Toko" hint="Pilih penanggung jawab toko sesuai penugasan.">
+                    {control => <select {...control} value={form.manager_id} onChange={e => setForm(p => ({ ...p, manager_id: e.target.value }))}>
                       <option value="">Belum ditugaskan</option>
-                      {managers?.map(m => (
-                        <option key={m.id} value={m.id}>{m.full_name}</option>
-                      ))}
-                    </select>
-                  </div>
+                      {managers?.map(m => <option key={m.id} value={m.id}>{m.full_name}</option>)}
+                    </select>}
+                  </Field>
                 </>
               )}
             </fieldset>
 
-            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
-              <button
-                onClick={() => { if (!writeBusy.current) closeModal() }}
-                disabled={isPending}
-                className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
-              >
-                Batal
-              </button>
-              <button
+            <FormActions className="pt-4 border-t border-brand-divider">
+              <Button variant="secondary" onClick={() => { if (!writeBusy.current) closeModal() }} disabled={isPending}>Batal</Button>
+              <Button pending={isPending}
                 onClick={() => {
                   if (writeBusy.current || (modalMode === 'create' && createNeedsReview)) return
                   if (modalMode === 'create') {
@@ -704,24 +587,23 @@ export default function GirardCustomers() {
                   }
                 }}
                 disabled={isPending || readError || (modalMode === 'create' && createNeedsReview)}
-                className="px-4 py-2 text-sm font-medium bg-brand-primary text-white rounded-lg hover:bg-brand-hover disabled:opacity-50"
               >
                 {isPending ? 'Menyimpan...'
                   : modalMode === 'create' ? 'Buat'
                   : modalMode === 'assign-existing' ? 'Tugaskan'
                   : 'Simpan'}
-              </button>
-            </div>
+              </Button>
+            </FormActions>
 
             {createNeedsReview && (
-              <p className="text-amber-800 text-xs px-6 pb-4">Periksa daftar pelanggan sebelum mencoba lagi. Tutup formulir dan muat ulang data sebelum membuka formulir baru; data isian tetap ditampilkan di sini untuk diperiksa.</p>
+              <p className="text-amber-800 text-[13px] pt-4">Periksa daftar pelanggan sebelum mencoba lagi. Tutup formulir dan muat ulang data sebelum membuka formulir baru; data isian tetap ditampilkan di sini untuk diperiksa.</p>
             )}
             {isError && (
-              <p role="alert" className="text-red-500 text-xs px-6 pb-4 text-right">{errorMessage}</p>
+              <p role="alert" className="text-red-700 text-[13px] pt-4 text-right">{errorMessage}</p>
             )}
-          </div>
-        </div>
+        </Dialog>
       )}
+      </MainContent>
     </div>
   )
 }

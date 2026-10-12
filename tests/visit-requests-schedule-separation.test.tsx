@@ -1,3 +1,4 @@
+import { MemoryRouter } from 'react-router-dom'
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 import DailySchedule from '../src/pages/girard/DailySchedule'
@@ -10,16 +11,15 @@ vi.mock('../src/components/GirardNav', () => ({ default: () => null }))
 vi.mock('../src/components/ActivePromotionsBanner', () => ({ default: () => null }))
 vi.mock('../src/components/VisitRequestInbox', () => ({ default: () => <p>Embedded requests</p>, VisitProposalForm: () => <p>Proposal form</p> }))
 vi.mock('@tanstack/react-query', () => ({ useQueryClient: () => ({ invalidateQueries: vi.fn() }), useQuery: () => ({ data: [], isLoading: false, isError: false }), useMutation: () => ({ mutate: vi.fn(), isPending: false }) }))
-vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn(), useSearchParams: () => [new URLSearchParams(), vi.fn()] }))
 afterEach(cleanup)
 test('salesperson schedule keeps proposal controls without the embedded request list', () => {
- state.role = 'sales_person'; render(<DailySchedule />)
+ state.role = 'sales_person'; render(<MemoryRouter><DailySchedule /></MemoryRouter>)
  expect(screen.queryByText('Embedded requests')).toBeNull()
- expect(screen.getByRole('button', { name: 'Ajukan kunjungan baru' }).className).toMatch(/bg-brand-primary/)
+ expect(screen.getByRole('button', { name: 'Ajukan kunjungan baru' }).className).toMatch(/ui-action--primary/)
 })
 test('manager schedule starts with its schedule heading and an obvious empty-state button', () => {
- state.role = 'sales_manager'; render(<ManagerSchedule />)
+ state.role = 'sales_manager'; render(<MemoryRouter><ManagerSchedule /></MemoryRouter>)
  expect(screen.queryByText('Embedded requests')).toBeNull()
  expect(screen.getByRole('heading', { name: 'Jadwal', level: 1 })).toBeTruthy()
- expect(screen.getByRole('button', { name: /Tambahkan jadwal kunjungan baru/ }).className).toMatch(/border/)
+ expect(screen.getByRole('button', { name: /Tambahkan jadwal kunjungan baru/ }).className).toMatch(/ui-action--secondary/)
 })

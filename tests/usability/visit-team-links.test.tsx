@@ -1,4 +1,5 @@
 import React from 'react'
+import { MemoryRouter } from 'react-router-dom'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 const state = vi.hoisted(() => ({ queries: new Map<string, any>(), activity: vi.fn() }))
@@ -19,5 +20,5 @@ test('team date control binds summary query and matching person/date/completed d
  expect(screen.getByText(/Kunjungan terbaru dihitung sejak.*hingga sekarang/)).toBeTruthy()
 })
 test('manager card exposes permitted team and individual visit drilldowns', () => {
- render(<GirardManagers />); expect(screen.getByRole('link', { name: 'Lihat jadwal tim Synthetic Manager' }).getAttribute('href')).toMatch(/manager=manager/); expect(screen.getByRole('link', { name: 'Synthetic Rep' }).getAttribute('href')).toMatch(/person=rep/)
+ render(<MemoryRouter><GirardManagers /></MemoryRouter>); expect(screen.getByRole('link', { name: 'Lihat jadwal tim Synthetic Manager' }).getAttribute('href')).toMatch(/manager=manager/); expect(screen.getByRole('link', { name: 'Synthetic Rep' }).getAttribute('href')).toMatch(/person=rep/)
 })

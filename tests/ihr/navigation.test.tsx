@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, useLocation } from 'react-router-dom'
@@ -36,9 +36,17 @@ test.each(['sales_person', 'sales_manager', 'po_admin'])('%s iHR switch offers o
   expect(screen.queryByText('Manajemen Pengguna')).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: 'HR' }))
   expect(screen.getByRole('button', { name: 'HR' }).getAttribute('aria-expanded')).toBe('true')
-  fireEvent.click(screen.getByRole('button', { name: role === 'po_admin' ? /Procurement/ : /Sales/ }))
+  const choices = screen.getByRole('group', { name: 'Pilihan modul' })
+  const moduleHome = within(choices).getByRole('link', { name: role === 'po_admin' ? /Procurement/ : /Sales/ })
+  const destination = role === 'po_admin' ? '/athel/po' : '/girard/schedule'
+  expect(moduleHome.getAttribute('href')).toBe(destination)
+  expect(within(choices).queryByRole('link', { name: role === 'po_admin' ? /Sales/ : /Procurement/ })).toBeNull()
+  fireEvent.click(moduleHome)
   expect(screen.getByText(role === 'po_admin' ? '/athel/po' : '/girard/schedule')).toBeTruthy()
-  fireEvent.click(screen.getByRole('button', { name: 'Menu pengguna' })); fireEvent.click(screen.getByRole('button', { name: 'Kembali ke modul' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Menu pengguna' }))
+  const accountHome = within(screen.getByRole('group', { name: 'Akun pengguna' })).getByRole('link', { name: 'Kembali ke modul' })
+  expect(accountHome.getAttribute('href')).toBe(destination)
+  fireEvent.click(accountHome)
   expect(screen.queryByText('/landing')).toBeNull()
 })
 test('executive retains existing user-management entry', () => { mocks.auth.profile.role = 'executive'; mount(<IHRNav />); expect(screen.getAllByRole('link', { name: 'Manajemen Pengguna' })[0].getAttribute('href')).toBe('/ihr/users') })
@@ -47,9 +55,12 @@ test.each(['sales_person', 'sales_manager'])('%s has an independent iHR module e
   expect(screen.queryByRole('link', { name: 'HR' })).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: 'Sales' }))
   expect(screen.getByRole('button', { name: 'Sales' }).getAttribute('aria-expanded')).toBe('true')
-  fireEvent.click(screen.getByRole('button', { name: /HR/ }))
+  const choices = screen.getByRole('group', { name: 'Pilihan modul' })
+  expect(within(choices).queryByRole('link', { name: /Procurement/ })).toBeNull()
+  const hr = within(choices).getByRole('link', { name: /HR/ })
+  expect(hr.getAttribute('href')).toBe('/ihr/leave?tab=mine')
+  fireEvent.click(hr)
   expect(screen.getByText('/ihr/leave')).toBeTruthy()
-  expect(screen.queryByRole('button', { name: /Procurement/ })).toBeNull()
 })
 test.each(['sales_person', 'sales_manager'])('%s iHR page navigation labels the default leave page Ajukan Cuti', role => {
   mocks.auth.profile.role = role; mount(<IHRNav />)
@@ -60,8 +71,11 @@ test('PO admin reaches leave through the HR module switch without sales access',
   mocks.auth.profile.role = 'po_admin'; mount(<AthelNav />)
   expect(screen.queryByRole('link', { name: 'Cuti' })).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: 'Procurement' }))
-  expect(screen.queryByRole('button', { name: /Sales/ })).toBeNull()
-  fireEvent.click(screen.getByRole('button', { name: /HR/ }))
+  const choices = screen.getByRole('group', { name: 'Pilihan modul' })
+  expect(within(choices).queryByRole('link', { name: /Sales/ })).toBeNull()
+  const hr = within(choices).getByRole('link', { name: /HR/ })
+  expect(hr.getAttribute('href')).toBe('/ihr/leave')
+  fireEvent.click(hr)
   expect(screen.getByText('/ihr/leave')).toBeTruthy()
 })
 const director: LeaveContext = { scopeVersion: '1', memberKind: 'director', timezone: null, balances: [], setup: { ready: false, blockers: [] }, capabilities: { request: false, approve: true, configure: false, adjust: false, readPrivate: false, manageAccess: false } }

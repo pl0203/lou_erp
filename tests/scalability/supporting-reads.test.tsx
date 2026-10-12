@@ -1,3 +1,4 @@
+import { MemoryRouter } from 'react-router-dom'
 import React from 'react'
 import { cleanup, render } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
@@ -9,7 +10,6 @@ vi.mock('../../src/components/TransactionRecovery', () => ({ default: () => null
 vi.mock('../../src/components/ActivePromotionsBanner', () => ({ default: () => null }))
 vi.mock('../../src/lib/orderTransactions', () => ({ createTransactionSender: () => Object.assign(vi.fn(), { hasUnresolved: () => false }), useTransactionSender: () => vi.fn() }))
 vi.mock('../../src/lib/useUnsavedChanges', () => ({ hasOrderItemChanges: () => false, useUnsavedChanges: () => ({ dialog: null, runWithoutPrompt: (fn: any) => fn(), confirmDiscard: (fn: any) => fn() }) }))
-vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn(), useSearchParams: () => [new URLSearchParams(), vi.fn()] }))
 vi.mock('../../src/lib/AuthContext', () => ({ useAuth: () => ({ user: { id: '00000000-0000-4000-8000-000000000002' }, profile: { id: '00000000-0000-4000-8000-000000000002', role: state.role, is_active: true }, loading: false }) }))
 vi.mock('@tanstack/react-query', () => ({ useQuery: (options: any) => { state.queries.set(options.queryKey[0], options); return { isLoading: true } }, useQueryClient: () => ({ invalidateQueries: vi.fn() }), useMutation: () => ({ mutate: vi.fn() }) }))
 vi.mock('../../src/lib/supabase', async () => { const { fixtureClient } = await import('./fixtures'); return { supabase: fixtureClient(() => state.fixture) } })
@@ -38,13 +38,13 @@ for (const [name, Page, key, expected] of [
   ['promotion history', Promotions, 'promotions', 1001],
   ['promotion product choices', Promotions, 'products', 1001],
 ] as const) test(`${name} remains complete beyond the API cap`, async () => {
-  render(<Page />)
+  render(<MemoryRouter><Page /></MemoryRouter>)
   const rows = await query(key)
   expect(rows).toHaveLength(expected)
   if (key === 'schedules' || key === 'my_visits') expect(rows.every((row: any) => row.customers?.id === row.outlet_id)).toBe(true)
 })
 test('manager cards use complete child assignments and team lists', async () => {
-  render(<GirardManagers />)
+  render(<MemoryRouter><GirardManagers /></MemoryRouter>)
   const [manager] = await query('managers_data')
   expect(manager.customers).toHaveLength(1001)
   expect(manager.team).toHaveLength(1001)
@@ -62,7 +62,7 @@ for (const key of ['manager_customers', 'manager_schedules']) test(`${key}: supe
   tables.customer_manager_assignments[0].manager_id = tables.users[1].id
   tables.customers = [tables.customers[0]]
   tables.sales_schedules = [tables.sales_schedules[0]]
-  render(<ManagerSchedule />)
+  render(<MemoryRouter><ManagerSchedule /></MemoryRouter>)
   const rows = await query(key)
   expect(rows).toHaveLength(1)
   expect(key === 'manager_customers' ? rows[0].id : rows[0].outlet_id).toBe(tables.customers[0].id)
@@ -75,7 +75,7 @@ test('manager cards attribute salesperson-owned customers to their current super
   tables.users = [first, second, sales]
   tables.customer_manager_assignments = tables.customer_manager_assignments.slice(0, 2)
   tables.customer_manager_assignments[1].manager_id = sales.id
-  render(<GirardManagers />)
+  render(<MemoryRouter><GirardManagers /></MemoryRouter>)
   let rows = await query('managers_data')
   expect(rows.find((row: any) => row.id === first.id).customers).toHaveLength(2)
   sales.manager_id = second.id
@@ -90,7 +90,7 @@ test('manager cards exclude inactive salesperson owners from the active supervis
   tables.users = [manager, sales]
   tables.customer_manager_assignments = [tables.customer_manager_assignments[0]]
   tables.customer_manager_assignments[0].manager_id = sales.id
-  render(<GirardManagers />)
+  render(<MemoryRouter><GirardManagers /></MemoryRouter>)
   const [row] = await query('managers_data')
   expect(row.customers).toHaveLength(0)
   expect(row.team).toHaveLength(0)

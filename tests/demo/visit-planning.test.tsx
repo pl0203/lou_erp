@@ -1,3 +1,4 @@
+import { MemoryRouter } from 'react-router-dom'
 import { expect, test, vi } from 'vitest'
 import { isEditable } from '../../src/pages/girard/ManagerSchedule'
 vi.mock('../../src/lib/supabase',()=>({supabase:{from:(table:string)=>mock.from(table)}}))
@@ -16,7 +17,7 @@ vi.mock('../../src/lib/visitPlanning',()=>({MAX_VISIT_NOTE_LENGTH:2000,fetchVisi
 import VisitRequestInbox,{VisitProposalForm} from '../../src/components/VisitRequestInbox'
 const clients:QueryClient[]=[]
 afterEach(()=>{cleanup();clients.splice(0).forEach(c=>c.clear());mock.send.mockReset();mock.role='sales_person'})
-function mount(node:React.ReactNode){const c=new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}});clients.push(c);render(<QueryClientProvider client={c}>{node}</QueryClientProvider>)}
+function mount(node:React.ReactNode){const c=new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}});clients.push(c);render(<QueryClientProvider client={c}><MemoryRouter>{node}</MemoryRouter></QueryClientProvider>)}
 test('salesperson proposes an own visit without an editable salesperson input',async()=>{
  mock.send.mockResolvedValue({id:'r',version:1});mount(<VisitProposalForm/>);await screen.findByText('Store');fireEvent.change(screen.getByLabelText('Toko'),{target:{value:'c'}});fireEvent.change(screen.getByLabelText('Tanggal kunjungan'),{target:{value:'2026-10-08'}});fireEvent.click(screen.getByRole('button',{name:'Ajukan kunjungan'}));
  await waitFor(()=>expect(mock.send).toHaveBeenCalledWith('propose_visit',{customer_id:'c',scheduled_date:'2026-10-08',notes:''}));expect(screen.queryByLabelText('Salesperson')).toBeNull()
@@ -29,7 +30,6 @@ test('manager decisions bind request version and disable repeat clicks',async()=
  mock.role='sales_manager';mock.requests=[{id:'r',requester_id:'sales',version:2,status:'pending',kind:'new',customer_id:'c',scheduled_date:'2026-10-08'}];mock.send.mockReturnValue(new Promise(()=>{}));mount(<VisitRequestInbox/>);await screen.findByText('Setujui');await screen.findByText('Pengaju: Assigned Salesperson');fireEvent.click(screen.getByText('Setujui'));fireEvent.click(screen.getByText('Setujui'));await waitFor(()=>expect(mock.send).toHaveBeenCalledTimes(1));expect(mock.send).toHaveBeenCalledWith('approve_request',{request_id:'r',expected_version:2})
 })
 
-vi.mock('react-router-dom',()=>({useNavigate:()=>()=>{},useSearchParams:()=>[new URLSearchParams(),vi.fn()]}))
 vi.mock('../../src/components/GirardNav',()=>({default:()=>null}))
 import ManagerSchedule from '../../src/pages/girard/ManagerSchedule'
 import {calendarDateKey} from '../../src/lib/calendarDate'

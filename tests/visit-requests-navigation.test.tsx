@@ -35,6 +35,7 @@ test.each((['athel', 'girard', 'ihr'] as const).flatMap(module => ['expanded', '
  const icon = selector.querySelector('svg')
  expect(icon).not.toBeNull()
  fireEvent.click(selector)
- const option = within(screen.getByRole('group', { name: 'Pilihan modul' })).getByRole('button', { name: new RegExp(label) })
+ const option = within(screen.getByRole('group', { name: 'Pilihan modul' })).getByRole('link', { name: new RegExp(label) })
+ expect(option.getAttribute('href')).toBe({ athel: '/athel/po', girard: '/girard/schedule', ihr: '/ihr/users' }[module])
  expect(icon?.innerHTML).toBe(option.querySelector('svg')?.innerHTML)
 })

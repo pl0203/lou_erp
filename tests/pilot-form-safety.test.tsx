@@ -199,3 +199,18 @@ test('new PO line fields stack on phones without narrowing SKU to one desktop co
 vi.mock('../src/lib/visitTransactions', () => ({ useVisitPlanningSender: () => Object.assign(state.send, { hasUnresolved: () => state.unresolved, reconcile: state.reconcile, acknowledgeRecovered: () => { state.unresolved = false } }) }))
 vi.mock('../src/components/StorePOContext', () => ({ default: () => null }))
 vi.mock('../src/lib/reads/usePagedRead', () => ({ usePagedRead: () => ({ data: { items: [], total: 0 }, page: 1, isPending: false, setPage: vi.fn() }) }))
+
+test('dirty-navigation Escape keeps editing and restores the invoking control', async () => {
+ const router = mount(); dirtyPO()
+ const trigger = screen.getByRole('link', { name: 'Dashboard' }); trigger.focus(); fireEvent.click(trigger)
+ const dialog = await screen.findByRole('dialog', { name: 'Buang perubahan?' })
+ expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Tetap mengedit' }))
+ fireEvent.keyDown(document.activeElement!, { key: 'Escape' })
+ await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+ expect(document.activeElement).toBe(trigger)
+ expect(router.state.location.pathname).toBe('/athel/po/new')
+ expect((screen.getByPlaceholderText('Nama produk') as HTMLInputElement).value).toBe('Barang A')
+ const dirty = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(dirty)
+ expect(dirty.defaultPrevented).toBe(true)
+ expect(dialog.classList.contains('ui-dialog')).toBe(true)
+})

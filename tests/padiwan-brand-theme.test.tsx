@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
@@ -16,6 +16,7 @@ import IHRNav from '../src/components/IHRNav'
 afterEach(() => { cleanup(); auth.profile = null })
 
 const css = readFileSync('src/index.css', 'utf8')
+const actionCss = existsSync('src/styles/ui.css') ? readFileSync('src/styles/ui.css', 'utf8') : ''
 function token(name: string) {
   const match = css.match(new RegExp(`--color-brand-${name}:\\s*(#[0-9a-fA-F]{6})`))
   expect(match, `brand ${name} token is defined`).not.toBeNull()
@@ -33,8 +34,14 @@ function contrast(a: string, b: string) {
 
 test('brand tokens use the approved navy, ochre and warm surfaces without overriding status palettes', () => {
   expect(token('primary')).toBe('#192D43')
+  expect(token('hover')).toBe('#243F5B')
   expect(token('accent')).toBe('#C69942')
+  expect(token('tint')).toBe('#F5EDD9')
   expect(token('canvas')).toBe('#F8F7F3')
+  expect(token('surface')).toBe('#FFFFFF')
+  expect(token('secondary')).toBe('#475569')
+  expect(token('control-border')).toBe('#64748B')
+  expect(token('divider')).toBe('#D1D5DB')
   expect(css).not.toMatch(/--color-(?:green|red|amber|yellow|orange|blue)-\d+\s*:/)
 })
 
@@ -44,6 +51,50 @@ test('brand text, primary button labels and focus colors meet WCAG AA contrast',
   }
   expect(contrast('#FFFFFF', token('hover'))).toBeGreaterThanOrEqual(4.5)
   expect(contrast(token('primary'), '#FFFFFF')).toBeGreaterThanOrEqual(3)
+  for (const bg of ['#FFFFFF', token('canvas'), token('tint')]) {
+    expect(contrast(token('secondary'), bg)).toBeGreaterThanOrEqual(4.5)
+    expect(contrast(token('control-border'), bg)).toBeGreaterThanOrEqual(3)
+  }
+})
+
+test('local Plus Jakarta Sans fonts include the licence and safe fallback loading', () => {
+  expect(css).toMatch(/--font-sans:\s*['"]Plus Jakarta Sans['"],\s*ui-sans-serif,\s*system-ui/)
+  const faces = [...css.matchAll(/@font-face\s*\{([^}]+)\}/g)].map(match => match[1])
+  expect(faces).toHaveLength(2)
+  for (const face of faces) {
+    expect(face).toMatch(/font-family:\s*['"]Plus Jakarta Sans['"]/)
+    expect(face).toMatch(/font-display:\s*swap/)
+    expect(face).toMatch(/font-weight:\s*200 800/)
+    const asset = face.match(/url\(['"]?(\/fonts\/plus-jakarta-sans\/[^'"\)]+)['"]?\)/)?.[1]
+    expect(asset, 'font loading uses a local asset').toBeTruthy()
+    expect(existsSync(`public${asset}`)).toBe(true)
+    expect([...readFileSync(`public${asset}`).subarray(0, 4)]).toEqual([0, 1, 0, 0])
+  }
+  expect(faces.some(face => /font-style:\s*normal/.test(face))).toBe(true)
+  expect(faces.some(face => /font-style:\s*italic/.test(face))).toBe(true)
+  expect(css).not.toMatch(/https?:\/\/[^\s;]*(?:fonts\.googleapis|fonts\.gstatic)/)
+  expect(existsSync('public/fonts/plus-jakarta-sans/OFL.txt')).toBe(true)
+  expect(readFileSync('public/fonts/plus-jakarta-sans/OFL.txt', 'utf8')).toContain('SIL OPEN FONT LICENSE Version 1.1')
+})
+
+test('shared actions have opt-in visible controls, hover, focus and pending styles', () => {
+  expect(css).toMatch(/@import\s+['"]\.\/styles\/ui\.css['"]/)
+  expect(css).toMatch(/--ui-space:\s*4px/)
+  expect(css).toMatch(/--ui-control-size:\s*44px/)
+  expect(css).toMatch(/--ui-radius-control:\s*10px/)
+  expect(css).toMatch(/--ui-radius-card:\s*14px/)
+  expect(css).toMatch(/--ui-text-body:\s*16px/)
+  expect(css).toMatch(/--ui-text-table:\s*14px/)
+  expect(css).toMatch(/--ui-text-support:\s*13px/)
+  expect(actionCss).toMatch(/min-height:\s*var\(--ui-control-size\)/)
+  expect(actionCss).toMatch(/min-width:\s*var\(--ui-control-size\)/)
+  expect(actionCss).toMatch(/\.ui-action--primary\s*\{[^}]*background-color:\s*var\(--color-brand-primary\)/s)
+  expect(actionCss).toMatch(/\.ui-action--secondary\s*\{[^}]*border-color:\s*var\(--color-brand-control-border\)/s)
+  expect(actionCss).toMatch(/\.ui-action--primary:hover[^}]*var\(--color-brand-hover\)/s)
+  expect(actionCss).toMatch(/\.ui-action:focus-visible\s*\{[^}]*outline:\s*2px solid var\(--color-brand-primary\)/s)
+  expect(actionCss).toMatch(/\.ui-action\[aria-busy=['"]true['"]\]/)
+  expect(actionCss).toMatch(/prefers-reduced-motion:\s*reduce/)
+  expect(actionCss).not.toMatch(/(?:^|\})\s*(?:button|a)(?:\s|\s*[,\{:])/)
 })
 
 test('login shows the Padiwan lockup and navy controls while validation remains a red error', () => {
@@ -56,11 +107,11 @@ test('login shows the Padiwan lockup and navy controls while validation remains 
   expect(screen.getByText('Masukkan email dan kata sandi Anda.').classList.contains('text-red-500')).toBe(true)
 })
 
-test('the module chooser has one Padiwan identity and retains all module actions', () => {
+test('the module chooser has one Padiwan identity and retains all module links', () => {
   auth.profile = { role: 'executive', full_name: 'Theme Reviewer' }
   render(<MemoryRouter><Landing /></MemoryRouter>)
   expect(screen.getAllByRole('img', { name: 'Padiwan' }).length).toBeGreaterThan(0)
-  for (const name of ['Procurement', 'Sales', 'HR']) expect(screen.getByRole('button', { name: new RegExp('^' + name + ' Manajemen') })).toBeTruthy()
+  for (const name of ['Procurement', 'Sales', 'HR']) expect(screen.getByRole('link', { name: new RegExp('^' + name + ' Manajemen') })).toBeTruthy()
 })
 
 test.each([

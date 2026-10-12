@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import BrandLogo from '../components/BrandLogo'
 import AppNavigation from '../components/AppNavigation'
+import { MainContent } from '../components/ui/MainContent'
 import NavigationIcon from '../components/NavigationIcon'
 import { moduleOptions } from '../components/navigationModules'
-import { useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
 
 const modules = [
@@ -31,7 +32,6 @@ const modules = [
 ]
 
 export default function Landing() {
-  const navigate = useNavigate()
   const { profile, signOut } = useAuth()
   const [signOutError, setSignOutError] = useState('')
   const handleSignOut = async () => {
@@ -43,7 +43,7 @@ export default function Landing() {
   return (
     <div className="min-h-screen bg-brand-canvas">
       <AppNavigation module="home" links={moduleOptions(profile?.role)} />
-      <main className="min-h-screen flex flex-col items-center justify-center px-4 py-8">
+      <MainContent className="min-h-screen flex flex-col items-center justify-center px-4 py-8">
       <div className="mb-10 text-center">
         <BrandLogo className="mx-auto mb-8" />
         <h1 className="text-3xl font-bold text-gray-900">
@@ -54,9 +54,9 @@ export default function Landing() {
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full max-w-2xl">
         {modules.map(mod => (
-          <button
+          <Link
             key={mod.key}
-            onClick={() => navigate(mod.path)}
+            to={mod.path}
             className="bg-white border border-gray-200 hover:border-brand-accent hover:shadow-md rounded-2xl p-8 text-left transition-all group"
           >
             <div
@@ -68,7 +68,7 @@ export default function Landing() {
               {mod.label}
             </h2>
             <p className="text-sm text-gray-500">{mod.description}</p>
-          </button>
+          </Link>
         ))}
       </div>
       
@@ -79,7 +79,7 @@ export default function Landing() {
         Keluar
       </button>
       {signOutError && <p role="alert">{signOutError}</p>}
-      </main>
+      </MainContent>
     </div>
   )
 }

@@ -103,6 +103,8 @@ test('dense cancellation history is legal, fully funded and preserves final card
   const invalid = structuredClone(f); invalid.requests.find(r => r.id === f.denseHistory.requestId).transitions[2] = 'cancellation_declined'
   expect(() => validateCapacityFixture(invalid)).toThrow('legal transition order')
 })
+// Six builds/validations of the 10,000-request / 60,000-day synthetic fixture are CPU-heavy.
+// This harness timeout is separate from the actual RPC/capacity thresholds, which remain unchanged.
 test('failed assertions retain the current captured result, phase/index and elapsed time before terminal failure', async () => {
   const seal = unitSeal(), generated = validateCapacityFixture(buildCapacityFixture()), workload = buildCapacityWorkloads().find(w => w.name === 'own-history-first-50')
   const records: any[] = []; let clock = 0, live = 0
@@ -130,7 +132,7 @@ test('failed assertions retain the current captured result, phase/index and elap
   expect(final.currentObservation.elapsedMs).toBe(10)
   expect(final.capacityAccepted).toBe(false)
   expect(live).toBe(0)
-})
+}, 10_000)
 test('adjustment commit requires a corresponding admin-audit increment and statistics retain minimum', () => {
   const w = buildCapacityWorkloads().find(w => w.name === 'mutation-adjustment'), id = w.expected.id
   const before = { account: { id, version: 2, allowance_minutes: 5400, used_minutes: 0, reserved_minutes: 0 }, ledgerRows: 1, adminEvents: 0 }

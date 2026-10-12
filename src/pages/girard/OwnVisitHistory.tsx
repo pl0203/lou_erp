@@ -1,7 +1,6 @@
 import { visitDateLabel } from '../../lib/visitUsability'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../lib/AuthContext'
 import { singleRelation } from '../../lib/relations'
 import { supabase } from '../../lib/supabase'
@@ -9,6 +8,17 @@ import { useVisitPlanningSender } from '../../lib/visitTransactions'
 import { useUnsavedChanges } from '../../lib/useUnsavedChanges'
 import TransactionRecovery from '../../components/TransactionRecovery'
 import GirardNav from '../../components/GirardNav'
+import PaginationControls from '../../components/PaginationControls'
+import { ActionLink } from '../../components/ui/ActionLink'
+import { Button } from '../../components/ui/Button'
+import { Field } from '../../components/ui/Field'
+import { FormActions } from '../../components/ui/FormActions'
+import { EmptyState, Notice } from '../../components/ui/Feedback'
+import { MainContent } from '../../components/ui/MainContent'
+import { PageHeader } from '../../components/ui/PageHeader'
+import { RecordList } from '../../components/ui/RecordList'
+import { SummaryList } from '../../components/ui/SummaryList'
+import { formatVisitTimestamp } from '../../lib/visitTimestamp'
 
 type NoteSnapshot = { id: string; notes: string | null; note_version: number }
 type DiscardConfirmation = (action: () => void, options?: { when?: boolean }) => void
@@ -25,9 +35,12 @@ export function VisitNoteEditor({ visit, onDirtyChange, confirmDiscard }: {
   onDirtyChange?: (id: string, dirty: boolean) => void
   confirmDiscard?: DiscardConfirmation
 }) {
+  const noteId = useId()
   const send = useVisitPlanningSender(`note:${visit.id}`)
   const client = useQueryClient()
   const [editing, setEditing] = useState(false)
+  // Sender recovery state is mutable; refresh controls without resetting the note draft.
+  const [, setRecoveryRevision] = useState(0)
   const [notes, setNotes] = useState(visit.notes ?? '')
   const [baseNotes, setBaseNotes] = useState(visit.notes ?? '')
   const [version, setVersion] = useState(visit.note_version)
@@ -63,30 +76,33 @@ export function VisitNoteEditor({ visit, onDirtyChange, confirmDiscard }: {
       }
     } finally { lock.current = false; setBusy(false) }
   }
-  return <section className="mt-4 space-y-2">
-    <TransactionRecovery send={send} onCommitted={saved} />
-    <h3 className="text-sm font-medium">Catatan kunjungan</h3>
+  return <section className="mt-4 space-y-3">
+    <TransactionRecovery send={send} onCommitted={saved} onAbandoned={() => setRecoveryRevision(revision => revision + 1)} />
     {editing ? <>
-      <textarea aria-label="Catatan kunjungan" className="w-full border rounded p-2" maxLength={2000} value={notes} disabled={busy || send.hasUnresolved()} onChange={e => setNotes(e.target.value)} />
-      <div className="flex gap-3">
-        <button disabled={busy || send.hasUnresolved() || conflict} onClick={() => save()}>Simpan catatan</button>
-        <button disabled={busy} onClick={() => confirmDiscard ? confirmDiscard(() => setEditing(false), { when: dirty }) : setEditing(false)}>Batal</button>
-      </div>
-      {conflict && <div className="border border-amber-300 rounded p-3 space-y-2">
-        <p>Catatan berubah sejak Anda mulai mengedit. Draf Anda tetap disimpan di formulir ini.</p>
-        {current ? <>
+      <Field id={noteId} label="Catatan kunjungan" hint="Maksimal 2.000 karakter.">
+        {control => <textarea {...control} maxLength={2000} value={notes} disabled={busy || send.hasUnresolved()} onChange={e => setNotes(e.target.value)} />}
+      </Field>
+      <FormActions>
+        <Button pending={busy} disabled={send.hasUnresolved() || conflict} onClick={() => save()}>Simpan catatan</Button>
+        <Button variant="secondary" disabled={busy} onClick={() => confirmDiscard ? confirmDiscard(() => setEditing(false), { when: dirty }) : setEditing(false)}>Batal</Button>
+      </FormActions>
+      {conflict && <Notice tone="warning" title="Catatan berubah sejak Anda mulai mengedit. Draf Anda tetap disimpan di formulir ini.">
+        {current ? <div className="space-y-3">
           <p className="font-medium">Catatan terbaru di server (versi {current.note_version})</p>
           <p className="whitespace-pre-wrap">{current.notes || 'Belum ada catatan.'}</p>
           <p>Bandingkan dengan draf Anda sebelum memilih catatan yang akan disimpan.</p>
-          <button disabled={busy || send.hasUnresolved()} onClick={() => save(current.note_version)}>Simpan draf pada versi terbaru</button>
-          <button className="ml-3" disabled={busy} onClick={() => { setNotes(current.notes ?? ''); setBaseNotes(current.notes ?? ''); setVersion(current.note_version); setConflict(false); setCurrent(null); setError('') }}>Gunakan catatan terbaru</button>
-        </> : readError ? <p role="alert">Catatan terbaru belum tersedia. <button disabled={busy} onClick={reloadCurrent}>Muat catatan terbaru</button></p> : <p role="status">Memuat catatan terbaru...</p>}
-      </div>}
+          <FormActions>
+            <Button pending={busy} disabled={send.hasUnresolved()} onClick={() => save(current.note_version)}>Simpan draf pada versi terbaru</Button>
+            <Button variant="secondary" disabled={busy} onClick={() => { setNotes(current.notes ?? ''); setBaseNotes(current.notes ?? ''); setVersion(current.note_version); setConflict(false); setCurrent(null); setError('') }}>Gunakan catatan terbaru</Button>
+          </FormActions>
+        </div> : readError ? <div className="space-y-3"><p>Catatan terbaru belum tersedia.</p><Button variant="secondary" disabled={busy} onClick={reloadCurrent}>Muat catatan terbaru</Button></div> : <p role="status">Memuat catatan terbaru...</p>}
+      </Notice>}
     </> : <>
-      <p className="whitespace-pre-wrap text-sm">{visit.notes || 'Belum ada catatan.'}</p>
-      <button className="text-sm text-brand-primary" onClick={() => { setNotes(visit.notes ?? ''); setBaseNotes(visit.notes ?? ''); setVersion(visit.note_version); setConflict(false); setCurrent(null); setError(''); setEditing(true) }}>Edit catatan</button>
+      <h3 className="font-medium">Catatan kunjungan</h3>
+      <p className="whitespace-pre-wrap">{visit.notes || 'Belum ada catatan.'}</p>
+      <Button variant="secondary" onClick={() => { setNotes(visit.notes ?? ''); setBaseNotes(visit.notes ?? ''); setVersion(visit.note_version); setConflict(false); setCurrent(null); setError(''); setEditing(true) }}>Edit catatan</Button>
     </>}
-    {error && <p role="alert">{error}</p>}
+    {error && !conflict && <Notice tone="error" title={error} />}
   </section>
 }
 export async function fetchOwnVisitHistory(actorId:string,page:number){
@@ -99,7 +115,6 @@ export default function OwnVisitHistory() {
 }
 function OwnVisitHistoryPage() {
   const { profile } = useAuth()
-  const navigate = useNavigate()
   const [page, setPage] = useState(1)
   const [dirtyNotes, setDirtyNotes] = useState<Record<string, boolean>>({})
   const noteDirtyChanged = useCallback((id: string, dirty: boolean) => {
@@ -110,26 +125,27 @@ function OwnVisitHistoryPage() {
   const query = useQuery({ queryKey: ['own_visit_history', profile?.id, profile?.role, page], queryFn: () => fetchOwnVisitHistory(profile!.id, page), enabled: !!profile?.id })
   return <div className="min-h-screen bg-brand-canvas">
     <GirardNav />{unsaved.dialog}
-    <main className="max-w-2xl mx-auto p-4 space-y-4">
-      <h1 className="text-xl font-semibold">Riwayat kunjungan saya</h1>
-      <p className="text-sm text-gray-700">Hanya kunjungan yang Anda lakukan sendiri. {profile?.role !== 'sales_person' && <a className="underline" href="/girard/schedule">Lihat jadwal dan kunjungan tim</a>}</p>
-      {query.isError ? <p role="alert">Riwayat belum tersedia. <button onClick={() => query.refetch()}>Coba lagi</button></p>
-        : query.isPending ? <p>Memuat riwayat...</p> : <>
-          {query.data?.items.length === 0 && <p>Belum ada kunjungan.</p>}
-          {query.data?.items.map(visit => <article key={visit.id} className="bg-white rounded-xl border p-5">
-            <h2 className="font-medium">{visit.customers?.name ?? 'Toko tidak tersedia'}</h2>
-            <p>Jadwal: {visit.sales_schedules?.scheduled_date ? visitDateLabel(visit.sales_schedules.scheduled_date) : 'Kunjungan historis'}</p>
-            <p>{new Date(visit.checked_in_at).toLocaleString('id-ID', { timeZone: 'UTC' })} UTC</p>
-            <p className="text-sm text-gray-500">Lokasi: {visit.lat === null || visit.lng === null ? 'Tidak dicatat' : `${visit.lat}, ${visit.lng}`}</p>
-            {visit.schedule_id && <button className="text-brand-primary" onClick={() => navigate(`/girard/visit/${visit.schedule_id}`)}>Lihat foto dan bukti kunjungan</button>}
-            <VisitNoteEditor visit={visit} onDirtyChange={noteDirtyChanged} confirmDiscard={unsaved.confirmDiscard} />
-          </article>)}
-          <div className="flex justify-between">
-            <button disabled={page === 1} onClick={() => changePage(page - 1)}>Sebelumnya</button>
-            <span>Halaman {page}</span>
-            <button disabled={page * 20 >= (query.data?.total ?? 0)} onClick={() => changePage(page + 1)}>Berikutnya</button>
-          </div>
+    <MainContent className="max-w-2xl mx-auto p-4 space-y-4" aria-busy={query.isPending}>
+      <PageHeader title="Riwayat kunjungan saya" description={<>Hanya kunjungan yang Anda lakukan sendiri. {profile?.role !== 'sales_person' && <ActionLink variant="secondary" to="/girard/schedule">Lihat jadwal dan kunjungan tim</ActionLink>}</>} />
+      {query.isError ? <Notice tone="error" title="Riwayat belum tersedia." actions={<Button variant="secondary" pending={query.isFetching} onClick={() => query.refetch()}>Coba lagi</Button>} />
+        : query.isPending ? <Notice tone="info" title="Memuat riwayat..." /> : <>
+          {query.data?.items.length === 0 && <EmptyState title="Belum ada kunjungan." />}
+          <RecordList label="Daftar kunjungan saya">
+            {query.data?.items.map(visit => <li key={visit.id}>
+              <article className="ui-section space-y-4">
+                <h2 className="ui-section__title">{visit.customers?.name ?? 'Toko tidak tersedia'}</h2>
+                <SummaryList items={[
+                  { label: 'Jadwal', value: visit.sales_schedules?.scheduled_date ? visitDateLabel(visit.sales_schedules.scheduled_date) : 'Kunjungan historis' },
+                  { label: 'Waktu check-in', value: formatVisitTimestamp(visit.checked_in_at) },
+                  { label: 'Lokasi', value: visit.lat === null || visit.lng === null ? 'Tidak dicatat' : `${visit.lat}, ${visit.lng}` },
+                ]} />
+                {visit.schedule_id && <ActionLink variant="secondary" to={`/girard/visit/${visit.schedule_id}`}>Lihat detail kunjungan</ActionLink>}
+                <VisitNoteEditor visit={visit} onDirtyChange={noteDirtyChanged} confirmDiscard={unsaved.confirmDiscard} />
+              </article>
+            </li>)}
+          </RecordList>
+          <PaginationControls page={page} total={query.data?.total ?? 0} pageSize={20} pending={query.isFetching} onPageChange={changePage} />
         </>}
-    </main>
+    </MainContent>
   </div>
 }

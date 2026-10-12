@@ -1,8 +1,8 @@
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import React from 'react'
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 const state = vi.hoisted(() => ({ total: '0.00', top: [] as any[], missing: false }))
-vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn(), useParams: () => ({ id: 'c' }) }))
 vi.mock('../../src/components/GirardNav', () => ({ default: () => null }))
 vi.mock('../../src/components/ActivePromotionsBanner', () => ({ default: () => null }))
 vi.mock('../../src/lib/supabase', () => ({ supabase: {} }))
@@ -23,12 +23,12 @@ beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-01T12:
 afterEach(() => { cleanup(); vi.useRealTimers() })
 for (const [name, Page] of [['daily schedule', DailySchedule], ['my visits', MyVisits], ['customer detail', CustomerDetail]] as const) {
   test(`${name} keeps a decimal zero as Rp 0 rather than treating its string as positive`, () => {
-    render(<Page />)
+    render(<MemoryRouter initialEntries={['/customer/c']}><Routes><Route path="/customer/:id" element={<Page />} /></Routes></MemoryRouter>)
     expect(screen.getByText('Rp 0')).toBeTruthy()
     expect(screen.queryByText('Rp 0.0M')).toBeNull()
   })
   test(`${name} marks an absent authorized statistic as unavailable after loading ends`, () => {
-    state.missing = true; render(<Page />)
+    state.missing = true; render(<MemoryRouter initialEntries={['/customer/c']}><Routes><Route path="/customer/:id" element={<Page />} /></Routes></MemoryRouter>)
     expect(screen.getAllByText('Tidak tersedia').length).toBeGreaterThan(0)
     expect(screen.queryByText('Rp 0')).toBeNull()
     expect(screen.queryByText('Memuat...')).toBeNull()
@@ -36,13 +36,13 @@ for (const [name, Page] of [['daily schedule', DailySchedule], ['my visits', MyV
 }
 test('customer item revenue preserves exact decimal labels beyond safe integer cents', () => {
   state.top = [{ name: 'Synthetic item', revenue: '90071992547409.91' }]
-  render(<CustomerDetail />)
+  render(<MemoryRouter initialEntries={['/customer/c']}><Routes><Route path="/customer/:id" element={<CustomerDetail />} /></Routes></MemoryRouter>)
   expect(screen.getByText('Rp 90.071.992.547.409,91')).toBeTruthy()
 })
 
 test('customer summary keeps full large amounts wrappable and stacks item revenue on phones', () => {
   state.top = [{ name: 'Synthetic item with a long label', revenue: '90071992547409.91' }]
-  render(<CustomerDetail />)
+  render(<MemoryRouter initialEntries={['/customer/c']}><Routes><Route path="/customer/:id" element={<CustomerDetail />} /></Routes></MemoryRouter>)
   const amount = screen.getByText('Rp 90.071.992.547.409,91')
   expect(amount.classList.contains('[overflow-wrap:anywhere]')).toBe(true)
   expect(amount.parentElement?.classList.contains('flex-col')).toBe(true)

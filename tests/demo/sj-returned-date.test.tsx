@@ -48,3 +48,20 @@ test('stale version feedback retains returned date and offers authoritative refr
  expect((screen.getByLabelText('Tanggal SJ kembali') as HTMLInputElement).value).toBe('2026-10-07')
  expect(screen.getByRole('button', { name: 'Muat ulang PO' })).toBeTruthy()
 })
+
+test('returned-date adapter uses the shared dialog and keeps pending Escape locked', async () => {
+ let finish!: (value: { id: string; po_id: string; updated_at: string }) => void
+ state.send.mockReturnValueOnce(new Promise(resolve => { finish = resolve })); mount()
+ const trigger = screen.getByRole('button', { name: 'Ubah tanggal SJ kembali' }); trigger.focus(); fireEvent.click(trigger)
+ const dialog = screen.getByRole('dialog')
+ expect(dialog.classList.contains('ui-dialog')).toBe(true)
+ fireEvent.change(screen.getByLabelText('Tanggal SJ kembali'), { target: { value: '2026-10-07' } })
+ fireEvent.click(screen.getByRole('button', { name: 'Simpan tanggal kembali' }))
+ await waitFor(() => expect((screen.getByRole('button', { name: 'Batal' }) as HTMLButtonElement).disabled).toBe(true))
+ fireEvent.keyDown(dialog, { key: 'Escape' })
+ expect(screen.getByRole('dialog')).toBe(dialog)
+ expect(state.send).toHaveBeenCalledTimes(1)
+ finish({ id: 'sj', po_id: 'po', updated_at: 'v2' })
+ await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+ expect(document.activeElement).toBe(trigger)
+})

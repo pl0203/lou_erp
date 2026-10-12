@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
@@ -21,8 +22,9 @@ test('request cards show the customer, local date, requester, type, note and Ind
  expect(await screen.findByRole('heading', { name: 'Toko Mawar' })).toBeTruthy()
  expect(screen.getByText('9 Oktober 2026')).toBeTruthy(); expect(await screen.findByText('Pengaju: Dewi Sales')).toBeTruthy()
  expect(screen.getByText('Kunjungan baru')).toBeTruthy(); expect(screen.getByText('Menunggu persetujuan')).toBeTruthy(); expect(screen.getByText('Follow up display')).toBeTruthy()
- expect(screen.getByRole('button', { name: 'Setujui' }).className).toMatch(/bg-brand-primary/)
- expect(screen.getByRole('button', { name: 'Tolak' }).className).toMatch(/border-red/)
+ expect(screen.getByRole('button', { name: 'Setujui' }).className).toMatch(/ui-action--primary/)
+ expect(screen.getByRole('button', { name: 'Tolak' }).className).toMatch(/ui-action--danger/)
+ const css = readFileSync('src/styles/ui.css', 'utf8'); expect(css).toMatch(/\.ui-action--primary\s*\{[^}]*background-color: var\(--color-brand-primary\)/); expect(css).toMatch(/\.ui-action--danger\s*\{[^}]*background-color: var\(--color-red-700\)/)
  expect(screen.queryByRole('button', { name: 'Berikutnya' })).toBeNull()
 })
 test.each([['approved', 'Disetujui'], ['rejected', 'Ditolak'], ['withdrawn', 'Ditarik']] as const)('completed %s requests are readable without decision controls', async (status, label) => {
@@ -30,7 +32,8 @@ test.each([['approved', 'Disetujui'], ['rejected', 'Ditolak'], ['withdrawn', 'Di
 })
 test('pagination is bounded with clearly styled disabled buttons', async () => {
  state.requests = [request()]; state.total = 21; mount()
- const previous = await screen.findByRole('button', { name: 'Sebelumnya' }); expect((previous as HTMLButtonElement).disabled).toBe(true); expect(previous.className).toMatch(/disabled:opacity/)
+ const previous = await screen.findByRole('button', { name: 'Sebelumnya' }); expect((previous as HTMLButtonElement).disabled).toBe(true); expect(previous.className).toMatch(/ui-action--secondary/)
+ expect(readFileSync('src/styles/ui.css', 'utf8')).toMatch(/\.ui-action:disabled:not\(\[aria-busy="true"\]\)\s*\{[^}]*color: var\(--color-brand-secondary\)/)
  fireEvent.click(screen.getByRole('button', { name: 'Berikutnya' })); await waitFor(() => expect(state.read).toHaveBeenLastCalledWith(2))
  expect((await screen.findByRole('button', { name: 'Berikutnya' }) as HTMLButtonElement).disabled).toBe(true)
  fireEvent.click(screen.getByRole('button', { name: 'Sebelumnya' })); await waitFor(() => expect(screen.getByText(/Halaman 1/)).toBeTruthy())
@@ -53,7 +56,7 @@ test('an unresolved transaction keeps request decisions blocked', async () => {
  state.unresolved = true; state.requests = [request()]; state.total = 1; mount(); const approve = await screen.findByRole('button', { name: 'Setujui' }); expect((approve as HTMLButtonElement).disabled).toBe(true); fireEvent.click(approve); expect(state.send).not.toHaveBeenCalled(); expect(screen.getByRole('button', { name: 'Pulihkan hasil penyimpanan' })).toBeTruthy()
 })
 test('read failure has an explicit retry button and cannot masquerade as an empty list', async () => {
- state.error = true; mount(); const alert = await screen.findByRole('alert'); expect(within(alert).getByRole('button', { name: 'Coba lagi' }).className).toMatch(/border/); expect(screen.queryByText('Belum ada permintaan kunjungan')).toBeNull()
+ state.error = true; mount(); const alert = await screen.findByRole('alert'); expect(within(alert).getByRole('button', { name: 'Coba lagi' }).className).toMatch(/ui-action--secondary/); expect(screen.queryByText('Belum ada permintaan kunjungan')).toBeNull()
  state.error = false; await act(async () => fireEvent.click(within(alert).getByRole('button', { name: 'Coba lagi' }))); expect(await screen.findByText('Belum ada permintaan kunjungan')).toBeTruthy()
 })
 test('version-conflict feedback stays visible without changing the request payload', async () => {

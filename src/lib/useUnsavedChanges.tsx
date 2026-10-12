@@ -1,26 +1,23 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { useBeforeUnload, useBlocker } from 'react-router-dom'
+import { Dialog } from '../components/ui/Dialog'
+import { Button } from '../components/ui/Button'
+import { FormActions } from '../components/ui/FormActions'
 
 const DEFAULT_MESSAGE = 'Perubahan yang belum disimpan akan hilang. Permintaan yang sudah dikirim tidak dibatalkan; pulihkan hasilnya jika belum terkonfirmasi.'
 
 function DiscardDialog({ message, onKeep, onDiscard }: { message: string; onKeep: () => void; onDiscard: () => void }) {
-  const dialog = useRef<HTMLDialogElement>(null)
+  const returnFocus = useRef(document.activeElement instanceof HTMLElement ? document.activeElement : null)
   const title = useId()
   const description = useId()
-  useEffect(() => {
-    const node = dialog.current
-    if (node?.showModal) node.showModal()
-    else node?.setAttribute('open', '')
-    return () => { if (node?.open) node.close?.() }
-  }, [])
-  return <dialog ref={dialog} aria-labelledby={title} aria-describedby={description} aria-modal="true" onCancel={event => { event.preventDefault(); onKeep() }} className="fixed inset-0 m-auto w-[calc(100%-2rem)] max-w-md rounded-xl border border-gray-200 bg-white p-6 shadow-xl backdrop:bg-black/40">
-    <h2 id={title} className="text-lg font-semibold text-gray-900">Buang perubahan?</h2>
-    <p id={description} className="mt-3 text-sm leading-6 text-gray-600">{message}</p>
-    <div className="mt-5 flex flex-wrap justify-end gap-3">
-      <button autoFocus type="button" onClick={onKeep} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700">Tetap mengedit</button>
-      <button type="button" onClick={onDiscard} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white">Buang perubahan</button>
-    </div>
-  </dialog>
+  return <Dialog labelledBy={title} aria-describedby={description} pending={false} onClose={onKeep} returnFocus={returnFocus.current} fallbackFocus={() => null}>
+    <h2 id={title} className="ui-dialog__title">Buang perubahan?</h2>
+    <p id={description} className="ui-dialog__description">{message}</p>
+    <FormActions className="mt-5">
+      <Button autoFocus variant="secondary" onClick={onKeep}>Tetap mengedit</Button>
+      <Button variant="danger" onClick={onDiscard}>Buang perubahan</Button>
+    </FormActions>
+  </Dialog>
 }
 
 /** In-memory navigation protection only. Never changes transaction recovery metadata. */

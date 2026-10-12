@@ -1,7 +1,7 @@
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import React from 'react'
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
-vi.mock('react-router-dom',()=>({useNavigate:()=>()=>{},useParams:()=>({id:'c'})}))
 vi.mock('../src/components/GirardNav',()=>({default:()=>null}))
 vi.mock('../src/lib/AuthContext',()=>({useAuth:()=>({profile:{id:'u',role:'sales_person'}})}))
 vi.mock('../src/lib/supabase',()=>({supabase:{}}))
@@ -9,7 +9,7 @@ vi.mock('@tanstack/react-query',()=>({useQuery:({queryKey}:any)=>queryKey[0]==='
 import Detail from '../src/pages/girard/GirardCustomerDetail'
 afterEach(cleanup)
 test('failed stats do not display fabricated zero revenue',()=>{
- render(<Detail/>);
+ render(<MemoryRouter initialEntries={['/customer/c']}><Routes><Route path="/customer/:id" element={<Detail/>} /></Routes></MemoryRouter>);
  expect(screen.queryByText('Rp 0')).toBeNull()
  expect(screen.getAllByText('Tidak tersedia').length).toBeGreaterThan(0)
 })

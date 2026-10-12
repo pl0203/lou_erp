@@ -1,3 +1,9 @@
+import { Button } from '../../components/ui/Button'
+import { MainContent } from '../../components/ui/MainContent'
+import { PageHeader } from '../../components/ui/PageHeader'
+import { Section } from '../../components/ui/Section'
+import { SummaryList } from '../../components/ui/SummaryList'
+import { EmptyState, Notice, StatusBadge } from '../../components/ui/Feedback'
 import StorePOContext from '../../components/StorePOContext'
 import { formatMoney, moneyToChartNumber } from '../../lib/reads/money'
 import { useState } from 'react'
@@ -56,16 +62,14 @@ function CustomerDetailView({ id, identity, enabled }: { id?: string; identity: 
     return (
       <div className="min-h-screen bg-brand-canvas">
         <GirardNav />
-        <div className="p-8 text-gray-400 text-sm text-center">Loading...</div>
+        <MainContent className="p-4 md:p-8"><Notice tone="info" title="Memuat pelanggan..." /></MainContent>
       </div>
     )
   }
 
   if (customerQuery.isError) {
     return <div className="min-h-screen bg-brand-canvas"><GirardNav />
-      <div role="alert" className="p-6 text-sm text-red-600"><p>Gagal memuat pelanggan.</p>
-        <button type="button" onClick={() => customerQuery.refetch()} className="mt-2 min-h-10 underline">Coba lagi</button>
-      </div>
+      <MainContent className="p-4 md:p-8"><Notice tone="error" title="Gagal memuat pelanggan." actions={<Button variant="secondary" onClick={() => customerQuery.refetch()}>Coba lagi</Button>} /></MainContent>
     </div>
   }
 
@@ -73,7 +77,7 @@ function CustomerDetailView({ id, identity, enabled }: { id?: string; identity: 
     return (
       <div className="min-h-screen bg-brand-canvas">
         <GirardNav />
-        <div className="p-8 text-red-500 text-sm">Pelanggan tidak ditemukan atau Anda tidak memiliki akses.</div>
+        <MainContent className="p-4 md:p-8"><EmptyState title="Pelanggan tidak ditemukan atau Anda tidak memiliki akses." /></MainContent>
       </div>
     )
   }
@@ -83,26 +87,12 @@ function CustomerDetailView({ id, identity, enabled }: { id?: string; identity: 
   return (
     <div className="min-h-screen bg-brand-canvas">
       <GirardNav />
+      <MainContent>
 
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex flex-wrap items-center gap-3">
-        <button
-          onClick={() => navigate(-1)}
-          className="text-gray-400 hover:text-gray-600 text-sm shrink-0"
-        >
-          ← Kembali
-        </button>
-        <div className="flex-1 min-w-0 basis-48">
-          <h1 className="text-xl font-semibold text-gray-900 break-words [overflow-wrap:anywhere]">{customer.name}</h1>
-          <p className="text-sm text-gray-500 mt-0.5 break-words [overflow-wrap:anywhere]">
-            {[customer.address, customer.city].filter(Boolean).join(', ') || 'No address'}
-          </p>
-        </div>
-        {overdue && (
-          <span className="text-xs bg-red-100 text-red-600 px-2.5 py-1 rounded-full font-medium shrink-0">
-            Kunjungan Terlambat
-          </span>
-        )}
+      <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 space-y-3">
+        <Button variant="secondary" onClick={() => navigate(-1)}>← Kembali</Button>
+        <PageHeader title={customer.name} description={[customer.address, customer.city].filter(Boolean).join(', ') || 'Alamat belum tersedia'} actions={overdue ? <StatusBadge tone="warning">Kunjungan Terlambat</StatusBadge> : undefined} />
       </div>
 
       {/* Tabs */}
@@ -113,18 +103,19 @@ function CustomerDetailView({ id, identity, enabled }: { id?: string; identity: 
             { key: 'visits',   label: 'Riwayat Kunjungan' },
             { key: 'orders',   label: 'Pesanan' },
           ].map(tab => (
-            <button
+            <Button
+              variant="secondary"
               key={tab.key}
               aria-pressed={activeTab === tab.key}
               onClick={() => setActiveTab(tab.key as typeof activeTab)}
-              className={`shrink-0 px-3 py-3 text-sm font-medium border-b-2 transition-colors ${
+              className={`shrink-0 px-3 py-3 text-base font-medium border-b-2 transition-colors ${
                 activeTab === tab.key
                   ? 'border-brand-accent text-brand-primary underline decoration-brand-primary underline-offset-4'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
+                  : 'border-transparent text-brand-secondary hover:text-gray-700'
               }`}
             >
               {tab.label}
-            </button>
+            </Button>
           ))}
         </div>
       </div>
@@ -136,54 +127,37 @@ function CustomerDetailView({ id, identity, enabled }: { id?: string; identity: 
           <>
             <NextScheduledVisit customerId={customer.id} />
             <StorePOContext customerId={customer.id} />
-            <div className="bg-white rounded-xl border border-gray-200 p-5">
-              <h2 className="text-base font-medium text-gray-900 mb-4">Contact</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm break-words [overflow-wrap:anywhere]">
-                <div>
-                  <p className="text-gray-400 text-xs mb-1">Nomor Telepon</p>
-                  <p className="text-gray-900">{customer.phone ?? '—'}</p>
-                </div>
-                <div>
-                  <p className="text-gray-400 text-xs mb-1">Email</p>
-                  <p className="text-gray-900">{customer.email ?? '—'}</p>
-                </div>
-                <div>
-                  <p className="text-gray-400 text-xs mb-1">Alamat</p>
-                  <p className="text-gray-900">
-                    {[customer.address, customer.city].filter(Boolean).join(', ') || '—'}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-gray-400 text-xs mb-1">Frekuensi Kunjungan</p>
-                  <p className="text-gray-900">{frequencyLabel(customer.visit_frequency_days)}</p>
-                </div>
-              </div>
-            </div>
+            <Section title="Contact"><SummaryList className="break-words [overflow-wrap:anywhere]" items={[
+              { label: 'Nomor Telepon', value: customer.phone ?? '—' },
+              { label: 'Email', value: customer.email ?? '—' },
+              { label: 'Alamat', value: [customer.address, customer.city].filter(Boolean).join(', ') || '—' },
+              { label: 'Frekuensi Kunjungan', value: frequencyLabel(customer.visit_frequency_days) },
+            ]} /></Section>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 text-center break-words [overflow-wrap:anywhere]">
-                <p className="text-xs text-gray-400 mb-1">Last Visit</p>
-                <p className={`text-sm font-semibold ${overdue ? 'text-red-500' : 'text-gray-900'}`}>
+                <p className="text-[13px] text-brand-secondary mb-1">Last Visit</p>
+                <p className={`text-base font-semibold ${overdue ? 'text-red-500' : 'text-gray-900'}`}>
                   {customer.last_visit_date
                     ? parseCalendarDate(customer.last_visit_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
                     : 'Never'}
                 </p>
               </div>
               <div className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 text-center break-words [overflow-wrap:anywhere]">
-                <p className="text-xs text-gray-400 mb-1">Pelanggan Sejak</p>
-                <p className="text-sm font-semibold text-gray-900">
+                <p className="text-[13px] text-brand-secondary mb-1">Pelanggan Sejak</p>
+                <p className="text-base font-semibold text-gray-900">
                   {statsError || (!statsLoading && !stats) ? 'Tidak tersedia' : statsLoading || !stats ? 'Memuat...' : stats.first_order_date
                     ? parseCalendarDate(stats.first_order_date).toLocaleDateString('id-ID', { month: 'short', year: 'numeric' })
                     : '—'}
                 </p>
               </div>
               <div className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 text-center break-words [overflow-wrap:anywhere]">
-                <p className="text-xs text-gray-400 mb-1">Pesanan (3bl)</p>
-                <p className="text-sm font-semibold text-gray-900">{statsError || (!statsLoading && !stats) ? 'Tidak tersedia' : statsLoading || !stats ? 'Memuat...' : stats.order_count_3mo}</p>
+                <p className="text-[13px] text-brand-secondary mb-1">Pesanan (3bl)</p>
+                <p className="text-base font-semibold text-gray-900">{statsError || (!statsLoading && !stats) ? 'Tidak tersedia' : statsLoading || !stats ? 'Memuat...' : stats.order_count_3mo}</p>
               </div>
               <div className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 text-center break-words [overflow-wrap:anywhere]">
-                <p className="text-xs text-gray-400 mb-1">Penjualan (3bl)</p>
-                <p className="text-sm font-semibold text-gray-900">
+                <p className="text-[13px] text-brand-secondary mb-1">Penjualan (3bl)</p>
+                <p className="text-base font-semibold text-gray-900">
                   {statsError || (!statsLoading && !stats) ? 'Tidak tersedia' : statsLoading || !stats ? 'Memuat...' : !/^0(?:\.0+)?$/.test(String(stats.total_sales_3mo))
                     ? `Rp ${formatMoney(String(stats.total_sales_3mo), 'full')}`
                     : 'Rp 0'}
@@ -192,16 +166,15 @@ function CustomerDetailView({ id, identity, enabled }: { id?: string; identity: 
             </div>
 
             {!statsError && stats?.top_items && stats.top_items.length > 0 && (
-              <div className="bg-white rounded-xl border border-gray-200 p-5">
-                <h2 className="text-base font-medium text-gray-900 mb-3">Barang Terlaris</h2>
+              <Section title="Barang Terlaris">
                 <div className="space-y-2">
                   {stats.top_items.map((item, i) => (
                     <div key={item.name} className="flex items-center gap-3">
-                      <span className="text-xs text-gray-300 font-medium w-4">#{i + 1}</span>
+                      <span className="text-[13px] text-brand-secondary font-medium w-4">#{i + 1}</span>
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between mb-1">
-                          <p className="text-sm text-gray-900 truncate">{item.name}</p>
-                          <p className="min-w-0 text-xs text-gray-500 break-words [overflow-wrap:anywhere]">
+                          <p className="text-base text-gray-900 truncate">{item.name}</p>
+                          <p className="min-w-0 text-[13px] text-brand-secondary break-words [overflow-wrap:anywhere]">
                             Rp {formatMoney(String(item.revenue), 'full')}
                           </p>
                         </div>
@@ -219,7 +192,7 @@ function CustomerDetailView({ id, identity, enabled }: { id?: string; identity: 
                     </div>
                   ))}
                 </div>
-              </div>
+              </Section>
             )}
           </>
         )}
@@ -227,6 +200,7 @@ function CustomerDetailView({ id, identity, enabled }: { id?: string; identity: 
         {activeTab === 'visits' && <CustomerVisitHistory customerId={customer.id} />}
         {activeTab === 'orders' && <CustomerOrderHistory customerId={customer.id} />}
       </div>
+      </MainContent>
     </div>
   )
 }

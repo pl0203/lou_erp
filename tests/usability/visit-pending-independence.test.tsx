@@ -1,3 +1,4 @@
+import { MemoryRouter } from 'react-router-dom'
 import React from 'react'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -9,7 +10,6 @@ vi.mock('../../src/components/ActivePromotionsBanner', () => ({ default: () => n
 vi.mock('../../src/components/VisitRequestInbox', () => ({ VisitProposalForm: () => null }))
 vi.mock('../../src/lib/CustomerStats', () => ({ fetchCustomerStatsBatch: async () => [] }))
 vi.mock('../../src/lib/useUnsavedChanges', () => ({ useUnsavedChanges: () => ({ dialog: null, confirmDiscard: (fn: () => void) => fn() }) }))
-vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }))
 vi.mock('../../src/lib/supabase', () => ({ supabase: { from: (table: string) => {
  const filters: Record<string, string> = {}
  const q: any = { select: () => q, eq: (key: string, value: string) => { filters[key] = value; return q }, in: () => q, order: () => q, range: () => q, abortSignal: () => q, then: (resolve: any) => {
@@ -22,7 +22,7 @@ vi.mock('../../src/lib/supabase', () => ({ supabase: { from: (table: string) => 
 import DailySchedule from '../../src/pages/girard/DailySchedule'
 import { calendarDateKey } from '../../src/lib/calendarDate'
 const clients: QueryClient[] = []
-function mount() { const client = new QueryClient({ defaultOptions: { queries: { retry: false } } }); clients.push(client); const view = render(<QueryClientProvider client={client}><DailySchedule /></QueryClientProvider>); return { client, rerender: () => view.rerender(<QueryClientProvider client={client}><DailySchedule /></QueryClientProvider>) } }
+function mount() { const client = new QueryClient({ defaultOptions: { queries: { retry: false } } }); clients.push(client); const view = render(<QueryClientProvider client={client}><MemoryRouter><DailySchedule /></MemoryRouter></QueryClientProvider>); return { client, rerender: () => view.rerender(<QueryClientProvider client={client}><MemoryRouter><DailySchedule /></MemoryRouter></QueryClientProvider>) } }
 beforeEach(() => { state.actor = 'owner'; state.scheduleError = false; state.pendingError = false; state.failDate = ''; state.calls = [] })
 afterEach(() => { cleanup(); clients.splice(0).forEach(client => client.clear()) })
 test('schedule read failure does not hide healthy server-backed pending confirmation after reload', async () => {
