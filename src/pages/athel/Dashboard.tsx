@@ -184,7 +184,7 @@ export default function AthelDashboard() {
               />
               <StatCard
                 label="Rata-rata Nilai PO"
-                value={data.metrics.totalPOCount > 0 ? formatCurrency(data.metrics.averagePOValue) : 'Belum tersedia'}
+                value={data.metrics.totalPOCount > 0 ? `Rp${formatMoney(data.metrics.averagePOValue, 'average')}` : 'Belum tersedia'}
                 helper={data.metrics.totalPOCount > 0 ? `Total nilai PO ÷ ${data.metrics.totalPOCount} PO pada filter ini` : 'Belum ada PO pada filter ini untuk menghitung rata-rata'}
               />
             </div>

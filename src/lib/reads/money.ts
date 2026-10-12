@@ -17,8 +17,8 @@ function rounded(value: string, fractionDigits: number, divisorDigits = 0) {
 }
 
 /** Formats the SQL decimal text directly. It never rounds through a JS number. */
-export function formatMoney(value: string, style: 'full' | 'millions'): string {
-  const result = rounded(value, style === 'full' ? 3 : 1, style === 'millions' ? 6 : 0)
+export function formatMoney(value: string, style: 'full' | 'millions' | 'average'): string {
+  const result = rounded(value, style === 'full' ? 3 : style === 'average' ? 2 : 1, style === 'millions' ? 6 : 0)
   const sign = result.negative ? '-' : ''
   if (style === 'millions') return `${sign}${result.whole}.${result.fraction}`
   const fraction = result.fraction.replace(/0+$/, '')

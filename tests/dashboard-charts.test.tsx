@@ -196,6 +196,26 @@ test('average PO denominator names all filtered orders and keeps completed count
   expect(screen.getByText('PO selesai: 167 dari 249 PO pada filter ini.')).toBeTruthy()
 })
 
+test('average PO uses currency precision without changing totals or the filtered denominator', () => {
+  state.data.metrics = { ...state.data.metrics, totalPOCount: 2, totalPOValue: '9010499.69', deliveredValue: '0.001', outstandingValue: '9010499.689', averagePOValue: '4505249.845' }
+  render(<Dashboard />)
+  const average = screen.getByText('Rata-rata Nilai PO').parentElement!
+  expect(within(average).getByText('Rp4.505.249,85')).toBeTruthy()
+  expect(within(average).getByText('Total nilai PO ÷ 2 PO pada filter ini')).toBeTruthy()
+  expect(screen.getByText('Total PO', { selector: 'p' }).parentElement!.children[1].textContent).toBe('Rp9.010.499,69')
+  expect(screen.getByText('Nilai Terkirim').parentElement!.children[1].textContent).toBe('Rp0,001')
+  expect(screen.getByText('Nilai Belum Terkirim').parentElement!.children[1].textContent).toBe('Rp9.010.499,689')
+})
+
+test('zero PO average remains an available zero when filtered orders exist', () => {
+  state.data.metrics = { ...state.data.metrics, totalPOValue: '0', outstandingValue: '0', averagePOValue: '0.00' }
+  render(<Dashboard />)
+  const average = screen.getByText('Rata-rata Nilai PO').parentElement!
+  expect(within(average).getByText('Rp0')).toBeTruthy()
+  expect(within(average).queryByText('Belum tersedia')).toBeNull()
+  expect(within(average).getByText('Total nilai PO ÷ 2 PO pada filter ini')).toBeTruthy()
+})
+
 test('customer branches remain distinct with an open keyboard-readable full-name table', async () => {
   const names = ['PT.CATURKARDUS INTERNASIONAL CABANG SURABAYA', 'PT.CATURKARDUS INTERNASIONAL CABANG MALANG', 'PT.CATURKARDUS INTERNASIONAL CABANG KEDIRI']
   state.data.customerShare = names.map(label => ({ label, value: '10000', color: '#2563eb' }))
