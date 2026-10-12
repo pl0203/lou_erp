@@ -1,6 +1,6 @@
 import React from 'react';
 import { expect, test, vi } from 'vitest';
-import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { mount, wire, customer, month, draftId, id } from './report-ui-harness';
 import { evidenceId, fixture, choose } from './evidence-ui-harness';
 import COMonthlyReport from '../../src/pages/athel/co/COMonthlyReport';
@@ -57,8 +57,18 @@ test.each(['newer','consumed'] as const)('observed finalized evidence with %s so
  fireEvent.click(screen.getByText('Selesaikan konflik lampiran'));fireEvent.click(await screen.findByText('Buang perubahan'));
  await waitFor(()=>expect(screen.queryByText('Coba buka hasil lampiran')).toBeNull());
  expect(f.commands.map(c=>c.p_operation)).toEqual(['register_evidence']);expect(localStorage.length).toBe(0);
- expect((screen.getByLabelText('Catatan laporan') as HTMLInputElement).value).toBe('Latest canonical note');
- if(mode==='newer')expect((screen.getByLabelText('Terjual Item 1') as HTMLInputElement).value).toBe('4');
+ if(mode==='newer'){
+  expect((screen.getByLabelText('Catatan laporan') as HTMLInputElement).value).toBe('Latest canonical note');
+  expect((screen.getByLabelText('Terjual Item 1') as HTMLInputElement).value).toBe('4');
+ }else{
+  const panel=screen.getByRole('region',{name:'Isian laporan pelanggan'});
+  const summary=panel.querySelector('dl');
+  expect(summary).toBeTruthy();
+  const label=within(summary as HTMLDListElement).getByText('Catatan laporan',{selector:'dt'});
+  expect(label.nextElementSibling?.tagName).toBe('DD');
+  expect(label.nextElementSibling?.textContent).toBe('Latest canonical note');
+  expect(panel.querySelector('input, textarea, fieldset')).toBeNull();
+ }
 });
 
 test.each(['authority','wrong sidecar','read failure','late owner','late denial'] as const)('canonical observation retains authority and lifetime checks: %s',async mode=>{
