@@ -1,17 +1,36 @@
-import { readFileSync } from 'node:fs'
+import {readFileSync} from 'node:fs'
 import ts from 'typescript'
-import { expect, test } from 'vitest'
-const source = readFileSync('supabase/functions/invite-user/index.ts', 'utf8').replace(/^import .*\n/gm, '')
-const js = ts.transpile(source, {target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None})
-for (const profile of [{role:'executive',is_active:false}, {role:'executive'}, {role:'sales_person',is_active:true}, null, {role:'executive',is_active:true,testError:true}, {role:'executive',is_active:true,invalidRole:true}, {role:'executive',is_active:true,allow:true}]) {
- test(`${profile?.allow ? "permits" : "denies"} caller ${JSON.stringify(profile)}`, async () => {
-  let invited=0
-  let handler: any
-  const client={auth:{getUser:async()=>({data:{user:{id:'a'}},error:null}),admin:{inviteUserByEmail:async()=>{invited++;return {data:{user:{id:'new'}},error:null}}}},from:()=>{const q:any={select:()=>q,eq:()=>q,single:async()=>({data:profile,error:profile?.testError ? new Error('read failure') : null}),insert:async()=>({error:null})};return q}}
-  new Function('serve','createClient','Deno',js)((h:any)=>{handler=h},()=>client,{env:{get:()=> 'test'}})
-  const response = await handler(new Request('https://example.test/invite',{method:'POST',headers:{Authorization:'Bearer fake','Content-Type':'application/json'},body:JSON.stringify({email:'test@example.test',full_name:'Test',role:profile?.invalidRole?'superadmin':'sales_person'})}))
-  expect(invited).toBe(profile?.allow ? 1 : 0)
-  if (profile?.allow) expect(response.status).toBe(200)
-  else expect(response.status).toBeGreaterThanOrEqual(400)
- })
+import {expect,test,vi} from 'vitest'
+const source=readFileSync('supabase/functions/invite-user/index.ts','utf8').replace(/^import .*\n/gm,'')
+const js=ts.transpile(source,{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None})
+const origin='https://erp.example.test'
+const managerId='00000000-0000-4000-8000-000000000001'
+function harness(options:any={}){
+ let handler:any
+ const invite=vi.fn(async()=>({data:{user:{id:'new-user'}},error:options.inviteError??null}))
+ const insert=vi.fn(async()=>({error:options.profileError??null}))
+ const events:string[]=[]
+ const client={auth:{getUser:async()=>({data:{user:{id:'caller'}},error:null}),admin:{inviteUserByEmail:async(...args:any[])=>{events.push('invite');return invite(...args)}}},from:()=>{
+ let field='';let value=''
+ const q:any={select:()=>q,eq:(f:string,v:string)=>{field=f;value=v;return q},ilike:()=>{field='email';return q},limit:()=>q,single:async()=>({data:options.caller===undefined?{role:'executive',is_active:true}:options.caller,error:options.callerError??null}),maybeSingle:async()=>{events.push(field==='email'?'duplicate-check':'manager-check');return {data:field==='email'?(options.existing??null):(value===managerId?(options.manager??{role:'sales_manager',is_active:true}):null),error:options.lookupError??null}},insert:async(row:any)=>{events.push('insert');return insert(row)}};return q}}
+ new Function('serve','createClient','Deno',js)((h:any)=>{handler=h},()=>client,{env:{get:(key:string)=>key==='INVITE_REDIRECT_ORIGINS'?(options.origins===undefined?origin:options.origins):'synthetic'}})
+ async function request(payload:any={},requestOrigin:any=origin){const headers:any={Authorization:'Bearer synthetic','Content-Type':'application/json'};if(requestOrigin!==null)headers.Origin=requestOrigin;const r=await handler(new Request('https://edge.example.test/invite',{method:'POST',headers,body:JSON.stringify({email:'admin@example.test',full_name:'Admin',role:'po_admin',...payload})}));return {status:r.status,body:await r.json()}}
+ return {request,invite,insert,events}
 }
+for(const caller of [{role:'executive',is_active:false},{role:'executive'},{role:'sales_person',is_active:true},{role:'co_admin',is_active:true},{role:'po_admin',is_active:true},null])test(`denies unauthorized caller ${JSON.stringify(caller)}`,async()=>{const h=harness({caller});expect((await h.request()).status).toBeGreaterThanOrEqual(400);expect(h.invite).not.toHaveBeenCalled()})
+test('denies caller read failure',async()=>{const h=harness({callerError:{message:'fail'}});await h.request();expect(h.invite).not.toHaveBeenCalled()})
+test('rejects unknown role before invitation',async()=>{const h=harness();expect((await h.request({role:'superadmin'})).status).toBe(400);expect(h.invite).not.toHaveBeenCalled()})
+test('normalizes payload and succeeds only after profile insert',async()=>{const h=harness();const r=await h.request({email:' Admin@Example.Test ',full_name:' Admin '});expect(r.status).toBe(200);expect(h.invite).toHaveBeenCalledWith('admin@example.test',{redirectTo:origin+'/reset-password'});expect(h.insert).toHaveBeenCalledWith(expect.objectContaining({email:'admin@example.test',full_name:'Admin',role:'po_admin'}));expect(h.events).toEqual(['duplicate-check','invite','insert'])})
+for(const payload of [{email:'invalid'}, {full_name:' '}, {full_name:{}}, {phone:[]}, {birth_date:'2026-02-30'}, {birth_date:'2026-1-01'}, {manager_id:'not-uuid'}])test(`rejects malformed payload before email ${JSON.stringify(payload)}`,async()=>{const h=harness();expect((await h.request(payload)).status).toBe(400);expect(h.invite).not.toHaveBeenCalled()})
+for(const requestOrigin of [null,'null','https://evil.example.test','https://erp.example.test/path','https://u:p@erp.example.test','http://erp.example.test'])test(`rejects missing or untrusted Origin ${requestOrigin}`,async()=>{const h=harness();expect((await h.request({},requestOrigin)).status).toBeGreaterThanOrEqual(400);expect(h.invite).not.toHaveBeenCalled()})
+for(const origins of ['', 'https://*.example.test','https://erp.example.test/path'])test(`fails closed for missing/invalid redirect configuration ${origins}`,async()=>{const h=harness({origins});expect((await h.request()).status).toBe(503);expect(h.invite).not.toHaveBeenCalled()})
+test('validates active manager before inviting',async()=>{const h=harness();expect((await h.request({role:'sales_person',manager_id:managerId})).status).toBe(200);expect(h.events.indexOf('manager-check')).toBeLessThan(h.events.indexOf('invite'))})
+for(const manager of [{role:'sales_manager',is_active:false},{role:'sales_person',is_active:true},{role:'co_admin',is_active:true},null])test(`rejects unsuitable manager ${JSON.stringify(manager)}`,async()=>{const h=harness({manager:manager??false});expect((await h.request({manager_id:managerId})).status).toBe(400);expect(h.invite).not.toHaveBeenCalled()})
+test('lookup errors fail before invitation',async()=>{const h=harness({lookupError:{message:'offline'}});expect((await h.request()).status).toBeGreaterThanOrEqual(400);expect(h.invite).not.toHaveBeenCalled()})
+test('existing profile is a conflict without resend or upsert',async()=>{const h=harness({existing:{id:'existing'}});expect((await h.request()).status).toBe(409);expect(h.invite).not.toHaveBeenCalled();expect(h.insert).not.toHaveBeenCalled()})
+test('partial invitation outcome clearly requires reconciliation',async()=>{const h=harness({profileError:{message:'FK constraint'}});const r=await h.request();expect(r.status).toBe(502);expect(r.body).toMatchObject({code:'INVITE_PROFILE_FAILED',may_have_sent:true,user_id:'new-user'});expect(r.body.error).toMatch(/Do not resend/);expect(h.events).toEqual(['duplicate-check','invite','insert'])})
+for(const inviteError of [{name:'AuthRetryableFetchError',status:0,message:'network'}, {name:'AuthApiError',status:503,message:'upstream unavailable'}, {name:'AuthUnknownError',message:'bad response'}])test(`provider uncertainty is never classified as retry-safe ${inviteError.name}`,async()=>{const h=harness({inviteError});const r=await h.request();expect(r.status).toBe(502);expect(r.body).toMatchObject({code:'INVITE_OUTCOME_UNKNOWN',may_have_sent:true});expect(h.insert).not.toHaveBeenCalled()})
+test('PostgREST pattern alias email is rejected rather than matching another profile',async()=>{const h=harness();expect((await h.request({email:'a*b@example.test'})).status).toBe(400);expect(h.invite).not.toHaveBeenCalled()})
+for(const role of ['executive','po_admin','co_admin','sales_head','sales_manager','sales_person'])test(`preserves valid role ${role}`,async()=>{const h=harness();expect((await h.request({role})).status).toBe(200);expect(h.insert).toHaveBeenCalledWith(expect.objectContaining({role}))})
+test('concrete provider rejection does not create a profile',async()=>{const h=harness({inviteError:{name:'AuthApiError',status:422,message:'User already registered'}});const r=await h.request();expect(r.status).toBe(422);expect(r.body.code).toBe('INVITE_REJECTED');expect(h.insert).not.toHaveBeenCalled()})
+test('provider timeout remains uncertain even when represented as an API error',async()=>{const h=harness({inviteError:{name:'AuthApiError',status:408,message:'Request timeout'}});const r=await h.request();expect(r.status).toBe(502);expect(r.body.may_have_sent).toBe(true)})

@@ -1,19 +1,15 @@
-import { useQuery } from '@tanstack/react-query'
-import { supabase } from '../../lib/supabase'
+import { MainContent } from '../../components/ui/MainContent'
+import { PageHeader } from '../../components/ui/PageHeader'
+import { Button } from '../../components/ui/Button'
+import { EmptyState, Notice, StatusBadge } from '../../components/ui/Feedback'
+import { RecordList } from '../../components/ui/RecordList'
+import { SummaryList } from '../../components/ui/SummaryList'
 import { useAuth } from '../../lib/AuthContext'
+import { usePagedRead } from '../../lib/reads/usePagedRead'
+import { fetchManagerCustomerPage } from '../../lib/reads/reports'
+import type { ManagerCustomer as CustomerWithStats } from '../../lib/reads/contracts'
+import PaginationControls from '../../components/PaginationControls'
 import GirardNav from '../../components/GirardNav'
-
-type CustomerWithStats = {
-  id: string
-  name: string
-  address: string | null
-  city: string | null
-  last_visit_date: string | null
-  visit_frequency_days: number
-  visits_this_period: number
-  target_visits: number
-  on_track: boolean
-}
 
 const FREQUENCY_OPTIONS = [
   { days: 3,  label: '2x per minggu' },
@@ -27,95 +23,48 @@ function frequencyLabel(days: number): string {
   return FREQUENCY_OPTIONS.find(f => f.days === days)?.label ?? `Setiap ${days} hari`
 }
 
-function calcTargetVisits(frequencyDays: number, periodDays: number): number {
-  return Math.ceil(periodDays / frequencyDays)
-}
-
-function isOverdue(lastVisit: string | null, frequencyDays: number): boolean {
+function isOverdue(lastVisit: string | null, frequencyDays: number, referenceInstant: string): boolean {
   if (!lastVisit) return true
-  const diff = (Date.now() - new Date(lastVisit).getTime()) / (1000 * 60 * 60 * 24)
+  const diff = (new Date(referenceInstant).getTime() - new Date(lastVisit).getTime()) / (1000 * 60 * 60 * 24)
   return diff > frequencyDays
 }
 
-async function fetchMyCustomersWithStats(managerId: string): Promise<CustomerWithStats[]> {
-  const { data: assignments, error: aError } = await supabase
-    .from('customer_manager_assignments')
-    .select('customer_id')
-    .eq('manager_id', managerId)
-  if (aError) throw aError
-  if (!assignments || assignments.length === 0) return []
-
-  const customerIds = assignments.map(a => a.customer_id)
-
-  const { data: customers, error: cError } = await supabase
-    .from('customers')
-    .select('id, name, address, city, last_visit_date, visit_frequency_days')
-    .in('id', customerIds)
-    .order('name')
-  if (cError) throw cError
-
-  const thirtyDaysAgo = new Date()
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
-
-  const { data: visits, error: vError } = await supabase
-    .from('outlet_visits')
-    .select('outlet_id, checked_in_at')
-    .in('outlet_id', customerIds)
-    .gte('checked_in_at', thirtyDaysAgo.toISOString())
-  if (vError) throw vError
-
-  const visitCounts: Record<string, number> = {}
-  for (const v of visits ?? []) {
-    visitCounts[v.outlet_id] = (visitCounts[v.outlet_id] ?? 0) + 1
-  }
-
-  return (customers ?? []).map(c => {
-    const target = calcTargetVisits(c.visit_frequency_days, 30)
-    const actual = visitCounts[c.id] ?? 0
-    return {
-      ...c,
-      visits_this_period: actual,
-      target_visits: target,
-      on_track: actual >= target,
-    }
-  })
-}
-
-function CustomerTable({ customers }: { customers: CustomerWithStats[] }) {
+function CustomerTable({ customers, referenceInstant }: { customers: CustomerWithStats[]; referenceInstant: string }) {
   return (
-    <div className="hidden md:block bg-white rounded-xl border border-gray-200 overflow-hidden">
-      <table className="w-full text-sm">
+    <div role="region" aria-label="Tabel pelanggan saya" tabIndex={0} className="hidden md:block bg-white rounded-[14px] border border-brand-divider overflow-x-auto">
+      <p className="px-4 py-2 text-[13px] text-brand-secondary">Geser tabel untuk melihat semua kolom.</p>
+      <table className="w-full min-w-[920px] text-sm">
         <thead>
-          <tr className="bg-gray-50 border-b border-gray-100">
-            <th className="text-left px-5 py-3 font-medium text-gray-500">Pelanggan</th>
-            <th className="text-left px-5 py-3 font-medium text-gray-500">Lokasi</th>
-            <th className="text-left px-5 py-3 font-medium text-gray-500">Frekuensi Kunjungan</th>
-            <th className="text-center px-5 py-3 font-medium text-gray-500">Target (30hr)</th>
-            <th className="text-center px-5 py-3 font-medium text-gray-500">Aktual (30hr)</th>
-            <th className="text-left px-5 py-3 font-medium text-gray-500">Kunjungan Terakhir</th>
-            <th className="text-center px-5 py-3 font-medium text-gray-500">Status</th>
+          <tr className="bg-gray-50 border-b border-brand-divider">
+            <th className="text-left px-5 py-3 font-medium text-brand-secondary">Pelanggan</th>
+            <th className="text-left px-5 py-3 font-medium text-brand-secondary">Lokasi</th>
+            <th className="text-left px-5 py-3 font-medium text-brand-secondary">Frekuensi Kunjungan</th>
+            <th className="text-center px-5 py-3 font-medium text-brand-secondary">Target (30hr)</th>
+            <th className="text-center px-5 py-3 font-medium text-brand-secondary">Aktual (30hr)</th>
+            <th className="text-left px-5 py-3 font-medium text-brand-secondary">Kunjungan Terakhir</th>
+            <th className="text-center px-5 py-3 font-medium text-brand-secondary">Status</th>
           </tr>
         </thead>
         <tbody>
           {customers.map(c => {
-            const overdue = isOverdue(c.last_visit_date, c.visit_frequency_days)
+            const overdue = isOverdue(c.last_visit_date, c.visit_frequency_days, referenceInstant)
             return (
               <tr key={c.id} className="border-b border-gray-50 hover:bg-gray-50">
-                <td className="px-5 py-4 font-medium text-gray-900">{c.name}</td>
-                <td className="px-5 py-4 text-gray-500 text-xs">
+                <td className="px-5 py-4 font-medium text-brand-primary [overflow-wrap:anywhere]">{c.name}</td>
+                <td className="px-5 py-4 text-brand-secondary">
                   {[c.address, c.city].filter(Boolean).join(', ') || '—'}
                 </td>
-                <td className="px-5 py-4 text-gray-600 text-xs">
+                <td className="px-5 py-4 text-brand-secondary">
                   {frequencyLabel(c.visit_frequency_days)}
                 </td>
-                <td className="px-5 py-4 text-center text-gray-700">{c.target_visits}</td>
+                <td className="px-5 py-4 text-center text-brand-secondary">{c.target_visits}</td>
                 <td className="px-5 py-4 text-center">
-                  <span className={`font-medium ${c.on_track ? 'text-green-600' : 'text-red-500'}`}>
+                  <span className={`font-medium ${c.on_track ? 'text-green-700' : 'text-red-700'}`}>
                     {c.visits_this_period}
                   </span>
                 </td>
                 <td className="px-5 py-4">
-                  <span className={`text-xs ${overdue ? 'text-red-500 font-medium' : 'text-gray-600'}`}>
+                  <span className={`text-[13px] ${overdue ? 'text-red-700 font-medium' : 'text-brand-secondary'}`}>
                     {c.last_visit_date
                       ? new Date(c.last_visit_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
                       : 'Belum pernah'}
@@ -123,11 +72,9 @@ function CustomerTable({ customers }: { customers: CustomerWithStats[] }) {
                   </span>
                 </td>
                 <td className="px-5 py-4 text-center">
-                  <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                    c.on_track ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'
-                  }`}>
+                  <StatusBadge tone={c.on_track ? 'success' : 'error'}>
                     {c.on_track ? 'Sesuai target' : 'Tertinggal'}
-                  </span>
+                  </StatusBadge>
                 </td>
               </tr>
             )
@@ -138,50 +85,29 @@ function CustomerTable({ customers }: { customers: CustomerWithStats[] }) {
   )
 }
 
-function CustomerCards({ customers }: { customers: CustomerWithStats[] }) {
+function CustomerCards({ customers, referenceInstant }: { customers: CustomerWithStats[]; referenceInstant: string }) {
   return (
-    <div className="md:hidden space-y-3">
+    <RecordList label="Pelanggan saya" className="md:hidden">
       {customers.map(c => {
-        const overdue = isOverdue(c.last_visit_date, c.visit_frequency_days)
+        const overdue = isOverdue(c.last_visit_date, c.visit_frequency_days, referenceInstant)
         return (
-          <div key={c.id} className="bg-white rounded-xl border border-gray-200 p-4">
-            <div className="flex items-start justify-between mb-3">
+          <li key={c.id} className="bg-white rounded-[14px] border border-brand-divider p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-gray-900 text-sm">{c.name}</p>
-                {c.city && <p className="text-xs text-gray-400 mt-0.5">{c.city}</p>}
+                <p className="font-semibold text-brand-primary [overflow-wrap:anywhere]">{c.name}</p>
+                {c.city && <p className="text-[13px] text-brand-secondary mt-0.5">{c.city}</p>}
               </div>
-              <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium ml-3 shrink-0 ${
-                c.on_track ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'
-              }`}>
+              <StatusBadge tone={c.on_track ? 'success' : 'error'}>
                 {c.on_track ? 'Sesuai target' : 'Tertinggal'}
-              </span>
+              </StatusBadge>
             </div>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div>
-                <p className="text-gray-400">Frekuensi</p>
-                <p className="text-gray-700 mt-0.5">{frequencyLabel(c.visit_frequency_days)}</p>
-              </div>
-              <div>
-                <p className="text-gray-400">Kunjungan Terakhir</p>
-                <p className={`mt-0.5 ${overdue ? 'text-red-500 font-medium' : 'text-gray-700'}`}>
-                  {c.last_visit_date
-                    ? new Date(c.last_visit_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
-                    : 'Belum pernah'}
-                  {overdue && ' ⚠'}
-                </p>
-              </div>
-              <div>
-                <p className="text-gray-400">Target (30hr)</p>
-                <p className="text-gray-700 mt-0.5">{c.target_visits} kunjungan</p>
-              </div>
-              <div>
-                <p className="text-gray-400">Aktual (30hr)</p>
-                <p className={`font-semibold mt-0.5 ${c.on_track ? 'text-green-600' : 'text-red-500'}`}>
-                  {c.visits_this_period} kunjungan
-                </p>
-              </div>
-            </div>
-            <div className="mt-3 pt-3 border-t border-gray-100">
+            <SummaryList items={[
+              { label: 'Frekuensi', value: frequencyLabel(c.visit_frequency_days) },
+              { label: 'Kunjungan Terakhir', value: <span className={overdue ? 'font-medium text-red-700' : undefined}>{c.last_visit_date ? new Date(c.last_visit_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : 'Belum pernah'}{overdue && ' ⚠'}</span> },
+              { label: 'Target (30hr)', value: `${c.target_visits} kunjungan` },
+              { label: 'Aktual (30hr)', value: <span className={c.on_track ? 'text-green-700' : 'text-red-700'}>{c.visits_this_period} kunjungan</span> },
+            ]} />
+            <div className="mt-3 pt-3 border-t border-brand-divider">
               <div className="flex items-center gap-2">
                 <div className="flex-1 bg-gray-100 rounded-full h-1.5">
                   <div
@@ -195,17 +121,17 @@ function CustomerCards({ customers }: { customers: CustomerWithStats[] }) {
                     }}
                   />
                 </div>
-                <span className="text-xs text-gray-400">
+                <span className="text-[13px] text-brand-secondary">
                   {c.target_visits > 0
                     ? Math.round((c.visits_this_period / c.target_visits) * 100)
                     : 0}%
                 </span>
               </div>
             </div>
-          </div>
+          </li>
         )
       })}
-    </div>
+    </RecordList>
   )
 }
 
@@ -214,109 +140,26 @@ function SummaryCards({ total, onTrack, overdue }: {
   onTrack: number
   overdue: number
 }) {
-  return (
-    <div className="grid grid-cols-3 gap-4">
-      <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-        <p className="text-xs text-gray-400 mb-1">Total Pelanggan</p>
-        <p className="text-2xl font-bold text-gray-900">{total}</p>
-      </div>
-      <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-        <p className="text-xs text-gray-400 mb-1">Sesuai Target</p>
-        <p className="text-2xl font-bold text-green-600">{onTrack}</p>
-      </div>
-      <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-        <p className="text-xs text-gray-400 mb-1">Kunjungan Terlambat</p>
-        <p className="text-2xl font-bold text-red-500">{overdue}</p>
-      </div>
-    </div>
-  )
+  return <section aria-label="Ringkasan pelanggan" className="rounded-[14px] border border-brand-divider bg-white p-4">
+    <SummaryList items={[
+      { label: 'Total Pelanggan', value: total },
+      { label: 'Sesuai Target', value: <span className="text-green-700">{onTrack}</span> },
+      { label: 'Kunjungan Terlambat', value: <span className="text-red-700">{overdue}</span> },
+    ]} />
+  </section>
 }
 
 export default function ManagerCustomers() {
-  const { profile } = useAuth()
-
-  const { data: customers, isLoading } = useQuery({
-    queryKey: ['my_customers', profile?.id],
-    queryFn: () => fetchMyCustomersWithStats(profile!.id),
-    enabled: !!profile?.id,
-  })
-
-  const onTrack = customers?.filter(c => c.on_track).length ?? 0
-  const total   = customers?.length ?? 0
-  const overdue = customers?.filter(c => isOverdue(c.last_visit_date, c.visit_frequency_days)).length ?? 0
-
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <GirardNav />
-
-      <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5">
-        <h1 className="text-xl font-semibold text-gray-900">Pelanggan Saya</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Kepatuhan target kunjungan — 30 hari terakhir</p>
-      </div>
-
-      <div className="px-4 md:px-8 py-6 space-y-6">
-        {!isLoading && total > 0 && (
-          <SummaryCards total={total} onTrack={onTrack} overdue={overdue} />
-        )}
-        {isLoading && (
-          <div className="text-center text-gray-400 text-sm py-24">Memuat data pelanggan...</div>
-        )}
-        {!isLoading && total === 0 && (
-          <div className="text-center py-24">
-            <p className="text-gray-400 text-sm">Belum ada pelanggan yang ditugaskan.</p>
-            <p className="text-gray-300 text-xs mt-1">Hubungi kepala penjualan untuk menugaskan pelanggan.</p>
-          </div>
-        )}
-        {!isLoading && total > 0 && customers && (
-          <>
-            <CustomerTable customers={customers} />
-            <CustomerCards customers={customers} />
-          </>
-        )}
-      </div>
-    </div>
-  )
+  return <div className="min-h-screen bg-brand-canvas"><GirardNav /><MainContent><PageHeader title="Pelanggan Saya" description="Kepatuhan target kunjungan · 30 hari terakhir" className="bg-white border-b border-brand-divider px-4 py-5 md:px-8" /><ManagerCustomersContent /></MainContent></div>
 }
-
-// ─── Named export for Dashboard ───────────────────────────────────────────────
 export function ManagerCustomersContent() {
   const { profile } = useAuth()
-
-  const { data: customers, isLoading } = useQuery({
-    queryKey: ['my_customers', profile?.id],
-    queryFn: () => fetchMyCustomersWithStats(profile!.id),
-    enabled: !!profile?.id,
-  })
-
-  const onTrack = customers?.filter(c => c.on_track).length ?? 0
-  const total   = customers?.length ?? 0
-  const overdue = customers?.filter(c => isOverdue(c.last_visit_date, c.visit_frequency_days)).length ?? 0
-
-  return (
-    <div className="px-4 md:px-8 py-6 space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold text-gray-900">Pelanggan Saya</h2>
-        <p className="text-sm text-gray-500 mt-0.5">Kepatuhan target kunjungan — 30 hari terakhir</p>
-      </div>
-
-      {!isLoading && total > 0 && (
-        <SummaryCards total={total} onTrack={onTrack} overdue={overdue} />
-      )}
-      {isLoading && (
-        <div className="text-center text-gray-400 text-sm py-24">Memuat data pelanggan...</div>
-      )}
-      {!isLoading && total === 0 && (
-        <div className="text-center py-24">
-          <p className="text-gray-400 text-sm">Belum ada pelanggan yang ditugaskan.</p>
-          <p className="text-gray-300 text-xs mt-1">Hubungi kepala penjualan untuk menugaskan pelanggan.</p>
-        </div>
-      )}
-      {!isLoading && total > 0 && customers && (
-        <>
-          <CustomerTable customers={customers} />
-          <CustomerCards customers={customers} />
-        </>
-      )}
-    </div>
-  )
+  const { data, setPage, isPending, isError, refetch } = usePagedRead('my_customers', {}, (_filters, page, signal) => fetchManagerCustomerPage(profile!.id, page, signal))
+  return <div className="px-4 md:px-8 py-6 space-y-6">
+    {isError ? <Notice tone="error" title="Data pelanggan tidak tersedia." actions={<Button size="compact" variant="secondary" onClick={() => { void refetch() }}>Coba lagi</Button>} /> : !data ? <Notice tone="info" title="Memuat data pelanggan..." /> : <>
+      <PaginationControls page={data.page} total={data.total} pageSize={data.page_size} pending={isPending} onPageChange={setPage} />
+      <SummaryCards total={data.summary.total} onTrack={data.summary.on_track} overdue={data.summary.overdue} />
+      {data.items.length === 0 ? <EmptyState title="Belum ada pelanggan yang ditugaskan.">Hubungi kepala penjualan untuk menugaskan pelanggan.</EmptyState> : <><CustomerTable customers={data.items} referenceInstant={data.referenceInstant} /><CustomerCards customers={data.items} referenceInstant={data.referenceInstant} /></>}
+    </>}
+  </div>
 }

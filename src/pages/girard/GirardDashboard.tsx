@@ -1,3 +1,7 @@
+import { PageHeader } from '../../components/ui/PageHeader'
+import { FilterBar } from '../../components/ui/FilterBar'
+import { Button } from '../../components/ui/Button'
+import { MainContent } from '../../components/ui/MainContent'
 import { useState } from 'react'
 import GirardNav from '../../components/GirardNav'
 import { CustomerPerformanceContent } from './CustomerPerformance'
@@ -14,36 +18,23 @@ export default function GirardDashboard() {
   ]
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-brand-canvas">
       <GirardNav />
+      <MainContent>
 
-      <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5">
-        <h1 className="text-xl font-semibold text-gray-900">Dashboard</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Ringkasan performa tim dan pelanggan</p>
-      </div>
-
-      <div className="bg-white border-b border-gray-100 px-4 md:px-8">
-        <div className="flex gap-1">
-          {tabs.map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                activeTab === tab.key
-                  ? 'border-green-600 text-green-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </div>
+      <PageHeader title="Dashboard" description="Ringkasan performa tim dan pelanggan" className="bg-white border-b border-brand-divider px-4 md:px-8 py-5" />
+      <FilterBar label="Tampilan dashboard" className="mx-4 my-4 md:mx-8">
+        {tabs.map(tab => <Button size="compact" key={tab.key} variant="quiet" aria-pressed={activeTab === tab.key}
+          onClick={() => setActiveTab(tab.key)} className={activeTab === tab.key ? 'border-brand-primary underline decoration-brand-primary underline-offset-4' : undefined}>
+          {tab.label}
+        </Button>)}
+      </FilterBar>
 
       <div>
         {activeTab === 'customers' && <CustomerPerformanceContent />}
         {activeTab === 'team'      && <PerformanceContent />}
       </div>
+      </MainContent>
     </div>
   )
 }

@@ -1,0 +1,43 @@
+{
+  "people": 505,
+  "activePeople": 500,
+  "accounts": 1500,
+  "requests": 10000,
+  "days": 60000,
+  "occupancy": 25438,
+  "annualGrants": 1500,
+  "ledger": 22000,
+  "events": 22620,
+  "attempts": 2060,
+  "decisions": 1560,
+  "reversals": 1500,
+  "peakCommittedMinutes": 4275,
+  "maxCommittedMinutes": 2040,
+  "states": {
+    "approved": 3500,
+    "cancellation_pending": 500,
+    "submitted": 1000,
+    "rejected": 2000,
+    "withdrawn": 1500,
+    "cancelled": 1500
+  },
+  "materializedInputHash": "6b6733884e29aa7f163e2442667d43a7a3e112d3c95ad8eb46558c6ea8bed12f",
+  "fictionalUuidHash": "0785757f5b4ec43913fcf862fc4ef902900fabcf3502a7913cc0230a6c3a7345",
+  "seed": "ihr-capacity-v1-20261003",
+  "asOf": "2026-10-03",
+  "timezone": "Etc/UTC",
+  "rosterCoverage": {
+    "from": "2024-01-01",
+    "until": "2027-10-05",
+    "reason": "2024–2026 fixture plus explicit 366-day timed public quote coverage; no 2027 accounts or grants"
+  },
+  "denseHistory": {
+    "requestId": "46e349c3-e2ec-49e1-a977-027dbfb625d4",
+    "declinedCycles": 60,
+    "events": 124
+  },
+  "runtime": "NOT_RUN",
+  "materializedDatabaseHash": "NOT_RUN",
+  "sealedArtifactHash": "NOT_RUN",
+  "restoration": "same once-materialized sealed official PostgreSQL logical dump only"
+}

@@ -1,0 +1,280 @@
+name: Pilot safety checks
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  synthetic-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic-ci-only
+          POSTGRES_DB: pilot_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d pilot_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: synthetic-ci-only
+      PGDATABASE: pilot_test
+      PGTZ: UTC
+      VITE_SUPABASE_URL: https://example.invalid
+      VITE_SUPABASE_ANON_KEY: synthetic-test-key
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Verify immutable source checkpoint
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$EXPECTED_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Expected source SHA must be 40 lowercase hexadecimal characters" >&2
+            exit 1
+          fi
+          actual_sha="$(git rev-parse HEAD)"
+          if [[ "$actual_sha" != "$EXPECTED_SOURCE_SHA" ]]; then
+            echo "::error::Checked-out HEAD does not match the expected source SHA" >&2
+            exit 1
+          fi
+          tree_sha="$(git rev-parse 'HEAD^{tree}')"
+          printf 'PILOT_CI_COMMIT_SHA=%s\n' "$actual_sha"
+          printf 'PILOT_CI_TREE_SHA=%s\n' "$tree_sha"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test -- --maxWorkers=1
+      - run: npm run typecheck
+      - run: npm run build
+      - name: Install official PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Load only synthetic test contract and candidate migrations
+        run: |
+          set -euo pipefail
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/fixture.sql
+          for file in supabase/migrations/*.sql; do
+            if [[ "$file" < supabase/migrations/202610010001_scalable_order_reads.sql ]]; then psql -X -v ON_ERROR_STOP=1 -f "$file"; fi
+          done
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/hosted-read-policy-fixture.sql
+          psql -X -v ON_ERROR_STOP=1 <<'SQL'
+          DO $red$ BEGIN
+            BEGIN
+              PERFORM public.pilot_po_page_v1('all','',1,10);
+              RAISE EXCEPTION 'Order read unexpectedly exists before candidate migration';
+            EXCEPTION WHEN undefined_function THEN
+              RAISE NOTICE 'ORDER_READ_BASELINE_UNDEFINED_FUNCTION_VERIFIED';
+            END;
+            BEGIN
+              PERFORM public.pilot_athel_summary_v1('2026-09-01','2026-09-30','2026-07-01','all','all');
+              RAISE EXCEPTION 'Report read unexpectedly exists before candidate migration';
+            EXCEPTION WHEN undefined_function THEN
+              RAISE NOTICE 'REPORT_READ_BASELINE_UNDEFINED_FUNCTION_VERIFIED';
+            END;
+          END $red$;
+          SQL
+          for file in supabase/migrations/*.sql; do
+            if [[ "$file" < supabase/migrations/202610010001_scalable_order_reads.sql ]]; then continue; fi
+            if [[ "$file" > supabase/migrations/202610021001_ihr_leave_foundation.sql || "$file" == supabase/migrations/202610021001_ihr_leave_foundation.sql ]]; then continue; fi
+            if [[ "$file" == supabase/migrations/202610010007_read_policy_plans.sql ]]; then
+              node tests/scalability/read-migration-guards.mjs
+              psql -X -v ON_ERROR_STOP=1 -f scale-results/read-migration-guards.sql
+            fi
+            if [[ "$file" == supabase/migrations/202610010010_nullable_catalog_prices.sql ]]; then
+              node tests/catalog-pricing-guards.mjs
+              psql -X -v ON_ERROR_STOP=1 -f scale-results/catalog-pricing-guards.sql
+            fi
+            if [[ "$file" == supabase/migrations/202610020001_customer_categories.sql ]]; then
+              node scripts/customer-category-ci.mjs build-preapply
+              psql -X -qAt -v ON_ERROR_STOP=1 -f scale-results/customer-category-preapply.sql 2>&1 | tee scale-results/customer-category-preapply-canonical.log
+              node scripts/customer-category-ci.mjs verify-preapply-canonical
+              psql -X -v ON_ERROR_STOP=1 -d postgres -c 'CREATE DATABASE pilot_category_legacy_test;'
+              psql -X -v ON_ERROR_STOP=1 -d pilot_category_legacy_test -f tests/database/customer-category-legacy-fixture.sql
+              psql -X -qAt -v ON_ERROR_STOP=1 -d pilot_category_legacy_test -f scale-results/customer-category-preapply.sql 2>&1 | tee scale-results/customer-category-preapply-legacy.log
+              node scripts/customer-category-ci.mjs verify-preapply-legacy
+              node scripts/customer-category-ci.mjs build-legacy-guards
+              psql -X -qAt -v ON_ERROR_STOP=1 -d pilot_category_legacy_test -f scale-results/customer-category-legacy-guards.sql 2>&1 | tee scale-results/customer-category-legacy-guards.log
+              node scripts/customer-category-ci.mjs verify-legacy-guards
+              node scripts/customer-category-ci.mjs build-guards
+              psql -X -qAt -v ON_ERROR_STOP=1 -f scale-results/customer-category-guards.sql 2>&1 | tee scale-results/customer-category-guards.log
+              node scripts/customer-category-ci.mjs verify-guards
+            fi
+            if [[ "$file" == supabase/migrations/202610020003_stale_po_conflicts.sql ]]; then
+              node tests/stale-po-conflict-guards.mjs
+              psql -X -v ON_ERROR_STOP=1 -f scale-results/stale-po-conflict-guards.sql
+            fi
+            psql -X -v ON_ERROR_STOP=1 -f "$file"
+          done
+      - name: Guarded iHR foundation SQL suite
+        run: |
+          set -euo pipefail
+          sha256sum --strict --check tests/database/ihr/ci-source-manifest.sha256
+          foundation_log="$(mktemp)"
+          trap 'rm -f "$foundation_log"' EXIT
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/202610021001_ihr_leave_foundation.sql
+          node scripts/test-ihr-db.mjs --suite foundation | tee "$foundation_log"
+          grep -Fxq 'IHR_FOUNDATION_PERMISSIONS_AND_COMMAND_ENVELOPE_PASSED' "$foundation_log"
+      - name: Guarded iHR calendar and accounts SQL suites
+        run: |
+          set -euo pipefail
+          calendar_log="$(mktemp)"
+          accounts_log="$(mktemp)"
+          trap 'rm -f "$calendar_log" "$accounts_log"' EXIT
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/202610021002_ihr_leave_calendar.sql
+          node scripts/test-ihr-db.mjs --suite calendar | tee "$calendar_log"
+          grep -Fxq 'IHR_CALENDAR_PERMISSIONS_AND_SETUP_PASSED' "$calendar_log"
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/202610021003_ihr_leave_accounts.sql
+          node scripts/test-ihr-db.mjs --suite accounts | tee "$accounts_log"
+          grep -Fxq 'IHR_ACCOUNTS_PERMISSIONS_AND_RECONCILIATION_PASSED' "$accounts_log"
+      - name: Guarded iHR quote SQL suite
+        run: |
+          set -euo pipefail
+          quote_log="$(mktemp)"
+          trap 'rm -f "$quote_log"' EXIT
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/202610021004_ihr_leave_quote.sql
+          node scripts/test-ihr-db.mjs --suite quote | tee "$quote_log"
+          grep -Fxq 'IHR_QUOTE_PERMISSIONS_AND_CALCULATION_PASSED' "$quote_log"
+      - name: Guarded iHR requests SQL suite
+        run: |
+          set -euo pipefail
+          requests_log="$(mktemp)"
+          trap 'rm -f "$requests_log"' EXIT
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/202610021005_ihr_leave_requests.sql
+          node scripts/test-ihr-db.mjs --suite requests | tee "$requests_log"
+          grep -Fxq 'IHR_REQUESTS_ATOMIC_SUBMISSION_PASSED' "$requests_log"
+      - name: Load final iHR reads and administration migrations
+        run: |
+          set -euo pipefail
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/202610021006_ihr_leave_reads.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/202610021007_ihr_leave_admin.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/202610021008_ihr_leave_context.sql
+      - name: SQL invariants, real role permissions and Storage metadata policies
+        run: |
+          set -euo pipefail
+          psql -X -v ON_ERROR_STOP=1 -f supabase/tests/security/explicit_guards.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/tests/security/pilot_security.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/tests/security/storage_helpers.sql
+          psql -X -v ON_ERROR_STOP=1 -f supabase/tests/security/storage_rls.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/order-transactions.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/stale-po-conflicts.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/nullable-catalog-prices.sql
+          psql -X -qAt -v ON_ERROR_STOP=1 -f tests/database/customer-categories.sql 2>&1 | tee scale-results/customer-category-invariants.log
+          node scripts/customer-category-ci.mjs verify-invariants
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/visit-transactions.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/scalable-policy-state.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/scalable-index.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/scalable-summary-parity.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/scalable-customer-parity.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/scalable-sales-page-parity.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/scalable-order-reads.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/scalable-report-boundaries.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/scalable-report-reads.sql
+      - name: Guarded final composed iHR SQL suite
+        run: |
+          set -euo pipefail
+          composed_log="$(mktemp)"
+          trap 'rm -f "$composed_log"' EXIT
+          mkdir -p scale-results
+          node scripts/test-ihr-db.mjs --suite composed | tee "$composed_log"
+          [[ "$(grep -Fxc 'IHR_FINAL_CONTEXT_CONTRACT_PASSED' "$composed_log")" == 1 ]]
+          IHR_CONTEXT_CONTRACT_PATH=scale-results/ihr-context-contract.json npm test -- tests/ihr/context-sql-output.test.ts --maxWorkers=1
+          [[ "$(grep -Fxc 'IHR_QUOTE_PERMISSIONS_AND_CALCULATION_PASSED' "$composed_log")" == 1 ]]
+          [[ "$(grep -Fxc 'IHR_REQUESTS_ATOMIC_SUBMISSION_PASSED' "$composed_log")" == 1 ]]
+          [[ "$(grep -Fxc 'IHR_REQUEST_DECISIONS_CANCELLATIONS_PASSED' "$composed_log")" == 1 ]]
+          [[ "$(grep -Fxc 'IHR_LEAVE_READS_PRIVACY_AND_COUNTS_PASSED' "$composed_log")" == 1 ]]
+          [[ "$(grep -Fxc 'IHR_ADMIN_SCOPED_SETTINGS_PASSED' "$composed_log")" == 1 ]]
+          [[ "$(grep -Fxc 'IHR_FINAL_SCHEMA_PREPARATION_APPROVALS_PASSED' "$composed_log")" == 1 ]]
+          [[ "$(grep -Fxc 'IHR_COMPOSED_BACKEND_PLAIN_PASSED' "$composed_log")" == 1 ]]
+      - name: Guarded PO Admin Director route regression
+        run: |
+          set -euo pipefail
+          route_log="$(mktemp)"
+          trap 'rm -f "$route_log"' EXIT
+          psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/202610081001_ihr_po_admin_director.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/ihr/po-admin-director.sql | tee "$route_log"
+          node scripts/test-ihr-db.mjs --suite composed
+          [[ "$(grep -Fxc 'IHR_PO_ADMIN_DIRECTOR_APPROVAL_CANCELLATION_PASSED' "$route_log")" == 1 ]]
+      - name: Concurrent business operations
+        run: node tests/database/concurrency.mjs
+
+      - name: Complete demo revision composition and real races
+        run: node scripts/test-demo-revisions-ci.mjs
+
+      - name: Unified store owner and credit invariants
+        run: node scripts/test-store-owner-ci.mjs
+
+      - name: Atomic demo rollout safety lifecycle
+        env:
+          DEMO_ROLLOUT_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          DEMO_ROLLOUT_PERMIT: disposable-demo-rollout-ci
+        run: |
+          set -euo pipefail
+          psql -X -v ON_ERROR_STOP=1 -d postgres -c 'CREATE DATABASE demo_rollout_test;'
+          PGDATABASE=demo_rollout_test node tests/demo/rollout-database.mjs
+
+      - name: Atomic read rollout and guarded rollback on companion disposable database
+        env:
+          SCALE_PERMIT: disposable-pilot-ci
+          SCALE_ROWS: '6000'
+        run: node scripts/test-read-rollout-ci.mjs
+      - name: Atomic synthetic import, lost-response recovery and protected baseline
+        env:
+          SCALE_PERMIT: disposable-pilot-ci
+          SCALE_ROWS: '6000'
+        run: node scripts/test-po-import-ci.mjs
+      - name: Preserve synthetic rollout evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: read-rollout-lifecycle-${{ github.run_id }}
+          path: rollout-results
+          retention-days: 7
+      - name: Preserve synthetic import evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: po-import-lifecycle-${{ github.run_id }}
+          path: import-results
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Preserve category SQL evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: customer-category-sql-${{ github.run_id }}
+          path: scale-results/customer-category-*
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Guarded final CO composition, SQL decoders and real races
+        env:
+          CO_CI_PROFILE: github-pilot-safety-v1
+          CO_CI_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p scale-results/co-final
+          node scripts/test-co-ci.mjs | tee scale-results/co-final/aggregate.log
+          for marker in CO_FINAL_COMPOSED_DATABASE_PASSED CO_REAL_RACES_PASSED CO_EVIDENCE_REAL_RACES_PASSED; do
+            [[ "$(grep -Fxc "$marker" scale-results/co-final/aggregate.log)" == 1 ]]
+          done
+      - name: Preserve final CO evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: co-final-${{ github.run_id }}
+          path: scale-results/co-final
+          if-no-files-found: warn
+          retention-days: 7

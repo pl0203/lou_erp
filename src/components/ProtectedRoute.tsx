@@ -1,5 +1,6 @@
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
+import { roleHome } from './navigationModules'
 
 type Props = {
   children: React.ReactNode
@@ -20,15 +21,7 @@ export default function ProtectedRoute({ children, allowedRoles }: Props) {
   if (!user || !profile || profile.id !== user.id || !profile.is_active) return <Navigate to="/login" replace />
 
   if (allowedRoles && !allowedRoles.includes(profile.role)) {
-    // Redirect to their home based on role
-    const roleHome: Record<string, string> = {
-      po_admin:      '/athel/po',
-      sales_person:  '/girard/schedule',
-      sales_manager: '/girard/schedule',
-      sales_head:    '/girard/schedule',
-      executive:     '/landing',
-    }
-    return <Navigate to={roleHome[profile.role] ?? '/login'} replace />
+    return <Navigate to={roleHome(profile.role)} replace />
   }
 
   return <>{children}</>

@@ -3,7 +3,7 @@ import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 const state=vi.hoisted(()=>({callback:null as any, resolveProfile:null as any, resolveSession:null as any}))
-vi.mock('../src/lib/supabase',()=>({supabase:{auth:{getSession:()=>new Promise(resolve=>{state.resolveSession=resolve}),onAuthStateChange:(cb:any)=>{state.callback=cb;return {data:{subscription:{unsubscribe:()=>{}}}}},signOut:async()=>({error:null})},from:()=>{const q:any={select:()=>q,eq:()=>q,single:()=>new Promise(resolve=>{state.resolveProfile=resolve})};return q}}}))
+vi.mock('../src/lib/supabase',()=>({supabase:{auth:{getSession:()=>new Promise(resolve=>{state.resolveSession=resolve}),onAuthStateChange:(cb:any)=>{state.callback=cb;return {data:{subscription:{unsubscribe:()=>{}}}}},signOut:async()=>({error:null})},rpc:()=>{const q:any={single:()=>new Promise(resolve=>{state.resolveProfile=resolve})};return q}}}))
 import ProtectedRoute from '../src/components/ProtectedRoute'
 import { MemoryRouter } from 'react-router-dom'
 import { AuthProvider, useAuth } from '../src/lib/AuthContext'

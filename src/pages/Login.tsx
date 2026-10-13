@@ -1,15 +1,17 @@
-import { useState, useEffect } from 'react'
+import BrandLogo from '../components/BrandLogo'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 
-const ROLE_HOME: Record<string, string> = {
-  po_admin:      '/athel/po',
-  sales_person:  '/girard/schedule',
-  sales_manager: '/girard/schedule',
-  sales_head:    '/girard/schedule',
-  executive:     '/landing',
-}
+import { Button } from '../components/ui/Button'
+import { ActionLink } from '../components/ui/ActionLink'
+import { Field } from '../components/ui/Field'
+import { PageHeader } from '../components/ui/PageHeader'
+import { Notice } from '../components/ui/Feedback'
+import { MainContent } from '../components/ui/MainContent'
+
+import { roleHome } from '../components/navigationModules'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -18,90 +20,72 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({})
+  const [failedSubmit, setFailedSubmit] = useState(0)
+  const errorSummary = useRef<HTMLDivElement>(null)
+  const submittingNow = useRef(false)
+
+  const fail = (message: string, fields: typeof fieldErrors = {}) => {
+    setError(message); setFieldErrors(fields); setFailedSubmit(attempt => attempt + 1)
+  }
+  useEffect(() => {
+    if (error || profileError) errorSummary.current?.focus()
+  }, [error, profileError, failedSubmit, loading])
 
   useEffect(() => {
     if (!loading && profile) {
-      navigate(ROLE_HOME[profile.role] ?? '/login', { replace: true })
+      navigate(roleHome(profile.role), { replace: true })
     }
   }, [profile, loading])
 
   const handleLogin = async () => {
-    if (!email || !password) return setError('Masukkan email dan kata sandi Anda.')
+    if (submittingNow.current) return
+    if (!email || !password) {
+      const message = 'Masukkan email dan kata sandi Anda.'
+      return fail(message, { email: !email ? message : undefined, password: !password ? message : undefined })
+    }
+    submittingNow.current = true
     setSubmitting(true)
     setError('')
+    setFieldErrors({})
 
     try {
       const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
-      if (signInError) setError('Email atau kata sandi salah. Silakan coba lagi.')
+      if (signInError) fail('Email atau kata sandi salah. Silakan coba lagi.')
       // AuthProvider owns profile validation; do not query by a user-entered email.
     } catch {
-      setError('Tidak dapat masuk. Periksa koneksi dan coba lagi.')
+      fail('Tidak dapat masuk. Periksa koneksi dan coba lagi.')
     } finally {
+      submittingNow.current = false
       setSubmitting(false)
     }
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-400 text-sm">Memuat...</p>
-      </div>
-    )
+    return <MainContent className="min-h-screen flex items-center justify-center px-4">
+      <Notice tone="info" title="Memuat..." />
+    </MainContent>
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-      <div className="bg-white rounded-2xl border border-gray-200 p-8 w-full max-w-sm shadow-sm">
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">Selamat datang</h1>
-          <p className="text-sm text-gray-500 mt-1">Masuk ke akun Anda</p>
-        </div>
-
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm text-gray-600 mb-1">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleLogin()}
-              placeholder="anda@perusahaan.com"
-              autoComplete="email"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="block text-sm text-gray-600">Kata Sandi</label>
-              <button
-                onClick={() => navigate('/forgot-password')}
-                className="text-xs text-blue-600 hover:text-blue-800"
-              >
-                Lupa kata sandi?
-              </button>
-            </div>
-            <input
-              type="password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleLogin()}
-              placeholder="••••••••"
-              autoComplete="current-password"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          {(error || profileError) && <p className="text-red-500 text-xs">{error || profileError}</p>}
-
-          <button
-            onClick={handleLogin}
-            disabled={submitting}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2.5 rounded-lg transition-colors disabled:opacity-50"
-          >
-            {submitting ? 'Masuk...' : 'Masuk'}
-          </button>
-        </div>
+    <MainContent className="min-h-screen bg-brand-canvas flex items-center justify-center px-4 py-8">
+      <div className="bg-white rounded-[14px] border border-brand-divider p-8 w-full max-w-sm shadow-sm">
+        <BrandLogo className="mb-8" />
+        <PageHeader className="mb-8" title="Selamat datang" description="Masuk ke akun Anda" />
+        <form noValidate onSubmit={event => { event.preventDefault(); void handleLogin() }} className="space-y-4">
+          <Field id="login-email" label="Email" error={fieldErrors.email}>
+            {control => <input {...control} type="email" required value={email} disabled={submitting}
+              onChange={event => { setEmail(event.target.value); setFieldErrors(previous => ({ ...previous, email: undefined })) }} placeholder="anda@perusahaan.com" autoComplete="email" />}
+          </Field>
+          <Field id="login-password" label="Kata Sandi" error={fieldErrors.password}>
+            {control => <input {...control} type="password" required value={password} disabled={submitting}
+              onChange={event => { setPassword(event.target.value); setFieldErrors(previous => ({ ...previous, password: undefined })) }} placeholder="••••••••" autoComplete="current-password" />}
+          </Field>
+          <ActionLink to="/forgot-password" variant="quiet">Lupa kata sandi?</ActionLink>
+          {(error || profileError) && <div ref={errorSummary} role="group" aria-label="Ringkasan kesalahan masuk" tabIndex={-1}><Notice tone="error" title={error || profileError} /></div>}
+          <Button type="submit" pending={submitting} className="w-full">{submitting ? 'Masuk...' : 'Masuk'}</Button>
+        </form>
       </div>
-    </div>
+    </MainContent>
   )
 }

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+<title id="title">Padiwan symbol</title>
+<desc id="desc">A continuous umbrella canopy above five rice grains, two on the left and three on the right, representing the five family members in the business.</desc>
+<g transform="translate(21,94.5)"><path id="umbrella" fill="#192D43" d="M0 85 L235 0 L470 85 H244 V323 H226 V85 Z"/><g id="five-family-grains" fill="#C69942"><path id="grain-right-1" data-side="right" d="M260 166 C260 132 284 108 318 102 C318 136 294 162 260 166 Z"/><path id="grain-right-2" data-side="right" d="M260 166 C260 132 284 108 318 102 C318 136 294 162 260 166 Z" transform="translate(0,74)"/><path id="grain-right-3" data-side="right" d="M260 166 C260 132 284 108 318 102 C318 136 294 162 260 166 Z" transform="translate(0,148)"/><path id="grain-left-1" data-side="left" d="M260 166 C260 132 284 108 318 102 C318 136 294 162 260 166 Z" transform="translate(470,45) scale(-1,1)"/><path id="grain-left-2" data-side="left" d="M260 166 C260 132 284 108 318 102 C318 136 294 162 260 166 Z" transform="translate(470,119) scale(-1,1)"/></g></g>
+</svg>

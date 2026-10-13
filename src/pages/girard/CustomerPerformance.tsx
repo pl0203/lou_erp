@@ -1,91 +1,20 @@
-import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Button } from '../../components/ui/Button'
+import { useTargetDraftSession } from '../../components/sales/useTargetDraftSession'
+import { InlineTargetEditor } from '../../components/sales/InlineTargetEditor'
+import { salesMonthLabel } from '../../lib/reads/useSalesMetrics'
+import { formatAuditTimestamp } from '../../lib/displayDate'
+import { SalesMetricsPanel } from '../../components/sales/SalesMetricSummary'
+import { useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
+import { usePagedRead } from '../../lib/reads/usePagedRead'
+import { fetchCustomerPerformancePage } from '../../lib/reads/reports'
+import { formatMoney, moneyPercentage } from '../../lib/reads/money'
+import PaginationControls from '../../components/PaginationControls'
 import { useAuth } from '../../lib/AuthContext'
-
-type MonthOption = { value: string; label: string }
-
-type CustomerRow = {
-  id: string
-  name: string
-  manager_name: string | null
-  actual_visits: number
-  target_visits: number
-  last_visit_date: string | null
-  order_count: number
-  total_sales: number
-  sales_target: number | null
-}
-
-function getMonthRange(yearMonth: string): { from: string; to: string } {
-  const [year, month] = yearMonth.split('-').map(Number)
-  const from = new Date(year, month - 1, 1)
-  const to = new Date(year, month, 0)
-  return {
-    from: from.toISOString().split('T')[0],
-    to: to.toISOString().split('T')[0],
-  }
-}
-
-function calcTargetVisits(frequencyDays: number, daysInMonth: number): number {
-  return Math.ceil(daysInMonth / frequencyDays)
-}
-
-function getDaysInMonth(yearMonth: string): number {
-  const [year, month] = yearMonth.split('-').map(Number)
-  return new Date(year, month, 0).getDate()
-}
 
 function currentYearMonth(): string {
   const now = new Date()
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-}
-
-async function fetchEarliestMonth(): Promise<string> {
-  const { data } = await supabase
-    .from('purchase_orders')
-    .select('order_date')
-    .order('order_date', { ascending: true })
-    .limit(1)
-  if (!data || data.length === 0) return currentYearMonth()
-  const d = new Date(data[0].order_date)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-}
-
-function buildMonthOptions(earliest: string): MonthOption[] {
-  const options: MonthOption[] = []
-  const current = currentYearMonth()
-  let cursor = current
-  while (cursor >= earliest) {
-    const [year, month] = cursor.split('-').map(Number)
-    const label = new Date(year, month - 1, 1).toLocaleDateString('id-ID', {
-      month: 'long', year: 'numeric'
-    })
-    options.push({ value: cursor, label })
-    const prev = new Date(year, month - 2, 1)
-    cursor = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`
-  }
-  return options
-}
-
-async function fetchCustomerTargets(
-  customerIds: string[],
-  yearMonth: string
-): Promise<Record<string, number>> {
-  if (customerIds.length === 0) return {}
-  const { data } = await supabase
-    .from('customer_targets')
-    .select('customer_id, year_month, target_value')
-    .in('customer_id', customerIds)
-    .lte('year_month', yearMonth)
-    .order('year_month', { ascending: false })
-  const result: Record<string, number> = {}
-  for (const customerId of customerIds) {
-    const records = (data ?? []).filter(r => r.customer_id === customerId)
-    if (records.length === 0) continue
-    result[customerId] = records[0].target_value
-  }
-  return result
 }
 
 async function upsertCustomerTarget(
@@ -106,145 +35,22 @@ async function upsertCustomerTarget(
   if (error) throw error
 }
 
-async function fetchCustomerPerformance(
-  managerId: string,
-  role: string,
-  yearMonth: string
-): Promise<CustomerRow[]> {
-  const { from, to } = getMonthRange(yearMonth)
-  const days = getDaysInMonth(yearMonth)
+export const fetchCustomerPerformance = fetchCustomerPerformancePage
 
-  let customerIds: string[] = []
-  const managerMap: Record<string, string> = {}
-
-  if (role === 'sales_manager') {
-    const { data: assignments } = await supabase
-      .from('customer_manager_assignments')
-      .select('customer_id')
-      .eq('manager_id', managerId)
-    customerIds = (assignments ?? []).map(a => a.customer_id)
-  } else {
-    const { data: allCustomers } = await supabase
-      .from('customers')
-      .select('id')
-    customerIds = (allCustomers ?? []).map(c => c.id)
-    const { data: assignments } = await supabase
-      .from('customer_manager_assignments')
-      .select('customer_id, users!customer_manager_assignments_manager_id_fkey(full_name)')
-    for (const a of assignments ?? []) {
-      managerMap[a.customer_id] = (a as any).users?.full_name ?? ''
-    }
+function SalesPctBar({ actual, target }: { actual: string; target: string | null }) {
+  if (target == null || /^0+(?:\.0+)?$/.test(target)) {
+    return <span className="text-brand-secondary text-sm">—</span>
   }
-
-  if (customerIds.length === 0) return []
-
-  const { data: customers } = await supabase
-    .from('customers')
-    .select('id, name, visit_frequency_days')
-    .in('id', customerIds)
-    .order('name')
-
-  const { data: visits } = await supabase
-    .from('outlet_visits')
-    .select('outlet_id')
-    .in('outlet_id', customerIds)
-    .gte('checked_in_at', `${from}T00:00:00`)
-    .lte('checked_in_at', `${to}T23:59:59`)
-
-  const visitCounts: Record<string, number> = {}
-  for (const v of visits ?? []) {
-    visitCounts[v.outlet_id] = (visitCounts[v.outlet_id] ?? 0) + 1
-  }
-
-  const { data: pos } = await supabase
-    .from('purchase_orders')
-    .select('id, customer_id, status')
-    .in('customer_id', customerIds)
-    .gte('order_date', from)
-    .lte('order_date', to)
-
-  const poIds = (pos ?? [])
-    .filter(po => ['in_progress', 'complete'].includes(po.status))
-    .map(po => po.id)
-
-  const sjSalesMap: Record<string, number> = {}
-  if (poIds.length > 0) {
-    const { data: sjs } = await supabase
-      .from('surat_jalan')
-      .select('purchase_order_id, sj_line_items(quantity_delivered, po_line_items(unit_price))')
-      .in('purchase_order_id', poIds)
-      .gte('sj_date', from)
-      .lte('sj_date', to)
-    for (const sj of sjs ?? []) {
-      const po = (pos ?? []).find(p => p.id === sj.purchase_order_id)
-      if (!po) continue
-      for (const sli of (sj.sj_line_items as any[]) ?? []) {
-        sjSalesMap[po.customer_id] = (sjSalesMap[po.customer_id] ?? 0) +
-          (sli.quantity_delivered ?? 0) * (sli.po_line_items?.unit_price ?? 0)
-      }
-    }
-  }
-
-  const poLineMap: Record<string, number> = {}
-  if (poIds.length > 0) {
-    const { data: poli } = await supabase
-      .from('po_line_items')
-      .select('purchase_order_id, quantity, unit_price')
-      .in('purchase_order_id', poIds)
-    for (const li of poli ?? []) {
-      const po = (pos ?? []).find(p => p.id === li.purchase_order_id)
-      if (!po) continue
-      poLineMap[po.customer_id] = (poLineMap[po.customer_id] ?? 0) + li.quantity * li.unit_price
-    }
-  }
-
-  const orderCountMap: Record<string, number> = {}
-  for (const po of pos ?? []) {
-    orderCountMap[po.customer_id] = (orderCountMap[po.customer_id] ?? 0) + 1
-  }
-
-  const targetsMap = await fetchCustomerTargets(customerIds, yearMonth)
-
-  return (customers ?? []).map(c => ({
-    id: c.id,
-    name: c.name,
-    manager_name: managerMap[c.id] ?? null,
-    actual_visits: visitCounts[c.id] ?? 0,
-    target_visits: calcTargetVisits(c.visit_frequency_days, days),
-    last_visit_date: null,
-    order_count: orderCountMap[c.id] ?? 0,
-    total_sales: sjSalesMap[c.id] ?? poLineMap[c.id] ?? 0,
-    sales_target: targetsMap[c.id] ?? null,
-  }))
-}
-
-async function fetchLastVisitDates(customerIds: string[]): Promise<Record<string, string>> {
-  if (customerIds.length === 0) return {}
-  const { data } = await supabase
-    .from('outlet_visits')
-    .select('outlet_id, checked_in_at')
-    .in('outlet_id', customerIds)
-    .order('checked_in_at', { ascending: false })
-  const map: Record<string, string> = {}
-  for (const v of data ?? []) {
-    if (!map[v.outlet_id]) map[v.outlet_id] = v.checked_in_at
-  }
-  return map
-}
-
-function SalesPctBar({ actual, target }: { actual: number; target: number | null }) {
-  if (target == null || target === 0) {
-    return <span className="text-gray-300 text-xs">—</span>
-  }
-  const pct = Math.round((actual / target) * 100)
+  const pctText = moneyPercentage(actual, target)
+  const pct = Number(pctText)
   return (
     <div className="flex flex-col items-end gap-1">
-      <span className={`text-xs font-medium ${
-        pct >= 100 ? 'text-green-600'
-        : pct >= 70  ? 'text-yellow-600'
-        : 'text-red-500'
+      <span className={`text-sm font-medium ${
+        pct >= 100 ? 'text-green-800'
+        : pct >= 70  ? 'text-yellow-800'
+        : 'text-red-700'
       }`}>
-        {pct}%
+        {pctText}%
       </span>
       <div className="w-16 bg-gray-100 rounded-full h-1">
         <div
@@ -260,118 +66,50 @@ function SalesPctBar({ actual, target }: { actual: number; target: number | null
   )
 }
 
-function InlineTargetEdit({
-  customerId, yearMonth, currentTarget, canEdit, onSaved,
-}: {
-  customerId: string
-  yearMonth: string
-  currentTarget: number | null
-  canEdit: boolean
-  onSaved: () => void
-}) {
-  const [editing, setEditing] = useState(false)
-  const [value, setValue] = useState('')
-
-  const mutation = useMutation({
-    mutationFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('Tidak terautentikasi')
-      await upsertCustomerTarget(customerId, yearMonth, parseFloat(value) || 0, user.id)
-    },
-    onSuccess: () => { setEditing(false); onSaved() },
-  })
-
-  if (!canEdit) {
-    return (
-      <span className="text-gray-400 text-xs">
-        {currentTarget != null ? `Rp ${(currentTarget / 1_000_000).toFixed(1)}M` : '—'}
-      </span>
-    )
-  }
-
-  if (editing) {
-    return (
-      <div className="flex items-center gap-1 justify-end">
-        <input
-          type="number"
-          value={value}
-          onChange={e => setValue(e.target.value)}
-          onKeyDown={e => {
-            if (e.key === 'Enter') mutation.mutate()
-            if (e.key === 'Escape') setEditing(false)
-          }}
-          placeholder="0"
-          autoFocus
-          className="w-24 border border-green-300 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-green-500 text-right"
-        />
-        <button
-          onClick={() => mutation.mutate()}
-          disabled={mutation.isPending}
-          className="text-green-600 hover:text-green-800 text-xs font-medium"
-        >
-          {mutation.isPending ? '...' : '✓'}
-        </button>
-        <button onClick={() => setEditing(false)} className="text-gray-400 hover:text-gray-600 text-xs">
-          ✕
-        </button>
-      </div>
-    )
-  }
-
-  return (
-    <button
-      onClick={() => { setValue(currentTarget?.toString() ?? ''); setEditing(true) }}
-      className="text-right w-full group"
-    >
-      <span className="text-gray-400 text-xs group-hover:text-green-600 transition-colors">
-        {currentTarget != null ? `Rp ${(currentTarget / 1_000_000).toFixed(1)}M` : '+ Set target'}
-      </span>
-    </button>
-  )
+export function CustomerPerformanceContent() {
+  return <div className="min-w-0"><div className="px-4 pt-6 md:px-8"><SalesMetricsPanel group="customer" /></div><CustomerActivityContent /></div>
 }
 
-export function CustomerPerformanceContent() {
+export function CustomerActivityContent() {
   const { profile } = useAuth()
   const queryClient = useQueryClient()
-  const [yearMonth, setYearMonth] = useState(currentYearMonth())
+  const { data: receivedPage, filters, page, setFilters, setPage, isPending, isError, refetch } = usePagedRead('customer_performance', { yearMonth: currentYearMonth() }, (filters, page, signal) => fetchCustomerPerformancePage(profile!.id, profile!.role, filters.yearMonth, page, signal))
+  const pageData = isPending ? undefined : receivedPage
+  const yearMonth = filters.yearMonth
+  const setYearMonth = (yearMonth: string) => setFilters({ yearMonth })
+  const isLoading = !pageData && isPending
+
+  const readIdentity = `${profile?.id ?? ''}:${profile?.role ?? ''}`
+  const editorScope = JSON.stringify([readIdentity, yearMonth, page])
 
   const canEditTargets = profile?.role === 'sales_head' || profile?.role === 'executive'
 
-  const { data: earliestMonth } = useQuery({
-    queryKey: ['earliest_month'],
-    queryFn: fetchEarliestMonth,
+  const data = pageData?.items ?? []
+
+  const invalidate = (refreshActive: boolean) => queryClient.invalidateQueries({
+    queryKey: ['customer_performance', readIdentity, { yearMonth }],
+    refetchType: refreshActive ? 'active' : 'none',
+  })
+  const targetEditors = useTargetDraftSession({
+    scope: editorScope, canEdit: canEditTargets, isPending, isError, records: pageData?.items,
+    write: async (customerId, targetValue) => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Tidak terautentikasi')
+      await upsertCustomerTarget(customerId, yearMonth, targetValue, user.id)
+    },
+    onSaved: invalidate,
   })
 
-  const monthOptions = earliestMonth ? buildMonthOptions(earliestMonth) : []
+  if (isError) return <div role="alert" className="p-6 text-red-700">Data performa tidak tersedia. <Button size="compact" variant="secondary" onClick={() => refetch()}>Coba lagi</Button></div>
 
-  const { data: rows, isLoading } = useQuery({
-    queryKey: ['customer_performance', profile?.id, profile?.role, yearMonth],
-    queryFn: () => fetchCustomerPerformance(profile!.id, profile!.role, yearMonth),
-    enabled: !!profile?.id,
-  })
-
-  const customerIds = rows?.map(r => r.id) ?? []
-
-  const { data: lastVisits } = useQuery({
-    queryKey: ['last_visits', customerIds],
-    queryFn: () => fetchLastVisitDates(customerIds),
-    enabled: customerIds.length > 0,
-  })
-
-  const data = rows?.map(r => ({
-    ...r,
-    last_visit_date: lastVisits?.[r.id] ?? null,
-  })) ?? []
-
-  const totalSales      = data.reduce((sum, r) => sum + r.total_sales, 0)
-  const activePelanggan = data.filter(r => r.order_count > 0).length
-  const totalVisits     = data.reduce((sum, r) => sum + r.actual_visits, 0)
-  const totalTarget     = data.reduce((sum, r) => sum + r.target_visits, 0)
-  const visitPct        = totalTarget > 0 ? Math.round((totalVisits / totalTarget) * 100) : 0
-  const topCustomer     = [...data].sort((a, b) => b.total_sales - a.total_sales)[0]
-  const selectedLabel   = monthOptions.find(m => m.value === yearMonth)?.label ?? yearMonth
-
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['customer_performance'] })
+  const summary = pageData?.summary
+  const totalSales = summary?.total_sales ?? '0'
+  const activePelanggan = summary?.active_customers ?? 0
+  const totalVisits = summary?.total_visits ?? 0
+  const totalTarget = summary?.total_target_visits ?? 0
+  const visitPct = summary?.visit_percent ?? 0
+  const topCustomer = summary?.top_customer
+  const selectedLabel = salesMonthLabel(yearMonth)
 
   const showManagerCol = profile?.role === 'sales_head' || profile?.role === 'executive'
 
@@ -381,100 +119,106 @@ export function CustomerPerformanceContent() {
       {/* Header with month picker */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">Performa Pelanggan</h2>
-          <p className="text-sm text-gray-500 mt-0.5">{selectedLabel}</p>
+          <h2 className="text-lg font-semibold text-gray-900">Aktivitas dan Target Pelanggan</h2>
+          <p className="text-sm text-brand-secondary mt-0.5">Periode aktivitas: {selectedLabel}</p>
         </div>
-        <select
-          value={yearMonth}
-          onChange={e => setYearMonth(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-        >
-          {monthOptions.map(m => (
-            <option key={m.value} value={m.value}>{m.label}</option>
-          ))}
-        </select>
+        <label className="ui-field__label text-brand-secondary">Bulan aktivitas pelanggan
+          <input aria-label="Bulan aktivitas pelanggan" type="month" value={yearMonth} onChange={e => { if (/^(?!0000)\d{4}-(?:0[1-9]|1[0-2])$/.test(e.target.value)) setYearMonth(e.target.value) }} className="ui-control ml-2 font-normal" />
+        </label>
       </div>
 
+      <div className="rounded-lg border border-gray-200 bg-white p-4 text-sm text-brand-secondary">
+        <p>Filter bulan aktivitas ini tidak mengubah Metrik Sales. Cakupan: pelanggan dan penanggung jawab toko saat ini sesuai izin akun; ringkasan mencakup semua halaman.</p>
+        <p className="mt-1">Nilai pembanding target: pengiriman PO berstatus Dalam proses atau Selesai, berdasarkan tanggal SJ pada {selectedLabel}. Jumlah pesanan memakai tanggal PO. Kunjungan memakai waktu pencatatan, dengan batas bulan menurut zona waktu perangkat.</p>
+      </div>
+
+      {pageData && <PaginationControls page={pageData.page} total={pageData.total} pageSize={pageData.page_size} pending={isPending} onPageChange={setPage} />}
+
       {/* Top metrics */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      {pageData && (      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-xs text-gray-400 mb-1">Total Penjualan</p>
-          <p className="text-xl font-bold text-gray-900">
-            Rp {(totalSales / 1_000_000).toFixed(1)}M
+          <p className="text-[13px] text-brand-secondary mb-1">Nilai pembanding target</p>
+          <p className="text-xl font-bold text-gray-900 [overflow-wrap:anywhere]">
+            Rp {formatMoney(totalSales, 'full')}
           </p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-xs text-gray-400 mb-1">Pelanggan Aktif</p>
-          <p className="text-xl font-bold text-gray-900">{activePelanggan}</p>
-          <p className="text-xs text-gray-400 mt-1">dari {data.length} total</p>
+          <p className="text-[13px] text-brand-secondary mb-1">Pelanggan Aktif</p>
+          <p className="text-xl font-bold text-gray-900 [overflow-wrap:anywhere]">{activePelanggan}</p>
+          <p className="text-[13px] text-brand-secondary mt-1">dari {summary?.total_customers} total</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-xs text-gray-400 mb-1">Total Kunjungan</p>
-          <p className="text-xl font-bold text-gray-900">{totalVisits}</p>
-          <p className="text-xs text-gray-400 mt-1">target {totalTarget}</p>
+          <p className="text-[13px] text-brand-secondary mb-1">Total Kunjungan</p>
+          <p className="text-xl font-bold text-gray-900 [overflow-wrap:anywhere]">{totalVisits}</p>
+          <p className="text-[13px] text-brand-secondary mt-1">target {totalTarget}</p>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-xs text-gray-400 mb-1">Pelanggan Teratas</p>
-          <p className="text-sm font-bold text-gray-900 truncate">
+          <p className="text-[13px] text-brand-secondary mb-1">Teratas pada basis aktivitas</p>
+          <p className="text-base font-bold text-gray-900 [overflow-wrap:anywhere]">
             {topCustomer?.name ?? '—'}
           </p>
-          {topCustomer && topCustomer.total_sales > 0 && (
-            <p className="text-xs text-gray-400 mt-1">
-              Rp {(topCustomer.total_sales / 1_000_000).toFixed(1)}M
+          {topCustomer && !/^0+(?:\.0+)?$/.test(topCustomer.total_sales) && (
+            <p className="text-[13px] text-brand-secondary mt-1">
+              Rp {formatMoney(topCustomer.total_sales, 'full')}
             </p>
           )}
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-xs text-gray-400 mb-1">Kunjungan %</p>
+          <p className="text-[13px] text-brand-secondary mb-1">Kunjungan %</p>
           <p className={`text-xl font-bold ${
-            visitPct >= 80 ? 'text-green-600'
-            : visitPct >= 50 ? 'text-yellow-600'
-            : 'text-red-500'
+            visitPct >= 80 ? 'text-green-700'
+            : visitPct >= 50 ? 'text-yellow-800'
+            : 'text-red-700'
           }`}>
             {visitPct}%
           </p>
-          <p className="text-xs text-gray-400 mt-1">{totalVisits}/{totalTarget} kunjungan</p>
+          <p className="text-[13px] text-brand-secondary mt-1">{totalVisits}/{totalTarget} kunjungan</p>
         </div>
       </div>
+      )}
 
       {isLoading && (
-        <div className="text-center text-gray-400 text-sm py-12">Memuat data...</div>
+        <div className="text-center text-brand-secondary text-sm py-12">Memuat data...</div>
       )}
 
       {!isLoading && data.length === 0 && (
         <div className="text-center py-12">
-          <p className="text-gray-400 text-sm">Tidak ada data untuk bulan ini.</p>
+          <p className="text-brand-secondary text-sm">Tidak ada data untuk bulan ini.</p>
         </div>
       )}
 
       {!isLoading && data.length > 0 && (
         <>
           {canEditTargets && (
-            <p className="text-xs text-gray-400">
+            <p className="text-[13px] text-brand-secondary">
               Klik pada kolom Target Penjualan untuk mengatur target per pelanggan.
             </p>
           )}
 
+          {targetEditors.busy && <p id={targetEditors.descriptionId} className="text-sm text-brand-secondary">{targetEditors.description}</p>}
+
           {/* Desktop table */}
-          <div className="hidden md:block bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <table className="w-full text-sm">
+          <div className={`${targetEditors.layout === 'desktop' ? 'block' : targetEditors.layout === 'mobile' ? 'hidden' : 'hidden md:block'} bg-white rounded-xl border border-gray-200 overflow-hidden`}>
+            <p className="px-5 py-2 text-[13px] text-brand-secondary">Geser tabel untuk melihat semua kolom.</p>
+            <div role="region" aria-label="Tabel aktivitas pelanggan" tabIndex={0} className="max-w-full overflow-x-auto">
+            <table className="w-full min-w-[72rem] text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Pelanggan</th>
+                  <th className="text-left px-5 py-3 font-medium text-brand-secondary">Pelanggan</th>
                   {showManagerCol && (
-                    <th className="text-left px-5 py-3 font-medium text-gray-500">Manajer</th>
+                    <th className="text-left px-5 py-3 font-medium text-brand-secondary">Penanggung Jawab Toko</th>
                   )}
-                  <th className="text-center px-5 py-3 font-medium text-gray-500">Kunjungan (Aktual/Target)</th>
-                  <th className="text-left px-5 py-3 font-medium text-gray-500">Kunjungan Terakhir</th>
-                  <th className="text-center px-5 py-3 font-medium text-gray-500">Pesanan</th>
-                  <th className="text-right px-5 py-3 font-medium text-gray-500">Total Penjualan</th>
-                  <th className="text-right px-5 py-3 font-medium text-gray-500">
+                  <th className="text-center px-5 py-3 font-medium text-brand-secondary">Kunjungan (Aktual/Target)</th>
+                  <th className="text-left px-5 py-3 font-medium text-brand-secondary">Kunjungan Terakhir</th>
+                  <th className="text-center px-5 py-3 font-medium text-brand-secondary">Pesanan</th>
+                  <th className="text-right px-5 py-3 font-medium text-brand-secondary">Nilai pembanding target</th>
+                  <th className="text-right px-5 py-3 font-medium text-brand-secondary">
                     Target Penjualan
                     {canEditTargets && (
-                      <span className="text-gray-300 ml-1 font-normal">(klik untuk ubah)</span>
+                      <span className="text-brand-secondary ml-1 font-normal">(klik untuk ubah)</span>
                     )}
                   </th>
-                  <th className="text-right px-5 py-3 font-medium text-gray-500">% Penjualan</th>
+                  <th className="text-right px-5 py-3 font-medium text-brand-secondary">% Pembanding target</th>
                 </tr>
               </thead>
               <tbody>
@@ -482,36 +226,33 @@ export function CustomerPerformanceContent() {
                   const onTrack = r.actual_visits >= r.target_visits
                   return (
                     <tr key={r.id} className="border-b border-gray-50 hover:bg-gray-50">
-                      <td className="px-5 py-4 font-medium text-gray-900">{r.name}</td>
+                      <td className="min-w-[14rem] px-5 py-4 font-medium text-gray-900">{r.name}</td>
                       {showManagerCol && (
-                        <td className="px-5 py-4 text-gray-600 text-xs">{r.manager_name ?? '—'}</td>
+                        <td className="px-5 py-4 text-brand-secondary">{r.manager_name ?? '—'}</td>
                       )}
                       <td className="px-5 py-4 text-center">
-                        <span className={`font-medium ${onTrack ? 'text-green-600' : 'text-red-500'}`}>
+                        <span className={`font-medium ${onTrack ? 'text-green-800' : 'text-red-700'}`}>
                           {r.actual_visits}
                         </span>
-                        <span className="text-gray-400">/{r.target_visits}</span>
+                        <span className="text-brand-secondary">/{r.target_visits}</span>
                       </td>
-                      <td className="px-5 py-4 text-xs text-gray-600">
+                      <td className="px-5 py-4 text-brand-secondary">
                         {r.last_visit_date
-                          ? new Date(r.last_visit_date).toLocaleDateString('id-ID', {
-                              day: 'numeric', month: 'short', year: 'numeric'
-                            })
+                          ? formatAuditTimestamp(r.last_visit_date)
                           : 'Belum pernah'}
                       </td>
                       <td className="px-5 py-4 text-center text-gray-700">{r.order_count}</td>
                       <td className="px-5 py-4 text-right font-medium text-gray-900">
-                        {r.total_sales > 0
-                          ? `Rp ${(r.total_sales / 1_000_000).toFixed(1)}M`
-                          : '—'}
+                        {`Rp ${formatMoney(r.total_sales, 'full')}`}
                       </td>
                       <td className="px-5 py-4 text-right font-medium text-gray-900">
-                        <InlineTargetEdit
-                          customerId={r.id}
-                          yearMonth={yearMonth}
+                        <InlineTargetEditor key={`${editorScope}:${r.id}`}
+                          recordId={r.id}
                           currentTarget={r.sales_target}
-                          canEdit={canEditTargets}
-                          onSaved={invalidate}
+                          layout="desktop"
+                          compact
+                          canEdit={canEditTargets && !isPending}
+                          targetEditors={targetEditors}
                         />
                       </td>
                       <td className="px-5 py-4 text-right">
@@ -522,71 +263,67 @@ export function CustomerPerformanceContent() {
                 })}
               </tbody>
             </table>
+            </div>
           </div>
 
           {/* Mobile cards */}
-          <div className="md:hidden space-y-3">
+          <div className={`${targetEditors.layout === 'mobile' ? 'block' : targetEditors.layout === 'desktop' ? 'hidden' : 'md:hidden'} space-y-3`}>
             {data.map(r => {
               const onTrack = r.actual_visits >= r.target_visits
               return (
                 <div key={r.id} className="bg-white rounded-xl border border-gray-200 p-4">
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-gray-900 text-sm truncate">{r.name}</p>
+                      <p className="font-semibold text-gray-900 text-base [overflow-wrap:anywhere]">{r.name}</p>
                       {r.manager_name && (
-                        <p className="text-xs text-gray-400 mt-0.5">{r.manager_name}</p>
+                        <p className="text-[13px] text-brand-secondary mt-0.5">{r.manager_name}</p>
                       )}
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 text-xs mb-3">
+                  <div className="grid grid-cols-2 gap-2 text-base mb-3">
                     <div>
-                      <p className="text-gray-400">Kunjungan</p>
+                      <p className="text-brand-secondary">Kunjungan</p>
                       <p className="mt-0.5">
-                        <span className={`font-semibold ${onTrack ? 'text-green-600' : 'text-red-500'}`}>
+                        <span className={`font-semibold ${onTrack ? 'text-green-800' : 'text-red-700'}`}>
                           {r.actual_visits}
                         </span>
-                        <span className="text-gray-400">/{r.target_visits}</span>
+                        <span className="text-brand-secondary">/{r.target_visits}</span>
                       </p>
                     </div>
                     <div>
-                      <p className="text-gray-400">Kunjungan Terakhir</p>
+                      <p className="text-brand-secondary">Kunjungan Terakhir</p>
                       <p className="text-gray-700 mt-0.5">
                         {r.last_visit_date
-                          ? new Date(r.last_visit_date).toLocaleDateString('id-ID', {
-                              day: 'numeric', month: 'short'
-                            })
+                          ? formatAuditTimestamp(r.last_visit_date)
                           : 'Belum pernah'}
                       </p>
                     </div>
                     <div>
-                      <p className="text-gray-400">Pesanan</p>
+                      <p className="text-brand-secondary">Pesanan</p>
                       <p className="text-gray-700 mt-0.5">{r.order_count}</p>
                     </div>
                     <div>
-                      <p className="text-gray-400">Total Penjualan</p>
+                      <p className="text-brand-secondary">Nilai pembanding target</p>
                       <p className="font-semibold text-gray-900 mt-0.5">
-                        {r.total_sales > 0
-                          ? `Rp ${(r.total_sales / 1_000_000).toFixed(1)}M`
-                          : '—'}
+                        {`Rp ${formatMoney(r.total_sales, 'full')}`}
                       </p>
                     </div>
                   </div>
 
                   {/* Visit progress bar */}
                   <div className="pt-2 border-t border-gray-100">
-                      <p className="text-xs text-gray-400 mb-1">Target Penjualan
-                      <InlineTargetEdit
-                        customerId={r.id}
-                        yearMonth={yearMonth}
+                      <p className="text-[13px] text-brand-secondary mb-1">Target Penjualan</p>
+                      <InlineTargetEditor key={`${editorScope}:${r.id}`}
+                        recordId={r.id}
                         currentTarget={r.sales_target}
-                        canEdit={canEditTargets}
-                        onSaved={invalidate}
+                        layout="mobile"
+                        canEdit={canEditTargets && !isPending}
+                        targetEditors={targetEditors}
                       />
-                      </p>
                     </div>
                   <div className="pt-2 border-t border-gray-100">
-                    <p className="text-xs text-gray-400 mb-1">% Kunjungan</p>
+                    <p className="text-[13px] text-brand-secondary mb-1">% Kunjungan</p>
                     <div className="flex items-center gap-2">
                       <div className="flex-1 bg-gray-100 rounded-full h-1.5">
                         <div
@@ -600,7 +337,7 @@ export function CustomerPerformanceContent() {
                           }}
                         />
                       </div>
-                      <span className="text-xs text-gray-400">
+                      <span className="text-[13px] text-brand-secondary">
                         {r.target_visits > 0
                           ? Math.round((r.actual_visits / r.target_visits) * 100)
                           : 0}%
@@ -608,7 +345,7 @@ export function CustomerPerformanceContent() {
                     </div>
                   </div>
                   <div className="pt-2 border-t border-gray-100">
-                    <p className="text-xs text-gray-400 mb-1">% Penjualan</p>
+                    <p className="text-[13px] text-brand-secondary mb-1">% Pembanding target</p>
                     <div className="flex items-center gap-2">
                       <div className="flex-1 bg-gray-100 rounded-full h-1.5">
                         <div
@@ -616,16 +353,12 @@ export function CustomerPerformanceContent() {
                             onTrack ? 'bg-green-500' : 'bg-red-400'
                           }`}
                           style={{
-                            width: `${Math.min(100, r.sales_target > 0
-                              ? (r.total_sales / r.sales_target) * 100
-                              : 0)}%`
+                            width: `${Math.min(100, Number(moneyPercentage(r.total_sales, r.sales_target ?? '0')))}%`
                           }}
                         />
                       </div>
-                      <span className="text-xs text-gray-400">
-                        {r.target_visits > 0
-                          ? Math.round((r.total_sales / r.sales_target) * 100)
-                          : 0}%
+                      <span className="text-[13px] text-brand-secondary">
+                        {moneyPercentage(r.total_sales, r.sales_target ?? '0')}%
                       </span>
                     </div>
                   </div>
