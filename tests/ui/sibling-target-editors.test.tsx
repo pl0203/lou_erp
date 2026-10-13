@@ -236,25 +236,28 @@ for (const kind of ['customer', 'sales'] as const) {
     expect(state.writes).toHaveLength(0)
   })
 
-  for (const owner of ['desktop', 'mobile'] as const) test(`${kind} ${owner} same-scope row replacement releases the removed pending owner without letting its success unlock the new one`, async () => {
+  for (const owner of ['desktop', 'mobile'] as const) test(`${kind} ${owner} same-scope row removal retains the pending panel fence until settlement`, async () => {
     const write = deferred(); state.writeGate = write.promise
     await panel(kind); const client = clients.at(-1)!; const invalidation = vi.spyOn(client, 'invalidateQueries')
     activate(openers()[owner === 'desktop' ? 0 : 2]); const oldInput = screen.getByRole('spinbutton')
     fireEvent.keyDown(oldInput, { key: 'Enter' }); await waitFor(() => expect(state.writes).toHaveLength(1))
     await act(async () => { client.setQueryData<any>(readKey(kind), (data: any) => ({ ...data, items: data.items.filter((row: any) => row.id === `${kind}-B`) })) })
     await waitFor(() => expect(oldInput.isConnected).toBe(false)); expect(screen.queryByRole('spinbutton')).toBeNull()
-    expect(openers().every(button => !button.disabled)).toBe(true)
+    expect(openers().every(button => button.disabled)).toBe(true)
+    expectPinned(layoutCopies(kind), owner)
+    expect(screen.getByText(/Target sedang disimpan/)).toBeTruthy()
+    openers().forEach(button => activate(button)); expect(screen.queryByRole('spinbutton')).toBeNull()
+    const before = state.reads.length
+    await act(async () => write.resolve()); await waitFor(() => expect(openers().every(button => !button.disabled)).toBe(true))
+    expect(invalidation).toHaveBeenCalledWith({ queryKey: readKey(kind).slice(0, 3), refetchType: 'none' })
     expectResponsive(layoutCopies(kind))
+    expect(state.reads).toHaveLength(before); expect(state.writes).toHaveLength(1)
     activate(openers()[owner === 'desktop' ? 1 : 0]); const input = screen.getByRole('spinbutton') as HTMLInputElement
     fireEvent.change(input, { target: { value: '999' } })
-    const before = state.reads.length
-    await act(async () => write.resolve()); await waitFor(() => expect(invalidation).toHaveBeenCalled())
-    expect(invalidation).toHaveBeenCalledWith({ queryKey: readKey(kind).slice(0, 3), refetchType: 'none' })
-    expect(screen.getByRole('spinbutton')).toBe(input); expect(input.isConnected).toBe(true); expect(input.value).toBe('999')
     expectPinned(layoutCopies(kind), owner === 'desktop' ? 'mobile' : 'desktop')
     expect(openers().every(button => button.disabled)).toBe(true)
     activate(openers()[0]); expect(screen.getAllByRole('spinbutton')).toHaveLength(1)
-    expect(state.reads).toHaveLength(before); expect(state.writes).toHaveLength(1)
+    expect(screen.getByRole('spinbutton')).toBe(input); expect(input.value).toBe('999')
     fireEvent.click(screen.getByRole('button', { name: 'Batal' })); expect(openers().every(button => !button.disabled)).toBe(true)
   })
 

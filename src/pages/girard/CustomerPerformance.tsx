@@ -1,11 +1,10 @@
 import { Button } from '../../components/ui/Button'
-import { Field } from '../../components/ui/Field'
-import { useTargetEditorLock, type TargetEditorLock, type TargetEditorLayout } from '../../components/ui/useTargetEditorLock'
+import { useTargetDraftSession } from '../../components/sales/useTargetDraftSession'
+import { InlineTargetEditor } from '../../components/sales/InlineTargetEditor'
 import { salesMonthLabel } from '../../lib/reads/useSalesMetrics'
 import { formatAuditTimestamp } from '../../lib/displayDate'
 import { SalesMetricsPanel } from '../../components/sales/SalesMetricSummary'
-import { useEffect, useId, useRef, useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import { usePagedRead } from '../../lib/reads/usePagedRead'
 import { fetchCustomerPerformancePage } from '../../lib/reads/reports'
@@ -67,96 +66,6 @@ function SalesPctBar({ actual, target }: { actual: string; target: string | null
   )
 }
 
-function InlineTargetEdit({
-  customerId, yearMonth, currentTarget, canEdit, onSaved, targetEditors, layout, compact = false,
-}: {
-  customerId: string
-  yearMonth: string
-  currentTarget: string | null
-  canEdit: boolean
-  onSaved: (refreshActive: boolean) => void
-  compact?: boolean
-  layout: TargetEditorLayout
-  targetEditors: TargetEditorLock
-}) {
-  const fieldId = useId()
-  const [owner] = useState(() => Symbol())
-  const release = targetEditors.release
-  const [editing, setEditing] = useState(false)
-  const [value, setValue] = useState('')
-  const latestValue = useRef('')
-  const saving = useRef(false)
-  const editor = useRef(0)
-  const mounted = useRef(false)
-  useEffect(() => {
-    mounted.current = true
-    return () => { mounted.current = false; release(owner) }
-  }, [owner, release])
-
-  const mutation = useMutation({
-    mutationFn: async (submitted: { targetValue: number; editor: number; onSaved: (refreshActive: boolean) => void }) => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('Tidak terautentikasi')
-      await upsertCustomerTarget(customerId, yearMonth, submitted.targetValue, user.id)
-    },
-    onSuccess: (_result, submitted) => {
-      const currentOwner = mounted.current && editor.current === submitted.editor
-      if (currentOwner) { setEditing(false); release(owner) }
-      submitted.onSaved(currentOwner)
-    },
-    onSettled: () => { saving.current = false },
-  })
-
-  const save = () => {
-    if (saving.current || !editing || !canEdit) return
-    saving.current = true
-    mutation.mutate({ targetValue: parseFloat(latestValue.current) || 0, editor: editor.current, onSaved })
-  }
-  const cancel = () => {
-    if (saving.current) return
-    editor.current++
-    setEditing(false)
-    release(owner)
-  }
-
-  if (!canEdit) return <span className={`text-brand-secondary ${compact ? 'text-sm' : 'text-base'}`}>
-    {currentTarget != null ? `Rp ${formatMoney(currentTarget, 'full')}` : '—'}
-  </span>
-
-  if (editing) return <div className="flex flex-wrap items-end justify-end gap-2">
-    <Field id={fieldId} label="Target penjualan (Rp)" className="w-40 max-w-full">
-      {control => <input {...control}
-        type="number"
-        value={value}
-        disabled={mutation.isPending}
-        onChange={event => { latestValue.current = event.target.value; setValue(event.target.value) }}
-        onKeyDown={event => {
-          if (event.key === 'Enter') { event.preventDefault(); save() }
-          if (event.key === 'Escape') { event.preventDefault(); cancel() }
-        }}
-        placeholder="0"
-        autoFocus
-        className="text-base text-right focus:outline-none focus:ring-2 focus:ring-brand-primary"
-      />}
-    </Field>
-    <Button onClick={save} pending={mutation.isPending}>Simpan target</Button>
-    <Button variant="secondary" onClick={cancel} disabled={mutation.isPending}>Batal</Button>
-    {mutation.isError && <p role="alert" className="basis-full text-sm text-red-700">Penyimpanan target mengalami kendala. Coba simpan lagi atau pilih Batal.</p>}
-  </div>
-
-  return <Button variant="secondary" className="w-full" disabled={targetEditors.busy}
-    aria-describedby={targetEditors.busy ? targetEditors.descriptionId : undefined} onClick={() => {
-    if (saving.current || !targetEditors.claim(owner, layout)) return
-    editor.current++
-    latestValue.current = currentTarget?.toString() ?? ''
-    setValue(latestValue.current)
-    mutation.reset()
-    setEditing(true)
-  }}>
-    {currentTarget != null ? `Rp ${formatMoney(currentTarget, 'full')}` : '+ Atur target'}
-  </Button>
-}
-
 export function CustomerPerformanceContent() {
   return <div className="min-w-0"><div className="px-4 pt-6 md:px-8"><SalesMetricsPanel group="customer" /></div><CustomerActivityContent /></div>
 }
@@ -172,11 +81,24 @@ export function CustomerActivityContent() {
 
   const readIdentity = `${profile?.id ?? ''}:${profile?.role ?? ''}`
   const editorScope = JSON.stringify([readIdentity, yearMonth, page])
-  const targetEditors = useTargetEditorLock(editorScope)
 
   const canEditTargets = profile?.role === 'sales_head' || profile?.role === 'executive'
 
   const data = pageData?.items ?? []
+
+  const invalidate = (refreshActive: boolean) => queryClient.invalidateQueries({
+    queryKey: ['customer_performance', readIdentity, { yearMonth }],
+    refetchType: refreshActive ? 'active' : 'none',
+  })
+  const targetEditors = useTargetDraftSession({
+    scope: editorScope, canEdit: canEditTargets, isPending, isError, records: pageData?.items,
+    write: async (customerId, targetValue) => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Tidak terautentikasi')
+      await upsertCustomerTarget(customerId, yearMonth, targetValue, user.id)
+    },
+    onSaved: invalidate,
+  })
 
   if (isError) return <div role="alert" className="p-6 text-red-700">Data performa tidak tersedia. <Button variant="secondary" onClick={() => refetch()}>Coba lagi</Button></div>
 
@@ -188,11 +110,6 @@ export function CustomerActivityContent() {
   const visitPct = summary?.visit_percent ?? 0
   const topCustomer = summary?.top_customer
   const selectedLabel = salesMonthLabel(yearMonth)
-
-  const invalidate = (refreshActive: boolean) => queryClient.invalidateQueries({
-    queryKey: ['customer_performance', readIdentity, { yearMonth }],
-    refetchType: refreshActive ? 'active' : 'none',
-  })
 
   const showManagerCol = profile?.role === 'sales_head' || profile?.role === 'executive'
 
@@ -278,7 +195,7 @@ export function CustomerActivityContent() {
             </p>
           )}
 
-          {targetEditors.busy && <p id={targetEditors.descriptionId} className="text-sm text-brand-secondary">Simpan atau batalkan target yang sedang diedit sebelum mengubah target lain.</p>}
+          {targetEditors.busy && <p id={targetEditors.descriptionId} className="text-sm text-brand-secondary">{targetEditors.description}</p>}
 
           {/* Desktop table */}
           <div className={`${targetEditors.layout === 'desktop' ? 'block' : targetEditors.layout === 'mobile' ? 'hidden' : 'hidden md:block'} bg-white rounded-xl border border-gray-200 overflow-hidden`}>
@@ -329,14 +246,12 @@ export function CustomerActivityContent() {
                         {`Rp ${formatMoney(r.total_sales, 'full')}`}
                       </td>
                       <td className="px-5 py-4 text-right font-medium text-gray-900">
-                        <InlineTargetEdit key={`${editorScope}:${r.id}`}
-                          customerId={r.id}
-                          yearMonth={yearMonth}
+                        <InlineTargetEditor key={`${editorScope}:${r.id}`}
+                          recordId={r.id}
                           currentTarget={r.sales_target}
                           layout="desktop"
                           compact
                           canEdit={canEditTargets && !isPending}
-                          onSaved={invalidate}
                           targetEditors={targetEditors}
                         />
                       </td>
@@ -399,13 +314,11 @@ export function CustomerActivityContent() {
                   {/* Visit progress bar */}
                   <div className="pt-2 border-t border-gray-100">
                       <p className="text-[13px] text-brand-secondary mb-1">Target Penjualan</p>
-                      <InlineTargetEdit key={`${editorScope}:${r.id}`}
-                        customerId={r.id}
-                        yearMonth={yearMonth}
+                      <InlineTargetEditor key={`${editorScope}:${r.id}`}
+                        recordId={r.id}
                         currentTarget={r.sales_target}
                         layout="mobile"
                         canEdit={canEditTargets && !isPending}
-                        onSaved={invalidate}
                         targetEditors={targetEditors}
                       />
                     </div>

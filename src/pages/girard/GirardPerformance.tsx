@@ -1,9 +1,8 @@
 import { Button } from '../../components/ui/Button'
-import { Field } from '../../components/ui/Field'
-import { useTargetEditorLock, type TargetEditorLock, type TargetEditorLayout } from '../../components/ui/useTargetEditorLock'
+import { useTargetDraftSession, type TargetDraftSession } from '../../components/sales/useTargetDraftSession'
+import { InlineTargetEditor } from '../../components/sales/InlineTargetEditor'
 import { SalesMetricsPanel } from '../../components/sales/SalesMetricSummary'
-import { useEffect, useId, useRef, useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import { usePagedRead } from '../../lib/reads/usePagedRead'
 import { fetchSalesPerformancePage, fetchEarliestSalesPerformanceMonth } from '../../lib/reads/reports'
@@ -54,109 +53,17 @@ async function upsertSalesTarget(
   if (error) throw error
 }
 
-function InlineSalesTargetEdit({
-  userId, yearMonth, currentTarget, canEdit, onSaved, targetEditors, layout, compact = false,
-}: {
-  userId: string
-  yearMonth: string
-  currentTarget: string | null
-  canEdit: boolean
-  onSaved: (refreshActive: boolean) => void
-  compact?: boolean
-  layout: TargetEditorLayout
-  targetEditors: TargetEditorLock
-}) {
-  const fieldId = useId()
-  const [owner] = useState(() => Symbol())
-  const release = targetEditors.release
-  const [editing, setEditing] = useState(false)
-  const [value, setValue] = useState('')
-  const latestValue = useRef('')
-  const saving = useRef(false)
-  const editor = useRef(0)
-  const mounted = useRef(false)
-  useEffect(() => {
-    mounted.current = true
-    return () => { mounted.current = false; release(owner) }
-  }, [owner, release])
-
-  const mutation = useMutation({
-    mutationFn: async (submitted: { targetValue: number; editor: number; onSaved: (refreshActive: boolean) => void }) => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('Tidak terautentikasi')
-      await upsertSalesTarget(userId, yearMonth, submitted.targetValue, user.id)
-    },
-    onSuccess: (_result, submitted) => {
-      const currentOwner = mounted.current && editor.current === submitted.editor
-      if (currentOwner) { setEditing(false); release(owner) }
-      submitted.onSaved(currentOwner)
-    },
-    onSettled: () => { saving.current = false },
-  })
-
-  const save = () => {
-    if (saving.current || !editing || !canEdit) return
-    saving.current = true
-    mutation.mutate({ targetValue: parseFloat(latestValue.current) || 0, editor: editor.current, onSaved })
-  }
-  const cancel = () => {
-    if (saving.current) return
-    editor.current++
-    setEditing(false)
-    release(owner)
-  }
-
-  if (!canEdit) return <span className={`text-brand-secondary ${compact ? 'text-sm' : 'text-base'}`}>
-    {currentTarget != null ? `Rp ${formatMoney(currentTarget, 'full')}` : '—'}
-  </span>
-
-  if (editing) return <div className="flex flex-wrap items-end justify-end gap-2">
-    <Field id={fieldId} label="Target penjualan (Rp)" className="w-40 max-w-full">
-      {control => <input {...control}
-        type="number"
-        value={value}
-        disabled={mutation.isPending}
-        onChange={event => { latestValue.current = event.target.value; setValue(event.target.value) }}
-        onKeyDown={event => {
-          if (event.key === 'Enter') { event.preventDefault(); save() }
-          if (event.key === 'Escape') { event.preventDefault(); cancel() }
-        }}
-        placeholder="0"
-        autoFocus
-        className="text-base text-right focus:outline-none focus:ring-2 focus:ring-brand-primary"
-      />}
-    </Field>
-    <Button onClick={save} pending={mutation.isPending}>Simpan target</Button>
-    <Button variant="secondary" onClick={cancel} disabled={mutation.isPending}>Batal</Button>
-    {mutation.isError && <p role="alert" className="basis-full text-sm text-red-700">Penyimpanan target mengalami kendala. Coba simpan lagi atau pilih Batal.</p>}
-  </div>
-
-  return <Button variant="secondary" className="w-full" disabled={targetEditors.busy}
-    aria-describedby={targetEditors.busy ? targetEditors.descriptionId : undefined} onClick={() => {
-    if (saving.current || !targetEditors.claim(owner, layout)) return
-    editor.current++
-    latestValue.current = currentTarget?.toString() ?? ''
-    setValue(latestValue.current)
-    mutation.reset()
-    setEditing(true)
-  }}>
-    {currentTarget != null ? `Rp ${formatMoney(currentTarget, 'full')}` : '+ Atur target'}
-  </Button>
-}
-
 function PerformanceTable({
-  performance, yearMonth, editorScope, canEdit, onSaved, targetEditors,
+  performance, editorScope, canEdit, targetEditors,
 }: {
   performance: PerformanceData[]
   editorScope: string
-  targetEditors: TargetEditorLock
-  yearMonth: string
+  targetEditors: TargetDraftSession
   canEdit: boolean
-  onSaved: (refreshActive: boolean) => void
 }) {
   return (
     <>
-      {targetEditors.busy && <p id={targetEditors.descriptionId} className="text-sm text-brand-secondary">Simpan atau batalkan target yang sedang diedit sebelum mengubah target lain.</p>}
+      {targetEditors.busy && <p id={targetEditors.descriptionId} className="text-sm text-brand-secondary">{targetEditors.description}</p>}
       <div className={`${targetEditors.layout === 'desktop' ? 'block' : targetEditors.layout === 'mobile' ? 'hidden' : 'hidden md:block'} bg-white rounded-xl border border-gray-200 overflow-hidden`}>
         <div className="px-5 py-4 border-b border-gray-100">
           <h2 className="text-base font-medium text-gray-900">Tim aktif saat ini</h2>
@@ -217,15 +124,13 @@ function PerformanceTable({
                   Rp {formatMoney(p.total_sales, 'full')}
                 </td>
                 <td className="px-5 py-4 text-right">
-                  <InlineSalesTargetEdit key={`${editorScope}:${p.id}`}
-                    userId={p.id}
-                    yearMonth={yearMonth}
+                  <InlineTargetEditor key={`${editorScope}:${p.id}`}
+                    recordId={p.id}
                     currentTarget={p.sales_target}
                     layout="desktop"
                     compact
                     canEdit={canEdit}
-                    onSaved={onSaved}
-                  targetEditors={targetEditors}
+                    targetEditors={targetEditors}
                   />
                 </td>
               </tr>
@@ -282,13 +187,11 @@ function PerformanceTable({
               </div>
               <div className="bg-gray-50 rounded-lg p-3 text-center">
                 <p className="text-[13px] text-brand-secondary mb-1">Target</p>
-                <InlineSalesTargetEdit key={`${editorScope}:${p.id}`}
-                  userId={p.id}
-                  yearMonth={yearMonth}
+                <InlineTargetEditor key={`${editorScope}:${p.id}`}
+                  recordId={p.id}
                   currentTarget={p.sales_target}
                   layout="mobile"
                   canEdit={canEdit}
-                  onSaved={onSaved}
                   targetEditors={targetEditors}
                 />
               </div>
@@ -360,10 +263,18 @@ export function PerformanceActivityContent() {
   const canEdit = ['sales_head', 'executive', 'sales_manager'].includes(profile?.role ?? '')
   const readIdentity = `${profile?.id ?? ''}:${profile?.role ?? ''}`
   const editorScope = JSON.stringify([readIdentity, yearMonth, page])
-  const targetEditors = useTargetEditorLock(editorScope)
   const invalidate = (refreshActive: boolean) => queryClient.invalidateQueries({
     queryKey: ['performance', readIdentity, { yearMonth }],
     refetchType: refreshActive ? 'active' : 'none',
+  })
+  const targetEditors = useTargetDraftSession({
+    scope: editorScope, canEdit, isPending, isError: isError || monthError, records: data?.items,
+    write: async (userId, targetValue) => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Tidak terautentikasi')
+      await upsertSalesTarget(userId, yearMonth, targetValue, user.id)
+    },
+    onSaved: invalidate,
   })
   return <div className="px-4 md:px-8 py-6 space-y-6">
     <div className="flex items-center justify-between flex-wrap gap-3">
@@ -380,7 +291,7 @@ export function PerformanceActivityContent() {
       <PaginationControls page={data.page} total={data.total} pageSize={data.page_size} pending={isPending} onPageChange={setPage} />
       {(data.summary.unassigned_orders ?? 0) > 0 && <div className="bg-white rounded-xl border border-gray-200 p-4"><p className="font-medium text-gray-900">Belum ditugaskan</p><p className="text-sm text-brand-secondary">{data.summary.unassigned_orders} pesanan belum memiliki kredit tenaga penjualan. Rp {formatMoney(data.summary.unassigned_sales!, 'full')} termasuk dalam nilai pembanding aktivitas.</p></div>}
       <SummaryCards avgVisitRate={data.summary.average_visit_rate} totalVisited={data.summary.total_visited} totalScheduled={data.summary.total_scheduled} totalOrders={data.summary.total_orders} totalSales={data.summary.total_sales} totalStaff={data.total} period={selectedLabel} />
-      {data.items.length === 0 ? <p className="text-center text-brand-secondary text-sm py-12">Tidak ada data performa untuk bulan ini.</p> : <PerformanceTable performance={data.items} yearMonth={yearMonth} editorScope={editorScope} canEdit={canEdit && !isPending} onSaved={invalidate} targetEditors={targetEditors} />}
+      {data.items.length === 0 ? <p className="text-center text-brand-secondary text-sm py-12">Tidak ada data performa untuk bulan ini.</p> : <PerformanceTable performance={data.items} editorScope={editorScope} canEdit={canEdit && !isPending} targetEditors={targetEditors} />}
     </>}
   </div>
 }
