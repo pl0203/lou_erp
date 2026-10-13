@@ -32,7 +32,7 @@ test.each([['approved', 'Disetujui'], ['rejected', 'Ditolak'], ['withdrawn', 'Di
 })
 test('pagination is bounded with clearly styled disabled buttons', async () => {
  state.requests = [request()]; state.total = 21; mount()
- const previous = await screen.findByRole('button', { name: 'Sebelumnya' }); expect((previous as HTMLButtonElement).disabled).toBe(true); expect(previous.className).toMatch(/ui-action--secondary/)
+ const previous = await screen.findByRole('button', { name: 'Sebelumnya' }); expect((previous as HTMLButtonElement).disabled).toBe(true); expect(previous.className).toMatch(/ui-action--quiet/); expect(previous.className).toMatch(/ui-action--compact/)
  expect(readFileSync('src/styles/ui.css', 'utf8')).toMatch(/\.ui-action:disabled:not\(\[aria-busy="true"\]\)\s*\{[^}]*color: var\(--color-brand-secondary\)/)
  fireEvent.click(screen.getByRole('button', { name: 'Berikutnya' })); await waitFor(() => expect(state.read).toHaveBeenLastCalledWith(2))
  expect((await screen.findByRole('button', { name: 'Berikutnya' }) as HTMLButtonElement).disabled).toBe(true)

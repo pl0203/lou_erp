@@ -127,12 +127,12 @@ export default function MyVisits() {
             return (
               <Button
                 key={date}
-                variant="secondary"
+                variant="quiet"
                 aria-pressed={isSelected}
                 onClick={() => setSelectedDate(date)}
-                className={`flex flex-col items-center px-4 py-3 border-b-2 transition-colors whitespace-nowrap ${
+                className={`flex flex-col items-center border-b-2 transition-colors whitespace-nowrap ${
                   isSelected
-                    ? 'border-brand-accent text-brand-primary underline decoration-brand-primary underline-offset-4'
+                    ? 'border-brand-primary text-brand-primary underline decoration-brand-primary underline-offset-4'
                     : 'border-transparent text-brand-secondary hover:text-gray-700'
                 }`}
               >
@@ -240,19 +240,19 @@ export default function MyVisits() {
                 </div>
               )}
 
-              <div className="px-5 py-4 flex gap-3">
+              <div className="px-5 py-4 flex flex-wrap gap-3">
                 {isToday ? (
                   <>
                     {!checkedIn ? (
-                      <ActionLink
+                      <ActionLink size="compact"
                         to={`/girard/visit/${schedule.id}`}
                         className="flex-1"
                       >
                         Check-in kunjungan
                       </ActionLink>
                     ) : (
-                      <ActionLink
-                        variant="secondary"
+                      <ActionLink size="compact"
+                        variant="quiet"
                         to={`/girard/visit/${schedule.id}`}
                         className="flex-1"
                       >
@@ -265,8 +265,8 @@ export default function MyVisits() {
                     Dijadwalkan untuk {formatDate(schedule.scheduled_date)}
                   </div>
                 )}
-                <ActionLink
-                  variant="secondary"
+                <ActionLink size="compact"
+                  variant="quiet"
                   to={`/girard/customer/${customer?.id}`}
                 >
                   Info Pelanggan

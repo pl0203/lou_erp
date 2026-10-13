@@ -286,7 +286,7 @@ function ManagerScheduleContent() {
       {unsaved.dialog}
       <MainContent>
         {!showForm && !deleteId && recovery}
-        {recoveredReceipt && <Notice tone="success" className="m-4" title={`Operasi sebelumnya sudah tersimpan. Periksa hasil tersimpan (referensi ${recoveredReceipt}).`} actions={<Button variant="secondary" onClick={() => setRecoveredReceipt(null)}>Tutup</Button>} />}
+        {recoveredReceipt && <Notice tone="success" className="m-4" title={`Operasi sebelumnya sudah tersimpan. Periksa hasil tersimpan (referensi ${recoveredReceipt}).`} actions={<Button size="compact" variant="quiet" onClick={() => setRecoveredReceipt(null)}>Tutup</Button>} />}
         <div ref={fallbackFocus} tabIndex={-1} className="bg-white border-b border-gray-200 px-4 md:px-8 py-5">
           <PageHeader title="Jadwal" description="Tugaskan kunjungan untuk tim Anda. Hanya jadwal sesuai akses Anda yang ditampilkan."
             actions={<Button disabled={locked || deleteMutation.isPending} onClick={event => openCreate(event.currentTarget)}>+ Kunjungan</Button>} />
@@ -294,16 +294,16 @@ function ManagerScheduleContent() {
         <FilterBar label="Filter jadwal tim" className="mx-4 md:mx-8 my-4" summary={<p>Jadwal tim · {visitDateLabel(selectedDate)} · {personFilter ? team?.find(person => person.id === personFilter)?.full_name ?? 'Petugas dipilih (detail belum tersedia)' : managerFilter ? `Tim ${team?.find(person => person.id === managerFilter)?.full_name ?? 'manajer dipilih'}` : 'Semua petugas yang dapat Anda akses'} · {statusFilter ? 'Sudah dikunjungi' : 'Semua status'}</p>}>
           <Field id="manager-selected-date" label="Lihat tanggal">{control => <input {...control} type="date" value={selectedDate} onChange={e => { if (isVisitDate(e.target.value)) setSelectedDate(e.target.value) }} />}</Field>
           <Field id="manager-person-filter" label="Filter petugas">{control => <select {...control} value={personFilter} onChange={event => setPersonFilter(event.target.value)}><option value="">Semua petugas</option>{team?.map(person => <option key={person.id} value={person.id}>{visitAssigneeLabel(person, team)}</option>)}</select>}</Field>
-          {(managerFilter || statusFilter || personFilter) && <Button variant="secondary" onClick={() => { setPersonFilter(''); setManagerFilter(''); setStatusFilter('') }}>Hapus filter tim/petugas/status</Button>}
+          {(managerFilter || statusFilter || personFilter) && <Button size="compact" variant="quiet" onClick={() => { setPersonFilter(''); setManagerFilter(''); setStatusFilter('') }}>Hapus filter tim/petugas/status</Button>}
         </FilterBar>
-        {saved && <Notice tone="success" className="mx-4 md:mx-8 mb-4" title={`Kunjungan tersimpan: ${saved.customer} · ${visitDateLabel(saved.date)}.`} actions={<ActionLink variant="secondary" to={`/girard/visit/${saved.id}`}>Lihat kunjungan tersimpan</ActionLink>} />}
+        {saved && <Notice tone="success" className="mx-4 md:mx-8 mb-4" title={`Kunjungan tersimpan: ${saved.customer} · ${visitDateLabel(saved.date)}.`} actions={<ActionLink size="compact" variant="quiet" to={`/girard/visit/${saved.id}`}>Lihat kunjungan tersimpan</ActionLink>} />}
         <div className="bg-white border-b border-gray-100 px-4 md:px-8">
           <div className="flex gap-1 overflow-x-auto">
             {weekDates.map((date, i) => {
               const daySchedules = scopedSchedules.filter(schedule => schedule.scheduled_date === date)
               const isSelected = selectedDate === date, d = parseCalendarDate(date)
-              return <Button key={date} variant="secondary" aria-pressed={isSelected} onClick={() => setSelectedDate(date)}
-                className={`flex-col whitespace-nowrap min-w-[70px] ${isSelected ? 'border-brand-accent text-brand-primary underline decoration-brand-primary underline-offset-4' : ''}`}>
+              return <Button key={date} variant="quiet" aria-pressed={isSelected} onClick={() => setSelectedDate(date)}
+                className={`flex-col whitespace-nowrap min-w-[70px] ${isSelected ? 'border-brand-primary text-brand-primary underline decoration-brand-primary underline-offset-4' : ''}`}>
                 <span className="text-[13px] font-medium">{i === 0 ? 'Hari Ini' : i === 1 ? 'Besok' : d.toLocaleDateString('id-ID', { weekday: 'short' })}</span>
                 <span className="text-lg font-semibold">{d.getDate()}</span>
                 <span className="text-[13px] text-brand-secondary">{isLoading ? 'Memuat…' : `${daySchedules.length} kunjungan`}</span>
@@ -326,8 +326,8 @@ function ManagerScheduleContent() {
                 <td className="px-5 py-4"><p className="font-medium text-gray-900">{schedule.customers?.name ?? '—'}</p>{schedule.notes && <p className="text-[13px] text-brand-secondary mt-1">{schedule.notes}</p>}</td>
                 <td className="px-5 py-4 text-brand-secondary hidden md:table-cell">{schedule.customers?.city ?? '—'}</td><td className="px-5 py-4 text-gray-700">{schedule.users?.full_name ?? '—'}</td>
                 <td className="px-5 py-4 hidden md:table-cell"><StatusBadge tone={statusTone(schedule.status)}>{statusLabel(schedule.status)}</StatusBadge></td>
-                <td className="px-5 py-4"><FormActions><ActionLink variant="secondary" to={`/girard/visit/${schedule.id}`}>Lihat rincian kunjungan</ActionLink>
-                  {isEditable(schedule.scheduled_date, schedule.status) ? <><Button variant="secondary" disabled={locked || deleteMutation.isPending} onClick={event => openEdit(schedule, event.currentTarget)}>Ubah</Button><Button variant="danger" disabled={locked || deleteMutation.isPending} onClick={event => openDelete(schedule, event.currentTarget)}>Hapus</Button></> : <span className="text-[13px] text-brand-secondary">Terkunci</span>}
+                <td className="px-5 py-4"><FormActions><ActionLink size="compact" variant="quiet" to={`/girard/visit/${schedule.id}`}>Lihat rincian kunjungan</ActionLink>
+                  {isEditable(schedule.scheduled_date, schedule.status) ? <><Button size="compact" variant="quiet" disabled={locked || deleteMutation.isPending} onClick={event => openEdit(schedule, event.currentTarget)}>Ubah</Button><Button size="compact" variant="danger-quiet" disabled={locked || deleteMutation.isPending} onClick={event => openDelete(schedule, event.currentTarget)}>Hapus</Button></> : <span className="text-[13px] text-brand-secondary">Terkunci</span>}
                 </FormActions></td>
               </tr>)}</tbody>
             </table>
@@ -336,7 +336,7 @@ function ManagerScheduleContent() {
             {schedules.map(schedule => <article key={schedule.id} className="bg-white rounded-xl border border-gray-200 p-4">
               <div className="flex flex-wrap items-start justify-between gap-3 mb-3"><div><h2 className="font-semibold text-gray-900">{schedule.customers?.name ?? '—'}</h2><p className="text-[13px] text-brand-secondary mt-1">{schedule.users?.full_name ?? '—'}</p></div><StatusBadge tone={statusTone(schedule.status)}>{statusLabel(schedule.status)}</StatusBadge></div>
               {schedule.notes && <p className="text-[13px] text-brand-secondary mb-3">{schedule.notes}</p>}
-              <FormActions><ActionLink variant="secondary" to={`/girard/visit/${schedule.id}`}>Lihat rincian kunjungan</ActionLink>{isEditable(schedule.scheduled_date, schedule.status) && <><Button variant="secondary" disabled={locked || deleteMutation.isPending} onClick={event => openEdit(schedule, event.currentTarget)}>Ubah</Button><Button variant="danger" disabled={locked || deleteMutation.isPending} onClick={event => openDelete(schedule, event.currentTarget)}>Hapus</Button></>}</FormActions>
+              <FormActions><ActionLink size="compact" variant="quiet" to={`/girard/visit/${schedule.id}`}>Lihat rincian kunjungan</ActionLink>{isEditable(schedule.scheduled_date, schedule.status) && <><Button size="compact" variant="quiet" disabled={locked || deleteMutation.isPending} onClick={event => openEdit(schedule, event.currentTarget)}>Ubah</Button><Button size="compact" variant="danger-quiet" disabled={locked || deleteMutation.isPending} onClick={event => openDelete(schedule, event.currentTarget)}>Hapus</Button></>}</FormActions>
               {!isEditable(schedule.scheduled_date, schedule.status) && <p className="text-[13px] text-brand-secondary mt-3">Terkunci karena bukti kunjungan sudah tersimpan.</p>}
             </article>)}
           </div>}
@@ -353,14 +353,14 @@ function ManagerScheduleContent() {
             <Field id="manager-schedule-date" label="Tanggal *">{control => <input {...control} aria-label="Tanggal jadwal" type="date" value={form.scheduled_date} onChange={e => { resetErrors(); setForm(p => ({ ...p, scheduled_date: e.target.value })) }} disabled={locked} />}</Field>
             <Field id="manager-schedule-notes" label="Catatan (opsional)">{control => <textarea {...control} aria-label="Catatan jadwal" maxLength={2000} value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} rows={2} placeholder="contoh: Fokus pada pengenalan produk precut untuk visit kali ini guna menaikkan penjualan. Jangan lupa follow up soal PO bulan lalu yang belum keluar2." />}</Field>
           </fieldset>
-          <FormActions><Button variant="secondary" disabled={locked} onClick={closeForm}>Batal</Button><Button pending={saving} disabled={locked} onClick={handleSave}>{saving ? 'Menyimpan...' : editingId ? 'Simpan perubahan' : 'Tugaskan'}</Button></FormActions>
-          {(validation || saveError) && <Notice tone="error" className="mt-4" title={validation || visitSaveError(saveError)}>{conflict && <><p>Detail jadwal hanya ditampilkan sesuai akses Anda. Jika tidak terlihat, hubungi manajer atau pilih tanggal lain.</p>{conflictSchedule && <ActionLink variant="secondary" className="mt-3" to={`/girard/visit/${conflictSchedule.id}`}>Lihat jadwal yang sudah ada: {conflictSchedule.users?.full_name ?? 'Petugas kunjungan'} · {visitDateLabel(conflictSchedule.scheduled_date)}</ActionLink>}</>}</Notice>}
+          <FormActions><Button variant="quiet" disabled={locked} onClick={closeForm}>Batal</Button><Button pending={saving} disabled={locked} onClick={handleSave}>{saving ? 'Menyimpan...' : editingId ? 'Simpan perubahan' : 'Tugaskan'}</Button></FormActions>
+          {(validation || saveError) && <Notice tone="error" className="mt-4" title={validation || visitSaveError(saveError)}>{conflict && <><p>Detail jadwal hanya ditampilkan sesuai akses Anda. Jika tidak terlihat, hubungi manajer atau pilih tanggal lain.</p>{conflictSchedule && <ActionLink size="compact" variant="quiet" className="mt-3" to={`/girard/visit/${conflictSchedule.id}`}>Lihat jadwal yang sudah ada: {conflictSchedule.users?.full_name ?? 'Petugas kunjungan'} · {visitDateLabel(conflictSchedule.scheduled_date)}</ActionLink>}</>}</Notice>}
         </Dialog>}
         {deleteId && !unsaved.dialog && <Dialog labelledBy="manager-delete-schedule-title" pending={deleteMutation.isPending || send.hasUnresolved()} onClose={() => setDeleteId(null)} returnFocus={null} fallbackFocus={() => !deleteCommitted.current && dialogTrigger.current?.isConnected ? dialogTrigger.current : fallbackFocus.current}>
           <h2 id="manager-delete-schedule-title" className="ui-dialog__title">Hapus jadwal kunjungan?</h2>
           {recovery}
           <p className="ui-dialog__description">Hapus <strong>{deleteTarget?.customers?.name}</strong> dari jadwal <strong>{deleteTarget?.users?.full_name}</strong> pada tanggal <strong>{deleteTarget?.scheduled_date}</strong>?</p>
-          <FormActions className="mt-5"><Button variant="secondary" disabled={deleteMutation.isPending || send.hasUnresolved()} onClick={() => setDeleteId(null)}>Batal</Button><Button variant="danger" pending={deleteMutation.isPending} disabled={send.hasUnresolved()} onClick={() => deleteMutation.mutate()}>{deleteMutation.isPending ? 'Menghapus...' : 'Hapus'}</Button></FormActions>
+          <FormActions className="mt-5"><Button variant="quiet" disabled={deleteMutation.isPending || send.hasUnresolved()} onClick={() => setDeleteId(null)}>Batal</Button><Button variant="danger" pending={deleteMutation.isPending} disabled={send.hasUnresolved()} onClick={() => deleteMutation.mutate()}>{deleteMutation.isPending ? 'Menghapus...' : 'Hapus'}</Button></FormActions>
           {deleteMutation.error && <Notice tone="error" className="mt-4" title={visitSaveError(deleteMutation.error)} />}
         </Dialog>}
       </MainContent>

@@ -31,7 +31,7 @@ export default function VisitRequestStatus({ requestId }: { requestId: string })
   if (!profile?.id) return null
   return <Section id={`visit-request-${requestId}`} title="Status permintaan yang dipilih">
     {!valid ? <EmptyState title="Permintaan tidak ditemukan atau Anda tidak memiliki akses." />
-      : query.isError ? <Notice tone="error" title="Status permintaan belum tersedia." actions={<Button variant="secondary" onClick={() => query.refetch()}>Coba lagi status permintaan</Button>} />
+      : query.isError ? <Notice tone="error" title="Status permintaan belum tersedia." actions={<Button size="compact" variant="secondary" onClick={() => query.refetch()}>Coba lagi status permintaan</Button>} />
       : query.isPending ? <Notice tone="info" title="Memuat status permintaan..." />
       : !query.data ? <EmptyState title="Permintaan tidak ditemukan atau Anda tidak memiliki akses." />
       : <>
@@ -40,6 +40,6 @@ export default function VisitRequestStatus({ requestId }: { requestId: string })
         <StatusBadge tone={query.data.status==='approved'?'success':query.data.status==='pending'?'warning':query.data.status==='rejected'?'error':'neutral'}>{statusLabels[query.data.status]}</StatusBadge>
         {query.data.notes && <p className="whitespace-pre-wrap break-words text-base text-gray-700">{query.data.notes}</p>}
       </>}
-    <ActionLink variant="secondary" className="mt-4" to="/girard/visit-requests">Lihat semua permintaan</ActionLink>
+    <ActionLink size="compact" variant="quiet" className="mt-4" to="/girard/visit-requests">Lihat semua permintaan</ActionLink>
   </Section>
 }

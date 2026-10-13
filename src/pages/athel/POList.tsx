@@ -51,12 +51,12 @@ export default function POList() {
           placeholder="Cari nomor PO, pelanggan, atau SJ..."
           value={search}
           onChange={e => setSearch(e.target.value)}
-          className="border border-brand-control-border rounded-lg px-3 py-2 text-base w-full sm:w-80 focus:outline-none focus:ring-2 focus:ring-brand-primary"
+          className="w-full focus:outline-none focus:ring-2 focus:ring-brand-primary"
         />}</Field>
-        <Field id="po-list-status" label="Status PO">{control => <select {...control}
+        <Field id="po-list-status" label="Status PO" className="w-full sm:w-48">{control => <select {...control}
           value={filters.status}
           onChange={e => setFilters(previous => ({ ...previous, status: e.target.value as POStatusFilter }))}
-          className="border border-brand-control-border rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-primary"
+          className="focus:outline-none focus:ring-2 focus:ring-brand-primary"
         >
           <option value="all">Semua status</option>
           <option value="confirm">Dikonfirmasi</option>
@@ -109,16 +109,14 @@ export default function POList() {
                       <td className="px-5 py-4 text-right text-gray-900 font-medium">
                         Rp {formatMoney(po.total_value, 'full')}
                       </td>
-                      <td className="sticky right-0 z-10 min-w-36 max-w-52 bg-white px-5 py-4 text-right shadow-[-4px_0_6px_-4px_#9ca3af]">
-                        <ActionLink variant="secondary" to={`/athel/po/${po.id}`}
-                          className="mr-3"
-                        >Lihat</ActionLink>
-                        {!['confirm', 'in_progress'].includes(po.status) && <span className="text-[13px] text-brand-secondary">{po.status === 'cancelled' ? 'PO dibatalkan: tidak dapat diubah' : po.status === 'complete' ? 'PO selesai: tidak dapat diubah' : 'Status PO tidak dapat diubah'}</span>}
-                        {['confirm', 'in_progress'].includes(po.status) && (
-                          <ActionLink variant="secondary" to={`/athel/po/${po.id}/edit`}
-
-                          >Ubah</ActionLink>
-                        )}
+                      <td className="sticky right-0 z-10 min-w-48 max-w-52 bg-white px-5 py-4 text-right shadow-[-4px_0_6px_-4px_#9ca3af]">
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          <ActionLink variant="quiet" size="compact" to={`/athel/po/${po.id}`}>Lihat</ActionLink>
+                          {!['confirm', 'in_progress'].includes(po.status) && <span className="text-[13px] text-brand-secondary">{po.status === 'cancelled' ? 'PO dibatalkan: tidak dapat diubah' : po.status === 'complete' ? 'PO selesai: tidak dapat diubah' : 'Status PO tidak dapat diubah'}</span>}
+                          {['confirm', 'in_progress'].includes(po.status) && (
+                            <ActionLink variant="secondary" size="compact" to={`/athel/po/${po.id}/edit`}>Ubah</ActionLink>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -153,15 +151,11 @@ export default function POList() {
                       <p className="text-gray-900 font-semibold [overflow-wrap:anywhere]">Rp {formatMoney(po.total_value, 'full')}</p>
                     </div>
                   </div>
-                  <div className="flex gap-2 pt-3 border-t border-gray-100">
-                    <ActionLink variant="secondary" to={`/athel/po/${po.id}`}
-                      className="flex-1"
-                    >Lihat</ActionLink>
+                  <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-gray-100">
+                    <ActionLink variant="quiet" size="compact" to={`/athel/po/${po.id}`}>Lihat</ActionLink>
                     {!['confirm', 'in_progress'].includes(po.status) && <span className="text-[13px] text-brand-secondary">{po.status === 'cancelled' ? 'PO dibatalkan: tidak dapat diubah' : po.status === 'complete' ? 'PO selesai: tidak dapat diubah' : 'Status PO tidak dapat diubah'}</span>}
-                        {['confirm', 'in_progress'].includes(po.status) && (
-                      <ActionLink variant="secondary" to={`/athel/po/${po.id}/edit`}
-                        className="flex-1"
-                      >Ubah</ActionLink>
+                    {['confirm', 'in_progress'].includes(po.status) && (
+                      <ActionLink variant="secondary" size="compact" to={`/athel/po/${po.id}/edit`}>Ubah</ActionLink>
                     )}
                   </div>
                 </div>

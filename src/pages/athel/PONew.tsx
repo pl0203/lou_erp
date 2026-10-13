@@ -221,7 +221,7 @@ export default function PONew() {
       {(customerReadError || productReadError) && <ReadFailure onRetry={() => { void retryCustomers(); void retryProducts() }} />}
         {!stockSubmission.warning && <TransactionRecovery send={sendTransaction} onCommitted={onCommitted} />}
       <div ref={formFocus} tabIndex={-1} className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center gap-4">
-        <ActionLink variant="secondary" to={'/athel/po'} >← Kembali</ActionLink>
+        <ActionLink variant="quiet" to={'/athel/po'} >← Kembali</ActionLink>
         <div>
           <h1 className="text-xl font-semibold text-gray-900">PO Baru</h1>
           <p className="text-sm text-brand-secondary mt-0.5">Procurement · Purchase Order</p>
@@ -267,26 +267,26 @@ export default function PONew() {
                 value={poNumber}
                 onChange={e => setPoNumber(e.target.value)}
                 placeholder="mis. PO-2024-001"
-                className="min-w-0 max-w-full w-full border border-brand-control-border rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                className="max-w-full focus:outline-none focus:ring-2 focus:ring-brand-primary"
               />}</Field>
             <Field id="po-order-date" label="Tanggal PO">{control => <input {...control}
                 type="date"
                 value={orderDate}
                 onChange={e => setOrderDate(e.target.value)}
-                className="min-w-0 max-w-full w-full border border-brand-control-border rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                className="max-w-full focus:outline-none focus:ring-2 focus:ring-brand-primary"
               />}</Field>
             <Field id="po-expiry" label="Tanggal Kedaluwarsa PO (opsional)" hint="Jika PO pelanggan memiliki tanggal kedaluwarsa. Bukan tanggal pengiriman.">{control => <input {...control}
                 type="date"
                 value={expectedDelivery}
                 onChange={e => setExpectedDelivery(e.target.value)}
-                className="min-w-0 max-w-full w-full border border-brand-control-border rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                className="max-w-full focus:outline-none focus:ring-2 focus:ring-brand-primary"
               />}</Field>
             <Field id="po-notes" label="Catatan" className="sm:col-span-2">{control => <textarea {...control}
                 value={notes}
                 onChange={e => setNotes(e.target.value)}
                 rows={2}
                 placeholder="Catatan (opsional)..."
-                className="min-w-0 max-w-full w-full border border-brand-control-border rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-primary resize-none"
+                className="max-w-full focus:outline-none focus:ring-2 focus:ring-brand-primary resize-none"
               />}</Field>
           </div>
         </fieldset>
@@ -348,7 +348,7 @@ export default function PONew() {
 
         {/* Actions */}
         <FormActions className="pb-8">
-          <ActionLink variant="secondary" to={'/athel/po'}
+          <ActionLink variant="quiet" to={'/athel/po'}
 
           >Batal</ActionLink>
           <Button variant="primary"

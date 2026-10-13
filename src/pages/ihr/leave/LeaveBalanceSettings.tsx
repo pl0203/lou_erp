@@ -72,7 +72,7 @@ function BalanceEditor({actorId,employeeId,currentPeriod,balance,accountMetadata
   {needsReview&&<div className="ui-notice ui-notice--warning space-y-2" role="status">
    <p>Saldo berubah sejak draf ini dimulai. Tinjau saldo terbaru sebelum melanjutkan; isian Anda tetap ada.</p>
    <p>Versi terbaru: {incoming.version}. Saldo awal: {incoming.reconciled?'sudah diverifikasi':'belum diverifikasi'}. Saldo tersedia (menit): {incoming.reconciled&&balance?.availableMinutes!==null?balance?.availableMinutes:'Belum diverifikasi'}.</p>
-   <Button type="button" disabled={busy||own} onClick={()=>adoptReadback(false)} variant="secondary">Gunakan saldo terbaru untuk draf ini</Button>
+   <Button size="compact" type="button" disabled={busy||own} onClick={()=>adoptReadback(false)} variant="secondary">Gunakan saldo terbaru untuk draf ini</Button>
    <Button type="button" disabled={busy||own} onClick={()=>adoptReadback(true)} variant="danger">Buang draf dan gunakan saldo terbaru</Button>
   </div>}
   <Field id={`${fieldId}-1`} label="ID sumber">{control=><input {...control} aria-label="ID sumber" value={source} disabled={blocked} onChange={e=>{setSource(e.target.value);setSaved(false)}} />}</Field>
@@ -86,10 +86,10 @@ function BalanceEditor({actorId,employeeId,currentPeriod,balance,accountMetadata
    {lines.map((line,i)=><fieldset key={i} className="space-y-2 rounded border p-3"><legend>Cuti disetujui {i+1}</legend>
     {([['sourceId','ID sumber cuti'],['startDate','Mulai cuti'],['endDate','Akhir cuti'],['totalMinutes','Total menit diverifikasi']] as const).map(([key,label])=><Field id={`${fieldId}-6-${key}-${i}`} label={<>{label}</>} key={key}>{control=><input {...control} aria-label={`${label} ${i+1}`} value={line[key]} type={key==='startDate'||key==='endDate'?'date':'text'} onChange={e=>updateLine(i,key,e.target.value)} />}</Field>)}
     <Field id={`${fieldId}-7-${i}`} label="Durasi per tanggal">{control=><select {...control} aria-label={`Durasi per tanggal ${i+1}`} value={line.mode} onChange={e=>updateLine(i,'mode',e.target.value)}><option value="">Pilih durasi</option>{[60,120,180,225,240,300,360].map(n=><option key={n} value={n}>{n} menit</option>)}<option value="full_scheduled_day">Sehari sesuai jadwal</option></select>}</Field>
-    <Button type="button" onClick={()=>setLines(lines.filter((_,n)=>n!==i))} variant="danger">Hapus sumber {i+1}</Button>
+    <Button size="compact" type="button" onClick={()=>setLines(lines.filter((_,n)=>n!==i))} variant="danger-quiet">Hapus sumber {i+1}</Button>
    </fieldset>)}
-   <Button type="button" disabled={lines.length>=100} onClick={()=>setLines([...lines,{sourceId:'',startDate:'',endDate:'',mode:'',totalMinutes:''}])} variant="secondary">Tambah cuti disetujui</Button>
-   <label className="flex min-h-11 items-center gap-2 text-base"><input type="checkbox" checked={complete} onChange={e=>setComplete(e.target.checked)}/> Daftar cuti disetujui di masa depan sudah lengkap</label>
+   <Button size="compact" type="button" disabled={lines.length>=100} onClick={()=>setLines([...lines,{sourceId:'',startDate:'',endDate:'',mode:'',totalMinutes:''}])} variant="quiet">Tambah cuti disetujui</Button>
+   <label className="flex min-h-[var(--ui-control-size)] items-center gap-2 text-[length:var(--ui-text-label)] leading-[var(--ui-line-control)] font-medium"><input type="checkbox" checked={complete} onChange={e=>setComplete(e.target.checked)}/> Daftar cuti disetujui di masa depan sudah lengkap</label>
    <Button type="button" disabled={blocked||!complete||!source||!reason.trim()||!allowance||!past||!asOf} onClick={()=>void submit('reconcile_opening')} variant="primary">Simpan saldo awal</Button>
   </fieldset>}
   {canAdjust&&<fieldset disabled={blocked||!reconciled} className="space-y-3 border-t pt-3"><legend>Penyesuaian jatah</legend>

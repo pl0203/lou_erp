@@ -185,3 +185,13 @@ test('closing and reopening a visit obtains a fresh signed photo URL', async () 
 })
 
 vi.mock('../src/components/StorePOContext', () => ({ default: () => null }))
+
+test('customer section selected border follows switches and leaves sibling sections unmarked', async () => {
+  mount(); await screen.findByText('Customer a')
+  const sections = ['Overview', 'Riwayat Kunjungan', 'Pesanan'].map(name => screen.getByRole('button', { name }))
+  for (const chosen of [sections[0], sections[1], sections[2], sections[0]]) {
+    fireEvent.click(chosen)
+    await waitFor(() => expect(chosen.getAttribute('aria-pressed')).toBe('true'))
+    for (const section of sections) expect(section.classList.contains('border-brand-primary')).toBe(section === chosen)
+  }
+})

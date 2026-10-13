@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { ActionLink } from '../ui/ActionLink';
 import { fetchCOStockMovements } from '../../lib/co/rpc';
 import { isCOAuthorityError } from './COReportWorkspace';
 import { COCard, COFailure, COPagination, useCOActor, useCORead } from './COShared';
@@ -36,7 +36,7 @@ export default function COStockHistory({ customerId, stockKeyId, asOf, onAuthori
         {read.isError ? <COFailure error={read.error} retry={reload}/> : !read.data ? <p role="status">Memuat riwayat stok…</p> : <>
             <RecordList label="Pergerakan stok tercatat">{read.data.rows.map(row => <li key={row.id} className="border-b border-brand-divider py-3 text-sm break-words">
                 <p>{row.effective_date} · {row.kind === 'sold' ? 'Penjualan pada checkpoint laporan' : row.kind === 'return' ? 'Retur belum terjual' : 'Pengiriman'} · {row.quantity_delta}</p>
-                <Link className="text-brand-primary" to={`/athel/co/${row.co_id}`}>Bukti CO sumber</Link>
+                <ActionLink variant="quiet" size="compact" to={`/athel/co/${row.co_id}`}>Bukti CO sumber</ActionLink>
                 <p className="text-[13px] break-all">Batch asli {row.batch_id} · baris revisi {row.delivery_revision_line_id ?? row.return_revision_line_id ?? row.report_revision_line_id}</p>
             </li>)}</RecordList>
             {read.data.total === '0' && <EmptyState title="Belum ada pergerakan tercatat pada cakupan ini."/>}

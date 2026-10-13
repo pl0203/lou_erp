@@ -72,7 +72,7 @@ export default function Landing() {
         ))}
       </div>
       
-      <Button variant="secondary" onClick={handleSignOut} className="mt-12">Keluar</Button>
+      <Button size="compact" variant="quiet" onClick={handleSignOut} className="mt-12">Keluar</Button>
       {signOutError && <Notice tone="error" title={signOutError} className="mt-4" />}
       </MainContent>
     </div>

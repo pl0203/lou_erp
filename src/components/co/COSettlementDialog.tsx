@@ -178,14 +178,14 @@ export default function COSettlementDialog({ co, operation, blocked, readFailure
             <p className="text-base">{operation === 'recovery' ? 'Periksa hasil permintaan asli. Tindakan baru mengikuti izin CO terkini setelah pemulihan selesai.' : operation === 'close_co' ? 'Penutupan memerlukan stok nol, sisa rencana selesai dan laporan akhir bulan lengkap.' : 'Jumlah ini adalah tambahan pembatalan sisa rencana, bukan pengiriman atau retur. Tidak mengubah stok atau pendapatan.'}</p>
             {readFailure}{error && <COFailure error={error}/>}{read.isError && <COFailure error={read.error} retry={() => void read.refetch()}/>}
             <CORecoveryPanel confirmed={!!confirmed} pending={pending} sender={sender} current={() => current() && !pending && !blocked} accept={recover}/>
-            {confirmed && <Button variant="secondary" disabled={pending || blocked} onClick={() => {
+            {confirmed && <Button variant="quiet" size="compact" disabled={pending || blocked} onClick={() => {
                 if (busy.current) return; busy.current = true; setPending(true);
                 void accept(confirmed).catch(failure).finally(() => { busy.current = false; if (current()) setPending(false); });
             }}>Buka hasil penyelesaian tersimpan</Button>}
             {confirmed && <div><p className="text-base">Sumber terkini dapat berbeda dari tanda terima asli. Periksa keadaan terkini sebelum tindakan berikutnya.</p>
-                <Button variant="secondary" disabled={pending || blocked} onClick={() => void resolveCommittedConflict()}>Selesaikan konflik penyelesaian</Button></div>}
-            {operation !== 'recovery' && <><Button variant="secondary" disabled={pending || blocked || !!confirmed || sender.hasUnresolved()} onClick={() => void refresh()}>Muat sumber penyelesaian terbaru</Button>
-            {!rechecked && refreshReady && <Button variant="secondary" disabled={!canRecheck} onClick={recheck}>Saya sudah memeriksa sisa terbaru</Button>}
+                <Button variant="quiet" size="compact" disabled={pending || blocked} onClick={() => void resolveCommittedConflict()}>Selesaikan konflik penyelesaian</Button></div>}
+            {operation !== 'recovery' && <><Button variant="quiet" size="compact" disabled={pending || blocked || !!confirmed || sender.hasUnresolved()} onClick={() => void refresh()}>Muat sumber penyelesaian terbaru</Button>
+            {!rechecked && refreshReady && <Button variant="quiet" size="compact" disabled={!canRecheck} onClick={recheck}>Saya sudah memeriksa sisa terbaru</Button>}
             <fieldset disabled={locked} className="space-y-3">
                 {retainedLines.current.map(line => <Field key={line.id} id={`co-settlement-quantity-${line.id}`} label={`${line.product_name} · sisa ${line.pending_quantity}`}>
                     {control => <input {...control} aria-label={`Jumlah dibatalkan ${line.product_name}`} inputMode="numeric" className={CO_INPUT} value={entries[line.id] ?? ''}
@@ -197,7 +197,7 @@ export default function COSettlementDialog({ co, operation, blocked, readFailure
             {(stale || parentStale) && <p role="alert">Versi CO berubah. Isian dipertahankan; muat sumber penyelesaian terbaru.</p>}
             {closeBlocked && <p role="alert">CO belum memenuhi seluruh syarat penutupan.</p>}
             <FormActions>
-                <Button variant="secondary" disabled={pending} onClick={dismiss}>Batal</Button>
+                <Button variant="quiet" size="compact" disabled={pending} onClick={dismiss}>Batal</Button>
                 {operation !== 'recovery' && <Button disabled={locked || !reason.trim()} onClick={() => void submit()}>Konfirmasi {label}</Button>}
             </FormActions>
         </div>

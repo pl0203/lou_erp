@@ -72,14 +72,14 @@ function Picker<T extends Option>({ items, label, placeholder, selectedLabel = '
         const exactMatches = exact ? matches.filter(item => exact(item, normalized)) : []
         if (exactMatches.length === 1) select(exactMatches[0])
       }}
-      className="min-h-11 min-w-0 max-w-full w-full border border-brand-control-border rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-primary bg-white disabled:bg-gray-50 disabled:text-brand-secondary"
+      className="ui-control max-w-full focus:outline-none focus:ring-2 focus:ring-brand-primary bg-white disabled:bg-gray-50 disabled:text-brand-secondary"
     />
     {expanded && <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
       <div id={`${id}-list`} role="listbox" aria-label={label}>
-        {results.map(item => <Button variant="secondary"
+        {results.map(item => <Button variant="quiet" size="compact"
           key={item.id} id={`${id}-${item.id}`} type="button" role="option" tabIndex={-1} aria-selected={activeId === item.id}
           onPointerDown={event => event.preventDefault()} onMouseDown={event => event.preventDefault()} onClick={() => select(item)}
-          className={`w-full flex-col items-start justify-start text-left px-4 py-3 transition-colors border-b border-gray-50 last:border-0 [overflow-wrap:anywhere] ${activeId === item.id ? 'bg-blue-100' : 'hover:bg-blue-50'}`}
+          className={`w-full flex-col items-start justify-start text-left transition-colors border-b border-gray-50 last:border-0 [overflow-wrap:anywhere] ${activeId === item.id ? 'bg-blue-100' : 'hover:bg-blue-50'}`}
         >
           <span >{item.name}</span>
           <span className="mt-0.5">{describe(item)}</span>

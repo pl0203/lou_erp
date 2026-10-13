@@ -326,12 +326,12 @@ function COFormEditor({ mode, id, actor }: {
     const visible = lines.slice((page - 1) * 100, page * 100);
     if (editing && !initialized)
         return <div className="max-w-4xl mx-auto space-y-4">{unsaved.dialog}{header.isError || complete.isError ? <COFailure error={header.error ?? complete.error} retry={refreshing ? undefined : reload}/> : <p role="status">Memuat seluruh barang CO…</p>}</div>;
-    return <div className="max-w-4xl mx-auto space-y-6">{unsaved.dialog}<PageHeader title={editing ? `Ubah ${number}` : 'CO Baru'} actions={<ActionLink variant="secondary" to={editing ? `/athel/co/${id}` : '/athel/co'}>Kembali</ActionLink>}/>
+    return <div className="max-w-4xl mx-auto space-y-6">{unsaved.dialog}<PageHeader title={editing ? `Ubah ${number}` : 'CO Baru'} actions={<ActionLink variant="quiet" size="compact" to={editing ? `/athel/co/${id}` : '/athel/co'}>Kembali</ActionLink>}/>
     {(header.isError || complete.isError || editing && (co?.co_version !== initialVersion.current || co?.customer_version !== initialCustomerVersion.current)) && <COFailure error={header.error ?? complete.error ?? new Error('CO atau sumber pelanggan berubah. Periksa isian dan muat ulang sebelum menyimpan.')} retry={refreshing ? undefined : reload}/>} {(customerRead.isError || catalog.isError || stock.isError) && <COFailure error={customerRead.error ?? catalog.error ?? stock.error} retry={refreshing ? undefined : () => { void customerRead.refetch(); void catalog.refetch(); void stock.refetch(); }}/>}
     <COCard title="Detail Pesanan">
     <fieldset disabled={pending || unresolved || refreshing || editing && !ready} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
     <div>
-    <label className="block text-base mb-1">Pelanggan</label>
+    <label className="ui-field__label block mb-1">Pelanggan</label>
     <POCustomerLookup customers={customerRead.data ?? []} selectedId={customer} selectedLabel={co?.customer_name} disabled={editing || pending || unresolved || refreshing || !customerRead.data || customerRead.isFetching || customerRead.isError} onSelect={c => { if (c.id === customer)
         return; unsaved.confirmDiscard(() => { setCustomer(c.id); setLines([]); setCollision(null); setLineError(null); setGeneration(g => g + 1); }, { when: lines.length > 0, message: 'Mengganti pelanggan akan menghapus barang dan harga yang sudah diisi. Lanjutkan?' }); }}/>{editing && <p className="mt-2 text-[13px] text-brand-secondary">Pelanggan dan PIC asli terkunci: <span>{co?.sales_person_name ?? 'Unassigned'}</span>
         </p>}</div>
@@ -348,8 +348,8 @@ function COFormEditor({ mode, id, actor }: {
       {collision && <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 mb-3 text-base">
         <p>SKU sudah memiliki identitas stok: {collision.source.display_sku} · {collision.source.product_name}. Pilihan katalog tidak mengganti identitas lama.</p>
         <div className="mt-2 flex flex-wrap gap-2">
-        <Button type="button" variant="secondary" disabled={disabled} onClick={reuse}>Gunakan identitas stok lama</Button>
-        <Button type="button" variant="secondary" disabled={pending || unresolved || refreshing} onClick={() => setCollision(null)}>Batal pilihan</Button>
+        <Button type="button" variant="secondary" size="compact" disabled={disabled} onClick={reuse}>Gunakan identitas stok lama</Button>
+        <Button type="button" variant="quiet" size="compact" disabled={pending || unresolved || refreshing} onClick={() => setCollision(null)}>Batal pilihan</Button>
         </div>
         </div>}
       <div className="space-y-2">{visible.map(l => <COLineRow key={l.key} line={l} disabled={disabled} change={(f, t) => change(l.key, f, t)} remove={() => setLines(prev => prev.filter(row => row.key !== l.key))} error={lineError?.key === l.key ? lineError.message : undefined} refs={{ name: node => { names.current[l.key] = node; if (node && !node.disabled && focus.current?.key === l.key && focus.current.field === 'name') {
@@ -361,7 +361,7 @@ function COFormEditor({ mode, id, actor }: {
                 focus.current = null;
             } }, price: node => { prices.current[l.key] = node; if (node && !node.disabled && focus.current?.key === l.key && focus.current.field === 'price') { node.focus(); focus.current = null; } } }}/>)}</div>{!lines.length && <p className="p-6 text-center text-base text-brand-secondary">Belum ada barang. Cari SKU atau nama untuk menambahkan barang.</p>}
       {lines.length > 100 && <COPagination page={page} pageSize={100} total={String(lines.length)} pending={pending} onPage={setPage}/>}<div className="mt-4 pt-4 border-t border-brand-divider flex flex-wrap justify-between gap-3">
-    <Button type="button" variant="secondary" aria-describedby="co-manual-item-help" disabled={disabled} onClick={() => { const row = blankLine(); focus.current = { key: row.key, field: 'name' }; setPage(Math.floor(lines.length / 100) + 1); setLines(prev => [...prev, row]); }}>Tambah barang manual</Button>
+    <Button type="button" variant="secondary" size="compact" aria-describedby="co-manual-item-help" disabled={disabled} onClick={() => { const row = blankLine(); focus.current = { key: row.key, field: 'name' }; setPage(Math.floor(lines.length / 100) + 1); setLines(prev => [...prev, row]); }}>Tambah barang manual</Button>
     <p className="text-base break-words">Nilai rencana CO: <strong>{total === null ? 'Harga / jumlah belum lengkap' : `Rp ${total}`}</strong>
     </p>
     </div>
@@ -369,7 +369,7 @@ function COFormEditor({ mode, id, actor }: {
     <p className="text-[13px] text-brand-secondary mt-2">Nilai rencana bukan pendapatan. Pendapatan muncul dari penjualan bulanan yang diposting.</p>
     </COCard>
     {failure && <COFailure error={new Error(failure)} retry={conflict && !refreshing ? reload : undefined}/>}<FormActions>
-    <ActionLink variant="secondary" to={editing ? `/athel/co/${id}` : '/athel/co'}>Batal</ActionLink>{customer && <COFormCommands key={customer} customer={customer} coId={editing ? id : undefined} editing={editing} actor={actor} refreshing={refreshing} ready={ready && !pending} save={save} recovered={recovered} unresolved={setUnresolved}/>}</FormActions>
+    <ActionLink variant="quiet" size="compact" to={editing ? `/athel/co/${id}` : '/athel/co'}>Batal</ActionLink>{customer && <COFormCommands key={customer} customer={customer} coId={editing ? id : undefined} editing={editing} actor={actor} refreshing={refreshing} ready={ready && !pending} save={save} recovered={recovered} unresolved={setUnresolved}/>}</FormActions>
   </div>;
 }
 function COFormCommands({ customer, coId, editing, actor, refreshing, ready, save, recovered, unresolved }: {

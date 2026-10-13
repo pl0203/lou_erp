@@ -52,15 +52,15 @@ function MyLeavePanel({actorId,context,onDirtyChange,readState='ready'}:Props){
     {account.reconciled!==true&&<p className="ui-notice ui-notice--warning">Saldo awal perlu diverifikasi sebelum saldo tersedia dapat dipakai.</p>}
     {account.reconciled===true&&!!account.expiredMinutes&&<p className="ui-notice ui-notice--warning">Kedaluwarsa, tidak dapat dipakai: <strong>{formatLeaveMinutes(account.expiredMinutes)}</strong></p>}
     <div className="flex flex-wrap items-start justify-between gap-3 border-t border-brand-divider pt-3">
-     <details className="text-base"><summary className="cursor-pointer rounded py-2 font-medium text-brand-secondary focus-visible:outline-2 focus-visible:outline-brand-primary">Rincian saldo</summary><dl className="pt-2"><div><dt>Jatah dan penyesuaian</dt><dd className="font-semibold text-brand-primary">{formatLeaveMinutes(account.allowanceMinutes)}</dd></div></dl></details>
-     <Button type="button" aria-expanded={open} variant="secondary" onClick={()=>setOpen(!open)}>{open?'Tutup riwayat saldo':'Riwayat saldo'}</Button>
+     <details className="text-base"><summary className="min-h-[var(--ui-control-size-compact)] cursor-pointer rounded py-[var(--ui-control-padding-y-compact)] text-[length:var(--ui-text-control)] leading-[var(--ui-line-control)] font-medium text-brand-primary underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-brand-primary">Rincian saldo</summary><dl className="pt-2"><div><dt>Jatah dan penyesuaian</dt><dd className="font-semibold text-brand-primary">{formatLeaveMinutes(account.allowanceMinutes)}</dd></div></dl></details>
+     <Button size="compact" type="button" aria-expanded={open} variant="quiet" onClick={()=>setOpen(!open)}>{open?'Tutup riwayat saldo':'Riwayat saldo'}</Button>
     </div>
    </section>}
   </>}
   {open&&account&&<BalanceHistoryPanel key={`${account.accountId}:${account.version}`} actorId={actorId} scopeVersion={context.scopeVersion} accountId={account.accountId} year={account.year} version={account.version} readState={readState}/>}
   {readState==='ready'&&<FormActions >
    <button ref={requestOpener} type="button" hidden={requestOpen} disabled={requestOpen||historyOpen} onClick={()=>setRequestOpen(true)} className="ui-action ui-action--primary w-full sm:w-auto">Ajukan cuti</button>
-   <Button type="button" aria-expanded={historyOpen} variant="secondary" disabled={requestOpen} onClick={toggleHistory}>{historyOpen?'Tutup riwayat pengajuan':'Riwayat pengajuan'}</Button>
+   <Button size="compact" type="button" aria-expanded={historyOpen} variant="quiet" disabled={requestOpen} onClick={toggleHistory}>{historyOpen?'Tutup riwayat pengajuan':'Riwayat pengajuan'}</Button>
   </FormActions>}
   {requestOpen&&<LeaveRequestForm actorId={actorId} context={context} onDirtyChange={onDirtyChange} readState={readState} onClose={()=>{setRequestOpen(false);queueMicrotask(()=>requestOpener.current?.focus())}}/>}
   {historyOpen&&<OwnLeaveHistory context={context} actorId={actorId} scopeVersion={context.scopeVersion} readState={readState} onDirtyChange={reportHistoryDirty}/>}
@@ -89,10 +89,10 @@ function BalanceHistoryPanel({actorId,scopeVersion,accountId,year,version,readSt
  if(readState!=='ready')return <section aria-label="Riwayat saldo"><p role="status" className="ui-notice ui-notice--info">Memeriksa akses riwayat...</p></section>
  return <section aria-label="Riwayat saldo" className="ui-section space-y-3">
   <h2 className="font-semibold">Riwayat saldo {year}</h2>
-  {denied?<div role="alert" className="ui-notice ui-notice--error"><p>Akses riwayat belum dapat dikonfirmasi. Muat ulang sebelum melanjutkan.</p><Button type="button" onClick={retry} variant="secondary">Coba lagi</Button></div>:pending?<p role="status" className="ui-notice ui-notice--info">Memuat riwayat...</p>:history.isError?<div role="alert" className="ui-notice ui-notice--error"><p>Riwayat belum dapat dimuat.</p><Button type="button" onClick={retry} variant="secondary">Coba lagi</Button></div>:history.data&&<>
+  {denied?<div role="alert" className="ui-notice ui-notice--error"><p>Akses riwayat belum dapat dikonfirmasi. Muat ulang sebelum melanjutkan.</p><Button size="compact" type="button" onClick={retry} variant="secondary">Coba lagi</Button></div>:pending?<p role="status" className="ui-notice ui-notice--info">Memuat riwayat...</p>:history.isError?<div role="alert" className="ui-notice ui-notice--error"><p>Riwayat belum dapat dimuat.</p><Button size="compact" type="button" onClick={retry} variant="secondary">Coba lagi</Button></div>:history.data&&<>
    {!history.data.rows.length&&<EmptyState title="Belum ada entri."/>}
    <ul className="space-y-3">{history.data.rows.map(entry=><li key={entry.id} className="border-b pb-2"><p>{entry.date} · {labels[entry.kind]}</p><dl className="flex flex-wrap gap-4"><div><dt>Jatah</dt><dd>{formatSignedLeaveMinutes(entry.allowanceDelta)}</dd></div><div><dt>Reservasi</dt><dd>{formatSignedLeaveMinutes(entry.reservedDelta)}</dd></div><div><dt>Pemakaian</dt><dd>{formatSignedLeaveMinutes(entry.usedDelta)}</dd></div></dl></li>)}</ul>
-   <FormActions ><Button type="button" disabled={!cursors.length} onClick={()=>{setBefore(cursors.at(-1)!);setCursors(cursors.slice(0,-1))}} variant="secondary">Lebih baru</Button><Button type="button" disabled={history.data.nextBefore===null} onClick={()=>{setCursors([...cursors,before]);setBefore(history.data.nextBefore)}} variant="secondary">Lebih lama</Button></FormActions>
+   <FormActions ><Button size="compact" type="button" disabled={!cursors.length} onClick={()=>{setBefore(cursors.at(-1)!);setCursors(cursors.slice(0,-1))}} variant="quiet">Lebih baru</Button><Button size="compact" type="button" disabled={history.data.nextBefore===null} onClick={()=>{setCursors([...cursors,before]);setBefore(history.data.nextBefore)}} variant="quiet">Lebih lama</Button></FormActions>
   </>}
  </section>
 }

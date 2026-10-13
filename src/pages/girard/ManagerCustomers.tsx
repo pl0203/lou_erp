@@ -156,7 +156,7 @@ export function ManagerCustomersContent() {
   const { profile } = useAuth()
   const { data, setPage, isPending, isError, refetch } = usePagedRead('my_customers', {}, (_filters, page, signal) => fetchManagerCustomerPage(profile!.id, page, signal))
   return <div className="px-4 md:px-8 py-6 space-y-6">
-    {isError ? <Notice tone="error" title="Data pelanggan tidak tersedia." actions={<Button variant="secondary" onClick={() => { void refetch() }}>Coba lagi</Button>} /> : !data ? <Notice tone="info" title="Memuat data pelanggan..." /> : <>
+    {isError ? <Notice tone="error" title="Data pelanggan tidak tersedia." actions={<Button size="compact" variant="secondary" onClick={() => { void refetch() }}>Coba lagi</Button>} /> : !data ? <Notice tone="info" title="Memuat data pelanggan..." /> : <>
       <PaginationControls page={data.page} total={data.total} pageSize={data.page_size} pending={isPending} onPageChange={setPage} />
       <SummaryCards total={data.summary.total} onTrack={data.summary.on_track} overdue={data.summary.overdue} />
       {data.items.length === 0 ? <EmptyState title="Belum ada pelanggan yang ditugaskan.">Hubungi kepala penjualan untuk menugaskan pelanggan.</EmptyState> : <><CustomerTable customers={data.items} referenceInstant={data.referenceInstant} /><CustomerCards customers={data.items} referenceInstant={data.referenceInstant} /></>}

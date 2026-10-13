@@ -284,3 +284,37 @@ test('chart typography uses the approved self-hosted family and readable support
   expect(option.textStyle.fontFamily).toContain('Plus Jakarta Sans'); expect(option.textStyle.fontSize).toBeGreaterThanOrEqual(13); expect(option.tooltip.textStyle.fontSize).toBeGreaterThanOrEqual(13)
   expect(option.series.map((series: any) => series.data)).toEqual([[12.34], [0]])
 })
+
+
+test.each([{ Page: ProductList, loaded: 'Unset product', add: '+ Tambah Barang' }, { Page: CustomerList, loaded: 'Alpha shop', add: '+ Tambah Pelanggan' }])('catalog $loaded desktop/mobile actions retain compact hierarchy and final delete emphasis', async ({ Page, loaded, add }) => {
+  state.customerDelete = true
+  mount(Page); await screen.findAllByText(loaded)
+  expect(screen.getByRole('button', { name: add }).classList.contains('ui-action--primary')).toBe(true)
+  for (const action of screen.getAllByRole('button', { name: /^(Ubah|Hapus)$/ })) {
+    expect(action.classList.contains('ui-action--compact')).toBe(true)
+    expect(action.classList.contains(action.textContent === 'Hapus' ? 'ui-action--danger-quiet' : 'ui-action--quiet')).toBe(true)
+    expect(action.parentElement?.classList.contains('flex-wrap')).toBe(true)
+  }
+  fireEvent.click(screen.getAllByRole('button', { name: 'Hapus' })[0])
+  const dialog = screen.getByRole('dialog')
+  expect(within(dialog).getByRole('button', { name: 'Hapus' }).classList.contains('ui-action--danger')).toBe(true)
+  expect(within(dialog).getByRole('button', { name: 'Batal' }).classList.contains('ui-action--quiet')).toBe(true)
+})
+test('catalog price disclosure stays compact quiet and preserves expanded ownership', async () => {
+  mount(ProductList); await screen.findAllByText('Unset product')
+  const disclosure = screen.getByRole('button', { name: 'Lihat semua harga ▼' })
+  expect(disclosure.classList.contains('ui-action--compact')).toBe(true); expect(disclosure.classList.contains('ui-action--quiet')).toBe(true)
+  expect(disclosure.getAttribute('aria-expanded')).toBe('false'); fireEvent.click(disclosure)
+  expect(disclosure.getAttribute('aria-expanded')).toBe('true')
+  expect(document.getElementById(disclosure.getAttribute('aria-controls')!)).toBeTruthy()
+})
+test('promotion support actions are compact while explicit stock/save commits retain primary emphasis', async () => {
+  mount(Promotions); await screen.findByText('Tiles')
+  for (const name of ['Ubah harga / gambar', 'Sesuaikan stok', 'Jeda']) {
+    const action = screen.getByRole('button', { name }); expect(action.classList.contains('ui-action--compact')).toBe(true); expect(action.classList.contains('ui-action--quiet')).toBe(true)
+  }
+  fireEvent.click(screen.getByRole('button', { name: 'Sesuaikan stok' }))
+  expect(screen.getByRole('button', { name: 'Simpan penyesuaian' }).classList.contains('ui-action--primary')).toBe(true)
+  expect(screen.getByRole('button', { name: 'Batal' }).classList.contains('ui-action--quiet')).toBe(true)
+  expect(associated('Perubahan stok').getAttribute('type')).toBe('number')
+})

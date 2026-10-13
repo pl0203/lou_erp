@@ -464,7 +464,7 @@ export default function PODetail() {
       {/* Header */}
       <div ref={successFocus} tabIndex={-1} className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex flex-col items-stretch gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-4">
-          <ActionLink variant="secondary" to="/athel/po" className="shrink-0">← Kembali</ActionLink>
+          <ActionLink variant="quiet" to="/athel/po" className="shrink-0">← Kembali</ActionLink>
           <div className="min-w-0 [overflow-wrap:anywhere]">
             <div className="flex flex-wrap items-center gap-3">
               <h1 className="text-xl font-semibold text-gray-900">{po.po_number}</h1>
@@ -477,9 +477,9 @@ export default function PODetail() {
         </div>
         <div className="flex shrink-0 items-center gap-2 flex-wrap justify-end">
           {!isComplete && !isCancelled && (
-            <ActionLink variant="secondary" to={`/athel/po/${po.id}/edit`}>Ubah PO</ActionLink>
+            <ActionLink variant="quiet" size="compact" to={`/athel/po/${po.id}/edit`}>Ubah PO</ActionLink>
           )}
-          <Button variant="danger"
+          <Button variant="danger-quiet" size="compact"
             disabled={isCancelled}
             onClick={event => { takePresentation(); dialogTrigger.current = event.currentTarget; dialogCommitted.current = false; setActionVersion(po.updated_at); setActionReason(''); setShowDeleteConfirm(true) }}
 
@@ -648,11 +648,11 @@ export default function PODetail() {
                   {sj.sj_date_received && <p className="text-[13px] text-brand-secondary">Diterima Toko: {formatDisplayDate(sj.sj_date_received)}</p>}
                   {sj.sj_date_returned && <p className="text-[13px] text-brand-secondary">SJ Kembali: {formatDisplayDate(sj.sj_date_returned)}</p>}
                 </div><div className="flex flex-wrap gap-3">
-                  <Button variant="secondary" disabled={deliveries.isPending} onClick={() => setSelectedSJId(selectedSJId === sj.id ? null : sj.id)} >{selectedSJId === sj.id ? 'Tutup barang' : 'Lihat barang'}</Button>
-                  {canEditReturnedDate && !sj.voided_at && <Button variant="secondary" type="button" disabled={poFetching || deliveries.isPending || returnedMutation.isPending} onClick={event => { takePresentation(); returnedTrigger.current = event.currentTarget; dialogCommitted.current = false; returnedReadSequence.current++; returnedRead.current?.abort(); returnedReviewRequired.current = false; setReturnedReview(null); setReturnedTarget({ id: sj.id, number: sj.sj_number, version: po.updated_at }); setReturnedDate(sj.sj_date_returned ?? ''); returnedMutation.reset() }} >Ubah tanggal SJ kembali</Button>}
+                  <Button variant="quiet" size="compact" disabled={deliveries.isPending} onClick={() => setSelectedSJId(selectedSJId === sj.id ? null : sj.id)} >{selectedSJId === sj.id ? 'Tutup barang' : 'Lihat barang'}</Button>
+                  {canEditReturnedDate && !sj.voided_at && <Button variant="quiet" size="compact" type="button" disabled={poFetching || deliveries.isPending || returnedMutation.isPending} onClick={event => { takePresentation(); returnedTrigger.current = event.currentTarget; dialogCommitted.current = false; returnedReadSequence.current++; returnedRead.current?.abort(); returnedReviewRequired.current = false; setReturnedReview(null); setReturnedTarget({ id: sj.id, number: sj.sj_number, version: po.updated_at }); setReturnedDate(sj.sj_date_returned ?? ''); returnedMutation.reset() }} >Ubah tanggal SJ kembali</Button>}
                   {canAddSJ && !sj.voided_at && <>
-                    <Button variant="secondary" disabled={!lineReady || preparingSJ || deliveries.isPending} onClick={event => void openEditSJModal(sj, event.currentTarget)} >Ubah</Button>
-                    <Button variant="danger" disabled={deliveries.isPending} onClick={event => { takePresentation(); dialogTrigger.current = event.currentTarget; dialogCommitted.current = false; setActionVersion(po.updated_at); setActionReason(''); setDeletingSJId(sj.id) }} >Batalkan</Button>
+                    <Button variant="quiet" size="compact" disabled={!lineReady || preparingSJ || deliveries.isPending} onClick={event => void openEditSJModal(sj, event.currentTarget)} >Ubah</Button>
+                    <Button variant="danger-quiet" size="compact" disabled={deliveries.isPending} onClick={event => { takePresentation(); dialogTrigger.current = event.currentTarget; dialogCommitted.current = false; setActionVersion(po.updated_at); setActionReason(''); setDeletingSJId(sj.id) }} >Batalkan</Button>
                   </>}
                 </div></div>
                 {selectedSJId === sj.id && (selectedLines.isError ? <p role="alert">Barang pengiriman gagal dimuat. <Button variant="secondary" onClick={() => selectedLines.refetch()}>Coba lagi</Button></p>
@@ -679,7 +679,7 @@ export default function PODetail() {
                     <p className="text-gray-900">{summarizePOAudit(entry)}</p>
                     <p className="text-gray-600 text-[13px] mt-0.5">{formatAuditTimestamp(entry.changed_at)}</p>
                     <details className="mt-2 text-[13px] text-gray-600">
-                      <summary className="cursor-pointer font-medium">Detail teknis audit</summary>
+                      <summary className="w-fit min-h-[var(--ui-control-size-compact)] cursor-pointer rounded px-3 py-[var(--ui-control-padding-y-compact)] text-[length:var(--ui-text-control)] font-medium text-brand-primary underline underline-offset-4 hover:bg-brand-tint focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary">Detail teknis audit</summary>
                       <dl className="mt-2 space-y-1">
                         <dt>Peristiwa asli</dt><dd>{entry.field_changed}</dd>
                         <dt>Waktu asli</dt><dd>{entry.changed_at}</dd>
@@ -724,7 +724,7 @@ export default function PODetail() {
                     value={sjNumber}
                     onChange={e => setSjNumber(e.target.value)}
                     placeholder="mis. SJ-2024-001"
-                    className="min-w-0 max-w-full w-full border border-brand-control-border rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                    className="max-w-full focus:outline-none focus:ring-2 focus:ring-brand-primary"
                   />}</Field>
                 <Field id="sj-date" label="Tanggal SJ *">{control => <input {...control} type="date" aria-label="Tanggal SJ" disabled={transactionLocked} value={sjDate} onChange={e => setSjDate(e.target.value)} />}</Field>
                 <Field id="sj-received" label="Tanggal SJ Diterima Toko">{control => <input {...control} type="date" aria-label="Tanggal SJ Diterima Toko" disabled={transactionLocked} value={sjDateReceived} onChange={e => setSjDateReceived(e.target.value)} />}</Field>
@@ -766,7 +766,7 @@ export default function PODetail() {
                               value={line.quantity_to_deliver}
                               onChange={e => updateSJLine(i, parseInt(e.target.value) || 0)}
                               disabled={transactionLocked || line.quantity_outstanding === 0}
-                              className="min-w-0 max-w-full w-full border border-brand-control-border rounded-lg px-2 py-1.5 text-base text-right focus:outline-none focus:ring-2 focus:ring-brand-primary disabled:bg-gray-50 disabled:text-gray-300"
+                              className="max-w-full text-right focus:outline-none focus:ring-2 focus:ring-brand-primary disabled:bg-gray-50 disabled:text-gray-300"
                             />}</Field>
                         </div>
                       ))}
@@ -781,7 +781,7 @@ export default function PODetail() {
                 : deliveryWillComplete ? <><p>Setelah disimpan, PO akan berstatus Selesai karena seluruh jumlah pesanan sudah tercatat dikirim.</p><p>Status Selesai tetap berlaku jika tanggal penerimaan belum diisi. Catat penerimaan toko dan kembalinya dokumen SJ secara terpisah.</p></> : <p>Masih ada sisa barang yang belum tercatat dikirim; PO belum selesai.</p>}
             </div>
             <FormActions className="px-6 py-4 border-t border-gray-100">
-              <Button variant="secondary"
+              <Button variant="quiet"
                 disabled={transactionLocked} onClick={() => { if (!transactionLocked && !dialogBusy.current) closeSJModal() }}
 
               >
@@ -820,7 +820,7 @@ export default function PODetail() {
             <Field id="cancel-sj-reason" label="Alasan pembatalan">{control => <textarea {...control} disabled={transactionLocked} aria-label="Alasan pembatalan" value={actionReason} onChange={e => setActionReason(e.target.value)} placeholder="Alasan pembatalan (wajib)" />}</Field>
             {(deleteSJMutation.isError || deleteMutation.isError) && <p className="text-red-600 text-[13px] mb-3">{((deleteSJMutation.error || deleteMutation.error) as Error).message}</p>}
             <FormActions className="mt-4">
-              <Button variant="secondary"
+              <Button variant="quiet"
                 disabled={transactionLocked} onClick={() => { if (!transactionLocked && !dialogBusy.current) { dialogEpoch.current++; setDeletingSJId(null) } }}
 
               >
@@ -852,7 +852,7 @@ export default function PODetail() {
             <Field id="cancel-po-reason" label="Alasan pembatalan">{control => <textarea {...control} disabled={transactionLocked} aria-label="Alasan pembatalan" value={actionReason} onChange={e => setActionReason(e.target.value)} placeholder="Alasan pembatalan (wajib)" />}</Field>
             {(deleteSJMutation.isError || deleteMutation.isError) && <p className="text-red-600 text-[13px] mb-3">{((deleteSJMutation.error || deleteMutation.error) as Error).message}</p>}
             <FormActions className="mt-4">
-              <Button variant="secondary"
+              <Button variant="quiet"
                 disabled={transactionLocked} onClick={() => { if (!transactionLocked && !dialogBusy.current) { dialogEpoch.current++; setShowDeleteConfirm(false) } }}
 
               >
@@ -873,8 +873,8 @@ export default function PODetail() {
           <h2 id="returned-date-title" className="ui-dialog__title">Tanggal SJ kembali · {returnedTarget.number}</h2>
           {recovery}
           {isComplete && returnedDeadline !== null && <p className="mt-2 text-[13px] text-gray-600">Batas pengubahan: {new Date(returnedDeadline).toLocaleString('id-ID')}. Waktu dan izin diperiksa oleh server saat menyimpan.</p>}
-          <label htmlFor="returned-date" className="mt-4 block text-sm text-gray-700">Tanggal SJ kembali</label>
-          <input id="returned-date" type="date" value={returnedDate} disabled={transactionLocked} onChange={event => setReturnedDate(event.target.value)} className="mt-1 w-full rounded-lg border border-brand-control-border p-2 focus:outline-none focus:ring-2 focus:ring-brand-accent" />
+          <label htmlFor="returned-date" className="ui-field__label mt-4 block text-gray-700">Tanggal SJ kembali</label>
+          <input id="returned-date" type="date" value={returnedDate} disabled={transactionLocked} onChange={event => setReturnedDate(event.target.value)} className="ui-control mt-1 focus:outline-none focus:ring-2 focus:ring-brand-accent" />
           {returnedMutation.isError && <p role="alert" className="mt-3 text-sm text-red-600">{(returnedMutation.error as Error).message}</p>}
           {(isPOConflict(returnedMutation.error) || returnedTarget.version !== po.updated_at || returnedReview) && <Button variant="secondary" type="button" onClick={() => void refreshReturnedDate()} disabled={returnedReview?.status === 'loading' || transactionLocked} className="mt-2">Muat ulang PO</Button>}
           {returnedReview?.status === 'loading' && <p role="status" className="mt-3 text-sm">Memuat SJ dan versi PO terbaru…</p>}
@@ -887,7 +887,7 @@ export default function PODetail() {
             <Button variant="secondary" type="button" disabled={!returnedReviewEligible || transactionLocked} onClick={adoptReturnedDateReview} >Gunakan versi PO terbaru</Button>
           </div>}
           <FormActions className="mt-5">
-            <Button variant="secondary" type="button" disabled={transactionLocked} onClick={() => { if (!transactionLocked && !returnedBusy.current) closeReturnedDate() }} >Batal</Button>
+            <Button variant="quiet" type="button" disabled={transactionLocked} onClick={() => { if (!transactionLocked && !returnedBusy.current) closeReturnedDate() }} >Batal</Button>
             <Button variant="primary" type="button" pending={returnedMutation.isPending} onClick={() => void saveReturnedDate()} disabled={transactionLocked || returnedReviewRequired.current || poFetching || refreshingPO || returnedTarget.version !== po.updated_at} >{returnedMutation.isPending ? 'Menyimpan...' : 'Simpan tanggal kembali'}</Button>
           </FormActions>
       </ReturnedDateDialog>}

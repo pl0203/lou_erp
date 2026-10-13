@@ -279,7 +279,7 @@ export function PerformanceActivityContent() {
   return <div className="px-4 md:px-8 py-6 space-y-6">
     <div className="flex items-center justify-between flex-wrap gap-3">
       <div><h2 className="text-lg font-semibold text-gray-900">Aktivitas dan Target Tim</h2><p className="text-sm text-brand-secondary mt-0.5">Periode aktivitas: {selectedLabel}</p></div>
-      <select aria-label="Bulan performa sales" value={yearMonth} onChange={event => setFilters({ yearMonth: event.target.value })} className="border border-brand-control-border rounded-lg px-3 py-2 text-base min-h-11 focus:outline-none focus:ring-2 focus:ring-brand-primary">
+      <select aria-label="Bulan performa sales" value={yearMonth} onChange={event => setFilters({ yearMonth: event.target.value })} className="ui-control">
         {monthOptions.map(month => <option key={month.value} value={month.value}>{month.label}</option>)}
       </select>
     </div>
@@ -287,7 +287,7 @@ export function PerformanceActivityContent() {
       <p>Filter bulan aktivitas ini tidak mengubah Metrik Sales. Cakupan: anggota yang kini aktif (tenaga penjualan, manajer Sales, kepala Sales, dan eksekutif) sesuai izin akun; ringkasan mencakup semua halaman.</p>
       <p className="mt-1">Jadwal memakai tanggal kunjungan. Pesanan dan nilai pembanding target memakai tanggal pembuatan pesanan, termasuk riwayat Girard yang belum dikonversi. Basis ini berbeda dari tanggal PO, tanggal SJ, dan bulan laporan CO pada Metrik Sales.</p>
     </div>
-    {isError || monthError ? <div role="alert" className="text-red-700">{monthError ? 'Daftar bulan tidak tersedia.' : 'Data performa tidak tersedia.'} <Button variant="secondary" onClick={() => { refetch(); refetchMonths() }}>Coba lagi</Button></div> : !data ? <p className="text-center text-brand-secondary text-sm py-12">Memuat data performa...</p> : <>
+    {isError || monthError ? <div role="alert" className="text-red-700">{monthError ? 'Daftar bulan tidak tersedia.' : 'Data performa tidak tersedia.'} <Button size="compact" variant="secondary" onClick={() => { refetch(); refetchMonths() }}>Coba lagi</Button></div> : !data ? <p className="text-center text-brand-secondary text-sm py-12">Memuat data performa...</p> : <>
       <PaginationControls page={data.page} total={data.total} pageSize={data.page_size} pending={isPending} onPageChange={setPage} />
       {(data.summary.unassigned_orders ?? 0) > 0 && <div className="bg-white rounded-xl border border-gray-200 p-4"><p className="font-medium text-gray-900">Belum ditugaskan</p><p className="text-sm text-brand-secondary">{data.summary.unassigned_orders} pesanan belum memiliki kredit tenaga penjualan. Rp {formatMoney(data.summary.unassigned_sales!, 'full')} termasuk dalam nilai pembanding aktivitas.</p></div>}
       <SummaryCards avgVisitRate={data.summary.average_visit_rate} totalVisited={data.summary.total_visited} totalScheduled={data.summary.total_scheduled} totalOrders={data.summary.total_orders} totalSales={data.summary.total_sales} totalStaff={data.total} period={selectedLabel} />

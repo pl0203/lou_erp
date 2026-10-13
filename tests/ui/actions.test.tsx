@@ -98,3 +98,81 @@ test('default primary actions and pending indicators retain readable text labels
   expect(screen.getByRole('link', { name: 'Lihat riwayat' }).classList.contains('ui-action--primary')).toBe(true)
   expect(button.querySelector('.ui-action__pending')?.getAttribute('aria-hidden')).toBe('true')
 })
+
+test.each(['quiet', 'danger-quiet'] as const)('%s compact commands expose native buttons without leaking style props', variant => {
+  render(<Button variant={variant} size="compact" className="owner-command" aria-label="Tindakan catatan">Tinjau catatan</Button>)
+  const button = screen.getByRole('button', { name: 'Tindakan catatan' }) as HTMLButtonElement
+  expect(button.type).toBe('button')
+  expect(button.classList.contains(`ui-action--${variant}`)).toBe(true)
+  expect(button.classList.contains('ui-action--compact')).toBe(true)
+  expect(button.classList.contains('owner-command')).toBe(true)
+  for (const prop of ['variant', 'size', 'pending']) expect(button.hasAttribute(prop)).toBe(false)
+  button.focus()
+  expect(document.activeElement).toBe(button)
+})
+
+test('explicit default size preserves the existing primary surfaces without a DOM size attribute', () => {
+  render(<MemoryRouter><Button size="default">Simpan</Button><ActionLink size="default" to="/athel/co">Daftar CO</ActionLink></MemoryRouter>)
+  for (const action of [screen.getByRole('button', { name: 'Simpan' }), screen.getByRole('link', { name: 'Daftar CO' })]) {
+    expect(action.classList.contains('ui-action--primary')).toBe(true)
+    expect(action.classList.contains('ui-action--compact')).toBe(false)
+    expect(action.hasAttribute('size')).toBe(false)
+  }
+})
+
+test('quiet compact navigation keeps href, focus, ordinary routing and modified-click behavior', () => {
+  function Location() { return <output aria-label="Lokasi quiet">{useLocation().pathname}</output> }
+  render(<MemoryRouter initialEntries={['/athel/co']}>
+    <ActionLink variant="quiet" size="compact" className="owner-navigation" to="/athel/co/synthetic-record">Lihat catatan</ActionLink><Location />
+  </MemoryRouter>)
+  const link = screen.getByRole('link', { name: 'Lihat catatan' }) as HTMLAnchorElement
+  expect(link.tagName).toBe('A')
+  expect(link.getAttribute('href')).toBe('/athel/co/synthetic-record')
+  expect(link.getAttribute('role')).toBeNull()
+  expect(link.classList.contains('ui-action--quiet')).toBe(true)
+  expect(link.classList.contains('ui-action--compact')).toBe(true)
+  expect(link.classList.contains('owner-navigation')).toBe(true)
+  for (const prop of ['variant', 'size']) expect(link.hasAttribute(prop)).toBe(false)
+  link.focus()
+  expect(document.activeElement).toBe(link)
+  let intercepted = true
+  document.addEventListener('click', event => { intercepted = event.defaultPrevented; event.preventDefault() }, { once: true })
+  fireEvent.click(link, { ctrlKey: true, button: 0 })
+  expect(intercepted).toBe(false)
+  expect(screen.getByLabelText('Lokasi quiet').textContent).toBe('/athel/co')
+  fireEvent.click(link)
+  expect(screen.getByLabelText('Lokasi quiet').textContent).toBe('/athel/co/synthetic-record')
+})
+
+test('quiet compact commands do not implicitly submit while explicit submit buttons still do', () => {
+  let submissions = 0
+  render(<form onSubmit={event => { event.preventDefault(); submissions += 1 }}>
+    <Button variant="quiet" size="compact">Batal sunyi</Button>
+    <Button variant="danger-quiet" size="compact">Hapus baris</Button>
+    <Button type="submit" size="compact">Kirim ringkas</Button>
+  </form>)
+  fireEvent.click(screen.getByRole('button', { name: 'Batal sunyi' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Hapus baris' }))
+  expect(submissions).toBe(0)
+  fireEvent.click(screen.getByRole('button', { name: 'Kirim ringkas' }))
+  expect(submissions).toBe(1)
+})
+
+test.each(['quiet', 'danger-quiet'] as const)('%s compact pending commands keep their label and prevent duplicate sends', variant => {
+  function Owner() {
+    const [pending, setPending] = useState(false)
+    const [sends, setSends] = useState(0)
+    return <><Button variant={variant} size="compact" pending={pending} onClick={() => { setPending(true); setSends(value => value + 1) }}>Simpan ringkas</Button>
+      <output aria-label="Pengiriman ringkas">{sends}</output></>
+  }
+  render(<Owner />)
+  const button = screen.getByRole('button', { name: 'Simpan ringkas' }) as HTMLButtonElement
+  fireEvent.click(button)
+  fireEvent.click(button)
+  expect(screen.getByLabelText('Pengiriman ringkas').textContent).toBe('1')
+  expect(button.disabled).toBe(true)
+  expect(button.getAttribute('aria-busy')).toBe('true')
+  expect(button.querySelector('.ui-action__pending')?.getAttribute('aria-hidden')).toBe('true')
+  expect(button.classList.contains('ui-action--compact')).toBe(true)
+  expect(button.hasAttribute('size')).toBe(false)
+})

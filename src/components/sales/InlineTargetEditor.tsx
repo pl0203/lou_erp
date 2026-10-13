@@ -32,15 +32,15 @@ export function InlineTargetEditor({ recordId, currentTarget, canEdit, targetEdi
         }}
         placeholder="0"
         autoFocus
-        className="text-base text-right focus:outline-none focus:ring-2 focus:ring-brand-primary"
+        className="text-right focus:outline-none focus:ring-2 focus:ring-brand-primary"
       />}
     </Field>
     <Button onClick={() => targetEditors.save(draft.token)} pending={draft.pending}>Simpan target</Button>
-    <Button variant="secondary" onClick={() => targetEditors.cancel(draft.token)} disabled={draft.pending}>Batal</Button>
+    <Button variant="quiet" onClick={() => targetEditors.cancel(draft.token)} disabled={draft.pending}>Batal</Button>
     {draft.error && <p role="alert" className="basis-full text-sm text-red-700">Penyimpanan target mengalami kendala. Coba simpan lagi atau pilih Batal.</p>}
   </div>
 
-  return <Button variant="secondary" className="w-full" disabled={targetEditors.busy}
+  return <Button size="compact" variant="quiet" className="w-full" disabled={targetEditors.busy}
     aria-describedby={targetEditors.busy ? targetEditors.descriptionId : undefined}
     onClick={() => targetEditors.open(recordId, layout, currentTarget?.toString() ?? '')}>
     {currentTarget != null ? `Rp ${formatMoney(currentTarget, 'full')}` : '+ Atur target'}

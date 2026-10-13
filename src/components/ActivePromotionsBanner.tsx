@@ -13,7 +13,7 @@ export default function ActivePromotionsBanner() {
     staleTime: 0, refetchInterval: 30_000, refetchIntervalInBackground: false, refetchOnWindowFocus: true, refetchOnReconnect: true,
   })
   if (!actorKey) return null
-  if (promotions.isError) return <Notice tone="error" title="Promosi belum dapat dimuat." actions={<Button variant="secondary" onClick={() => void promotions.refetch()}>Coba lagi</Button>} />
+  if (promotions.isError) return <Notice tone="error" title="Promosi belum dapat dimuat." actions={<Button size="compact" variant="secondary" onClick={() => void promotions.refetch()}>Coba lagi</Button>} />
   if (promotions.isPending) return <Notice tone="info" title="Memuat promosi…" />
   const visible = (promotions.data ?? []).filter(isCurrentlyActive)
   if (!visible.length) return <div>{promotions.isFetching && <p role="status" className="text-sm text-brand-secondary">Memperbarui promosi…</p>}<EmptyState title="Belum ada promosi produk aktif." /></div>

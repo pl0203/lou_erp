@@ -18,7 +18,7 @@ function ChartCard({ title, subtitle, children }: { title: string; subtitle: str
 
 function SeriesControls({ items, selected, onToggle }: { items: { name: string; color: string; line?: boolean }[]; selected: Record<string, boolean>; onToggle: (name: string) => void }) {
   return <div className="mt-4 flex flex-wrap gap-2" aria-label="Tampilkan seri grafik">
-    {items.map(item => <Button variant="secondary" key={item.name} aria-pressed={selected[item.name]} onClick={() => onToggle(item.name)} className={`gap-2 ${selected[item.name] ? 'bg-slate-50' : 'border-dashed'}`}>
+    {items.map(item => <Button variant="quiet" size="compact" key={item.name} aria-pressed={selected[item.name]} onClick={() => onToggle(item.name)} className={`gap-2 ${selected[item.name] ? 'bg-slate-50' : 'border-dashed border-brand-control-border'}`}>
       <span aria-hidden="true" className={item.line ? 'h-0.5 w-4' : 'h-2.5 w-2.5 rounded-sm'} style={{ backgroundColor: selected[item.name] ? item.color : '#cbd5e1' }} />
       {item.name}
     </Button>)}
@@ -27,7 +27,7 @@ function SeriesControls({ items, selected, onToggle }: { items: { name: string; 
 
 function ChartData({ headers, rows, caption, open = false }: { headers: string[]; rows: (string | number)[][]; caption: string; open?: boolean }) {
   return <details open={open} className="mt-3 border-t border-slate-100 pt-3">
-    <summary className="w-fit min-h-11 cursor-pointer rounded px-3 py-2 text-[13px] font-medium text-brand-secondary hover:text-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary">Lihat data</summary>
+    <summary className="w-fit min-h-[var(--ui-control-size-compact)] cursor-pointer rounded px-3 py-[var(--ui-control-padding-y-compact)] text-[length:var(--ui-text-control)] font-medium text-brand-secondary hover:text-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary">Lihat data</summary>
     <div className="mt-3 max-h-72 overflow-auto rounded-lg border border-slate-200" tabIndex={0} role="region" aria-label={`Data ${caption}`}>
       <table className="w-full text-left text-sm">
         <caption className="sr-only">{caption}</caption>
@@ -66,12 +66,12 @@ function DailyChart({ series, sourcePeriod }: { series: DashboardData['dailySeri
     <SeriesControls items={[{ name: 'Nilai PO terkirim', color: CHART_COLORS.delivered }, { name: 'Jumlah SJ PO', color: CHART_COLORS.count, line: true }]} selected={selected} onToggle={name => setSelected(previous => ({ ...previous, [name]: !previous[name as keyof typeof previous] }))} />
     <div className="mt-3"><EChart label="Tren Pengiriman PO Harian" option={option} height={300} onDataZoom={onDataZoom} /></div>
     {series.length > 14 && <details className="mt-2 rounded-lg bg-slate-50 px-3 py-2">
-      <summary className="min-h-11 cursor-pointer px-3 py-2 text-[13px] font-medium text-slate-600 focus-visible:outline-2 focus-visible:outline-brand-primary">Atur rentang grafik: {series[start]?.label} – {series[end]?.label}</summary>
+      <summary className="min-h-[var(--ui-control-size-compact)] cursor-pointer px-3 py-[var(--ui-control-padding-y-compact)] text-[length:var(--ui-text-control)] font-medium text-slate-600 focus-visible:outline-2 focus-visible:outline-brand-primary">Atur rentang grafik: {series[start]?.label} – {series[end]?.label}</summary>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        <label className="text-[13px] text-slate-600">Mulai: {series[start]?.label}<input type="range" aria-label="Tanggal mulai grafik" aria-valuetext={series[start]?.label} min={0} max={last} value={start} onChange={event => setWindow(previous => ({ ...previous, start: Math.min(Number(event.target.value), end) }))} className="mt-2 block min-h-11 w-full accent-blue-600" /></label>
-        <label className="text-[13px] text-slate-600">Sampai: {series[end]?.label}<input type="range" aria-label="Tanggal akhir grafik" aria-valuetext={series[end]?.label} min={0} max={last} value={end} onChange={event => setWindow(previous => ({ ...previous, end: Math.max(Number(event.target.value), start) }))} className="mt-2 block min-h-11 w-full accent-blue-600" /></label>
+        <label className="text-[13px] text-slate-600">Mulai: {series[start]?.label}<input type="range" aria-label="Tanggal mulai grafik" aria-valuetext={series[start]?.label} min={0} max={last} value={start} onChange={event => setWindow(previous => ({ ...previous, start: Math.min(Number(event.target.value), end) }))} className="mt-2 block min-h-[var(--ui-control-size)] w-full accent-blue-600" /></label>
+        <label className="text-[13px] text-slate-600">Sampai: {series[end]?.label}<input type="range" aria-label="Tanggal akhir grafik" aria-valuetext={series[end]?.label} min={0} max={last} value={end} onChange={event => setWindow(previous => ({ ...previous, end: Math.max(Number(event.target.value), start) }))} className="mt-2 block min-h-[var(--ui-control-size)] w-full accent-blue-600" /></label>
       </div>
-      <Button variant="secondary" onClick={() => setWindow({ start: 0, end: last })} className="mt-3">Tampilkan semua tanggal</Button>
+      <Button variant="quiet" size="compact" onClick={() => setWindow({ start: 0, end: last })} className="mt-3">Tampilkan semua tanggal</Button>
     </details>}
     {series.every(item => moneyToChartNumber(item.deliveredValue) === 0 && item.sjCount === 0) && <p className="mt-2 text-[13px] text-brand-secondary">Belum ada pengiriman PO pada periode ini.</p>}
     <ChartData caption="Tren Pengiriman PO Harian" headers={['Tanggal', 'Nilai PO terkirim', 'Jumlah SJ PO']} rows={series.map(item => [item.label, currency(item.deliveredValue), count(item.sjCount)])} />

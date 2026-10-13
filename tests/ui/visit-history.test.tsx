@@ -77,7 +77,7 @@ async function editNote(value = 'Retained draft') {
   fireEvent.change(screen.getByRole('textbox', { name: 'Catatan kunjungan' }), { target: { value } })
 }
 
-test('history labels metadata, keeps date-only schedule and outlines a real detail link', async () => {
+test('history labels metadata, keeps date-only schedule and quietly styles a real detail link', async () => {
   mount(); await screen.findByRole('heading', { name: 'First store' })
   const article = screen.getByRole('article')
   expect(within(article).getByText('Waktu check-in').tagName).toBe('DT')
@@ -87,7 +87,7 @@ test('history labels metadata, keeps date-only schedule and outlines a real deta
   expect(within(article).getByText('Tidak dicatat')).toBeTruthy()
   const link = within(article).getByRole('link', { name: 'Lihat detail kunjungan di First store' })
   expect(link.getAttribute('href')).toBe('/girard/visit/s1')
-  expect(link.classList.contains('ui-action--secondary')).toBe(true)
+  expect(link.classList.contains('ui-action--quiet')).toBe(true); expect(link.classList.contains('ui-action--compact')).toBe(true)
   expect(within(article).queryByRole('button', { name: /Lihat.*kunjungan/ })).toBeNull()
   expect(screen.queryByRole('combobox')).toBeNull()
   expect(screen.getByText('1–20 dari 21')).toBeTruthy()
@@ -167,13 +167,13 @@ test.each(['loading', 'error', 'denied', 'customer-missing', 'visit-error'])('de
   expect(screen.queryByText('Private server details')).toBeNull(); expectMain()
 })
 
-test('note edit uses associated field and primary save with secondary cancel, preserving reviewed payload', async () => {
+test('note edit uses associated field and primary save with quiet cancel, preserving reviewed payload', async () => {
   mount(); await editNote('Edited note')
   const textarea = screen.getByRole('textbox', { name: 'Catatan kunjungan' }) as HTMLTextAreaElement
   expect(textarea.id).toBeTruthy(); expect(textarea.maxLength).toBe(2000)
   expect(screen.getByText('Catatan kunjungan', { selector: 'label' }).getAttribute('for')).toBe(textarea.id)
   expect(screen.getByRole('button', { name: 'Simpan catatan' }).classList.contains('ui-action--primary')).toBe(true)
-  expect(screen.getByRole('button', { name: 'Batal' }).classList.contains('ui-action--secondary')).toBe(true)
+  expect(screen.getByRole('button', { name: 'Batal' }).classList.contains('ui-action--quiet')).toBe(true)
   fireEvent.click(screen.getByRole('button', { name: 'Simpan catatan' }))
   await waitFor(() => expect(screen.queryByRole('textbox')).toBeNull())
   expect(state.send).toHaveBeenCalledWith('edit_visit_note', { visit_id: 'v1', expected_version: 1, notes: 'Edited note' })
@@ -258,11 +258,11 @@ test('pending note save stays locked and repeated clicks send the same draft onl
 })
 
 
-test('detail history destinations are outlined real links and normal navigation retains the note draft guard', async () => {
+test('detail history destinations are quiet real links and normal navigation retains the note draft guard', async () => {
   const router = mount('/girard/visit/s1'); await screen.findByText('Sudah check-in')
   const links = [['Riwayat pesanan saya', '/girard/my-orders'], ['Riwayat kunjungan saya', '/girard/visit-history']]
   for (const [name, href] of links) {
-    const link = screen.getByRole('link', { name }); expect(link.getAttribute('href')).toBe(href); expect(link.classList.contains('ui-action--secondary')).toBe(true)
+    const link = screen.getByRole('link', { name }); expect(link.getAttribute('href')).toBe(href); expect(link.classList.contains('ui-action--quiet')).toBe(true); expect(link.classList.contains('ui-action--compact')).toBe(true)
   }
   await editNote('Keep detail draft')
   const link = screen.getByRole('link', { name: 'Riwayat kunjungan saya' })

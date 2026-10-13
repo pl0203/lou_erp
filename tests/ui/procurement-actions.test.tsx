@@ -8,7 +8,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 const state = vi.hoisted(() => ({
   send: vi.fn(), nextActorSend: vi.fn(), actor: 'actor', reconcile: vi.fn(), acknowledge: vi.fn(), editDelivery: vi.fn(),
   queryErrors: [] as string[], unresolved: false, po: {} as any, lines: [] as any[], customers: [] as any[], products: [] as any[],
-  deliveries: [] as any[], orders: [] as any[], loading: false, error: false, salesStatus: 'pending', refreshSales: null as (() => void) | null,
+  deliveries: [] as any[], orders: [] as any[], loading: false, error: false, salesStatus: 'pending', salesFilter: 'pending', refreshSales: null as (() => void) | null,
   setFilters: vi.fn(), setPage: vi.fn(), refetch: vi.fn(),
 }))
 vi.mock('../../src/lib/supabase', () => ({ supabase: {} }))
@@ -20,7 +20,7 @@ vi.mock('../../src/lib/orderTransactions', async original => ({ ...await origina
 vi.mock('../../src/lib/reads/detailReads', async original => ({ ...await original<any>(), fetchDeliveryForEdit: (...args: any[]) => state.editDelivery(...args) }))
 vi.mock('../../src/lib/reads/usePagedRead', async () => { const { useState } = await import('react'); return { usePagedRead: (name: string, filters: any) => { const [, refresh] = useState(0); if (name === 'girard_orders') state.refreshSales = () => refresh(value => value + 1); return ({
   data: state.loading || state.error ? undefined : { items: name === 'purchase_orders' ? state.orders : name === 'girard_orders' ? [{ id: 'legacy', status: state.salesStatus, customers: { name: 'Synthetic buyer' }, users: { full_name: 'Synthetic sales' }, total_value: '9007199254740993.01', created_at: '2026-10-01T00:00:00Z' }] : name === 'surat_jalan' ? state.deliveries : [], total: 1, page: 1, page_size: 20, status_counts: { pending: 1 } },
-  filters, page: 1, setFilters: state.setFilters, setPage: state.setPage, refetch: state.refetch, isPending: state.loading, isError: state.error,
+  filters: name === 'girard_orders' ? { ...filters, status: state.salesFilter } : filters, page: 1, setFilters: state.setFilters, setPage: state.setPage, refetch: state.refetch, isPending: state.loading, isError: state.error,
 }) } } })
 vi.mock('@tanstack/react-query', async original => ({ ...await original<any>(), useQuery: ({ queryKey }: any) => ({
   data: state.loading || state.error ? undefined : queryKey[0] === 'po' ? state.po
@@ -43,7 +43,7 @@ const warning = new PromoStockWarningError({ code: 'PROMO_STOCK_WARNING', shorta
 const clients: QueryClient[] = [], routers: ReturnType<typeof createMemoryRouter>[] = []
 beforeEach(() => {
   state.actor = 'actor'; state.nextActorSend.mockReset(); state.send.mockReset().mockResolvedValue({ id: 'po' }); state.reconcile.mockReset(); state.acknowledge.mockReset(); state.editDelivery.mockReset().mockResolvedValue([{ po_line_item_id: 'line', quantity_delivered: 1 }])
-  state.queryErrors = []; state.unresolved = false; state.loading = false; state.error = false; state.salesStatus = 'pending'; state.refreshSales = null
+  state.queryErrors = []; state.unresolved = false; state.loading = false; state.error = false; state.salesStatus = 'pending'; state.salesFilter = 'pending'; state.refreshSales = null; state.setFilters.mockReset()
   state.po = { id: 'po', po_number: 'SYN-PO', status: 'confirm', customer_id: 'buyer', customers: { name: 'Synthetic buyer' }, order_date: '2026-10-01', expected_delivery_date: null, notes: null, updated_at: version, total_value: 20, completed_at: null }
   state.lines = [{ id: 'line', product_id: null, product_name: 'Synthetic tile', sku: 'SYN-1', quantity: 5, delivered_quantity: 1, unit_price: 10, line_total: '50.00', has_delivery_history: false }, { id: 'zero-line', product_id: null, product_name: 'Zero delivery tile', sku: 'SYN-0', quantity: 1, delivered_quantity: 0, unit_price: 0, line_total: '0.00', has_delivery_history: false }]
   state.deliveries = [{ id: 'sj', sj_number: 'SYN-SJ', sj_date: '2026-10-01', sj_date_received: null, sj_date_returned: null, voided_at: null, void_reason: null }]
@@ -452,4 +452,81 @@ test.each(['edit-data', 'edit-options', 'detail-lines', 'sales-read'] as const)(
   const alert = copy.closest('[role="alert"]')!
   expect(alert.classList.contains('text-red-700')).toBe(true)
   expect(within(alert as HTMLElement).getByRole('button', { name: 'Coba lagi' }).classList.contains('ui-action')).toBe(true)
+})
+
+
+function expectCompactQuiet(action: HTMLElement, destructive = false) {
+  expect(action.classList.contains('ui-action--compact')).toBe(true)
+  expect(action.classList.contains(destructive ? 'ui-action--danger-quiet' : 'ui-action--quiet')).toBe(true)
+}
+test('compact PO list distinguishes quiet view from secondary edit in wrapping desktop and mobile groups', () => {
+  mount('list')
+  expect(screen.getByRole('link', { name: '+ PO Baru' }).classList.contains('ui-action--primary')).toBe(true)
+  const views = screen.getAllByRole('link', { name: 'Lihat' })
+  const edits = screen.getAllByRole('link', { name: 'Ubah' })
+  expect(views).toHaveLength(8)
+  expect(edits).toHaveLength(4)
+  for (const link of [...views, ...edits]) {
+    expect(link.classList.contains('ui-action--compact')).toBe(true)
+    expect(link.classList.contains(link.textContent === 'Lihat' ? 'ui-action--quiet' : 'ui-action--secondary')).toBe(true)
+    expect(link.parentElement?.classList.contains('flex')).toBe(true)
+    expect(link.parentElement?.classList.contains('flex-wrap')).toBe(true)
+    expect(link.className).not.toMatch(/flex-1|mr-3/)
+  }
+  for (const input of document.querySelectorAll('input, select')) expect(input.className).not.toMatch(/text-base|py-2|px-3/)
+})
+test.each(['new', 'edit'] as const)('compact %s preserves primary save and quiet back/cancel with token-sized editable controls', async kind => {
+  mount(kind); if (kind === 'edit') await screen.findByDisplayValue('Synthetic tile')
+  for (const link of screen.getAllByRole('link', { name: /Kembali|Batal/ })) expect(link.classList.contains('ui-action--quiet')).toBe(true)
+  const save = screen.getByRole('button', { name: kind === 'new' ? 'Simpan PO' : 'Simpan Perubahan' })
+  expect(save.classList.contains('ui-action--primary')).toBe(true)
+  for (const input of document.querySelectorAll('input, select, textarea')) expect(input.className).not.toMatch(/min-h-11|text-base|py-2|px-3/)
+  for (const lookup of screen.getAllByRole('combobox')) expect(lookup.classList.contains('ui-control')).toBe(true)
+  if (kind === 'new') fireEvent.click(screen.getByRole('button', { name: '+ Tambah barang manual' }))
+  const remove = screen.getAllByRole('button', { name: /^Hapus / })[0]
+  expectCompactQuiet(remove, true)
+  remove.focus(); expect(document.activeElement).toBe(remove)
+})
+test('compact delivery commands stay visible with subdued cancel openers and deliberate final confirmation', () => {
+  mount('detail')
+  for (const name of ['Lihat barang', 'Ubah tanggal SJ kembali', 'Ubah']) expectCompactQuiet(screen.getByRole('button', { name }))
+  for (const name of ['Batalkan', 'Batalkan PO']) expectCompactQuiet(screen.getByRole('button', { name }), true)
+  expect(screen.getByRole('button', { name: '+ Surat Jalan' }).classList.contains('ui-action--primary')).toBe(true)
+  expect(screen.getByRole('link', { name: '← Kembali' }).classList.contains('ui-action--quiet')).toBe(true)
+  fireEvent.click(screen.getByRole('button', { name: 'Batalkan' }))
+  const dialog = nativeDialog()
+  expect(within(dialog).getByRole('button', { name: 'Ya, batalkan' }).classList.contains('ui-action--danger')).toBe(true)
+  expect(within(dialog).getByRole('button', { name: 'Batal' }).classList.contains('ui-action--quiet')).toBe(true)
+})
+test('returned-date raw field adopts density without changing its lock or native date semantics', () => {
+  mount('detail'); fireEvent.click(screen.getByRole('button', { name: 'Ubah tanggal SJ kembali' }))
+  const input = screen.getByLabelText('Tanggal SJ kembali') as HTMLInputElement
+  expect(input.type).toBe('date'); expect(input.classList.contains('ui-control')).toBe(true)
+  expect(input.className).not.toMatch(/p-2|py-2|text-base|min-h-11/)
+})
+
+
+test('compact PO fields do not override the shared control radius', () => {
+  mount('new'); fireEvent.click(screen.getByRole('button', { name: '+ Tambah barang manual' }))
+  for (const input of document.querySelectorAll('input, textarea')) expect(input.classList.contains('rounded-lg')).toBe(false)
+})
+test('compact PO remove glyph uses shared action typography', () => {
+  mount('new'); fireEvent.click(screen.getByRole('button', { name: '+ Tambah barang manual' }))
+  expect(screen.getByRole('button', { name: 'Hapus barang baru' }).classList.contains('text-xl')).toBe(false)
+})
+
+test('compact PO list reserves desktop action-column room for both frequent native links', () => {
+  mount('list')
+  const region = screen.getByRole('region', { name: 'Daftar pesanan pembelian' })
+  for (const view of within(region).getAllByRole('link', { name: 'Lihat' })) expect(view.closest('td')?.classList.contains('min-w-48')).toBe(true)
+})
+
+test('sales-order selected border follows status changes and leaves other filters unmarked', () => {
+  state.setFilters.mockImplementation((value: { status: string }) => { state.salesFilter = value.status; state.refreshSales?.() })
+  mount('sales')
+  const statuses = ['Pending', 'Disetujui', 'Ditolak', 'Dibatalkan', 'Semua'].map(name => screen.getByRole('button', { name }))
+  for (const chosen of [statuses[0], statuses[1], statuses[4], statuses[0]]) {
+    fireEvent.click(chosen)
+    for (const button of statuses) expect(button.classList.contains('border-brand-primary')).toBe(button === chosen)
+  }
 })

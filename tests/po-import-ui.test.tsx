@@ -419,3 +419,50 @@ function renderRoute(client: QueryClient) { const router = createMemoryRouter([{
 
 // The real data router uses Node Request, which requires a Node-compatible signal.
 beforeEach(() => { vi.stubGlobal('AbortController', class { constructor() { return transferableAbortController() } }) })
+
+
+test('compact import review opts raw editable fields into density while checkbox labels keep native targets', async () => {
+ mount(); await review()
+ const section = screen.getByRole('region', { name: 'Impor dokumen PO lokal' })
+ const file = within(section).getByLabelText('Dokumen PO') as HTMLInputElement
+ expect(file.type).toBe('file'); expect(file.classList.contains('ui-control')).toBe(true)
+ for (const label of ['Pelanggan hasil impor', 'Nomor PO hasil impor', 'Tanggal PO hasil impor', 'Kedaluwarsa PO hasil impor (opsional)', 'Catatan hasil impor', 'Nama barang hasil impor 1', 'SKU hasil impor 1', 'Jumlah hasil impor 1', 'Harga hasil impor 1']) {
+   const input = screen.getByLabelText(label); expect(input.classList.contains('ui-control')).toBe(true); expect(input.className).not.toMatch(/text-base|py-2|px-3|min-h-11/)
+ }
+ for (const checkbox of within(section).getAllByRole('checkbox')) {
+   expect(checkbox.tagName).toBe('INPUT'); expect(checkbox.classList.contains('ui-control')).toBe(false)
+   expect(checkbox.closest('label')?.classList.contains('min-h-[var(--ui-control-size)]')).toBe(true)
+ }
+ const applyButton = screen.getByRole('button', { name: 'Terapkan ke formulir' }); expect(applyButton.getAttribute('type')).toBe('button'); expect(applyButton.classList.contains('ui-action--primary')).toBe(true)
+ expect(state.send).not.toHaveBeenCalled()
+})
+test('compact import tabs keep roving native keyboard semantics and product choices return focus', async () => {
+ mount(); await review()
+ for (const tab of screen.getAllByRole('tab')) expect(tab.classList.contains('ui-action--compact')).toBe(true)
+ const reviewTab = screen.getByRole('tab', { name: 'Periksa data' }), documentTab = screen.getByRole('tab', { name: 'Dokumen' })
+ reviewTab.focus(); fireEvent.keyDown(reviewTab, { key: 'Home' }); expect(document.activeElement).toBe(documentTab); expect(documentTab.getAttribute('aria-selected')).toBe('true')
+ fireEvent.keyDown(documentTab, { key: 'End' }); expect(document.activeElement).toBe(reviewTab)
+ const pick = screen.getByRole('button', { name: 'Pilih produk barang 1' }); expect(pick.classList.contains('ui-action--compact')).toBe(true); expect(pick.classList.contains('ui-action--quiet')).toBe(true)
+ fireEvent.click(pick); const lookup = screen.getByRole('combobox', { name: 'Cari produk hasil impor 1' }); expect(lookup.classList.contains('ui-control')).toBe(true)
+ fireEvent.change(lookup, { target: { value: 'SYN-1' } }); fireEvent.keyDown(lookup, { key: 'Enter' }); expect(document.activeElement).toBe(pick)
+ expect(state.send).not.toHaveBeenCalled()
+})
+
+test('mobile import active-tab tint and border follow keyboard and click selection', async () => {
+ mount(); await review()
+ const reviewTab = screen.getByRole('tab', { name: 'Periksa data' }), documentTab = screen.getByRole('tab', { name: 'Dokumen' })
+ const expectSelected = (active: HTMLElement, inactive: HTMLElement) => {
+   expect(active.classList.contains('bg-brand-tint')).toBe(true)
+   expect(active.classList.contains('border-brand-primary')).toBe(true)
+   expect(inactive.classList.contains('bg-brand-tint')).toBe(false)
+   expect(inactive.classList.contains('border-brand-primary')).toBe(false)
+   expect(active.getAttribute('aria-selected')).toBe('true'); expect(active.getAttribute('tabindex')).toBe('0')
+   expect(inactive.getAttribute('aria-selected')).toBe('false'); expect(inactive.getAttribute('tabindex')).toBe('-1')
+ }
+ expectSelected(reviewTab, documentTab)
+ reviewTab.focus(); fireEvent.keyDown(reviewTab, { key: 'Home' }); expectSelected(documentTab, reviewTab); expect(document.activeElement).toBe(documentTab)
+ fireEvent.keyDown(documentTab, { key: 'End' }); expectSelected(reviewTab, documentTab); expect(document.activeElement).toBe(reviewTab)
+ fireEvent.click(documentTab); expectSelected(documentTab, reviewTab)
+ fireEvent.click(reviewTab); expectSelected(reviewTab, documentTab)
+ expect(state.send).not.toHaveBeenCalled()
+})

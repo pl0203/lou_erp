@@ -69,7 +69,7 @@ function CustomerDetailView({ id, identity, enabled }: { id?: string; identity: 
 
   if (customerQuery.isError) {
     return <div className="min-h-screen bg-brand-canvas"><GirardNav />
-      <MainContent className="p-4 md:p-8"><Notice tone="error" title="Gagal memuat pelanggan." actions={<Button variant="secondary" onClick={() => customerQuery.refetch()}>Coba lagi</Button>} /></MainContent>
+      <MainContent className="p-4 md:p-8"><Notice tone="error" title="Gagal memuat pelanggan." actions={<Button size="compact" variant="secondary" onClick={() => customerQuery.refetch()}>Coba lagi</Button>} /></MainContent>
     </div>
   }
 
@@ -91,7 +91,7 @@ function CustomerDetailView({ id, identity, enabled }: { id?: string; identity: 
 
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 space-y-3">
-        <Button variant="secondary" onClick={() => navigate(-1)}>← Kembali</Button>
+        <Button size="compact" variant="quiet" onClick={() => navigate(-1)}>← Kembali</Button>
         <PageHeader title={customer.name} description={[customer.address, customer.city].filter(Boolean).join(', ') || 'Alamat belum tersedia'} actions={overdue ? <StatusBadge tone="warning">Kunjungan Terlambat</StatusBadge> : undefined} />
       </div>
 
@@ -103,14 +103,14 @@ function CustomerDetailView({ id, identity, enabled }: { id?: string; identity: 
             { key: 'visits',   label: 'Riwayat Kunjungan' },
             { key: 'orders',   label: 'Pesanan' },
           ].map(tab => (
-            <Button
-              variant="secondary"
+            <Button size="compact"
+              variant="quiet"
               key={tab.key}
               aria-pressed={activeTab === tab.key}
               onClick={() => setActiveTab(tab.key as typeof activeTab)}
-              className={`shrink-0 px-3 py-3 text-base font-medium border-b-2 transition-colors ${
+              className={`shrink-0 font-medium border-b-2 transition-colors ${
                 activeTab === tab.key
-                  ? 'border-brand-accent text-brand-primary underline decoration-brand-primary underline-offset-4'
+                  ? 'border-brand-primary text-brand-primary underline decoration-brand-primary underline-offset-4'
                   : 'border-transparent text-brand-secondary hover:text-gray-700'
               }`}
             >

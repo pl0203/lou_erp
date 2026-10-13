@@ -65,7 +65,10 @@ async function create(name = 'First Admin', email = 'first@example.test') {
 
 test('login associates fields, uses real recovery link, reports validation and one main', () => {
   mount(<Login />)
-  const email = screen.getByLabelText('Email (wajib)'), password = screen.getByLabelText('Kata Sandi (wajib)')
+  const email = screen.getByLabelText('Email'), password = screen.getByLabelText('Kata Sandi')
+  expect(email.hasAttribute('required')).toBe(true); expect(password.hasAttribute('required')).toBe(true)
+  expect((email as HTMLInputElement).form?.noValidate).toBe(true)
+  expect(screen.getByRole('link', { name: 'Lupa kata sandi?' }).classList.contains('ui-action--quiet')).toBe(true)
   expect(email.getAttribute('autocomplete')).toBe('email'); expect(password.getAttribute('autocomplete')).toBe('current-password')
   expect(screen.getByRole('link', { name: 'Lupa kata sandi?' }).getAttribute('href')).toBe('/forgot-password')
   submit(email)
@@ -284,7 +287,7 @@ test('landing retains real module links/chosen icons and shared signout control'
   for (const [name, path] of [['Procurement', '/athel/po'], ['Sales', '/girard/schedule'], ['HR', '/ihr/users']]) {
     const link = screen.getByRole('link', { name: new RegExp('^' + name) }); expect(link.getAttribute('href')).toBe(path); expect(link.querySelector('svg')).toBeTruthy()
   }
-  expect(screen.getByRole('button', { name: 'Keluar' }).classList.contains('ui-action--secondary')).toBe(true); main()
+  expect(screen.getByRole('button', { name: 'Keluar' }).classList.contains('ui-action--quiet')).toBe(true); main()
 })
 test.each(['loading', 'offline', 'error', 'zero', 'cached'])('user directory %s distinguishes unavailable counts from verified zero', async mode => {
   if (mode === 'loading') state.rpc.mockImplementation(() => new Promise(() => {}))

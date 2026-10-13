@@ -29,12 +29,12 @@ function StorePOContextPage({customerId}:{customerId:string}) {
  useEffect(()=>{if(responseWindow && responseWindow!==serverWindow){if(serverWindow && page!==1)setPage(1);setServerWindow(responseWindow)}},[responseWindow,serverWindow,page])
  // Background revalidation also conceals prior results until current authority is verified.
  return <Section title="Pesanan pembelian (PO) toko" aria-label="Riwayat PO toko" className="space-y-3">
-  {query.isError ? <Notice tone="error" title="Riwayat PO belum tersedia." actions={<Button variant="secondary" onClick={()=>query.refetch()}>Coba lagi</Button>} />
+  {query.isError ? <Notice tone="error" title="Riwayat PO belum tersedia." actions={<Button size="compact" variant="secondary" onClick={()=>query.refetch()}>Coba lagi</Button>} />
    : query.isFetching || !query.data || responseWindow!==serverWindow ? <Notice tone="info" title="Memuat riwayat PO..." /> : <>
    <p>PO terakhir (seluruh riwayat): {query.data.latest_po_date ? formatDisplayDate(query.data.latest_po_date) : 'Belum ada PO'}</p>
    <p className="text-sm text-brand-secondary">Rentang status: {formatDisplayDate(query.data.range_from)} – {formatDisplayDate(query.data.range_through)}</p>
    {query.data.items.length===0 ? <EmptyState title="Tidak ada PO pada rentang ini." /> : <ul className="divide-y">{query.data.items.map(item=><li key={item.id} className="py-2 flex flex-wrap justify-between gap-2"><span>{item.po_number} · {formatDisplayDate(item.order_date)}</span><StatusBadge tone={item.status==='complete'?'success':item.status==='cancelled'?'error':item.status==='in_progress'?'warning':'neutral'}>{PO_STATUS_LABELS[item.status] ?? item.status}</StatusBadge></li>)}</ul>}
-   <FormActions className="justify-between"><Button variant="secondary" disabled={page===1} onClick={()=>setPage(page-1)}>Sebelumnya</Button><span className="text-[13px] text-brand-secondary">Halaman {page}</span><Button variant="secondary" disabled={page*20>=query.data.total} onClick={()=>setPage(page+1)}>Berikutnya</Button></FormActions>
+   <FormActions className="justify-between"><Button size="compact" variant="quiet" disabled={page===1} onClick={()=>setPage(page-1)}>Sebelumnya</Button><span className="text-[13px] text-brand-secondary">Halaman {page}</span><Button size="compact" variant="quiet" disabled={page*20>=query.data.total} onClick={()=>setPage(page+1)}>Berikutnya</Button></FormActions>
   </>}
  </Section>
 }

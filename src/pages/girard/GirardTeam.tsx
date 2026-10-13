@@ -79,7 +79,7 @@ export default function GirardTeam() {
           <Field id="team-activity-date" label="Tanggal aktivitas tim">{control => <input {...control} type="date" value={selectedDate}
             onChange={event => { if (isVisitDate(event.target.value)) setSelectedDate(event.target.value) }} />}</Field>
         </FilterBar>
-        {isError && <Notice tone="error" title="Data tim tidak tersedia." actions={<Button variant="secondary" onClick={() => { void refetchTeam(); if (teamIds.length) void refetchActivity() }}>Coba lagi</Button>} />}
+        {isError && <Notice tone="error" title="Data tim tidak tersedia." actions={<Button size="compact" variant="secondary" onClick={() => { void refetchTeam(); if (teamIds.length) void refetchActivity() }}>Coba lagi</Button>} />}
         {!isError && isLoading && (
           <Notice tone="info" title="Memuat data tim..." />
         )}
@@ -119,7 +119,7 @@ export default function GirardTeam() {
                             <div className="w-8 h-8 rounded-full bg-green-100 text-green-700 text-[13px] font-semibold flex items-center justify-center shrink-0">
                               {member.full_name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}
                             </div>
-                            <a className="inline-flex min-h-11 items-center font-medium text-brand-primary underline [overflow-wrap:anywhere]" href={visitScheduleHref(selectedDate, member.id)}>{member.full_name}</a>
+                            <a className="ui-action ui-action--quiet ui-action--compact font-medium [overflow-wrap:anywhere]" href={visitScheduleHref(selectedDate, member.id)}>{member.full_name}</a>
                           </div>
                         </td>
                         <td className="px-5 py-4">
@@ -127,11 +127,11 @@ export default function GirardTeam() {
                           {member.phone && <p className="text-brand-secondary text-[13px] mt-0.5">{member.phone}</p>}
                         </td>
                         <td className="px-5 py-4 text-center">
-                          <a aria-label={`Lihat ${activity?.total_scheduled ?? 0} jadwal ${member.full_name}`} className="inline-flex min-h-11 items-center font-medium text-brand-primary underline [overflow-wrap:anywhere]" href={visitScheduleHref(selectedDate, member.id)}>{activity?.total_scheduled ?? 0}</a>
+                          <a aria-label={`Lihat ${activity?.total_scheduled ?? 0} jadwal ${member.full_name}`} className="ui-action ui-action--quiet ui-action--compact font-medium [overflow-wrap:anywhere]" href={visitScheduleHref(selectedDate, member.id)}>{activity?.total_scheduled ?? 0}</a>
                         </td>
                         <td className="px-5 py-4 text-center">
                           <div className="flex flex-col items-center gap-1">
-                            <a aria-label={`Lihat ${activity?.total_visited ?? 0} kunjungan selesai ${member.full_name}`} className="inline-flex min-h-11 items-center font-medium text-brand-primary underline [overflow-wrap:anywhere]" href={visitScheduleHref(selectedDate, member.id, undefined, 'visited')}>{activity?.total_visited ?? 0}</a>
+                            <a aria-label={`Lihat ${activity?.total_visited ?? 0} kunjungan selesai ${member.full_name}`} className="ui-action ui-action--quiet ui-action--compact font-medium [overflow-wrap:anywhere]" href={visitScheduleHref(selectedDate, member.id, undefined, 'visited')}>{activity?.total_visited ?? 0}</a>
                             {visitRate !== null && (
                               <span className="text-[13px] text-brand-secondary">{visitRate}%</span>
                             )}
@@ -163,13 +163,13 @@ export default function GirardTeam() {
                         {member.full_name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}
                       </div>
                       <div className="min-w-0">
-                        <a className="inline-flex min-h-11 items-center font-semibold text-brand-primary underline [overflow-wrap:anywhere]" href={visitScheduleHref(selectedDate, member.id)}>{member.full_name}</a>
+                        <a className="ui-action ui-action--quiet ui-action--compact font-semibold [overflow-wrap:anywhere]" href={visitScheduleHref(selectedDate, member.id)}>{member.full_name}</a>
                         <p className="text-[13px] text-brand-secondary">{member.email}</p>
                       </div>
                     </div>
                     <SummaryList items={[
-                      { label: 'Dijadwalkan', value: <a aria-label={`Lihat ${activity?.total_scheduled ?? 0} jadwal ${member.full_name}`} className="inline-flex min-h-11 items-center font-semibold text-brand-primary underline" href={visitScheduleHref(selectedDate, member.id)}>{activity?.total_scheduled ?? 0}</a> },
-                      { label: 'Dikunjungi', value: <a aria-label={`Lihat ${activity?.total_visited ?? 0} kunjungan selesai ${member.full_name}`} className="inline-flex min-h-11 items-center font-semibold text-brand-primary underline" href={visitScheduleHref(selectedDate, member.id, undefined, 'visited')}>{activity?.total_visited ?? 0}</a> },
+                      { label: 'Dijadwalkan', value: <a aria-label={`Lihat ${activity?.total_scheduled ?? 0} jadwal ${member.full_name}`} className="ui-action ui-action--quiet ui-action--compact font-semibold" href={visitScheduleHref(selectedDate, member.id)}>{activity?.total_scheduled ?? 0}</a> },
+                      { label: 'Dikunjungi', value: <a aria-label={`Lihat ${activity?.total_visited ?? 0} kunjungan selesai ${member.full_name}`} className="ui-action ui-action--quiet ui-action--compact font-semibold" href={visitScheduleHref(selectedDate, member.id, undefined, 'visited')}>{activity?.total_visited ?? 0}</a> },
                       { label: 'Pesanan tanggal dipilih', value: activity?.total_orders ?? 0 },
                       { label: 'Kunjungan terbaru', value: weekVisits },
                     ]} />

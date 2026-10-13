@@ -122,9 +122,9 @@ export default function Promotions() {
             <p className="mt-2 text-base text-brand-secondary">{promo.stock_managed ? `Stok tersedia: ${promo.remaining_quantity}` : 'Legacy · stok belum ditetapkan'}</p>
             <SummaryList className="mt-3" items={PRICE_TIERS.map(tier => ({ label: LABELS[tier], value: formatCatalogPrice(promo[tier]) }))} />
             {promo.stock_managed ? <FormActions className="mt-4 justify-start">
-              <Button variant="secondary" disabled={blocked || !!form || !!stockTarget} onClick={() => { setEditing(promo); setForm({ id: promo.id, product_id: promo.product_id, opening_quantity: '', image: null, discount: '', prices: Object.fromEntries(PRICE_TIERS.map(tier => [tier, promo[tier]?.toString() ?? ''])) as Form['prices'] }); mutation.reset() }}>Ubah harga / gambar</Button>
-              <Button variant="secondary" disabled={blocked || !!form || !!stockTarget} onClick={() => { setStockTarget(promo); setDelta(''); setReason(''); mutation.reset() }}>Sesuaikan stok</Button>
-              <Button variant="secondary" disabled={blocked || !!form || !!stockTarget} onClick={() => { void run({ kind: 'active', current: promo, active: !promo.is_active }) }}>{promo.is_active ? 'Jeda' : 'Aktifkan'}</Button>
+              <Button variant="quiet" size="compact" disabled={blocked || !!form || !!stockTarget} onClick={() => { setEditing(promo); setForm({ id: promo.id, product_id: promo.product_id, opening_quantity: '', image: null, discount: '', prices: Object.fromEntries(PRICE_TIERS.map(tier => [tier, promo[tier]?.toString() ?? ''])) as Form['prices'] }); mutation.reset() }}>Ubah harga / gambar</Button>
+              <Button variant="quiet" size="compact" disabled={blocked || !!form || !!stockTarget} onClick={() => { setStockTarget(promo); setDelta(''); setReason(''); mutation.reset() }}>Sesuaikan stok</Button>
+              <Button variant="quiet" size="compact" disabled={blocked || !!form || !!stockTarget} onClick={() => { void run({ kind: 'active', current: promo, active: !promo.is_active }) }}>{promo.is_active ? 'Jeda' : 'Aktifkan'}</Button>
             </FormActions> : <p className="mt-4 text-[13px] text-brand-secondary">Riwayat legacy dipertahankan. Stok dan gambar pembukaan perlu diperiksa sebelum membuat kampanye baru.</p>}
           </article>)}</div>
         </>}
@@ -139,12 +139,12 @@ export default function Promotions() {
             {PRICE_TIERS.map(tier => <Field key={tier} id={`promotion-${tier}`} label={`${LABELS[tier]} (Rp)`}>{control => <input {...control} type="number" min={0} step="0.01" disabled={blocked} value={form.prices[tier]} onChange={event => setForm({ ...form, prices: { ...form.prices, [tier]: event.target.value } })} />}</Field>)}
           </div>
           <p className="mt-3 text-[13px] text-brand-secondary">Harga kosong berarti belum diisi; nol berarti gratis. Stok promosi tidak mengubah harga yang dimasukkan pada PO.</p>
-          <FormActions className="mt-5"><Button variant="secondary" disabled={mutation.isPending} onClick={() => { close(); mutation.reset() }}>Batal</Button><Button pending={mutation.isPending} disabled={blocked || products.isFetching || products.isError || !products.data} onClick={() => { void run({ kind: 'save', form, current: editing }) }}>{mutation.isPending ? 'Menyimpan...' : 'Simpan promosi'}</Button></FormActions>
+          <FormActions className="mt-5"><Button variant="quiet" disabled={mutation.isPending} onClick={() => { close(); mutation.reset() }}>Batal</Button><Button pending={mutation.isPending} disabled={blocked || products.isFetching || products.isError || !products.data} onClick={() => { void run({ kind: 'save', form, current: editing }) }}>{mutation.isPending ? 'Menyimpan...' : 'Simpan promosi'}</Button></FormActions>
         </Section>}
         {stockTarget && <Section aria-label="Penyesuaian stok" title={`Sesuaikan stok · ${stockTarget.product_name}`} className="border-brand-accent">
           <p className="text-base">Stok terakhir: {stockTarget.remaining_quantity}. Penyesuaian tidak boleh membuat stok negatif.</p>
           <div className="mt-4 space-y-3"><Field id="promotion-stock-delta" label="Perubahan stok">{control => <input {...control} type="number" step={1} value={delta} disabled={blocked} onChange={event => setDelta(event.target.value)} />}</Field><Field id="promotion-stock-reason" label="Alasan penyesuaian">{control => <textarea {...control} value={reason} disabled={blocked} onChange={event => setReason(event.target.value)} rows={2} />}</Field></div>
-          <FormActions className="mt-5"><Button variant="secondary" disabled={mutation.isPending} onClick={() => { close(); mutation.reset() }}>Batal</Button><Button pending={mutation.isPending} disabled={blocked || !reason.trim()} onClick={() => { void run({ kind: 'stock', current: stockTarget, delta, reason }) }}>Simpan penyesuaian</Button></FormActions>
+          <FormActions className="mt-5"><Button variant="quiet" disabled={mutation.isPending} onClick={() => { close(); mutation.reset() }}>Batal</Button><Button pending={mutation.isPending} disabled={blocked || !reason.trim()} onClick={() => { void run({ kind: 'stock', current: stockTarget, delta, reason }) }}>Simpan penyesuaian</Button></FormActions>
         </Section>}
         {versionReview && <Section aria-label="Periksa promosi terbaru" title={`Periksa promosi terbaru · ${versionReview.base.product_name}`} className="border-brand-accent bg-brand-tint">
           <p className="text-base">Isian harga, file, jumlah penyesuaian, dan alasan Anda tetap tersimpan. Periksa fakta saat ini sebelum menggunakan versi baru.</p>
@@ -156,7 +156,7 @@ export default function Promotions() {
             <p>Gambar saat ini: {latestReview.image_path ? latestReview.image_path.split('/').at(-1) : 'Belum tersedia'}</p>
             <PromotionImage key={latestReview.image_path} promotion={latestReview} />
             {!reviewMatchesCurrent && <p className="text-red-700">Data promosi berubah lagi atau belum lengkap. Muat ulang sebelum menggunakan versi ini.</p>}
-            <Button disabled={!reviewMatchesCurrent || mutation.isPending || sender.hasUnresolved()} onClick={adoptReviewedPromotion}>Gunakan versi promosi yang sudah diperiksa</Button>
+            <Button variant="secondary" disabled={!reviewMatchesCurrent || mutation.isPending || sender.hasUnresolved()} onClick={adoptReviewedPromotion}>Gunakan versi promosi yang sudah diperiksa</Button>
           </div>}
         </Section>}
         {mutation.isError && <Notice tone="error" title={(mutation.error as Error).message} actions={<Button variant="secondary" disabled={mutation.isPending} onClick={() => versionReview ? void reviewCurrentPromotion() : refresh()}>Muat ulang promosi</Button>} />}

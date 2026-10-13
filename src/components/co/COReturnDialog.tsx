@@ -386,21 +386,21 @@ function ReturnEditor({ customerId, customerVersion, observedVersion, selection,
             <CORecoveryPanel confirmed={!!confirmed} pending={pending || reviewPending} sender={sender} current={() => current() && !pending && !reviewPending && !blocked} accept={recover}/>
             {confirmed && <div role="alert">
                 <p>Retur sudah tersimpan. Baca hasil kanonis sebelum membuat perubahan baru.</p>
-                <Button variant="secondary" disabled={pending || reviewPending || blocked} onClick={() => {
+                <Button variant="quiet" size="compact" disabled={pending || reviewPending || blocked} onClick={() => {
                     if (busy.current || !current()) return;
                     busy.current = true; setPending(true);
                     void canonical(confirmed).catch(failure).finally(() => { busy.current = false; if (current()) setPending(false); });
                 }}>Buka hasil retur tersimpan</Button>
                 <p className="text-base">Jika sumber telah berubah, tanda terima asli tetap berlaku hanya untuk hasil sebelumnya. Buka keadaan terkini secara terpisah.</p>
-                <Button variant="secondary" disabled={pending || reviewPending || blocked} onClick={() => void resolveCommittedConflict()}>Selesaikan konflik retur</Button>
+                <Button variant="quiet" size="compact" disabled={pending || reviewPending || blocked} onClick={() => void resolveCommittedConflict()}>Selesaikan konflik retur</Button>
             </div>}
             {posted && <p role="status">Retur sudah tercatat</p>}
             {!loaded && !read.isError && <p role="status">Memuat seluruh sumber retur…</p>}
             {read.isError && <COFailure error={read.error} retry={() => void read.refetch()}/>}
             {(stale || parentStale) && <p role="alert">Sumber berubah. Isian tetap disimpan; muat sumber terbaru dan periksa lagi.</p>}
-            {loaded && !readonly && <Button variant="secondary" disabled={pending || reviewPending || blocked || !!confirmed || sender.hasUnresolved()} onClick={() => void refresh()}>Muat sumber retur terbaru</Button>}
+            {loaded && !readonly && <Button variant="quiet" size="compact" disabled={pending || reviewPending || blocked || !!confirmed || sender.hasUnresolved()} onClick={() => void refresh()}>Muat sumber retur terbaru</Button>}
             {needsReview && <div role="alert"><p>Ketersediaan diperbarui. Pilihan lama belum disetujui ulang.</p>
-                <Button variant="secondary" disabled={pending || blocked} onClick={() => { setNeedsReview(false); setReviewSource(null); }}>Saya sudah memeriksa sumber terbaru</Button></div>}
+                <Button variant="quiet" size="compact" disabled={pending || blocked} onClick={() => { setNeedsReview(false); setReviewSource(null); }}>Saya sudah memeriksa sumber terbaru</Button></div>}
             {reviewSource ? <COCorrectionDialog embedded ownUnsaved={false} operation={action ? 'correct_return' : 'post_return'}
                 customerId={customerId} source={reviewSource} sender={sender} current={current} blocked={blocked || pending || stale || parentStale || read.isError}
                 readFailure={readFailure} returnFocus={returnFocus} onDirtyChange={setReviewDirty} onPendingChange={reviewPendingChanged}
@@ -418,7 +418,7 @@ function ReturnEditor({ customerId, customerVersion, observedVersion, selection,
                     </fieldset>
                     <div className="space-y-3">{visible.map(([id, entry]) => <div key={id} className="rounded-lg border p-3 text-base space-y-1">
                         <p>{entry.source.sj_number ?? 'Sumber tersimpan'} · {entry.source.display_sku} · {entry.source.product_name}</p>
-                        <ActionLink variant="secondary" to={`/athel/co/${entry.source.co_id}`}>{entry.source.co_number}</ActionLink>
+                        <ActionLink variant="quiet" size="compact" to={`/athel/co/${entry.source.co_id}`}>{entry.source.co_number}</ActionLink>
                         <p>Harga asli Rp {formatMoney(entry.source.unit_price, 'full')} · PIC asli {entry.source.sales_person_name ?? 'Lihat bukti CO'} · tanggal SJ {entry.source.sj_date ?? 'Lihat bukti sumber'}</p>
                         <p>Tersedia tercatat: {entry.available ?? 'Sumber tidak tersedia pada pilihan positif saat ini'}</p>
                         <p className="text-[13px] break-all">Batch asli {id}</p>
@@ -428,11 +428,11 @@ function ReturnEditor({ customerId, customerVersion, observedVersion, selection,
                     <COPagination page={page} total={String(entries.length)} pending={pending || reviewPending} onPage={setPage}/>
                     {requiresSave && <p className="text-base">Simpan ulang draft untuk mengikat sumber yang baru diperiksa sebelum post.</p>}
                     {!readonly && <FormActions>
-                        {!action && <Button disabled={frozen} onClick={() => void save()}>Simpan Draft retur</Button>}
-                        <Button disabled={frozen || !action && (!header || dirty || header.consumed || requiresSave || !header.bindings_current)} onClick={review}>{action ? 'Tinjau koreksi retur' : 'Tinjau / post retur'}</Button>
+                        {!action && <Button variant={!header || dirty || requiresSave || !header.bindings_current ? "primary" : "secondary"} disabled={frozen} onClick={() => void save()}>Simpan Draft retur</Button>}
+                        <Button variant={action || header && !dirty && !header.consumed && !requiresSave && header.bindings_current ? "primary" : "secondary"} disabled={frozen || !action && (!header || dirty || header.consumed || requiresSave || !header.bindings_current)} onClick={review}>{action ? 'Tinjau koreksi retur' : 'Tinjau / post retur'}</Button>
                     </FormActions>}
                 </>}
-            <Button variant="secondary" disabled={pending || reviewPending} onClick={dismiss}>Tutup retur</Button>
+            <Button variant="quiet" size="compact" disabled={pending || reviewPending} onClick={dismiss}>Tutup retur</Button>
         </div>
     </Dialog></>;
 }

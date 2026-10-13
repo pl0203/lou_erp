@@ -342,3 +342,48 @@ test('newer tab navigation supersedes a deferred Ajukan Cuti home intent',async(
  await act(async()=>finishMutation!({data:{id:requestId,version:2,operation:'approve_request'},error:null}))
  expect(tab('Kalender').getAttribute('aria-selected')).toBe('true')
 })
+
+
+// A fixed tint/border on every option, or aria-pressed without a visual cue, must fail these transitions.
+function expectSelectedAdminControl(button:HTMLElement,selected:boolean){
+ expect(button.getAttribute('aria-pressed')).toBe(String(selected))
+ expect(button.classList.contains('ui-action--quiet')).toBe(true)
+ expect(button.classList.contains('ui-action--compact')).toBe(true)
+ expect(button.classList.contains('bg-brand-tint')).toBe(selected)
+ expect(button.classList.contains('border-brand-primary')).toBe(selected)
+}
+test('member settings visual selection follows the active panel and preserves rejected dirty navigation',async()=>{
+ identity(hrA);context={...personal,memberKind:null,capabilities:{...none,configure:true},balances:[],currentPeriod:null};audiences=[];targets=[{id:employeeA,name:'Fictional configured target',capabilities:{configure:true,adjust:false,readPrivate:false,calendar:false,manageAccess:false}}];mount()
+ fireEvent.click(await screen.findByRole('button',{name:'Atur Fictional configured target'}));await screen.findByLabelText('Alasan policy')
+ const control=(name:string)=>within(screen.getByRole('navigation',{name:'Pengaturan anggota terpilih'})).getByRole('button',{name})
+ expectSelectedAdminControl(control('Kebijakan dan akses'),true);expectSelectedAdminControl(control('Keanggotaan'),false);expectSelectedAdminControl(control('Saldo'),false)
+ fireEvent.click(control('Keanggotaan'));await screen.findByLabelText('Alasan perubahan')
+ expectSelectedAdminControl(control('Kebijakan dan akses'),false);expectSelectedAdminControl(control('Keanggotaan'),true);expectSelectedAdminControl(control('Saldo'),false)
+ fireEvent.change(screen.getByLabelText('Alasan perubahan'),{target:{value:'Retained membership draft'}});fireEvent.click(control('Kebijakan dan akses'))
+ expectSelectedAdminControl(control('Kebijakan dan akses'),false);expectSelectedAdminControl(control('Keanggotaan'),true);expect(screen.getByDisplayValue('Retained membership draft')).toBeTruthy()
+ vi.mocked(window.confirm).mockReturnValue(true);fireEvent.click(control('Kebijakan dan akses'));await screen.findByLabelText('Alasan policy')
+ expectSelectedAdminControl(control('Kebijakan dan akses'),true);expectSelectedAdminControl(control('Keanggotaan'),false);expectSelectedAdminControl(control('Saldo'),false)
+})
+test('private data visual selection moves between requests and balances without changing the parent panel',async()=>{
+ identity(hrA);context={...personal,memberKind:null,capabilities:{...none,configure:true,readPrivate:true},balances:[],currentPeriod:null};audiences=[];targets=[{id:employeeA,name:'Fictional private target',capabilities:{configure:true,adjust:false,readPrivate:true,calendar:false,manageAccess:false}}];mount()
+ fireEvent.click(await screen.findByRole('button',{name:'Atur Fictional private target'}));await screen.findByLabelText('Alasan policy')
+ const panel=(name:string)=>within(screen.getByRole('navigation',{name:'Pengaturan anggota terpilih'})).getByRole('button',{name})
+ fireEvent.click(panel('Tinjauan privat'));await screen.findByRole('button',{name:'Tinjau pengajuan 2026-10-09 sampai 2026-10-09'})
+ const control=(name:string)=>within(screen.getByRole('navigation',{name:'Data privat anggota'})).getByRole('button',{name})
+ expectSelectedAdminControl(control('Permohonan anggota'),true);expectSelectedAdminControl(control('Saldo dan riwayat anggota'),false)
+ fireEvent.click(control('Saldo dan riwayat anggota'));await screen.findByLabelText('Periode saldo anggota')
+ expectSelectedAdminControl(control('Permohonan anggota'),false);expectSelectedAdminControl(control('Saldo dan riwayat anggota'),true);expect(panel('Tinjauan privat').getAttribute('aria-pressed')).toBe('true');expect(panel('Kebijakan dan akses').getAttribute('aria-pressed')).toBe('false')
+ fireEvent.click(control('Permohonan anggota'));await screen.findByRole('button',{name:'Tinjau pengajuan 2026-10-09 sampai 2026-10-09'})
+ expectSelectedAdminControl(control('Permohonan anggota'),true);expectSelectedAdminControl(control('Saldo dan riwayat anggota'),false);expect(panel('Tinjauan privat').getAttribute('aria-pressed')).toBe('true')
+})
+
+test('main leave selected border stays on rejected dirty tab and moves only after an accepted switch', async () => {
+ identity(managerA);context={...personal,memberKind:'manager',capabilities:{...none,request:true,approve:true}};audiences=['own','assigned_team'];mount()
+ const mine=await screen.findByRole('tab',{name:'Ajukan Cuti'}), approvals=tab('Persetujuan'), calendar=tab('Kalender')
+ const marked=(selected:HTMLElement)=>{for(const item of [mine,approvals,calendar])expect(item.classList.contains('border-brand-primary')).toBe(item===selected)}
+ marked(mine);fireEvent.click(approvals);await screen.findByRole('button',{name:'Tinjau Fictional employee'});marked(approvals)
+ fireEvent.click(screen.getByRole('button',{name:'Tinjau Fictional employee'}));fireEvent.change(await screen.findByLabelText('Alasan penolakan'),{target:{value:'Keep decision draft'}})
+ fireEvent.click(calendar);expect(window.confirm).toHaveBeenCalled();expect(approvals.getAttribute('aria-selected')).toBe('true');marked(approvals)
+ vi.mocked(window.confirm).mockReturnValue(true);fireEvent.click(calendar);await screen.findByText('Fictional calendar employee');marked(calendar)
+ fireEvent.click(mine);marked(mine)
+})

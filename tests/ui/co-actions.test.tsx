@@ -92,7 +92,8 @@ test.each(['create', 'edit'] as const)('%s Back and Cancel are real destination 
     for (const name of ['Kembali', 'Batal']) {
         const link = screen.getByRole('link', { name });
         expect(link.getAttribute('href')).toBe(destination); sharedAction(link);
-        expect(link.classList.contains('ui-action--secondary')).toBe(true);
+        expect(link.classList.contains('ui-action--quiet')).toBe(true);
+        expect(link.classList.contains('ui-action--compact')).toBe(true);
         for (const modifier of ['ctrlKey', 'metaKey', 'shiftKey', 'altKey']) {
             let intercepted = true;
             document.addEventListener('click', event => { intercepted = event.defaultPrevented; event.preventDefault(); }, { once: true });

@@ -50,19 +50,19 @@ function CalendarPanel({actorId,context,readState='ready'}:Props){
   {error&&<Notice tone="error" title={<> {error} </>}/>}
   {access.available&&authorized&&access.data?.defaultRange===null&&<p role="status" className="ui-notice ui-notice--info">Zona waktu perusahaan belum dikonfirmasi atau berbeda untuk cakupan ini. Pilih rentang tanggal secara manual; tanggal ditampilkan sesuai permohonan.</p>}
   {readState==='pending'||access.isFetching?<p role="status" className="ui-notice ui-notice--info">Memeriksa akses kalender...</p>:
-   readState==='error'||access.isError?<div role="alert" className="ui-notice ui-notice--error"><p>Akses kalender belum dapat dikonfirmasi.</p><Button type="button" onClick={()=>void access.refetch()} variant="secondary">Coba lagi</Button></div>:
-   !access.available?<div role="status" className="ui-notice ui-notice--info"><p>Akses kalender belum tersedia.</p><Button type="button" onClick={()=>void access.refetch()} variant="secondary">Muat ulang akses kalender</Button></div>:
+   readState==='error'||access.isError?<div role="alert" className="ui-notice ui-notice--error"><p>Akses kalender belum dapat dikonfirmasi.</p><Button size="compact" type="button" onClick={()=>void access.refetch()} variant="secondary">Coba lagi</Button></div>:
+   !access.available?<div role="status" className="ui-notice ui-notice--info"><p>Akses kalender belum tersedia.</p><Button size="compact" type="button" onClick={()=>void access.refetch()} variant="secondary">Muat ulang akses kalender</Button></div>:
    !access.data?.calendarAudiences.length?<EmptyState title="Belum ada akses kalender yang diberikan."/>:
    !authorized?<p>Cakupan kalender ini belum tersedia. Pilih cakupan yang diberikan.</p>:
    !range?<p>Pilih rentang tanggal paling lama 93 hari.</p>:
    calendar.isFetching||calendar.isPending?<p role="status" className="ui-notice ui-notice--info">Memuat kalender...</p>:
-   calendar.isError?<div role="alert" className="ui-notice ui-notice--error"><p>Kalender belum dapat dimuat.</p><Button type="button" onClick={()=>void calendar.refetch()} variant="secondary">Coba lagi</Button></div>:
+   calendar.isError?<div role="alert" className="ui-notice ui-notice--error"><p>Kalender belum dapat dimuat.</p><Button size="compact" type="button" onClick={()=>void calendar.refetch()} variant="secondary">Coba lagi</Button></div>:
    calendar.available&&calendar.data?<>
     {!calendar.data.length&&<EmptyState title="Tidak ada cuti disetujui pada rentang ini."/>}
     {!!calendar.data.length&&<h3 className="border-t border-brand-divider pt-4 font-semibold text-brand-primary">Agenda cuti</h3>}
     <RecordList aria-label="Agenda cuti"  label="Agenda cuti">{calendar.data.map(row=><li key={`${row.employeeId}:${row.date}`} className="flex flex-col gap-3 rounded-[14px] border border-brand-divider bg-brand-canvas p-4 sm:flex-row sm:items-center">
      <time dateTime={row.date} className="shrink-0 self-start rounded-[10px] bg-white px-3 py-2 text-[13px] font-semibold text-brand-secondary shadow-sm">{row.date}</time><div className="min-w-0 flex-1"><p className="font-medium text-brand-primary">{row.employeeName}</p><p className="mt-1 text-[13px] text-brand-secondary">{row.availabilityLabel==='full_scheduled_absence'?'Seluruh jadwal asal':'Sebagian jadwal'}</p></div><span className="font-semibold text-brand-primary">{formatLeaveMinutes(row.approvedMinutes)}</span>
     </li>)}</RecordList>
-   </>:<div role="status" className="ui-notice ui-notice--info"><p>Kalender belum tersedia.</p><Button type="button" onClick={()=>void calendar.refetch()} variant="secondary">Muat ulang kalender</Button></div>}
+   </>:<div role="status" className="ui-notice ui-notice--info"><p>Kalender belum tersedia.</p><Button size="compact" type="button" onClick={()=>void calendar.refetch()} variant="secondary">Muat ulang kalender</Button></div>}
  </section>
 }

@@ -51,7 +51,7 @@ function Tabs({actorId,context,readState,onDirtyChange}:{actorId:string;context:
     if(location)handledIntent.current=location.key
     setDirty(false);setSelected(id)
   }}
-  const accessRetry=!personal&&!approver&&readState==='ready'&&!access.available&&!access.isFetching?<div role="alert" className="ui-notice ui-notice--error"><p>Pilihan akses kalender belum dapat dikonfirmasi.</p><Button type="button" onClick={()=>void access.refetch()} variant="secondary">Muat ulang pilihan kalender</Button></div>:null
+  const accessRetry=!personal&&!approver&&readState==='ready'&&!access.available&&!access.isFetching?<div role="alert" className="ui-notice ui-notice--error"><p>Pilihan akses kalender belum dapat dikonfirmasi.</p><Button size="compact" type="button" onClick={()=>void access.refetch()} variant="secondary">Muat ulang pilihan kalender</Button></div>:null
   if(!tabs.length)return accessRetry??(readState==='ready'&&access.available?<EmptyState title="Belum ada akses cuti yang diberikan. Hubungi administrator HR."/>:<p role="status" className="ui-notice ui-notice--info">Memeriksa pilihan akses cuti...</p>)
   return <section>
     {accessRetry}
@@ -64,7 +64,7 @@ function Tabs({actorId,context,readState,onDirtyChange}:{actorId:string;context:
           const direction=event.key==='ArrowRight'?1:event.key==='ArrowLeft'?-1:0
           const next=event.key==='Home'?tabs[0]:event.key==='End'?tabs.at(-1):direction?tabs[(index+direction+tabs.length)%tabs.length]:undefined
           if(next){event.preventDefault();document.getElementById(`leave-tab-${next.id}`)?.focus()}
-        }} className={`ui-action ui-action--secondary shrink-0 ${tab.id===active?'bg-brand-tint text-brand-primary underline decoration-brand-primary underline-offset-4':''}`}>
+        }} className={`ui-action ui-action--quiet ui-action--compact shrink-0 ${tab.id===active?'border-brand-primary bg-brand-tint text-brand-primary underline decoration-brand-primary underline-offset-4':''}`}>
         {tab.label}{tab.id==='approvals'&&<span className="ml-2"><LeaveApprovalBadge actorId={actorId} context={context}/></span>}
       </button>)}
     </div>

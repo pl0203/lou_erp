@@ -334,7 +334,7 @@ export default function POEdit() {
   if (!['confirm', 'in_progress'].includes(po.status)) {
     return <div className="min-h-screen bg-brand-canvas">{unsaved.dialog}<AthelNav /><MainContent>{recovery}<div className="p-8">
       <p>PO {po.status === 'cancelled' ? 'yang dibatalkan' : po.status === 'complete' ? 'yang selesai' : 'dengan status ini'} tidak dapat diubah.</p>
-      <ActionLink variant="secondary" to={`/athel/po/${id}`} className="mt-2">Kembali ke PO</ActionLink>
+      <ActionLink variant="quiet" to={`/athel/po/${id}`} className="mt-2">Kembali ke PO</ActionLink>
     </div></MainContent></div>
   }
 
@@ -347,7 +347,7 @@ export default function POEdit() {
         {!stockSubmission.warning && recovery}
 
       <div ref={formFocus} tabIndex={-1} className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center gap-4">
-        <ActionLink variant="secondary" to={`/athel/po/${id}`} className="shrink-0">← Kembali</ActionLink>
+        <ActionLink variant="quiet" to={`/athel/po/${id}`} className="shrink-0">← Kembali</ActionLink>
         <div className="min-w-0 [overflow-wrap:anywhere]">
           <h1 className="text-xl font-semibold text-gray-900">Ubah {po?.po_number}</h1>
           <p className="text-sm text-brand-secondary mt-0.5">Perubahan akan tercatat di riwayat audit</p>
@@ -377,26 +377,26 @@ export default function POEdit() {
                 type="text"
                 value={po?.po_number ?? ''}
                 disabled
-                className="min-w-0 max-w-full w-full border border-gray-100 rounded-lg px-3 py-2 text-base bg-gray-50 text-brand-secondary cursor-not-allowed"
+                className="max-w-full border-gray-100 bg-gray-50 text-brand-secondary cursor-not-allowed"
               />}</Field>
             <Field id="po-order-date" label="Tanggal PO">{control => <input {...control}
                 type="text"
                 value={po?.order_date ?? ''}
                 disabled
-                className="min-w-0 max-w-full w-full border border-gray-100 rounded-lg px-3 py-2 text-base bg-gray-50 text-brand-secondary cursor-not-allowed"
+                className="max-w-full border-gray-100 bg-gray-50 text-brand-secondary cursor-not-allowed"
               />}</Field>
             <Field id="po-expiry" label="Tanggal Kedaluwarsa PO (opsional)" hint="Jika PO pelanggan memiliki tanggal kedaluwarsa. Bukan tanggal pengiriman.">{control => <input {...control}
                 type="date"
                 value={expectedDelivery}
                 onChange={e => setExpectedDelivery(e.target.value)}
-                className="min-w-0 max-w-full w-full border border-brand-control-border rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                className="max-w-full focus:outline-none focus:ring-2 focus:ring-brand-primary"
               />}</Field>
             <Field id="po-notes" label="Catatan" className="sm:col-span-2">{control => <textarea {...control}
                 value={notes}
                 onChange={e => setNotes(e.target.value)}
                 rows={2}
                 placeholder="Catatan (opsional)..."
-                className="min-w-0 max-w-full w-full border border-brand-control-border rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-primary resize-none"
+                className="max-w-full focus:outline-none focus:ring-2 focus:ring-brand-primary resize-none"
               />}</Field>
           </div>
         </fieldset>
@@ -462,7 +462,7 @@ export default function POEdit() {
 
         {/* Actions */}
         <FormActions className="pb-8">
-          <ActionLink variant="secondary" to={`/athel/po/${id}`}
+          <ActionLink variant="quiet" to={`/athel/po/${id}`}
 
           >Batal</ActionLink>
           <Button variant="primary"

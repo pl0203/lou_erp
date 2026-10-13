@@ -372,10 +372,42 @@ test('reachable supporting text never falls below the 13px source contract', () 
   elements((source, node) => { if (/\btext-xs\b|\btext-\[(?:[0-9]|1[0-2])px\]/.test(classText(source, node))) violations.push(location(source, node)) })
   expect(violations).toEqual([])
 })
-test('reachable native editable fields do not override 16px body sizing with smaller utilities', () => {
+function directFieldControl(source: ts.SourceFile, node: Opening) {
+  // Field's CSS applies only to a native direct child, not an input nested in
+  // a custom combobox or other JSX wrapper.
+  let parent: ts.Node | undefined = node.parent
+  while (parent) {
+    if (ts.isJsxElement(parent) && parent.openingElement !== node) return parent.openingElement.tagName.getText(source) === 'Field'
+    parent = parent.parent
+  }
+  return false
+}
+function unconditionalClasses(classes: string) {
+  // Responsive variants are deliberate. Audit bare utilities that could win
+  // against the shared fine-pointer/touch tokens instead of substring matches.
+  return classes.split(/[\s"'`]+/).filter(token => token && !token.includes(':'))
+}
+test('reachable native editable fields inherit Field or ui-control without unconditional density overrides', () => {
   const violations: string[] = []
   elements((source, node) => {
-    if (['input', 'select', 'textarea'].includes(node.tagName.getText(source)) && /\btext-(?:xs|sm)\b|\btext-\[(?:[0-9]|1[0-5])px\]/.test(classText(source, node))) violations.push(location(source, node))
+    const tag = node.tagName.getText(source)
+    if (!['input', 'select', 'textarea'].includes(tag)) return
+    const type = tag === 'input' ? literal(attr(node, 'type')) : null
+    if (['checkbox', 'radio', 'range', 'hidden', 'file', 'button', 'submit', 'reset', 'image'].includes(type ?? '')) return
+    const classes = classText(source, node)
+    if (!directFieldControl(source, node) && !hasClassToken(classes, 'ui-control')) violations.push(`${location(source, node)}: missing field skin`)
+    const conflicting = unconditionalClasses(classes).filter(token => /^(?:min-)?h-(?:8|9|10|11|12)$|^text-(?:xs|sm|base|\[(?:[0-9]|1[0-5])px\])$|^(?:p|py)-(?:1|1\.5|2|3)$/.test(token))
+    if (conflicting.length) violations.push(`${location(source, node)}: ${conflicting.join(', ')}`)
+  })
+  expect(violations).toEqual([])
+})
+test('reachable native summaries retain a responsive target without losing their disclosure semantics', () => {
+  const violations: string[] = []
+  elements((source, node) => {
+    if (node.tagName.getText(source) !== 'summary') return
+    const classes = classText(source, node)
+    const sized = hasClassToken(classes, 'ui-action') || /min-h-\[var\(--ui-control-size(?:-compact)?\)\]/.test(classes)
+    if (!sized || /(?:^|\s)list-none(?:\s|$)/.test(classes)) violations.push(location(source, node))
   })
   expect(violations).toEqual([])
 })

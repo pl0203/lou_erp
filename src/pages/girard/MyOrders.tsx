@@ -68,8 +68,8 @@ export default function MyOrders() {
           { value: 'approved', label: 'Disetujui' },
           { value: 'rejected', label: 'Ditolak' },
           { value: 'cancelled', label: 'Dibatalkan' },
-        ].map(tab => <Button key={tab.value} variant="secondary" aria-pressed={statusFilter === tab.value}
-          onClick={() => setStatusFilter(tab.value)} className={statusFilter === tab.value ? 'border-brand-accent underline decoration-brand-primary underline-offset-4' : undefined}>
+        ].map(tab => <Button size="compact" key={tab.value} variant="quiet" aria-pressed={statusFilter === tab.value}
+          onClick={() => setStatusFilter(tab.value)} className={statusFilter === tab.value ? 'border-brand-primary underline decoration-brand-primary underline-offset-4' : undefined}>
           {tab.label}
         </Button>)}
       </FilterBar>
@@ -81,7 +81,7 @@ export default function MyOrders() {
         )}
 
         {isError && <Notice tone="error" title="Gagal memuat pesanan. Data belum dapat ditampilkan."
-          actions={<Button variant="secondary" onClick={() => { void refetch() }}>Coba lagi</Button>} />}
+          actions={<Button size="compact" variant="secondary" onClick={() => { void refetch() }}>Coba lagi</Button>} />}
 
         {!isLoading && !isError && (!orders || orders.length === 0) && (
           <EmptyState title="Tidak ada pesanan ditemukan.">Riwayat pesanan dari kunjungan sebelumnya akan muncul di sini.</EmptyState>
@@ -140,7 +140,7 @@ export default function MyOrders() {
             </div>
 
             <div className="px-5 py-3">
-              <Button variant="secondary" aria-expanded={expanded.includes(order.id)} onClick={() => setExpanded(previous => previous.includes(order.id) ? previous.filter(id => id !== order.id) : [...previous, order.id])} >{expanded.includes(order.id) ? 'Sembunyikan barang' : 'Lihat barang'}</Button>
+              <Button size="compact" variant="quiet" aria-expanded={expanded.includes(order.id)} onClick={() => setExpanded(previous => previous.includes(order.id) ? previous.filter(id => id !== order.id) : [...previous, order.id])} >{expanded.includes(order.id) ? 'Sembunyikan barang' : 'Lihat barang'}</Button>
               {expanded.includes(order.id) && <SalesOrderItems orderId={order.id} />}
             </div>
           </li>

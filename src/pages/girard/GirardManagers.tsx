@@ -100,7 +100,7 @@ export default function GirardManagers() {
                   </div>
                 </div>
 
-                <ActionLink variant="secondary" aria-label={`Lihat jadwal tim ${m.full_name}`} className="mb-4" to={visitScheduleHref(calendarDateKey(), undefined, m.id)}>Lihat jadwal tim</ActionLink>
+                <ActionLink size="compact" variant="quiet" aria-label={`Lihat jadwal tim ${m.full_name}`} className="mb-4" to={visitScheduleHref(calendarDateKey(), undefined, m.id)}>Lihat jadwal tim</ActionLink>
                 {/* Stats */}
                 <SummaryList className="mb-4 rounded-lg bg-brand-canvas p-3" items={[
                   { label: 'Pelanggan', value: m.customers.length },

@@ -84,7 +84,7 @@ export function VisitNoteEditor({ visit, onDirtyChange, confirmDiscard }: {
       </Field>
       <FormActions>
         <Button pending={busy} disabled={send.hasUnresolved() || conflict} onClick={() => save()}>Simpan catatan</Button>
-        <Button variant="secondary" disabled={busy} onClick={() => confirmDiscard ? confirmDiscard(() => setEditing(false), { when: dirty }) : setEditing(false)}>Batal</Button>
+        <Button variant="quiet" disabled={busy} onClick={() => confirmDiscard ? confirmDiscard(() => setEditing(false), { when: dirty }) : setEditing(false)}>Batal</Button>
       </FormActions>
       {conflict && <Notice tone="warning" title="Catatan berubah sejak Anda mulai mengedit. Draf Anda tetap disimpan di formulir ini.">
         {current ? <div className="space-y-3">
@@ -93,14 +93,14 @@ export function VisitNoteEditor({ visit, onDirtyChange, confirmDiscard }: {
           <p>Bandingkan dengan draf Anda sebelum memilih catatan yang akan disimpan.</p>
           <FormActions>
             <Button pending={busy} disabled={send.hasUnresolved()} onClick={() => save(current.note_version)}>Simpan draf pada versi terbaru</Button>
-            <Button variant="secondary" disabled={busy} onClick={() => { setNotes(current.notes ?? ''); setBaseNotes(current.notes ?? ''); setVersion(current.note_version); setConflict(false); setCurrent(null); setError('') }}>Gunakan catatan terbaru</Button>
+            <Button size="compact" variant="secondary" disabled={busy} onClick={() => { setNotes(current.notes ?? ''); setBaseNotes(current.notes ?? ''); setVersion(current.note_version); setConflict(false); setCurrent(null); setError('') }}>Gunakan catatan terbaru</Button>
           </FormActions>
-        </div> : readError ? <div className="space-y-3"><p>Catatan terbaru belum tersedia.</p><Button variant="secondary" disabled={busy} onClick={reloadCurrent}>Muat catatan terbaru</Button></div> : <p role="status">Memuat catatan terbaru...</p>}
+        </div> : readError ? <div className="space-y-3"><p>Catatan terbaru belum tersedia.</p><Button size="compact" variant="secondary" disabled={busy} onClick={reloadCurrent}>Muat catatan terbaru</Button></div> : <p role="status">Memuat catatan terbaru...</p>}
       </Notice>}
     </> : <>
       <h3 className="font-medium">Catatan kunjungan</h3>
       <p className="whitespace-pre-wrap">{visit.notes || 'Belum ada catatan.'}</p>
-      <Button variant="secondary" onClick={() => { setNotes(visit.notes ?? ''); setBaseNotes(visit.notes ?? ''); setVersion(visit.note_version); setConflict(false); setCurrent(null); setError(''); setEditing(true) }}>Edit catatan</Button>
+      <Button size="compact" variant="quiet" onClick={() => { setNotes(visit.notes ?? ''); setBaseNotes(visit.notes ?? ''); setVersion(visit.note_version); setConflict(false); setCurrent(null); setError(''); setEditing(true) }}>Edit catatan</Button>
     </>}
     {error && !conflict && <Notice tone="error" title={error} />}
   </section>
@@ -126,8 +126,8 @@ function OwnVisitHistoryPage() {
   return <div className="min-h-screen bg-brand-canvas">
     <GirardNav />{unsaved.dialog}
     <MainContent className="max-w-2xl mx-auto p-4 space-y-4" aria-busy={query.isPending}>
-      <PageHeader title="Riwayat kunjungan saya" description={<>Hanya kunjungan yang Anda lakukan sendiri. {profile?.role !== 'sales_person' && <ActionLink variant="secondary" to="/girard/schedule">Lihat jadwal dan kunjungan tim</ActionLink>}</>} />
-      {query.isError ? <Notice tone="error" title="Riwayat belum tersedia." actions={<Button variant="secondary" pending={query.isFetching} onClick={() => query.refetch()}>Coba lagi</Button>} />
+      <PageHeader title="Riwayat kunjungan saya" description={<>Hanya kunjungan yang Anda lakukan sendiri. {profile?.role !== 'sales_person' && <ActionLink size="compact" variant="quiet" to="/girard/schedule">Lihat jadwal dan kunjungan tim</ActionLink>}</>} />
+      {query.isError ? <Notice tone="error" title="Riwayat belum tersedia." actions={<Button size="compact" variant="secondary" pending={query.isFetching} onClick={() => query.refetch()}>Coba lagi</Button>} />
         : query.isPending ? <Notice tone="info" title="Memuat riwayat..." /> : <>
           {query.data?.items.length === 0 && <EmptyState title="Belum ada kunjungan." />}
           <RecordList label="Daftar kunjungan saya">
@@ -139,7 +139,7 @@ function OwnVisitHistoryPage() {
                   { label: 'Waktu check-in', value: formatVisitTimestamp(visit.checked_in_at) },
                   { label: 'Lokasi', value: visit.lat === null || visit.lng === null ? 'Tidak dicatat' : `${visit.lat}, ${visit.lng}` },
                 ]} />
-                {visit.schedule_id && <ActionLink variant="secondary" to={`/girard/visit/${visit.schedule_id}`} aria-label={`Lihat detail kunjungan di ${visit.customers?.name ?? 'Toko tidak tersedia'}`}>Lihat detail kunjungan</ActionLink>}
+                {visit.schedule_id && <ActionLink size="compact" variant="quiet" to={`/girard/visit/${visit.schedule_id}`} aria-label={`Lihat detail kunjungan di ${visit.customers?.name ?? 'Toko tidak tersedia'}`}>Lihat detail kunjungan</ActionLink>}
                 <VisitNoteEditor visit={visit} onDirtyChange={noteDirtyChanged} confirmDiscard={unsaved.confirmDiscard} />
               </article>
             </li>)}

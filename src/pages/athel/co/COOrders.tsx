@@ -31,9 +31,9 @@ function OrdersOwner() {
     return <div className="space-y-5">
     <PageHeader title="Pesanan Konsinyasi" description={query.data ? `${quantityText(query.data.total)} pesanan` : 'Memuat pesanan…'} actions={<ActionLink to="/athel/co/new">+ CO Baru</ActionLink>}/>
     <FilterBar label="Filter pesanan CO">
-    <Field id="co-filter-search" label="Cari CO">{control => <input {...control} className={CO_INPUT} aria-label="Cari CO" placeholder="Cari nomor CO atau pelanggan..." value={filters.search} onChange={e => update('search', e.target.value)}/>}</Field>
-    <Field id="co-filter-status" label="Status CO">{control => <select {...control} aria-label="Status CO" className={CO_INPUT} value={filters.status} onChange={e => update('status', e.target.value)}>{[['all', 'Semua status'], ['active', 'Aktif'], ['closed', 'Ditutup'], ['cancelled', 'Dibatalkan']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>}</Field>
-    <Field id="co-filter-customer" label="Filter pelanggan">{control => <select {...control} aria-label="Filter pelanggan" className={CO_INPUT} disabled={!customers.data || customers.isFetching || customers.isError} value={filters.customer} onChange={e => update('customer', e.target.value)}>
+    <Field id="co-filter-search" label="Cari CO" className="flex-1 basis-72">{control => <input {...control} className={CO_INPUT} aria-label="Cari CO" placeholder="Cari nomor CO atau pelanggan..." value={filters.search} onChange={e => update('search', e.target.value)}/>}</Field>
+    <Field id="co-filter-status" label="Status CO" className="flex-1 basis-44">{control => <select {...control} aria-label="Status CO" className={CO_INPUT} value={filters.status} onChange={e => update('status', e.target.value)}>{[['all', 'Semua status'], ['active', 'Aktif'], ['closed', 'Ditutup'], ['cancelled', 'Dibatalkan']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>}</Field>
+    <Field id="co-filter-customer" label="Filter pelanggan" className="flex-1 basis-60">{control => <select {...control} aria-label="Filter pelanggan" className={CO_INPUT} disabled={!customers.data || customers.isFetching || customers.isError} value={filters.customer} onChange={e => update('customer', e.target.value)}>
     <option value="">Semua pelanggan</option>{customers.data?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>}</Field>
     </FilterBar>
     {customers.isError && <COFailure error={customers.error} retry={() => void customers.refetch()}/>}{query.isError ? <COFailure error={query.error} retry={() => void query.refetch()}/> : query.isPending ? <p role="status">Memuat pesanan…</p> : <>
@@ -54,7 +54,7 @@ function OrdersOwner() {
             </td>
             <td>{quantityText(co.summary.remaining_quantity)}</td>
             <td>{formatCOReportMonth(co.last_report_month)}</td>
-            <td>
+            <td className="min-w-36 px-3 py-3">
             <COOrderLinks co={co}/>
             </td>
             </tr>)}</tbody>
@@ -83,6 +83,6 @@ function COOrderLinks({ co }: {
 }) {
     const actor = useCOActor(`order-actions:${co.id}`);
     const authority = useCORead(actor, 'order-actions', { id: co.id, version: co.co_version }, o => fetchCODetail(co.id, co.co_version, o));
-    return <div className="flex flex-wrap gap-3">
-    <ActionLink variant="secondary" to={`/athel/co/${co.id}`}>Lihat</ActionLink>{!authority.isFetching && !authority.isError && authority.data?.allowed_operations.includes('edit_co') && <ActionLink variant="secondary" to={`/athel/co/${co.id}/edit`}>Ubah</ActionLink>}</div>;
+    return <div className="flex flex-wrap items-center gap-2">
+    <ActionLink variant="quiet" size="compact" to={`/athel/co/${co.id}`}>Lihat</ActionLink>{!authority.isFetching && !authority.isError && authority.data?.allowed_operations.includes('edit_co') && <ActionLink variant="secondary" size="compact" to={`/athel/co/${co.id}/edit`}>Ubah</ActionLink>}</div>;
 }

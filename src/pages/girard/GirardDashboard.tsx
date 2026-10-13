@@ -24,8 +24,8 @@ export default function GirardDashboard() {
 
       <PageHeader title="Dashboard" description="Ringkasan performa tim dan pelanggan" className="bg-white border-b border-brand-divider px-4 md:px-8 py-5" />
       <FilterBar label="Tampilan dashboard" className="mx-4 my-4 md:mx-8">
-        {tabs.map(tab => <Button key={tab.key} variant="secondary" aria-pressed={activeTab === tab.key}
-          onClick={() => setActiveTab(tab.key)} className={activeTab === tab.key ? 'border-brand-accent underline decoration-brand-primary underline-offset-4' : undefined}>
+        {tabs.map(tab => <Button size="compact" key={tab.key} variant="quiet" aria-pressed={activeTab === tab.key}
+          onClick={() => setActiveTab(tab.key)} className={activeTab === tab.key ? 'border-brand-primary underline decoration-brand-primary underline-offset-4' : undefined}>
           {tab.label}
         </Button>)}
       </FilterBar>

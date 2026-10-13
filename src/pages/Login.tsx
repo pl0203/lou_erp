@@ -73,15 +73,15 @@ export default function Login() {
         <BrandLogo className="mb-8" />
         <PageHeader className="mb-8" title="Selamat datang" description="Masuk ke akun Anda" />
         <form noValidate onSubmit={event => { event.preventDefault(); void handleLogin() }} className="space-y-4">
-          <Field id="login-email" label="Email (wajib)" error={fieldErrors.email}>
-            {control => <input {...control} type="email" value={email} disabled={submitting}
+          <Field id="login-email" label="Email" error={fieldErrors.email}>
+            {control => <input {...control} type="email" required value={email} disabled={submitting}
               onChange={event => { setEmail(event.target.value); setFieldErrors(previous => ({ ...previous, email: undefined })) }} placeholder="anda@perusahaan.com" autoComplete="email" />}
           </Field>
-          <Field id="login-password" label="Kata Sandi (wajib)" error={fieldErrors.password}>
-            {control => <input {...control} type="password" value={password} disabled={submitting}
+          <Field id="login-password" label="Kata Sandi" error={fieldErrors.password}>
+            {control => <input {...control} type="password" required value={password} disabled={submitting}
               onChange={event => { setPassword(event.target.value); setFieldErrors(previous => ({ ...previous, password: undefined })) }} placeholder="••••••••" autoComplete="current-password" />}
           </Field>
-          <ActionLink to="/forgot-password" variant="secondary">Lupa kata sandi?</ActionLink>
+          <ActionLink to="/forgot-password" variant="quiet">Lupa kata sandi?</ActionLink>
           {(error || profileError) && <div ref={errorSummary} role="group" aria-label="Ringkasan kesalahan masuk" tabIndex={-1}><Notice tone="error" title={error || profileError} /></div>}
           <Button type="submit" pending={submitting} className="w-full">{submitting ? 'Masuk...' : 'Masuk'}</Button>
         </form>

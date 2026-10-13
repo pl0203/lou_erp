@@ -17,7 +17,7 @@ export default function VisitRequests() {
       <MainContent>
         <PageHeader className="border-b border-gray-200 bg-white px-4 py-6 md:px-8" title="Permintaan Kunjungan"
           description={profile?.role === 'sales_person' ? 'Pantau pengajuan kunjungan baru dan perubahan jadwal Anda.' : 'Tinjau pengajuan kunjungan baru dan perubahan jadwal dari tim Anda.'}
-          actions={<ActionLink variant="secondary" to="/girard/schedule">Lihat Jadwal</ActionLink>} />
+          actions={<ActionLink size="compact" variant="quiet" to="/girard/schedule">Lihat Jadwal</ActionLink>} />
         <div className="mx-auto max-w-5xl px-4 py-6 md:px-8 md:py-8">
           {focusedRequest !== null
             ? <VisitRequestStatus key={`${profile?.id}:${profile?.role}:${focusedRequest}`} requestId={focusedRequest} />

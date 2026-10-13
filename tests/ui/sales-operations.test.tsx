@@ -317,3 +317,15 @@ for (const outcome of ['committed', 'abandoned'] as const) test(`deferred ${outc
   expect(screen.queryByText(/referensi older-result/)).toBeNull(); expect(newerSend).not.toHaveBeenCalled(); expect(newerSend.acknowledgeRecovered).not.toHaveBeenCalled()
   expect(state.send.acknowledgeRecovered).toHaveBeenCalledTimes(outcome === 'committed' ? 1 : 0)
 })
+
+for (const Page of [DailySchedule, MyVisits, ManagerSchedule]) test(`${Page.name} selected day border follows date changes and leaves other days unmarked`, async () => {
+  if (Page === ManagerSchedule) state.role = 'sales_manager'
+  mount(Page); await screen.findByRole('heading', { name: Page === ManagerSchedule ? 'Jadwal' : Page === MyVisits ? 'Kunjungan Saya' : 'Jadwal Saya' })
+  const days = Array.from(document.querySelectorAll<HTMLButtonElement>('button[aria-pressed]')).slice(0, 7)
+  expect(days.length).toBeGreaterThanOrEqual(2)
+  for (const chosen of [days[0], days[1], days[0]]) {
+    fireEvent.click(chosen)
+    await waitFor(() => expect(chosen.getAttribute('aria-pressed')).toBe('true'))
+    for (const day of days) expect(day.classList.contains('border-brand-primary')).toBe(day === chosen)
+  }
+})

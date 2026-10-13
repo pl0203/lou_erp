@@ -361,10 +361,10 @@ export default function UserManagement() {
           {waitingForConnection && 'The user list will load when the connection returns.'}
         </Notice>}
         {usersFailed && <Notice tone="error" title="Unable to load users. Check the connection before creating or editing accounts."
-          actions={<Button variant="secondary" onClick={() => void refetch()}>Retry</Button>} />}
+          actions={<Button size="compact" variant="secondary" onClick={() => void refetch()}>Retry</Button>} />}
         <div ref={directoryFocus} tabIndex={-1} aria-label="User directory" className="min-w-0">
           {hasUsers && (filtered?.length === 0 ? <EmptyState title="No users found." /> : (
-            <div className="bg-white rounded-[14px] border border-brand-divider overflow-x-auto">
+            <div role="region" aria-label="User directory" tabIndex={0} className="bg-white rounded-[14px] border border-brand-divider overflow-x-auto">
               <table className="w-full text-sm">
                 <caption className="sr-only">User directory</caption>
                 <thead><tr className="bg-brand-canvas border-b border-brand-divider">
@@ -389,9 +389,9 @@ export default function UserManagement() {
                     <td className="px-5 py-4 text-brand-secondary hidden md:table-cell">{manager?.full_name ?? '—'}</td>
                     <td className="px-5 py-4 hidden md:table-cell"><StatusBadge tone={user.is_active ? 'success' : 'neutral'}>{user.is_active ? 'Active' : 'Inactive'}</StatusBadge></td>
                     <td className="px-5 py-4"><FormActions>
-                      <Button variant="secondary" onClick={event => openEdit(user, event.currentTarget)}>Edit</Button>
-                      {user.is_active ? <Button variant="danger" onClick={event => openDeactivate(user.id, event.currentTarget)}>Deactivate</Button>
-                        : <Button variant="secondary" pending={reactivatingIds.has(user.id)} onClick={() => handleReactivate(user.id)}>{reactivatingIds.has(user.id) ? 'Reactivating...' : 'Reactivate'}</Button>}
+                      <Button size="compact" variant="quiet" onClick={event => openEdit(user, event.currentTarget)}>Edit</Button>
+                      {user.is_active ? <Button size="compact" variant="danger-quiet" onClick={event => openDeactivate(user.id, event.currentTarget)}>Deactivate</Button>
+                        : <Button size="compact" variant="quiet" pending={reactivatingIds.has(user.id)} onClick={() => handleReactivate(user.id)}>{reactivatingIds.has(user.id) ? 'Reactivating...' : 'Reactivate'}</Button>}
                     </FormActions></td>
                   </tr>
                 })}</tbody>
@@ -433,7 +433,7 @@ export default function UserManagement() {
           </div>
           {!formSaving && (reviewRequired || formError) && <Notice tone="error" title={reviewRequired || formError} />}
           <FormActions>
-            <Button variant="secondary" disabled={!!editingUser && formSaving} onClick={dismissForm}>Cancel</Button>
+            <Button variant="quiet" disabled={!!editingUser && formSaving} onClick={dismissForm}>Cancel</Button>
             <Button type="submit" pending={formSaving} disabled={saving || !!reviewRequired}>{formSaving ? 'Saving...' : editingUser ? 'Save Changes' : 'Send Invite'}</Button>
           </FormActions>
         </form>
@@ -444,9 +444,9 @@ export default function UserManagement() {
         <h2 id="deactivate-user-title" className="ui-dialog__title">Deactivate user?</h2>
         <p className="ui-dialog__description"><strong>{deactivateTarget?.full_name}</strong> will no longer be able to log in. You can reactivate them at any time.</p>
         {deactivateError && <Notice tone="error" title={deactivateError} className="mt-4"
-          actions={<Button variant="secondary" onClick={() => void refetch()}>Reload user list</Button>} />}
+          actions={<Button size="compact" variant="secondary" onClick={() => void refetch()}>Reload user list</Button>} />}
         <FormActions className="mt-6">
-          <Button variant="secondary" disabled={deactivateMutation.isPending} onClick={dismissDeactivate}>Cancel</Button>
+          <Button variant="quiet" disabled={deactivateMutation.isPending} onClick={dismissDeactivate}>Cancel</Button>
           <Button variant="danger" pending={deactivateMutation.isPending} onClick={handleDeactivate}>{deactivateMutation.isPending ? 'Deactivating...' : 'Deactivate'}</Button>
         </FormActions>
       </Dialog>}

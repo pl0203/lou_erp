@@ -114,7 +114,7 @@ function DetailReady({ co, allowed, blockers, reload, refreshing, readError, onA
         string
     ][] = [['lines', 'Barang CO'], ['sj_drafts', 'Draft Surat Jalan'], ['deliveries', 'Riwayat Surat Jalan'], ['reports', 'Laporan bulanan pelanggan (semua CO)'], ['return_drafts', 'Draft retur pelanggan (semua sumber CO)'], ['returns', 'Retur barang CO (bagian sumber CO ini)'], ['audit', 'Audit CO dan laporan pelanggan']];
     return <div className="max-w-6xl mx-auto space-y-6">
-    <ActionLink variant="secondary" to="/athel/co">← Kembali</ActionLink>
+    <ActionLink variant="quiet" size="compact" to="/athel/co">← Kembali</ActionLink>
     <PageHeader title={co.co_number} description={`${co.customer_name} · ${formatDisplayDate(co.order_date)}`} actions={<COBadges status={co.status} progress={co.summary.delivery_progress}/>}/>
     <COCard title="Ringkasan CO ini">
     <p className="mb-3 text-base text-brand-secondary">Sejak pembuatan CO sampai sumber tercatat terbaru. Pendapatan berasal dari penjualan bulanan yang diposting dan dialokasikan ke CO ini; nilai rencana bukan pendapatan.</p>
@@ -138,7 +138,7 @@ function DetailReady({ co, allowed, blockers, reload, refreshing, readError, onA
         onResolve={() => { trigger.current = document.activeElement as HTMLElement; setSettlement('resolve_undelivered'); }}
         onClose={() => { trigger.current = document.activeElement as HTMLElement; setSettlement('close_co'); }}/>
 
-    {settlementSender.hasUnresolved() && <Button type="button" variant="secondary" disabled={refreshing || pending} onClick={e => { trigger.current = e.currentTarget; setSettlement('recovery'); }}>Pulihkan penyelesaian CO</Button>}
+    {settlementSender.hasUnresolved() && <Button type="button" variant="quiet" size="compact" disabled={refreshing || pending} onClick={e => { trigger.current = e.currentTarget; setSettlement('recovery'); }}>Pulihkan penyelesaian CO</Button>}
     <CORecoveryPanel pending={pending} sender={sender} current={actor.isCurrent} accept={async (r) => { if (r.operation !== 'cancel_co' || r.id !== co.id)
         throw new Error('Pemulihan tidak sesuai CO.'); await sender.acknowledgeRecovered(); if (actor.isCurrent()) {
         setCancel(false);
@@ -150,42 +150,42 @@ function DetailReady({ co, allowed, blockers, reload, refreshing, readError, onA
                     return <div className="grid sm:grid-cols-3 gap-2">
                     <span>{row.product_name} · {row.display_sku}</span>
                     <span>Dipesan {quantityText(row.ordered_quantity)} · Dikirim {quantityText(row.delivered_quantity)}</span>
-                    <span>Harga Rp {formatMoney(row.unit_price, 'full')} · <ActionLink variant="secondary" to={`/athel/co/stock?customer=${co.customer_id}&sku=${row.stock_key_id}`}>Riwayat stok pelanggan/SKU</ActionLink>
+                    <span>Harga Rp {formatMoney(row.unit_price, 'full')} · <ActionLink variant="quiet" size="compact" to={`/athel/co/stock?customer=${co.customer_id}&sku=${row.stock_key_id}`}>Riwayat stok pelanggan/SKU</ActionLink>
                     </span>
                     </div>;
                 if (section === 'sj_drafts')
                     return <div className="flex flex-wrap justify-between gap-2">
                     <span>{row.sj_number} · {formatDisplayDate(row.sj_date)} · {row.consumed ? 'Sudah diposting' : row.mode === 'delivery_correction' ? 'Draft koreksi' : 'Draft'}</span>
-                    <Button variant="secondary" type="button" disabled={refreshing || row.consumed} onClick={e => { trigger.current = e.currentTarget; setSJ({ draftId: row.id }); }}>Buka draft</Button>
+                    <Button variant="quiet" size="compact" type="button" disabled={refreshing || row.consumed} onClick={e => { trigger.current = e.currentTarget; setSJ({ draftId: row.id }); }}>Buka draft</Button>
                     </div>;
                 if (section === 'deliveries')
                     return <div className="space-y-2">
                     <p>{row.sj_number} · {formatDisplayDate(row.sj_date)} · Revisi {row.revision_no} · {row.is_effective ? 'Efektif' : 'Historis'}{row.is_void ? ' · Dibatalkan' : ''}</p>
                     <p className="text-[13px] text-brand-secondary">Diterima: {formatDisplayDate(row.received_date)}</p>
-                    {row.is_effective && row.current_revision_id === row.id && allowed.includes('correct_sj') && <div className="flex flex-wrap gap-2"><Button variant="secondary" disabled={refreshing} onClick={e=>{trigger.current=e.currentTarget;setSJ({correctionSource:{headId:row.head_id,revisionId:row.id,version:row.head_version,action:'replace'}})}}>Siapkan pengganti SJ</Button>{!row.is_void&&<Button variant="secondary" disabled={refreshing} onClick={e=>{trigger.current=e.currentTarget;setSJ({correctionSource:{headId:row.head_id,revisionId:row.id,version:row.head_version,action:'void'}})}}>Batalkan SJ dengan koreksi</Button>}</div>}
-                    <Button variant="secondary" type="button" onClick={() => setSelected({ section: 'delivery_lines', parent: row.id, title: `Barang ${row.sj_number} revisi ${row.revision_no}` })}>Lihat barang SJ</Button>
+                    {row.is_effective && row.current_revision_id === row.id && allowed.includes('correct_sj') && <div className="flex flex-wrap gap-2"><Button variant="quiet" size="compact" disabled={refreshing} onClick={e=>{trigger.current=e.currentTarget;setSJ({correctionSource:{headId:row.head_id,revisionId:row.id,version:row.head_version,action:'replace'}})}}>Siapkan pengganti SJ</Button>{!row.is_void&&<Button variant="danger-quiet" size="compact" disabled={refreshing} onClick={e=>{trigger.current=e.currentTarget;setSJ({correctionSource:{headId:row.head_id,revisionId:row.id,version:row.head_version,action:'void'}})}}>Batalkan SJ dengan koreksi</Button>}</div>}
+                    <Button variant="quiet" size="compact" type="button" onClick={() => setSelected({ section: 'delivery_lines', parent: row.id, title: `Barang ${row.sj_number} revisi ${row.revision_no}` })}>Lihat barang SJ</Button>
                     </div>;
                 if (section === 'reports')
-                    return <ActionLink variant="secondary" to={`/athel/co/reports/${co.customer_id}/${row.report_month}${row.revision_id ? `?revision=${row.revision_id}` : ''}`}>{formatCOReportMonth(row.report_month)} · Revisi {row.revision_no ?? row.report_version} · Bukti revisi tersimpan</ActionLink>;
+                    return <ActionLink variant="quiet" size="compact" to={`/athel/co/reports/${co.customer_id}/${row.report_month}${row.revision_id ? `?revision=${row.revision_id}` : ''}`}>{formatCOReportMonth(row.report_month)} · Revisi {row.revision_no ?? row.report_version} · Bukti revisi tersimpan</ActionLink>;
                 if (section === 'return_drafts') return <div className="space-y-2">
                     <p>{row.reference ?? row.reason ?? 'Draft retur'} · {formatDisplayDate(row.return_date)} · {row.line_count} sumber seluruh pelanggan{row.consumed ? ' · Sudah diposting' : ''}</p>
-                    <Button variant="secondary" disabled={refreshing} onClick={e => {
+                    <Button variant="quiet" size="compact" disabled={refreshing} onClick={e => {
                         trigger.current = e.currentTarget;
                         setReturnSelection({ view: 'draft', id: row.id, draftVersion: row.draft_version });
                     }}>Buka draft retur</Button>
                 </div>;
                 if (section === 'returns') return <div className="space-y-2">
                     <p>{row.reference ?? row.reason ?? 'Retur'} · {formatDisplayDate(row.return_date)} · Revisi {row.revision_no}{row.is_void ? ' · Dibatalkan' : ''}</p>
-                    <Button variant="secondary" disabled={refreshing} onClick={e => {
+                    <Button variant="quiet" size="compact" disabled={refreshing} onClick={e => {
                         trigger.current = e.currentTarget;
                         setReturnSelection({ view: 'revision', id: row.id });
                     }}>Lihat revisi retur</Button>
                     {row.is_effective && row.current_revision_id === row.id && <div className="flex flex-wrap gap-2">
-                        <Button variant="secondary" disabled={refreshing} onClick={e => {
+                        <Button variant="quiet" size="compact" disabled={refreshing} onClick={e => {
                             trigger.current = e.currentTarget;
                             setReturnSelection({ view: 'effective', id: row.head_id, revisionId: row.id, returnVersion: row.head_version, action: 'replace' });
                         }}>Siapkan pengganti retur</Button>
-                        {!row.is_void && <Button variant="secondary" disabled={refreshing} onClick={e => {
+                        {!row.is_void && <Button variant="danger-quiet" size="compact" disabled={refreshing} onClick={e => {
                             trigger.current = e.currentTarget;
                             setReturnSelection({ view: 'effective', id: row.head_id, revisionId: row.id, returnVersion: row.head_version, action: 'void' });
                         }}>Batalkan retur dengan koreksi</Button>}
@@ -195,13 +195,13 @@ function DetailReady({ co, allowed, blockers, reload, refreshing, readError, onA
                 <p>Pengguna tercatat {CO_AUDIT_ACTIONS[row.operation] ?? 'mencatat perubahan'} {row.report_revision_id ? 'untuk pelanggan (semua CO)' : `pada ${co.co_number}`}.</p>
                 <p className="text-[13px] text-brand-secondary">{formatAuditTimestamp(row.created_at)}</p>
                 {row.reason && <p className="text-base">Alasan: {row.reason}</p>}
-                <details className="text-[13px]"><summary className="cursor-pointer text-brand-secondary">Detail teknis audit</summary><pre className="mt-2 whitespace-pre-wrap break-all">{JSON.stringify(row, null, 2)}</pre></details>
-                <Button type="button" variant="secondary" onClick={() => setSelected({ section: 'audit_changes', parent: row.id, title: 'Detail perubahan audit' })}>Lihat perubahan</Button>
+                <details className="text-[13px]"><summary className="ui-action ui-action--quiet ui-action--compact list-item cursor-pointer">Detail teknis audit</summary><pre className="mt-2 whitespace-pre-wrap break-all">{JSON.stringify(row, null, 2)}</pre></details>
+                <Button type="button" variant="quiet" size="compact" onClick={() => setSelected({ section: 'audit_changes', parent: row.id, title: 'Detail perubahan audit' })}>Lihat perubahan</Button>
                 </div>;
             }}/>)}
     <p className="text-[13px] text-brand-secondary">SJ Kembali adalah pengembalian dokumen. Retur barang belum terjual adalah tindakan stok yang terpisah.</p>
     {selected && <COCard title={selected.title}>
-        <Button type="button" variant="secondary" onClick={() => setSelected(null)}>Tutup rincian</Button>
+        <Button type="button" variant="quiet" size="compact" onClick={() => setSelected(null)}>Tutup rincian</Button>
         <COHistorySection co={co} section={selected.section} parent={selected.parent} title={selected.title} onAuthorityFailure={onAuthorityFailure} renderRow={r => <p>{r.display_sku ?? r.path} · {r.product_name ?? (r.side === 'before' ? 'Sebelum' : r.side === 'after' ? 'Sesudah' : r.side)} · {r.quantity ?? r.value ?? '—'}</p>}/>
         </COCard>}
     {sj && <CODeliveryDialog onAuthorityFailure={onAuthorityFailure} key={JSON.stringify(sj)} co={co} draftId={sj.draftId} correctionSource={sj.correctionSource} readBlocked={refreshing} readFailure={readFailure} returnFocus={trigger.current} onClose={() => setSJ(null)} onSaved={reload}/>}

@@ -37,19 +37,32 @@ function opener(region: HTMLElement) { return within(region).getAllByRole('butto
 function deferred() { let resolve!: () => void; const promise = new Promise<void>(r => { resolve = r }); return { promise, resolve } }
 
 for (const kind of ['customer', 'sales'] as const) {
-  test(`${kind} reachable dashboard has visible target actions, labelled 16px fields and readable table/support text`, async () => {
+  test(`${kind} reachable dashboard has visible target actions, labelled responsive fields and readable table/support text`, async () => {
     const region = await panel(kind)
     expect(opener(region).classList.contains('ui-action')).toBe(true)
+    expect(opener(region).classList.contains('ui-action--quiet')).toBe(true)
+    expect(opener(region).classList.contains('ui-action--compact')).toBe(true)
     fireEvent.click(opener(region))
     const input = within(region).getByRole('spinbutton', { name: /Target penjualan.*Rp/ })
-    expect(input.classList.contains('text-base')).toBe(true)
+    expect(input.closest('.ui-field')).toBeTruthy()
+    expect(input.classList.contains('text-base')).toBe(false)
+    expect(within(region).getByRole('button', { name: 'Simpan target' }).classList.contains('ui-action--primary')).toBe(true)
+    expect(within(region).getByRole('button', { name: 'Batal' }).classList.contains('ui-action--quiet')).toBe(true)
     const label = document.querySelector(`label[for="${input.id}"]`)
     expect(label?.textContent).toMatch(/Target penjualan/)
     for (const name of ['Simpan target', 'Batal']) expect(within(region).getByRole('button', { name }).classList.contains('ui-action')).toBe(true)
     expect(document.querySelectorAll('[class~="text-xs"]')).toHaveLength(0)
     expect(within(region).getByRole('table').classList.contains('text-sm')).toBe(true)
     const month = kind === 'customer' ? screen.getByLabelText('Bulan aktivitas pelanggan') : screen.getByLabelText('Bulan performa sales')
-    expect(month.classList.contains('text-base')).toBe(true)
+    expect(month.classList.contains('ui-control')).toBe(true)
+    expect(month.classList.contains('text-base')).toBe(false)
+    expect(month.classList.contains('min-h-11')).toBe(false)
+    if (kind === 'customer') {
+      const monthLabel = month.closest('label')!
+      expect(monthLabel.classList.contains('ui-field__label')).toBe(true)
+      expect(monthLabel.contains(month)).toBe(true)
+      expect(month.classList.contains('font-normal')).toBe(true)
+    }
     expect(screen.getAllByRole('main')).toHaveLength(1)
     expect(screen.getByText('Metrik Sales terpisah')).toBeTruthy()
   })

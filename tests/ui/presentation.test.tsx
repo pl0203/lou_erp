@@ -58,6 +58,17 @@ test('fields remove stale error associations when the owner clears an error', as
   expect(screen.queryByText('Wajib diisi.')).toBeNull()
 })
 
+test('nested custom controls opt into density without changing Field label and error associations', async () => {
+  const { Field } = await pattern('Field')
+  render(<Field id="nested-customer" label="Pelanggan dengan nama dan petunjuk yang panjang" hint="Cari nama pelanggan." error="Pilih pelanggan.">{(control: object) => <div><input {...control} className="ui-control" role="combobox" aria-expanded="false" /></div>}</Field>)
+  const input = screen.getByRole('combobox', { name: 'Pelanggan dengan nama dan petunjuk yang panjang' })
+  expect(input.id).toBe('nested-customer')
+  expect(input.classList.contains('ui-control')).toBe(true)
+  expect(input.getAttribute('aria-invalid')).toBe('true')
+  expect(input.getAttribute('aria-describedby')!.split(' ').map(id => document.getElementById(id)?.textContent)).toEqual(['Cari nama pelanggan.', 'Pilih pelanggan.'])
+  expect(css).toMatch(/\.ui-control\s*\{[^}]*font-size:\s*var\(--ui-text-control\)/s)
+})
+
 test('form actions wrap long owner actions without introducing a form or submitting', async () => {
   const { FormActions } = await pattern('FormActions')
   let submissions = 0

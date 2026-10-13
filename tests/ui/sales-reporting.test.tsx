@@ -47,7 +47,7 @@ import MyOrders from '../../src/pages/girard/MyOrders'
 import MySalesSummary from '../../src/pages/girard/MySalesSummary'
 import GirardDashboard from '../../src/pages/girard/GirardDashboard'
 import Promotions from '../../src/pages/girard/Promotions'
-import SalesMetricSummary from '../../src/components/sales/SalesMetricSummary'
+import SalesMetricSummary, { SalesMetricsPanel } from '../../src/components/sales/SalesMetricSummary'
 import App from '../../src/App'
 
 const clients: QueryClient[] = [], routers: ReturnType<typeof createMemoryRouter>[] = []
@@ -245,6 +245,24 @@ test('personal order status counts stay authoritative and badges stay separate f
   fireEvent.click(within(filter).getByRole('button', { name: 'Disetujui' })); await waitFor(() => expect(within(filter).getByRole('button', { name: 'Disetujui' }).getAttribute('aria-pressed')).toBe('true'))
   expect(screen.getByText('1000 menunggu')).toBeTruthy()
 })
+test('personal order selected border follows status switches and leaves siblings unmarked', async () => {
+  mount(MyOrders); const filter = await screen.findByRole('region', { name: 'Filter riwayat pesanan' })
+  const buttons = ['Semua', 'Menunggu', 'Disetujui', 'Ditolak', 'Dibatalkan'].map(name => within(filter).getByRole('button', { name }))
+  for (const chosen of [buttons[0], buttons[2], buttons[0]]) {
+    fireEvent.click(chosen)
+    await waitFor(() => expect(chosen.getAttribute('aria-pressed')).toBe('true'))
+    for (const button of buttons) expect(button.classList.contains('border-brand-primary')).toBe(button === chosen)
+  }
+})
+test('dashboard selected border follows view switches and leaves its sibling unmarked', async () => {
+  mount(GirardDashboard); const filter = await screen.findByRole('region', { name: 'Tampilan dashboard' })
+  const buttons = ['Performa Pelanggan', 'Performa Tim Sales'].map(name => within(filter).getByRole('button', { name }))
+  for (const chosen of [buttons[0], buttons[1], buttons[0]]) {
+    fireEvent.click(chosen)
+    await waitFor(() => expect(chosen.getAttribute('aria-pressed')).toBe('true'))
+    for (const button of buttons) expect(button.classList.contains('border-brand-primary')).toBe(button === chosen)
+  }
+})
 test('team directory uses a labelled date filter, semantic cards and matching UTC/date drilldowns', async () => {
   mount(GirardTeam); await screen.findAllByRole('link', { name: 'Sales 0' })
   const input = screen.getByLabelText('Tanggal aktivitas tim'); expect(input.id).toBeTruthy(); expect(screen.getByRole('region', { name: 'Filter aktivitas tim' })).toBeTruthy()
@@ -271,6 +289,24 @@ test('metric filters are labelled shared fields while posted zero stays distinct
   cleanup(); render(<SalesMetricSummary summary={zero} />)
   const missing = screen.getByRole('heading', { name: 'Penjualan CO dilaporkan' }).closest('article')!
   expect(within(missing).getByText('Belum tersedia')).toBeTruthy(); expect(within(missing).queryByText('Rp 0')).toBeNull()
+})
+test('metric definition disclosure retains native toggle, mounted explanatory content and read lifetime', () => {
+  mount(SalesMetricsPanel)
+  const summary = screen.getByText('Definisi dan batasan metrik')
+  const details = summary.closest('details')!
+  const explanation = within(details).getByText(/Nilai pesanan PO: nilai PO Dikonfirmasi/)
+  expect(summary.tagName).toBe('SUMMARY')
+  expect(summary.classList.contains('min-h-[var(--ui-control-size-compact)]')).toBe(true)
+  expect(summary.classList.contains('py-[var(--ui-control-padding-y-compact)]')).toBe(true)
+  expect(details.open).toBe(false)
+  const readsBefore = state.readCalls
+  fireEvent.click(summary)
+  expect(details.open).toBe(true)
+  expect(explanation.isConnected).toBe(true)
+  fireEvent.click(summary)
+  expect(details.open).toBe(false)
+  expect(explanation.isConnected).toBe(true)
+  expect(state.readCalls).toBe(readsBefore)
 })
 test('promotion cards keep absent legacy stock separate from managed zero without inventing availability', async () => {
   const original = state.fixture.rpc.pilot_promotions_v1

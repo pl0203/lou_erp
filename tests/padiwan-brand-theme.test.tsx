@@ -77,13 +77,23 @@ test('local Plus Jakarta Sans fonts include the licence and safe fallback loadin
   expect(readFileSync('public/fonts/plus-jakarta-sans/OFL.txt', 'utf8')).toContain('SIL OPEN FONT LICENSE Version 1.1')
 })
 
-test('shared actions have opt-in visible controls, hover, focus and pending styles', () => {
+test('shared actions retain touch defaults and fine-pointer desktop density, hover, focus and pending styles', () => {
   expect(css).toMatch(/@import\s+['"]\.\/styles\/ui\.css['"]/)
   expect(css).toMatch(/--ui-space:\s*4px/)
-  expect(css).toMatch(/--ui-control-size:\s*44px/)
+  const defaults = css.match(/:root\s*\{([^}]+)\}/)?.[1] ?? ''
+  const desktop = css.match(/@media\s*\(min-width:\s*768px\)\s*and\s*\(hover:\s*hover\)\s*and\s*\(pointer:\s*fine\)\s*\{\s*:root\s*\{([^}]+)\}/)?.[1] ?? ''
+  expect(defaults).toMatch(/--ui-control-size:\s*44px/)
+  expect(defaults).toMatch(/--ui-control-size-compact:\s*44px/)
+  expect(defaults).toMatch(/--ui-text-control:\s*16px/)
+  expect(desktop).toMatch(/--ui-control-size:\s*36px/)
+  expect(desktop).toMatch(/--ui-control-size-compact:\s*32px/)
+  expect(desktop).toMatch(/--ui-text-control:\s*14px/)
+  expect(desktop).toMatch(/--ui-line-control:\s*20px/)
+  expect(desktop).toMatch(/--ui-text-label:\s*13px/)
   expect(css).toMatch(/--ui-radius-control:\s*10px/)
   expect(css).toMatch(/--ui-radius-card:\s*14px/)
-  expect(css).toMatch(/--ui-text-body:\s*16px/)
+  expect(defaults).toMatch(/--ui-text-body:\s*16px/)
+  expect(desktop).not.toMatch(/--ui-text-body:/)
   expect(css).toMatch(/--ui-text-table:\s*14px/)
   expect(css).toMatch(/--ui-text-support:\s*13px/)
   expect(actionCss).toMatch(/min-height:\s*var\(--ui-control-size\)/)

@@ -63,7 +63,7 @@ export default function ForgotPassword() {
     <MainContent className="min-h-screen bg-brand-canvas flex items-center justify-center px-4 py-8">
       <div className="bg-white rounded-[14px] border border-brand-divider p-8 w-full max-w-sm shadow-sm">
         <BrandLogo className="mb-8" />
-        <ActionLink to="/login" variant="secondary" className="mb-6">← Kembali ke halaman masuk</ActionLink>
+        <ActionLink to="/login" variant="quiet" className="mb-6">← Kembali ke halaman masuk</ActionLink>
         <PageHeader className="mb-8" title="Reset kata sandi" description="Masukkan email akun Anda untuk meminta tautan reset." />
         {sent ? (
           <Notice tone="success" title="Permintaan diproses">

@@ -25,11 +25,11 @@ export default function LeaveAdminRotaPanel({actorId,context,readState,onDirtyCh
  useEffect(()=>{onDirtyChange(dirty);return()=>onDirtyChange(false)},[dirty,onDirtyChange])
  function close(){if(!dirty||window.confirm(discardLeaveDraftMessage)){setDirty(false);if(selected)setSelected(null);else onClose()}}
  return <div className="space-y-4">
-  {readState==='ready'&&<Button type="button" variant="secondary" className="underline" onClick={close}>{selected?'Kembali ke daftar kalender':'Kembali ke daftar anggota'}</Button>}
-  {selected?<RotaEditor key={selected.id} actorId={actorId} context={context} calendar={selected} readState={readState} onDirtyChange={setDirty}/>:readState==='ready'&&((query.isError||!query.available&&!query.isFetching)?<div role="alert" className="ui-notice ui-notice--error"><p>Kalender dan roster memerlukan izin konfigurasi global yang dikonfirmasi.</p><Button type="button" onClick={()=>void query.refetch()} variant="secondary">Muat ulang kalender perusahaan</Button></div>:!query.available?<p role="status" className="ui-notice ui-notice--info">Memuat kalender perusahaan...</p>:<>
+  {readState==='ready'&&<Button size="compact" type="button" variant="quiet" className="underline" onClick={close}>{selected?'Kembali ke daftar kalender':'Kembali ke daftar anggota'}</Button>}
+  {selected?<RotaEditor key={selected.id} actorId={actorId} context={context} calendar={selected} readState={readState} onDirtyChange={setDirty}/>:readState==='ready'&&((query.isError||!query.available&&!query.isFetching)?<div role="alert" className="ui-notice ui-notice--error"><p>Kalender dan roster memerlukan izin konfigurasi global yang dikonfirmasi.</p><Button size="compact" type="button" onClick={()=>void query.refetch()} variant="secondary">Muat ulang kalender perusahaan</Button></div>:!query.available?<p role="status" className="ui-notice ui-notice--info">Memuat kalender perusahaan...</p>:<>
    <h2 className="font-semibold">Kalender dan roster perusahaan</h2>{!query.data?.rows.length&&<EmptyState title="Belum ada kalender perusahaan yang dapat diatur."/>}
-   <RecordList  label="Kalender perusahaan">{query.data?.rows.map(calendar=><li key={calendar.id}><Button type="button" variant="secondary" className="underline" onClick={()=>setSelected(calendar)}>Atur kalender {calendar.name}</Button></li>)}</RecordList>
-   <FormActions ><Button type="button" disabled={page===1} onClick={()=>setPage(page-1)} variant="secondary">Kalender sebelumnya</Button><Button type="button" disabled={page*25>=(query.data?.total??0)} onClick={()=>setPage(page+1)} variant="secondary">Kalender berikutnya</Button></FormActions>
+   <RecordList  label="Kalender perusahaan">{query.data?.rows.map(calendar=><li key={calendar.id}><Button size="compact" type="button" variant="quiet" className="underline" onClick={()=>setSelected(calendar)}>Atur kalender {calendar.name}</Button></li>)}</RecordList>
+   <FormActions ><Button size="compact" type="button" disabled={page===1} onClick={()=>setPage(page-1)} variant="quiet">Kalender sebelumnya</Button><Button size="compact" type="button" disabled={page*25>=(query.data?.total??0)} onClick={()=>setPage(page+1)} variant="quiet">Kalender berikutnya</Button></FormActions>
   </>)}
  </div>
 }
@@ -55,6 +55,6 @@ function RotaEditor({actorId,context,calendar,readState,onDirtyChange}:{actorId:
   return runLeaveInteraction(client,actorId,context.scopeVersion,live=>{abort.signal.throwIfAborted();if(!live.capabilities.configure||live.memberKind==='director')throw new Error('Akses kalender berubah.');return previewLeaveCalendar(input,abort.signal)})
  }
  return <div className="space-y-4">{command.recoveryUI}{data&&<LeaveRotaSettings key={continuity.key} calendar={data} send={command.send} preview={preview} previewCalendar={previewCalendar} authorityReady={continuity.ready&&!command.recovery} onDirtyChange={setDirty} onSaved={continuity.onSaved}/>}
-  {readState==='ready'&&!query.available&&!query.isFetching&&<div role="alert" className="ui-notice ui-notice--error"><p>Kalender belum dapat dikonfirmasi.</p><Button type="button" onClick={()=>void query.refetch()} variant="secondary">Muat ulang kalender terpilih</Button></div>}
+  {readState==='ready'&&!query.available&&!query.isFetching&&<div role="alert" className="ui-notice ui-notice--error"><p>Kalender belum dapat dikonfirmasi.</p><Button size="compact" type="button" onClick={()=>void query.refetch()} variant="secondary">Muat ulang kalender terpilih</Button></div>}
  </div>
 }

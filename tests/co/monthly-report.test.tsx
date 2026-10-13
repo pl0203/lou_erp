@@ -72,16 +72,16 @@ test('same-version context diagnostics freeze the saved editor rather than trust
 
 test('customer report entry offers the required month before requiring an unexplained filter choice', async () => {
     store(); mount(<COMonthlyReports />, `/athel/co/reports?customer=${customer}`);
-    const next = await screen.findByRole('link', { name: /Buka periode berikutnya: September 2026/ });
+    const next = await screen.findByRole('link', { name: /Buka pengisian: September 2026/ });
     expect(next.getAttribute('href')).toBe(`/athel/co/reports/${customer}/2026-09-01`);
-    expect(screen.getByText(/Pilih pelanggan dan bulan untuk membuka atau menyiapkan laporan/)).toBeTruthy();
+    expect(screen.getByText(/Pilih pelanggan untuk melihat periode berikutnya yang perlu dilaporkan/)).toBeTruthy();
 });
 
 test('report entry preserves a month provided by the CO lifecycle handoff', async () => {
     store(); mount(<COMonthlyReports />, `/athel/co/reports?customer=${customer}&month=2026-09`);
-    await screen.findByRole('link', { name: 'Buka / siapkan laporan' });
+    await screen.findByRole('link', { name: 'Buka periode pilihan: September 2026' });
     expect((screen.getByLabelText('Bulan laporan') as HTMLInputElement).value).toBe('2026-09');
-    expect(screen.getByRole('link', { name: 'Buka / siapkan laporan' }).getAttribute('href')).toBe(`/athel/co/reports/${customer}/2026-09-01`);
+    expect(screen.getByRole('link', { name: 'Buka periode pilihan: September 2026' }).getAttribute('href')).toBe(`/athel/co/reports/${customer}/2026-09-01`);
 });
 
 test('report save with durable identity stays neutral until canonical acknowledgment and never offers recovery in flight', async () => {

@@ -146,12 +146,12 @@ function DailyScheduleContent() {
             return (
               <Button
                 key={date}
-                variant="secondary"
+                variant="quiet"
                 aria-pressed={isSelected}
                 onClick={() => setSelectedDate(date)}
-                className={`flex flex-col items-center px-4 py-3 border-b-2 transition-colors whitespace-nowrap ${
+                className={`flex flex-col items-center border-b-2 transition-colors whitespace-nowrap ${
                   isSelected
-                    ? 'border-brand-accent text-brand-primary underline decoration-brand-primary underline-offset-4'
+                    ? 'border-brand-primary text-brand-primary underline decoration-brand-primary underline-offset-4'
                     : 'border-transparent text-brand-secondary hover:text-gray-700'
                 }`}
               >
@@ -168,13 +168,13 @@ function DailyScheduleContent() {
       <div className="px-4 md:px-8 py-6 max-w-2xl mx-auto space-y-4">
         <ActivePromotionsBanner />
         <p className="text-[13px] text-gray-700">Jadwal memakai tanggal tanpa jam. Pengingat interval dihitung dari kunjungan terakhir pelanggan, dengan batas waktu UTC.</p>
-        <FormActions className="justify-start"><Button onClick={() => replaceProposal(null)}>Ajukan kunjungan baru</Button><ActionLink variant="secondary" to="/girard/visit-history">Riwayat kunjungan saya</ActionLink></FormActions>
-        {requestReceipt && <Notice tone="success" title={`Permintaan terkirim${requestReceipt.date ? ` untuk ${visitDateLabel(requestReceipt.date)}` : ''}.`} actions={<ActionLink variant="secondary" to={`/girard/visit-requests#visit-request-${requestReceipt.id}`}>Lihat status permintaan</ActionLink>}><p>Status saat pengiriman: Menunggu persetujuan. Jadwal akan tampil setelah disetujui.</p></Notice>}
+        <FormActions className="justify-start"><Button onClick={() => replaceProposal(null)}>Ajukan kunjungan baru</Button><ActionLink size="compact" variant="quiet" to="/girard/visit-history">Riwayat kunjungan saya</ActionLink></FormActions>
+        {requestReceipt && <Notice tone="success" title={`Permintaan terkirim${requestReceipt.date ? ` untuk ${visitDateLabel(requestReceipt.date)}` : ''}.`} actions={<ActionLink size="compact" variant="quiet" to={`/girard/visit-requests#visit-request-${requestReceipt.id}`}>Lihat status permintaan</ActionLink>}><p>Status saat pengiriman: Menunggu persetujuan. Jadwal akan tampil setelah disetujui.</p></Notice>}
         {profile?.id && <PendingVisitRequests actorId={profile.id} date={selectedDate} />}
         {showProposal && <VisitProposalForm key={`${proposalSchedule?.id ?? 'new'}:${proposalRevision}`} source={proposalSchedule ?? undefined} onSubmitted={setRequestReceipt} onDirtyChange={setProposalDirty} confirmDiscard={unsaved.confirmDiscard} onDone={() => { setProposalDirty(false); setShowProposal(false) }} />}
 
         {isLoading && <Notice tone="info" title="Memuat jadwal Anda..." />}
-        {isError && <Notice tone="error" title="Gagal memuat jadwal. Data belum dapat ditampilkan." actions={<Button variant="secondary" onClick={() => refetch()}>Coba lagi</Button>} />}
+        {isError && <Notice tone="error" title="Gagal memuat jadwal. Data belum dapat ditampilkan." actions={<Button size="compact" variant="secondary" onClick={() => refetch()}>Coba lagi</Button>} />}
         {!isLoading && !isError && schedules.length === 0 && <EmptyState title={`Tidak ada kunjungan dijadwalkan untuk ${visitDateLabel(selectedDate)}.`}><p>Periksa kembali nanti atau hubungi manajer Anda.</p></EmptyState>}
 
         <RecordList label="Jadwal kunjungan saya">{!isError && schedules.map(schedule => {
@@ -273,19 +273,19 @@ function DailyScheduleContent() {
 
               {!checkedIn && profile?.role === 'sales_person' && <Button variant="secondary" className="mx-5 mt-3" onClick={() => replaceProposal(schedule)}>Ajukan perubahan</Button>}
               {/* Actions */}
-              <div className="px-5 py-4 flex gap-3">
+              <div className="px-5 py-4 flex flex-wrap gap-3">
                 {isToday ? (
                   <>
                     {!checkedIn ? (
-                      <ActionLink
+                      <ActionLink size="compact"
                         to={`/girard/visit/${schedule.id}`}
                         className="flex-1"
                       >
                         Check-in kunjungan
                       </ActionLink>
                     ) : (
-                      <ActionLink
-                        variant="secondary"
+                      <ActionLink size="compact"
+                        variant="quiet"
                         to={`/girard/visit/${schedule.id}`}
                         className="flex-1"
                       >
@@ -298,8 +298,8 @@ function DailyScheduleContent() {
                     Dijadwalkan untuk {formatDate(schedule.scheduled_date)}
                   </div>
                 )}
-                <ActionLink
-                  variant="secondary"
+                <ActionLink size="compact"
+                  variant="quiet"
                   to={`/girard/customer/${customer?.id}`}
                 >
                   Info Pelanggan

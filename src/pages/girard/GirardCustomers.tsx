@@ -401,7 +401,7 @@ export default function GirardCustomers() {
                   return (
                     <tr key={c.id} className="border-b border-gray-50 hover:bg-gray-50">
                       <td className="px-5 py-4">
-                        <Link to={`/girard/customer/${c.id}`} className="font-medium text-brand-primary underline decoration-brand-accent underline-offset-2 hover:text-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary [overflow-wrap:anywhere]">{c.name}</Link>
+                        <Link to={`/girard/customer/${c.id}`} className="inline-flex min-h-[var(--ui-control-size-compact)] items-center font-medium text-brand-primary underline decoration-brand-accent underline-offset-2 hover:text-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary [overflow-wrap:anywhere]">{c.name}</Link>
                         {c.phone && <p className="text-[13px] text-brand-secondary mt-0.5">{c.phone}</p>}
                       </td>
                       <td className="px-5 py-4 text-brand-secondary">
@@ -429,7 +429,7 @@ export default function GirardCustomers() {
                         </span>
                       </td>
                       <td className="px-5 py-4 text-right">
-                        <Button variant="secondary" onClick={event => openEdit(c, event.currentTarget)}>Ubah</Button>
+                        <Button size="compact" variant="quiet" onClick={event => openEdit(c, event.currentTarget)}>Ubah</Button>
                       </td>
                     </tr>
                   )
@@ -449,10 +449,10 @@ export default function GirardCustomers() {
                 <li key={c.id} className="bg-white rounded-[14px] border border-brand-divider p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
                     <div className="flex-1 min-w-0">
-                      <Link to={`/girard/customer/${c.id}`} className="font-semibold text-brand-primary text-base underline decoration-brand-accent underline-offset-2 hover:text-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary break-words [overflow-wrap:anywhere]">{c.name}</Link>
+                      <Link to={`/girard/customer/${c.id}`} className="inline-flex min-h-[var(--ui-control-size-compact)] items-center font-semibold text-brand-primary text-base underline decoration-brand-accent underline-offset-2 hover:text-brand-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary break-words [overflow-wrap:anywhere]">{c.name}</Link>
                       {c.city && <p className="text-[13px] text-brand-secondary mt-0.5">{c.city}</p>}
                     </div>
-                    <Button variant="secondary" onClick={event => openEdit(c, event.currentTarget)}>Ubah</Button>
+                    <Button size="compact" variant="quiet" onClick={event => openEdit(c, event.currentTarget)}>Ubah</Button>
                   </div>
                   <SummaryList items={[
                     { label: 'Kategori Pelanggan', value: formatCustomerCategory(c.customer_category) },
@@ -480,7 +480,7 @@ export default function GirardCustomers() {
               </h2>
             </div>
 
-            <fieldset disabled={isPending} className="py-4 space-y-4 [&_select]:min-h-11 [&_select]:border-brand-control-border [&_select]:text-base [&_p]:text-[13px]">
+            <fieldset disabled={isPending} className="py-4 space-y-4 [&_select]:border-brand-control-border [&_p]:text-[13px]">
               {modalMode !== 'assign-existing' && <CustomerCategorySelect value={form.customer_category}
                 allowUnclassified={modalMode === 'edit' && originalCustomer?.customer_category === null}
                 onChange={value => setForm(p => ({ ...p, customer_category: value }))} />}
@@ -565,7 +565,7 @@ export default function GirardCustomers() {
             </fieldset>
 
             <FormActions className="pt-4 border-t border-brand-divider">
-              <Button variant="secondary" onClick={() => { if (!writeBusy.current) closeModal() }} disabled={isPending}>Batal</Button>
+              <Button variant="quiet" onClick={() => { if (!writeBusy.current) closeModal() }} disabled={isPending}>Batal</Button>
               <Button pending={isPending}
                 onClick={() => {
                   if (writeBusy.current || (modalMode === 'create' && createNeedsReview)) return

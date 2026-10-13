@@ -4,7 +4,7 @@ import { Button } from './ui/Button'
 import { Field } from './ui/Field'
 
 const COLUMNS = 'sm:grid-cols-[minmax(0,1.2fr)_minmax(0,2.4fr)_minmax(0,.8fr)_minmax(0,1.5fr)_2.75rem]'
-const INPUT = 'min-h-11 min-w-0 max-w-full w-full border border-brand-control-border rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-primary disabled:bg-gray-50 disabled:text-brand-secondary'
+const INPUT = 'ui-control min-w-0 max-w-full focus:outline-none focus:ring-2 focus:ring-brand-primary disabled:bg-gray-50 disabled:text-brand-secondary'
 export function exactCatalogIdentity(sku: string, products: { id: string; sku: string }[]): string | null {
   const normalized = sku.trim().toLocaleLowerCase()
   if (!normalized) return null
@@ -41,9 +41,9 @@ export function POLineRow({ lineKey, item, onChange, onRemove, historical = fals
       <Field id={`${id}-price`} label="Harga Satuan (Rp)" className="min-w-0">{control => <input {...control} aria-describedby={[errorId, Number.isNaN(item.unit_price) ? `${id}-price-hint` : undefined].filter(Boolean).join(' ') || undefined} aria-invalid={error ? true : undefined} type="number" min={0} step="0.01" inputMode="decimal" aria-label="Harga satuan" ref={priceRef} required disabled={historical}
           placeholder="Harga belum diisi" value={Number.isNaN(item.unit_price) ? '' : item.unit_price}
           onChange={event => onChange('unit_price', event.target.valueAsNumber)} className={INPUT} />}</Field>
-      <Button variant="danger" type="button" aria-label={`Hapus ${name}`} disabled={historical} onClick={onRemove}
+      <Button variant="danger-quiet" size="compact" type="button" aria-label={`Hapus ${name}`} disabled={historical} onClick={onRemove}
         title={historical ? 'Barang dengan riwayat pengiriman tidak dapat dihapus.' : 'Hapus barang'}
-        className="justify-self-end px-2 text-xl">×</Button>
+        className="justify-self-end">×</Button>
     </div>
     {item.product_id === null && <p className="text-[13px] text-amber-700">Identitas katalog belum terhubung. SKU harus cocok tepat dan unik untuk alokasi stok promosi; barang manual tetap dapat disimpan.</p>}
     {item.product_id && <p className="text-[13px] text-brand-secondary">Produk katalog terhubung</p>}

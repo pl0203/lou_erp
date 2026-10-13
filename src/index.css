@@ -33,11 +33,32 @@
 :root {
   --ui-space: 4px;
   --ui-control-size: 44px;
+  --ui-control-size-compact: 44px;
+  --ui-control-padding-y: 8px;
+  --ui-control-padding-y-compact: 8px;
   --ui-radius-control: 10px;
   --ui-radius-card: 14px;
   --ui-text-body: 16px;
   --ui-text-table: 14px;
   --ui-text-support: 13px;
+  --ui-text-control: 16px;
+  --ui-line-control: 24px;
+  --ui-text-label: 16px;
+}
+
+/* Dense controls are reserved for a desktop pointer. Touch and narrow layouts
+   keep the default targets and editable text, even when size="compact". */
+@media (min-width: 768px) and (hover: hover) and (pointer: fine) {
+  :root {
+    --ui-control-size: 36px;
+    --ui-control-size-compact: 32px;
+    --ui-control-padding-y: 7px;
+    --ui-control-padding-y-compact: 5px;
+    --ui-radius-control: 6px;
+    --ui-text-control: 14px;
+    --ui-line-control: 20px;
+    --ui-text-label: 13px;
+  }
 }
 
 @layer base {

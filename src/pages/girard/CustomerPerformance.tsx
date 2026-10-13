@@ -100,7 +100,7 @@ export function CustomerActivityContent() {
     onSaved: invalidate,
   })
 
-  if (isError) return <div role="alert" className="p-6 text-red-700">Data performa tidak tersedia. <Button variant="secondary" onClick={() => refetch()}>Coba lagi</Button></div>
+  if (isError) return <div role="alert" className="p-6 text-red-700">Data performa tidak tersedia. <Button size="compact" variant="secondary" onClick={() => refetch()}>Coba lagi</Button></div>
 
   const summary = pageData?.summary
   const totalSales = summary?.total_sales ?? '0'
@@ -122,8 +122,8 @@ export function CustomerActivityContent() {
           <h2 className="text-lg font-semibold text-gray-900">Aktivitas dan Target Pelanggan</h2>
           <p className="text-sm text-brand-secondary mt-0.5">Periode aktivitas: {selectedLabel}</p>
         </div>
-        <label className="text-sm text-brand-secondary">Bulan aktivitas pelanggan
-          <input aria-label="Bulan aktivitas pelanggan" type="month" value={yearMonth} onChange={e => { if (/^(?!0000)\d{4}-(?:0[1-9]|1[0-2])$/.test(e.target.value)) setYearMonth(e.target.value) }} className="ml-2 rounded-lg border border-brand-control-border px-3 py-2 text-base min-h-11" />
+        <label className="ui-field__label text-brand-secondary">Bulan aktivitas pelanggan
+          <input aria-label="Bulan aktivitas pelanggan" type="month" value={yearMonth} onChange={e => { if (/^(?!0000)\d{4}-(?:0[1-9]|1[0-2])$/.test(e.target.value)) setYearMonth(e.target.value) }} className="ui-control ml-2 font-normal" />
         </label>
       </div>
 

@@ -79,10 +79,10 @@ export function SalesMetricsPanel({group='customer'}: {group?: SalesMetricGroup}
         <p className="text-base text-brand-secondary">Bulan kalender utuh · {group === 'customer' ? 'per pelanggan' : 'per kredit orang'}</p>
         <p className="mt-1 text-[13px] text-brand-secondary">Filter ini hanya mengubah Metrik Sales; bulan aktivitas dan target di bagian lain tetap terpisah.</p>
       </div>
-      <Button variant="secondary" disabled={!read.allowed || !read.valid || read.pending} onClick={read.refresh}>Muat ulang metrik</Button>
+      <Button size="compact" variant="secondary" disabled={!read.allowed || !read.valid || read.pending} onClick={read.refresh}>Muat ulang metrik</Button>
     </div>
     {!read.allowed ? <Notice tone="error" title="Metrik Sales tidak tersedia untuk akun ini." /> : !read.valid ?
-      <Notice tone="error" title="Filter metrik tidak valid." actions={<Button variant="secondary" onClick={read.reset}>Atur ulang filter</Button>} /> : <>
+      <Notice tone="error" title="Filter metrik tidak valid." actions={<Button size="compact" variant="secondary" onClick={read.reset}>Atur ulang filter</Button>} /> : <>
       <FilterBar label="Filter Metrik Sales">
         <Field id={`${filterId}-from`} label="Dari bulan">{control => <select {...control} value={read.from}
           onChange={event => read.update({ sales_from: event.target.value, ...(event.target.value > read.through ? { sales_through: event.target.value } : {}) })}>
@@ -102,9 +102,9 @@ export function SalesMetricsPanel({group='customer'}: {group?: SalesMetricGroup}
         </select>}</Field>}
       </FilterBar>
       {directory.isError && leadership && <Notice tone="error" title="Daftar manajer tidak tersedia."
-        actions={<Button variant="secondary" onClick={() => void directory.refetch()}>Muat ulang daftar manajer</Button>} />}
+        actions={<Button size="compact" variant="secondary" onClick={() => void directory.refetch()}>Muat ulang daftar manajer</Button>} />}
       {read.manager&&<p className="text-[13px] text-brand-secondary">Dibatasi ke manajer terpilih, tetap dalam cakupan akun yang diizinkan.</p>}
-      {read.unavailable ? <Notice tone="error" title="Data atau daftar bulan metrik Sales tidak tersedia." actions={<Button variant="secondary" onClick={read.refresh}>Coba lagi</Button>} /> : !data ? <Notice tone="info" title="Memuat metrik Sales..." /> : <>
+      {read.unavailable ? <Notice tone="error" title="Data atau daftar bulan metrik Sales tidak tersedia." actions={<Button size="compact" variant="secondary" onClick={read.refresh}>Coba lagi</Button>} /> : !data ? <Notice tone="info" title="Memuat metrik Sales..." /> : <>
         <SalesMetricSummary summary={data.summary} orderType={read.orderType} noMonths={noMetricMonths} period={read.from === read.through ? salesMonthLabel(read.from) : `${salesMonthLabel(read.from)} – ${salesMonthLabel(read.through)}`} scope={`${({own:'sendiri',team:'tim',leadership:'pimpinan'} as const)[data.scope]}${read.manager ? ' · manajer terpilih, sesuai izin akun' : ''}`}/>
         <section aria-label={group==='person'?'Kontribusi per orang':'Metrik per pelanggan'} className="space-y-4">
           <h2 className="font-semibold text-brand-primary">{group==='person'?'Kontribusi per orang':'Metrik per pelanggan'}</h2>
@@ -112,11 +112,11 @@ export function SalesMetricsPanel({group='customer'}: {group?: SalesMetricGroup}
           {data.items.length === 0 && <EmptyState title={group === 'person' ? 'Tidak ada kontribusi orang untuk periode ini. Laporan nol tetap dapat dihitung di ringkasan.' : 'Tidak ada metrik pelanggan untuk periode ini.'} />}
           <RecordList label={group === 'person' ? 'Kontribusi orang' : 'Metrik pelanggan'}>{data.group_by==='customer' ? data.items.map(row=><li key={row.customer_id}><section aria-label={row.customer_name} className="min-w-0 space-y-3 border-t border-brand-divider pt-4"><h3 className="font-medium text-brand-primary [overflow-wrap:anywhere]">{row.customer_name}</h3><Values value={row} orderType={read.orderType} reports={row.co_report_event_count}/><p className="text-[13px] text-brand-secondary">Laporan CO (pelanggan/bulan): {quantityText(row.co_report_event_count)}</p></section></li>) : data.items.map(row=><li key={row.person_id??'unassigned'}><section aria-label={row.is_unassigned ? 'Belum ditugaskan' : row.person_name} className="min-w-0 space-y-3 border-t border-brand-divider pt-4"><h3 className="font-medium text-brand-primary [overflow-wrap:anywhere]">{row.is_unassigned ? 'Belum ditugaskan' : row.person_name}</h3><Values value={row} orderType={read.orderType} reports={row.co_contributing_report_count} reportBasis="contributions"/><p className="text-[13px] text-brand-secondary">Kontribusi laporan CO: {quantityText(row.co_contributing_report_count)}</p></section></li>)}</RecordList>
         </section>
-        <div className="[&_button]:min-h-11 [&_button]:min-w-11 [&_button]:border-brand-control-border [&_button]:text-base"><COPagination page={data.page} pageSize={data.page_size} total={data.total} pending={read.pending} onPage={read.setPage}/></div>
+        <COPagination page={data.page} pageSize={data.page_size} total={data.total} pending={read.pending} onPage={read.setPage}/>
         <p className="text-[13px] text-brand-secondary">Waktu pembacaan: {formatAuditTimestamp(data.as_of)}. Ini bukan tanggal cakupan laporan atau snapshot ekspor bersama.</p>
       </>}
     </>}
-    <details className="space-y-2 border-t border-brand-divider pt-4 text-[13px] leading-relaxed text-brand-secondary"><summary className="cursor-pointer font-medium">Definisi dan batasan metrik</summary>
+    <details className="space-y-2 border-t border-brand-divider pt-4 text-[13px] leading-relaxed text-brand-secondary"><summary className="min-h-[var(--ui-control-size-compact)] cursor-pointer rounded py-[var(--ui-control-padding-y-compact)] text-[length:var(--ui-text-control)] leading-[var(--ui-line-control)] font-medium text-brand-primary underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-brand-primary">Definisi dan batasan metrik</summary>
       <p>Nilai pesanan PO: nilai PO Dikonfirmasi, Dalam proses, atau Selesai berdasarkan tanggal PO. Nilai pengiriman PO: kuantitas SJ positif dan tidak dibatalkan × harga asli item PO, berdasarkan tanggal SJ; jumlahnya menghitung PO berbeda, bukan jumlah SJ.</p>
       <p>Penjualan CO dilaporkan mencakup alokasi dari laporan bulanan yang sudah diposting, memakai harga dan kredit asli CO. Penjualan yang belum dilaporkan belum tercakup. Pengiriman CO dan draf bukan pendapatan.</p>
       <p>Laporan bulan berjalan dapat mencakup sebagian bulan. Nol yang dilaporkan berbeda dari laporan yang belum tersedia; angka ini tidak menyatakan seluruh penjualan sudah dilaporkan.</p>

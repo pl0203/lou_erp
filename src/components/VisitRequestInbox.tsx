@@ -28,12 +28,12 @@ export function VisitProposalForm({source,onDone,onSubmitted,onDirtyChange,confi
  return <Section title={source?'Ajukan perubahan jadwal':'Ajukan kunjungan'}><div className="space-y-4">
   <TransactionRecovery send={send} onAbandoned={()=>refreshRecovery(value=>value+1)} onCommitted={result=>done(result,true)}/>
   {source && <p className="text-base text-brand-secondary">Jadwal yang disetujui tetap berlaku sampai perubahan disetujui manajer.</p>}
-  {customers.isError ? <Notice tone="error" title="Daftar toko belum tersedia." actions={<Button variant="secondary" onClick={()=>customers.refetch()}>Coba lagi</Button>} /> : <>
+  {customers.isError ? <Notice tone="error" title="Daftar toko belum tersedia." actions={<Button size="compact" variant="secondary" onClick={()=>customers.refetch()}>Coba lagi</Button>} /> : <>
    <VisitCustomerSelect label="Toko" customers={customers.data??[]} value={customer} onChange={value=>{setCustomer(value);setMessage('')}} disabled={busy||send.hasUnresolved()}/>
    <Field id={`${fieldId}-date`} label="Tanggal kunjungan">{control=><input {...control} type="date" value={date} onChange={e=>setDate(e.target.value)} disabled={busy||send.hasUnresolved()}/>}</Field>
    <Field id={`${fieldId}-notes`} label="Catatan permintaan">{control=><textarea {...control} maxLength={MAX_VISIT_NOTE_LENGTH} value={notes} onChange={e=>setNotes(e.target.value)} disabled={busy||send.hasUnresolved()}/>}</Field>
   </>}
-  <FormActions>{!customers.isError && <Button pending={busy} disabled={busy||!customer||!isVisitDate(date)||send.hasUnresolved()} onClick={submit}>{busy?'Mengirim permintaan...':source?'Ajukan perubahan':'Ajukan kunjungan'}</Button>}{onDone && <Button variant="secondary" disabled={busy||send.hasUnresolved()} onClick={()=>confirmDiscard?confirmDiscard(()=>onDone(),{when:dirty}):onDone()}>Batal</Button>}</FormActions>
+  <FormActions>{!customers.isError && <Button pending={busy} disabled={busy||!customer||!isVisitDate(date)||send.hasUnresolved()} onClick={submit}>{busy?'Mengirim permintaan...':source?'Ajukan perubahan':'Ajukan kunjungan'}</Button>}{onDone && <Button variant="quiet" disabled={busy||send.hasUnresolved()} onClick={()=>confirmDiscard?confirmDiscard(()=>onDone(),{when:dirty}):onDone()}>Batal</Button>}</FormActions>
   {message && <Notice tone={message==='Permintaan tersimpan. Menunggu persetujuan manajer.'?'success':'error'} className="mt-3" title={message} />}
  </div></Section>
 }
@@ -71,7 +71,7 @@ export default function VisitRequestInbox() {
  },[requests.isSuccess,total])
  return <section aria-label="Daftar permintaan kunjungan" className="space-y-5">
   <TransactionRecovery send={send} onAbandoned={()=>refreshRecovery(value=>value+1)} onCommitted={()=>client.invalidateQueries()}/>
-  {requests.isError ? <Notice tone="error" title="Permintaan belum tersedia." actions={<Button variant="secondary" onClick={()=>requests.refetch()}>Coba lagi</Button>}><p>Coba muat ulang untuk melihat permintaan kunjungan.</p></Notice>
+  {requests.isError ? <Notice tone="error" title="Permintaan belum tersedia." actions={<Button size="compact" variant="secondary" onClick={()=>requests.refetch()}>Coba lagi</Button>}><p>Coba muat ulang untuk melihat permintaan kunjungan.</p></Notice>
    : requests.isPending ? <Notice tone="info" title="Memuat permintaan..." /> : <>
    <div className="flex flex-wrap items-center justify-between gap-2">
     <h2 className="text-base font-semibold text-brand-primary">Daftar permintaan <span className="ml-2 rounded-full bg-white px-2.5 py-1 text-[13px] text-gray-600 ring-1 ring-gray-200">{total}</span></h2>
@@ -99,18 +99,18 @@ export default function VisitRequestInbox() {
        {r.notes && <div className="mt-4 rounded-xl bg-brand-canvas px-4 py-3"><p className="mb-1 text-[13px] font-semibold text-brand-secondary">Catatan permintaan</p><p className="whitespace-pre-wrap break-words text-base leading-6 text-gray-700">{r.notes}</p></div>}
       </div>
       {r.status==='pending' && (canWithdraw||canReview) && <div className="flex flex-wrap justify-end gap-3 border-t border-gray-100 bg-gray-50/60 px-5 py-4 sm:px-6" aria-busy={busy}>
-       {canWithdraw ? <Button variant="secondary" pending={busy} disabled={busy||send.hasUnresolved()} onClick={()=>decide('withdraw_request',r.id,r.version)}>Tarik permintaan</Button> : <>
-        <Button variant="danger" pending={busy} disabled={busy||send.hasUnresolved()} onClick={()=>decide('reject_request',r.id,r.version)}>Tolak</Button>
-        <Button pending={busy} disabled={busy||send.hasUnresolved()} onClick={()=>decide('approve_request',r.id,r.version)}>Setujui</Button>
+       {canWithdraw ? <Button size="compact" variant="secondary" pending={busy} disabled={busy||send.hasUnresolved()} onClick={()=>decide('withdraw_request',r.id,r.version)}>Tarik permintaan</Button> : <>
+        <Button size="compact" variant="danger" pending={busy} disabled={busy||send.hasUnresolved()} onClick={()=>decide('reject_request',r.id,r.version)}>Tolak</Button>
+        <Button size="compact" pending={busy} disabled={busy||send.hasUnresolved()} onClick={()=>decide('approve_request',r.id,r.version)}>Setujui</Button>
        </>}
       </div>}
      </article>
     })}
    </div>
    {total>20 && <nav aria-label="Halaman permintaan" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white p-4">
-    <Button variant="secondary" disabled={page===1||busy||requests.isFetching} onClick={()=>setPage(page-1)}><span aria-hidden="true">←</span>Sebelumnya</Button>
+    <Button size="compact" variant="quiet" disabled={page===1||busy||requests.isFetching} onClick={()=>setPage(page-1)}><span aria-hidden="true">←</span>Sebelumnya</Button>
     <span className="text-base text-brand-secondary">Halaman {page} dari {Math.ceil(total/20)}</span>
-    <Button variant="secondary" disabled={page*20>=total||busy||requests.isFetching} onClick={()=>setPage(page+1)}>Berikutnya<span aria-hidden="true">→</span></Button>
+    <Button size="compact" variant="quiet" disabled={page*20>=total||busy||requests.isFetching} onClick={()=>setPage(page+1)}>Berikutnya<span aria-hidden="true">→</span></Button>
    </nav>}
   </>}
   {error && <Notice tone="error" title={error} />}

@@ -138,7 +138,7 @@ export default function SalesOrders() {
 
       {/* Filter tabs */}
       <div className="bg-white border-b border-gray-100 px-4 md:px-8">
-        <div className="flex gap-1">
+        <div className="flex flex-wrap gap-1">
           {[
             { value: 'pending',  label: 'Pending' },
             { value: 'approved', label: 'Disetujui' },
@@ -146,12 +146,12 @@ export default function SalesOrders() {
             { value: 'cancelled', label: 'Dibatalkan' },
             { value: 'all',      label: 'Semua' },
           ].map(tab => (
-            <Button variant="secondary"
+            <Button size="compact" variant="quiet"
               key={tab.value}
               onClick={() => setStatusFilter(tab.value)}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              className={`font-medium border-b-2 transition-colors ${
                 statusFilter === tab.value
-                  ? 'border-brand-accent text-brand-primary underline decoration-brand-primary underline-offset-4'
+                  ? 'border-brand-primary text-brand-primary underline decoration-brand-primary underline-offset-4'
                   : 'border-transparent text-brand-secondary hover:text-gray-700'
               }`}
             >
@@ -169,7 +169,7 @@ export default function SalesOrders() {
 
         {isError && <div role="alert" className="text-center text-red-700 text-sm py-8">
           <p>Gagal memuat pesanan dari sales. Data belum dapat ditampilkan.</p>
-          <Button variant="secondary" onClick={() => refetch()} className="mt-2">Coba lagi</Button>
+          <Button size="compact" variant="secondary" onClick={() => refetch()} className="mt-2">Coba lagi</Button>
         </div>}
 
         {!isLoading && !isError && orders?.length === 0 && (
@@ -202,21 +202,21 @@ export default function SalesOrders() {
             </div>
 
             <div className="px-5 py-3">
-              <Button variant="secondary" type="button" aria-expanded={expanded.includes(order.id)} onClick={() => setExpanded(previous => previous.includes(order.id) ? previous.filter(id => id !== order.id) : [...previous, order.id])} >{expanded.includes(order.id) ? 'Sembunyikan barang' : 'Lihat barang'}</Button>
+              <Button size="compact" variant="quiet" type="button" aria-expanded={expanded.includes(order.id)} onClick={() => setExpanded(previous => previous.includes(order.id) ? previous.filter(id => id !== order.id) : [...previous, order.id])} >{expanded.includes(order.id) ? 'Sembunyikan barang' : 'Lihat barang'}</Button>
               {expanded.includes(order.id) && <SalesOrderItems orderId={order.id} />}
             </div>
 
             {/* Actions — only for pending */}
             {order.status === 'pending' && (
-              <div className="px-5 py-4 border-t border-gray-100 flex gap-3 justify-end">
-                <Button variant="danger"
+              <div className="px-5 py-4 border-t border-gray-100 flex flex-wrap gap-3 justify-end">
+                <Button size="compact" variant="danger-quiet"
                   disabled={isPending}
                   onClick={event => { dialogEpoch.current++; setRecoveredReceipt(null); rejectionTrigger.current = event.currentTarget; rejectionCommitted.current = false; rejectMutation.reset(); setRejectionNote(''); setRejectingOrder(order) }}
 
                 >
                   Tolak
                 </Button>
-                <Button variant="primary"
+                <Button size="compact" variant="primary"
                   disabled={isPending}
                   onClick={event => {
                     dialogEpoch.current++; setRecoveredReceipt(null)
@@ -253,7 +253,7 @@ export default function SalesOrders() {
             </div>
             <div className="px-6 py-4 space-y-4">
               <div>
-                <label htmlFor="legacy-approval-po-number" className="block text-sm text-gray-600 mb-1">Nomor PO *</label>
+                <label htmlFor="legacy-approval-po-number" className="block text-[length:var(--ui-text-label)] leading-[var(--ui-line-control)] font-medium text-gray-600 mb-1">Nomor PO *</label>
                 <input
                   id="legacy-approval-po-number"
                   type="text"
@@ -261,11 +261,11 @@ export default function SalesOrders() {
                   value={poNumber}
                   onChange={e => setPoNumber(e.target.value)}
                   placeholder="e.g. PO-2024-050"
-                  className="w-full border border-brand-control-border rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                  className="ui-control"
                 />
               </div>
               <div>
-                <label htmlFor="legacy-approval-po-expiry" className="block text-sm text-gray-600 mb-1">
+                <label htmlFor="legacy-approval-po-expiry" className="block text-[length:var(--ui-text-label)] leading-[var(--ui-line-control)] font-medium text-gray-600 mb-1">
                   Tanggal Kedaluwarsa PO (opsional)
                 </label>
                 <p id="legacy-approval-po-expiry-help" className="text-[13px] text-brand-secondary mb-1">Jika PO pelanggan memiliki tanggal kedaluwarsa. Bukan tanggal pengiriman.</p>
@@ -276,12 +276,12 @@ export default function SalesOrders() {
                   disabled={approvalLocked}
                   value={expectedDelivery}
                   onChange={e => setExpectedDelivery(e.target.value)}
-                  className="w-full border border-brand-control-border rounded-lg px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-brand-primary"
+                  className="ui-control"
                 />
               </div>
 
               {/* Order summary */}
-              {approvalLines.isError && <p role="alert" className="text-sm text-red-600">Barang pesanan belum dapat dimuat. <Button variant="secondary" type="button" onClick={() => approvalLines.refetch()} >Coba lagi</Button></p>}
+              {approvalLines.isError && <p role="alert" className="text-sm text-red-600">Barang pesanan belum dapat dimuat. <Button size="compact" variant="secondary" type="button" onClick={() => approvalLines.refetch()} >Coba lagi</Button></p>}
               {(approvalLines.isPending || approvalLines.isFetching) && <p role="status" className="text-sm text-brand-secondary">Memuat semua barang pesanan...</p>}
               <div className="bg-gray-50 rounded-lg p-3 space-y-1">
                 <p className="text-[13px] text-brand-secondary font-medium mb-2">Ringkasan PO</p>
@@ -298,7 +298,7 @@ export default function SalesOrders() {
               </div>
             </div>
             <FormActions className="px-6 py-4 border-t border-gray-100">
-              <Button variant="secondary"
+              <Button variant="quiet"
                 disabled={approvalLocked}
                 onClick={closeApproval}
 
@@ -348,7 +348,7 @@ export default function SalesOrders() {
             </div>
             {rejectMutation.isError && <p role="alert" className="px-6 pb-3 text-sm text-red-600">{(rejectMutation.error as Error).message}</p>}
             <FormActions className="px-6 py-4 border-t border-gray-100">
-              <Button variant="secondary"
+              <Button variant="quiet"
                 disabled={rejectionLocked} onClick={closeRejection}
 
               >

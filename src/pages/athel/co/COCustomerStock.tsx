@@ -11,6 +11,7 @@ import COStockHistory from '../../../components/co/COStockHistory';
 import COReturnDialog from '../../../components/co/COReturnDialog';
 import { PageHeader } from '../../../components/ui/PageHeader';
 import { Button } from '../../../components/ui/Button';
+import { ActionLink } from '../../../components/ui/ActionLink';
 import { Field } from '../../../components/ui/Field';
 import { FilterBar } from '../../../components/ui/FilterBar';
 import { SummaryList } from '../../../components/ui/SummaryList';
@@ -90,11 +91,17 @@ export default function COCustomerStock() {
                     setError(''); update('month', e.target.value);
                 }}/>}</Field>
         </FilterBar>
-        <Button variant="secondary" onClick={() => update('month', '')}>Stok terkini</Button>
+        <Button variant="quiet" size="compact" onClick={() => update('month', '')}>Stok terkini</Button>
         {period && !asOf && <COFailure error={new Error('Bulan stok tidak valid. Pilih bulan kalender.')}/>}
         {error && <COFailure error={new Error(error)}/>}
         {customers.isError && <COFailure error={customers.error} retry={() => void customers.refetch()}/>}
-        {customer && <Button variant="primary" disabled={blocked} onClick={e => { trigger.current = e.currentTarget; setReturning(true); }}>Retur barang belum terjual</Button>}
+        {customer && <div className="space-y-3">
+            <ActionLink variant="primary" to={`/athel/co/reports?customer=${customer}`}>Catat penjualan</ActionLink>
+            <div role="group" aria-label="Pengembalian barang" className="border-t border-brand-divider pt-3 space-y-2">
+                <p className="text-sm text-brand-secondary">Barang belum terjual yang dikembalikan dicatat sebagai retur terpisah dari penjualan.</p>
+                <Button variant="quiet" size="compact" disabled={blocked} onClick={e => { trigger.current = e.currentTarget; setReturning(true); }}>Retur barang belum terjual</Button>
+            </div>
+        </div>}
         {!returning && readFailure}
         {!stock.data && !stock.isError && <p role="status">Memuat stok…</p>}
         {stock.data && !stock.isError && <>
@@ -127,7 +134,8 @@ export default function COCustomerStock() {
                         <COFreshness value={row.reporting_freshness} compact/>
                     </td>
                     <td className="block p-3 align-top md:table-cell">
-                        <Button variant="secondary" className="w-full px-2" aria-label={`Lihat pergerakan ${customerIdentity(row.customer_id)} · ${row.display_sku}`} onClick={() => {
+                        {!customer && <ActionLink variant="secondary" size="compact" className="mb-2 max-w-full" aria-label={`Catat penjualan ${customerIdentity(row.customer_id)} · ${row.display_sku}`} to={`/athel/co/reports?customer=${row.customer_id}`}>Catat penjualan</ActionLink>}
+                        <Button variant="quiet" size="compact" className="max-w-full" aria-label={`Lihat pergerakan ${customerIdentity(row.customer_id)} · ${row.display_sku}`} onClick={() => {
                             const next = new URLSearchParams(params);
                             next.set('customer', row.customer_id); next.set('sku', row.id); setParams(next);
                         }}>Pergerakan</Button>

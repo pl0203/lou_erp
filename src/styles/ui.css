@@ -7,17 +7,23 @@
     min-height: var(--ui-control-size);
     min-width: var(--ui-control-size);
     max-width: 100%;
-    padding: calc(var(--ui-space) * 2) calc(var(--ui-space) * 4);
+    padding: var(--ui-control-padding-y) calc(var(--ui-space) * 3);
     border: 1px solid transparent;
     border-radius: var(--ui-radius-control);
     font-family: var(--font-sans);
-    font-size: var(--ui-text-body);
+    font-size: var(--ui-text-control);
     font-weight: 600;
-    line-height: 1.5;
+    line-height: var(--ui-line-control);
     text-align: center;
     text-decoration: none;
     overflow-wrap: anywhere;
     cursor: pointer;
+  }
+
+  .ui-action--compact {
+    min-height: var(--ui-control-size-compact);
+    min-width: var(--ui-control-size-compact);
+    padding-block: var(--ui-control-padding-y-compact);
   }
 
   .ui-action--primary {
@@ -46,6 +52,28 @@
 
   .ui-action--danger:hover:not(:disabled) {
     background-color: var(--color-red-800);
+  }
+
+  .ui-action--quiet {
+    background-color: transparent;
+    color: var(--color-brand-primary);
+    text-decoration-line: underline;
+    text-underline-offset: 3px;
+  }
+
+  .ui-action--quiet:hover:not(:disabled) {
+    background-color: var(--color-brand-tint);
+  }
+
+  .ui-action--danger-quiet {
+    background-color: transparent;
+    color: var(--color-red-700);
+    text-decoration-line: underline;
+    text-underline-offset: 3px;
+  }
+
+  .ui-action--danger-quiet:hover:not(:disabled) {
+    background-color: var(--color-red-50);
   }
 
   .ui-action:focus-visible {
@@ -119,20 +147,21 @@
   .ui-section__content { min-width: 0; margin-top: calc(var(--ui-space) * 4); }
 
   .ui-field { display: flex; flex-direction: column; gap: calc(var(--ui-space) * 2); min-width: 0; }
-  .ui-field__label { font-size: var(--ui-text-body); font-weight: 600; overflow-wrap: anywhere; }
-  .ui-field > :is(input, select, textarea) {
+  .ui-field__label { font-size: var(--ui-text-label); font-weight: 500; overflow-wrap: anywhere; }
+  .ui-field > :is(input, select, textarea), .ui-control {
     width: 100%;
     min-width: 0;
     min-height: var(--ui-control-size);
-    padding: calc(var(--ui-space) * 2) calc(var(--ui-space) * 3);
+    padding: var(--ui-control-padding-y) calc(var(--ui-space) * 3);
     border: 1px solid var(--color-brand-control-border);
     border-radius: var(--ui-radius-control);
     background: var(--color-brand-surface);
     color: var(--color-brand-primary);
     font: inherit;
-    font-size: var(--ui-text-body);
+    font-size: var(--ui-text-control);
+    line-height: var(--ui-line-control);
   }
-  .ui-field > [aria-invalid="true"] { border-color: var(--color-red-700); }
+  .ui-field > [aria-invalid="true"], .ui-control[aria-invalid="true"] { border-color: var(--color-red-700); }
   .ui-field__hint, .ui-field__error { font-size: var(--ui-text-support); line-height: 1.5; overflow-wrap: anywhere; }
   .ui-field__hint { color: var(--color-brand-secondary); }
   .ui-field__error { color: var(--color-red-700); }

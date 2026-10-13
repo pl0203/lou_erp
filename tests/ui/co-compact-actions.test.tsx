@@ -1,0 +1,131 @@
+import React from 'react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { expect, test, vi } from 'vitest';
+import { ids, line, mount, mountRoutes, state } from '../co/ui-harness';
+import COOrders from '../../src/pages/athel/co/COOrders';
+import COForm from '../../src/pages/athel/co/COForm';
+import COLayout from '../../src/pages/athel/co/COLayout';
+import COStatusActions, { COCancelDialog } from '../../src/components/co/COStatusActions';
+import CODeliveryDialog from '../../src/components/co/CODeliveryDialog';
+import { CO_INPUT, COPagination } from '../../src/components/co/COShared';
+
+const compact = (node: HTMLElement, variant: string) => {
+    expect(node.classList.contains('ui-action--compact')).toBe(true);
+    expect(node.classList.contains(`ui-action--${variant}`)).toBe(true);
+};
+
+test('CO pilot keeps balanced filters, eight meanings, and compact horizontal View/Edit in both presentations', async () => {
+    mount(<COOrders/>, '/athel/co/list');
+    const edits = await screen.findAllByRole('link', { name: 'Ubah' });
+    expect(edits).toHaveLength(2);
+    for (const view of screen.getAllByRole('link', { name: 'Lihat' })) {
+        compact(view, 'quiet');
+        expect(view.getAttribute('href')).toBe(`/athel/co/${ids.co}`);
+        expect(view.parentElement?.classList.contains('flex-wrap')).toBe(true);
+        expect(view.parentElement?.classList.contains('items-center')).toBe(true);
+    }
+    for (const edit of edits) compact(edit, 'secondary');
+    expect(edits[0].closest('td')?.classList.contains('min-w-36')).toBe(true);
+    expect(screen.getByRole('link', { name: '+ CO Baru' }).classList.contains('ui-action--primary')).toBe(true);
+    expect(screen.getAllByRole('columnheader').map(n => n.textContent)).toEqual(['Nomor / tanggal CO', 'Pelanggan', 'Status / pengiriman', 'Nilai rencana', 'Terjual / pendapatan', 'Stok tercatat', 'Laporan pelanggan (semua CO)', 'Aksi']);
+    expect(screen.getByRole('table').classList.contains('min-w-[70rem]')).toBe(true);
+    expect(screen.getByRole('region', { name: 'Daftar CO' }).tabIndex).toBe(0);
+    for (const [label, basis] of [['Cari CO', 'basis-72'], ['Status CO', 'basis-44'], ['Filter pelanggan', 'basis-60']]) {
+        const field = screen.getByLabelText(label).closest('.ui-field')!;
+        expect(field.classList.contains('flex-1'), label).toBe(true);
+        expect(field.classList.contains(basis), label).toBe(true);
+    }
+    fireEvent.change(screen.getByLabelText('Status CO'), { target: { value: 'closed' } });
+    await waitFor(() => expect(state.page).toHaveBeenCalledWith(expect.objectContaining({ p_status: 'closed', p_page: 1 })));
+    expect(state.commands).toHaveLength(0);
+});
+
+test('CO fields inherit shared responsive density while retaining manual editing and compact line removal', async () => {
+    expect(CO_INPUT.split(' ')).toContain('ui-control');
+    for (const override of ['min-h-11', 'px-3', 'py-2', 'text-base']) expect(CO_INPUT.split(' ')).not.toContain(override);
+    mount(<COForm mode="edit"/>);
+    const quantity = await screen.findByLabelText('Qty Item 1');
+    expect(quantity.classList.contains('ui-control')).toBe(true);
+    fireEvent.change(quantity, { target: { value: '3' } });
+    expect((quantity as HTMLInputElement).value).toBe('3');
+    compact(screen.getByRole('button', { name: 'Hapus Item 1' }), 'danger-quiet');
+    expect(screen.getByRole('button', { name: 'Simpan Perubahan' }).classList.contains('ui-action--primary')).toBe(true);
+    for (const name of ['Kembali', 'Batal']) compact(screen.getByRole('link', { name }), 'quiet');
+    fireEvent.click(screen.getByRole('button', { name: 'Tambah barang manual' }));
+    await waitFor(() => expect(document.activeElement?.getAttribute('aria-label')).toBe('Nama produk barang baru'));
+    expect(state.commands).toHaveLength(0);
+});
+
+test('CO status commands distinguish one delivery progression from quiet routing and destructive openers', () => {
+    const onCancel = vi.fn();
+    mount(<COStatusActions co={state.header} id={ids.co} customerId={ids.customer} allowed={['edit_co', 'save_sj_draft', 'cancel_co', 'resolve_undelivered', 'close_co']} blockers={state.header.close_blockers} pending={false} onSJ={vi.fn()} onCancel={onCancel} onResolve={vi.fn()} onClose={vi.fn()}/>);
+    expect(screen.getByRole('button', { name: 'Tambah Surat Jalan' }).classList.contains('ui-action--primary')).toBe(true);
+    for (const name of ['Ubah CO', 'Catat penjualan bulanan', 'Retur barang belum terjual']) compact(screen.getByRole('link', { name }), 'quiet');
+    const cancel = screen.getByRole('button', { name: 'Batalkan CO' });
+    compact(cancel, 'danger-quiet'); fireEvent.click(cancel); expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: 'Tutup CO' }).matches(':disabled')).toBe(true);
+});
+
+test('CO cancellation retains deliberate final danger and quiet native dismissal', () => {
+    mount(<COCancelDialog editorKey="compact-cancel" pending={false} error="" returnFocus={null} onClose={vi.fn()} onConfirm={vi.fn()}/>);
+    const dialog = screen.getByRole('dialog', { name: 'Batalkan CO?' });
+    compact(within(dialog).getByRole('button', { name: 'Batal' }), 'quiet');
+    const confirm = within(dialog).getByRole('button', { name: 'Konfirmasi pembatalan' });
+    expect(confirm.classList.contains('ui-action--danger')).toBe(true);
+    expect(confirm.matches(':disabled')).toBe(true);
+    fireEvent.change(screen.getByLabelText('Alasan pembatalan'), { target: { value: 'Explicit cancellation' } });
+    expect(confirm.matches(':disabled')).toBe(false);
+});
+
+test('CO pagination is compact support and preserves pending and exact page bounds for Sales consumers', () => {
+    const onPage = vi.fn();
+    const view = render(<COPagination page={1} total="9007199254740993" pending onPage={onPage}/>);
+    for (const name of ['Sebelumnya', 'Berikutnya']) {
+        const button = screen.getByRole('button', { name }); compact(button, 'quiet');
+        expect(button.matches(':disabled')).toBe(true); fireEvent.click(button);
+    }
+    expect(onPage).not.toHaveBeenCalled();
+    view.rerender(<COPagination page={1} total="9007199254740993" pending={false} onPage={onPage}/>);
+    fireEvent.click(screen.getByRole('button', { name: 'Berikutnya' })); expect(onPage).toHaveBeenCalledWith(2);
+    expect(screen.getByText('Halaman 1 dari 450.359.962.737.050')).toBeTruthy();
+});
+
+test('CO section navigation remains quiet compact native destinations with selected-page semantics', () => {
+    mountRoutes([{ path: '/athel/co', element: <COLayout/>, children: [{ path: 'reports', element: <p>Reports</p> }] }], '/athel/co/reports');
+    const nav = screen.getByRole('navigation', { name: 'Bagian pesanan konsinyasi' });
+    for (const link of within(nav).getAllByRole('link')) compact(link, 'quiet');
+    expect(within(nav).getByRole('link', { name: 'Laporan penjualan bulanan' }).getAttribute('aria-current')).toBe('page');
+    expect(within(nav).getByRole('link', { name: 'Stok pelanggan' }).getAttribute('href')).toBe('/athel/co/stock');
+});
+
+test.each([true, false])('saved SJ emphasizes the existing %s prepared-review stage while direct Post remains available', async prepared => {
+    state.drafts = [{ id: ids.draft, mode: 'new_delivery', sj_number: 'SJ-A', sj_date: '2026-10-09', received_date: null, notes: null, draft_version: '1', preparation_ready: prepared, bindings_current: true, consumed: false }];
+    state.draftLines = [{ ...line(), co_line_id: line().id, quantity: '1', source_available: true }];
+    mount(<CODeliveryDialog co={state.header} draftId={ids.draft} returnFocus={null} onClose={vi.fn()}/>);
+    await screen.findByDisplayValue('SJ-A');
+    const save = screen.getByRole('button', { name: 'Simpan Draft SJ' });
+    const post = screen.getByRole('button', { name: 'Post SJ' });
+    const review = screen.getByRole('button', { name: 'Tinjau perubahan SJ' });
+    expect(save.classList.contains('ui-action--secondary')).toBe(true);
+    expect(post.classList.contains(prepared ? 'ui-action--secondary' : 'ui-action--primary')).toBe(true);
+    expect(review.classList.contains(prepared ? 'ui-action--primary' : 'ui-action--secondary')).toBe(true);
+    expect(post.matches(':disabled')).toBe(false);
+    expect(review.matches(':disabled')).toBe(!prepared);
+    fireEvent.change(screen.getByLabelText('Catatan SJ'), { target: { value: 'Retained local draft' } });
+    expect(save.classList.contains('ui-action--primary')).toBe(true);
+    expect(post.matches(':disabled')).toBe(true);
+    expect(review.matches(':disabled')).toBe(true);
+    expect(state.commands).toHaveLength(0);
+});
+
+test('saved SJ keeps Save primary when server authority permits no publication step', async () => {
+    state.header.allowed_operations = ['save_sj_draft'];
+    state.drafts = [{ id: ids.draft, mode: 'new_delivery', sj_number: 'Save only', sj_date: '2026-10-09', received_date: null, notes: null, draft_version: '1', preparation_ready: true, bindings_current: true, consumed: false }];
+    state.draftLines = [{ ...line(), co_line_id: line().id, quantity: '1', source_available: true }];
+    mount(<CODeliveryDialog co={state.header} draftId={ids.draft} returnFocus={null} onClose={vi.fn()}/>);
+    await screen.findByDisplayValue('Save only');
+    expect(screen.getByRole('button', { name: 'Simpan Draft SJ' }).classList.contains('ui-action--primary')).toBe(true);
+    expect(screen.getByRole('button', { name: 'Tinjau perubahan SJ' }).classList.contains('ui-action--secondary')).toBe(true);
+    expect(screen.getByRole('button', { name: 'Post SJ' }).matches(':disabled')).toBe(true);
+    expect(state.commands).toHaveLength(0);
+});

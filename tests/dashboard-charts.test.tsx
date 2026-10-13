@@ -56,11 +56,17 @@ test('series controls are keyboard-accessible and affect only chart visibility',
   const region = await screen.findByRole('region', { name: 'Nilai PO vs Pengiriman PO Bulanan' })
   const control = within(region).getByRole('button', { name: 'PO terkirim' })
   expect(control.getAttribute('aria-pressed')).toBe('true')
+  expect(control.classList.contains('border-dashed')).toBe(false)
   fireEvent.click(control)
   await waitFor(() => expect(state.charts['Nilai PO vs Pengiriman PO Bulanan'].legend.selected['PO terkirim']).toBe(false))
   expect(control.getAttribute('aria-pressed')).toBe('false')
+  expect(control.classList.contains('border-dashed')).toBe(true)
+  expect(control.classList.contains('border-brand-control-border')).toBe(true)
   expect(state.data.metrics.totalPOValue).toBe('1000000')
   expect(state.charts['Nilai PO vs Pengiriman PO Bulanan'].series[1].data).toEqual([0])
+  fireEvent.click(control)
+  expect(control.getAttribute('aria-pressed')).toBe('true')
+  expect(control.classList.contains('border-brand-control-border')).toBe(false)
 })
 
 test('all daily values remain in the chart with date zoom and an accessible data table', async () => {
@@ -303,11 +309,28 @@ test('native chart ranges and disclosures opt into the approved hit-area contrac
   state.data.dailySeries = Array.from({ length: 16 }, (_, index) => ({ key: `day-${index}`, label: `Day ${index}`, deliveredValue: String(index), sjCount: index % 3 }))
   render(<Dashboard />)
   const region = await screen.findByRole('region', { name: 'Tren Pengiriman PO Harian' })
-  for (const input of within(region).getAllByRole('slider')) { expect(input.tagName).toBe('INPUT'); expect(input.classList.contains('min-h-11')).toBe(true) }
+  for (const input of within(region).getAllByRole('slider')) { expect(input.tagName).toBe('INPUT'); expect(input.classList.contains('min-h-[var(--ui-control-size)]')).toBe(true) }
   for (const summary of document.querySelectorAll('summary')) {
-    expect(summary.classList.contains('min-h-11')).toBe(true)
-    expect(summary.classList.contains('py-2')).toBe(true)
+    expect(summary.classList.contains('min-h-[var(--ui-control-size-compact)]')).toBe(true)
+    expect(summary.classList.contains('py-[var(--ui-control-padding-y-compact)]')).toBe(true)
     expect(summary.className).not.toMatch(/list-none|marker:hidden/)
     expect(summary.parentElement?.tagName).toBe('DETAILS')
   }
+})
+
+
+test('compact chart controls inherit responsive tokens without shrinking tables or replacing native markers', async () => {
+ state.data.dailySeries = Array.from({ length: 16 }, (_, index) => ({ key: `day-${index}`, label: `Day ${index}`, deliveredValue: String(index), sjCount: index % 3 }))
+ render(<Dashboard />); await screen.findByRole('region', { name: 'Tren Pengiriman PO Harian' })
+ for (const action of screen.getAllByRole('button')) {
+   expect(action.classList.contains('ui-action--compact')).toBe(true)
+   expect(action.classList.contains('ui-action--quiet')).toBe(true)
+ }
+ for (const summary of document.querySelectorAll('summary')) {
+   expect(summary.classList.contains('min-h-[var(--ui-control-size-compact)]')).toBe(true)
+   expect(summary.classList.contains('py-[var(--ui-control-padding-y-compact)]')).toBe(true)
+   expect(summary.className).not.toMatch(/min-h-11|py-2|inline-flex|list-none|marker:hidden/)
+ }
+ for (const slider of screen.getAllByRole('slider')) expect(slider.classList.contains('min-h-[var(--ui-control-size)]')).toBe(true)
+ for (const table of document.querySelectorAll('table')) expect(table.classList.contains('text-sm')).toBe(true)
 })

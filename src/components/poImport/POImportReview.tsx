@@ -7,7 +7,7 @@ import type { Customer, Issue, ParsedPO, Product, ReviewDecision, RowDecision, S
 import { resolveCatalogPrice } from '../../lib/catalogPricing'
 
 type Props = { parsed: ParsedPO; decision: ReviewDecision; customers: Customer[]; products: Product[]; issues: Issue[]; disabled: boolean; onChange(decision: ReviewDecision): void; onApply(): void }
-const inputClass = 'min-w-0 max-w-full w-full rounded-lg border border-brand-control-border px-3 py-2 text-base disabled:opacity-50'
+const inputClass = 'ui-control max-w-full disabled:opacity-50'
 function Source({ field }: { field: SourceField }) {
   return <p className="mt-1 text-[13px] text-brand-secondary [overflow-wrap:anywhere]">Dokumen: {field.raw || '(tidak tercantum)'}{field.page ? ` · halaman ${field.page}` : ''}</p>
 }
@@ -34,17 +34,17 @@ export default function POImportReview({ parsed, decision, customers, products, 
     {fallback && <p role="alert" className="rounded bg-amber-50 p-3 text-sm text-amber-800">Dokumen belum dapat diimpor dengan aman. Isi PO secara manual; tidak ada barang yang disimpan otomatis.</p>}
     <fieldset disabled={disabled || fallback} className="min-w-0 space-y-4">
       <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
-        <div><label htmlFor={`${id}-customer`} className="text-sm">Pelanggan hasil impor</label>
+        <div><label htmlFor={`${id}-customer`} className="text-[length:var(--ui-text-label)] font-medium">Pelanggan hasil impor</label>
           <select id={`${id}-customer`} className={inputClass} value={decision.customerId} onChange={e => set('customerId', e.target.value)}>
             <option value="">Pilih pelanggan secara jelas</option>{customers.map(c => <option key={c.id} value={c.id}>{c.name} · {c.id}</option>)}
           </select><Source field={parsed.buyer} /></div>
-        <div><label htmlFor={`${id}-number`} className="text-sm">Nomor PO hasil impor</label><input id={`${id}-number`} value={decision.poNumber} onChange={e => set('poNumber', e.target.value)} className={inputClass} /><Source field={parsed.poNumber} /></div>
-        <div><label htmlFor={`${id}-date`} className="text-sm">Tanggal PO hasil impor</label><input id={`${id}-date`} type="date" value={decision.orderDate} onChange={e => set('orderDate', e.target.value)} className={inputClass} /><Source field={parsed.orderDate} /></div>
-        <div><label htmlFor={`${id}-expiry`} className="text-sm">Kedaluwarsa PO hasil impor (opsional)</label><input id={`${id}-expiry`} type="date" value={decision.expiry} onChange={e => set('expiry', e.target.value)} className={inputClass} /><Source field={parsed.expiry} /></div>
+        <div><label htmlFor={`${id}-number`} className="text-[length:var(--ui-text-label)] font-medium">Nomor PO hasil impor</label><input id={`${id}-number`} value={decision.poNumber} onChange={e => set('poNumber', e.target.value)} className={inputClass} /><Source field={parsed.poNumber} /></div>
+        <div><label htmlFor={`${id}-date`} className="text-[length:var(--ui-text-label)] font-medium">Tanggal PO hasil impor</label><input id={`${id}-date`} type="date" value={decision.orderDate} onChange={e => set('orderDate', e.target.value)} className={inputClass} /><Source field={parsed.orderDate} /></div>
+        <div><label htmlFor={`${id}-expiry`} className="text-[length:var(--ui-text-label)] font-medium">Kedaluwarsa PO hasil impor (opsional)</label><input id={`${id}-expiry`} type="date" value={decision.expiry} onChange={e => set('expiry', e.target.value)} className={inputClass} /><Source field={parsed.expiry} /></div>
       </div>
-      <div><label htmlFor={`${id}-notes`} className="text-sm">Catatan hasil impor</label><textarea id={`${id}-notes`} value={decision.notes} onChange={e => set('notes', e.target.value)} className={inputClass} rows={3} /></div>
+      <div><label htmlFor={`${id}-notes`} className="text-[length:var(--ui-text-label)] font-medium">Catatan hasil impor</label><textarea id={`${id}-notes`} value={decision.notes} onChange={e => set('notes', e.target.value)} className={inputClass} rows={3} /></div>
       <div className="rounded bg-gray-50 p-3 text-[13px] text-gray-600 [overflow-wrap:anywhere]">Pemasok: {parsed.supplier.raw || 'Tidak tercantum'} · Pengiriman: {parsed.delivery.raw || 'Tidak tercantum'} · Pembayaran: {parsed.paymentTerms.raw || 'Tidak tercantum'} · Mata uang: {parsed.currency.raw || 'Tidak tercantum'} · Total tercetak: {parsed.printedTotal.raw || 'Tidak tercantum'} · Dasar harga: {parsed.priceBasis}</div>
-      <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={decision.idrConfirmed} onChange={e => set('idrConfirmed', e.target.checked)} />Saya memastikan nilai harga dalam IDR tanpa konversi</label>
+      <label className="flex min-h-[var(--ui-control-size)] items-center gap-2 text-sm"><input type="checkbox" checked={decision.idrConfirmed} onChange={e => set('idrConfirmed', e.target.checked)} />Saya memastikan nilai harga dalam IDR tanpa konversi</label>
       {parsed.rows.map((source, index) => {
         const row = decision.rows[source.id]
         if (!row) return null
@@ -58,30 +58,30 @@ export default function POImportReview({ parsed, decision, customers, products, 
           <div className="min-w-0">
             <p className="text-sm [overflow-wrap:anywhere]">Produk dipilih: {product ? `${product.sku} · ${product.name}` : row.manual ? 'Barang manual' : 'Belum dipilih'}</p>
             {!row.productId && !row.manual && candidates.length > 0 && <p className="mt-1 text-[13px] text-amber-800 [overflow-wrap:anywhere]">Saran belum dipilih: {candidates.map(candidate => `${candidate.sku} · ${candidate.name} (${source.sku.value && skuKey(source.sku.value) === skuKey(candidate.sku) ? 'teks SKU cocok; periksa asal kode dan pilih secara sengaja' : 'nama saja; pilih SKU ERP secara sengaja'})`).join('; ')}</p>}
-            {!row.productId && !row.manual && candidates.length === 1 && <Button variant="secondary" type="button" disabled={disabled} aria-label={`Gunakan saran produk barang ${index + 1}: ${candidates[0].sku} · ${candidates[0].name}`} onClick={() => {
+            {!row.productId && !row.manual && candidates.length === 1 && <Button variant="quiet" size="compact" type="button" disabled={disabled} aria-label={`Gunakan saran produk barang ${index + 1}: ${candidates[0].sku} · ${candidates[0].name}`} onClick={() => {
               const chosen = candidates[0]
               rowSet(source.id, { productId: chosen.id, name: chosen.name, sku: chosen.sku, manual: false, unitConfirmed: false })
               setSelectingRow(null); productButtons.current[source.id]?.focus()
             }} className="mt-2 mr-2">Gunakan saran barang {index + 1}</Button>}
-            <span ref={node => { productButtons.current[source.id] = node?.querySelector<HTMLButtonElement>('button') ?? null }}><Button variant="secondary" type="button" disabled={row.manual} onClick={() => setSelectingRow(selectingRow === source.id ? null : source.id)} className="mt-2">Pilih produk barang {index + 1}</Button></span>
+            <span ref={node => { productButtons.current[source.id] = node?.querySelector<HTMLButtonElement>('button') ?? null }}><Button variant="quiet" size="compact" type="button" disabled={row.manual} onClick={() => setSelectingRow(selectingRow === source.id ? null : source.id)} className="mt-2">Pilih produk barang {index + 1}</Button></span>
             {selectingRow === source.id && <div className="mt-2"><POProductLookup products={products} label={`Cari produk hasil impor ${index + 1}`} disabled={disabled || row.manual} onSelect={chosen => {
               rowSet(source.id, { productId: chosen.id, name: chosen.name, sku: chosen.sku, manual: false, unitConfirmed: false })
               setSelectingRow(null); productButtons.current[source.id]?.focus()
             }} /></div>}
             <p className="mt-1 text-[13px] text-brand-secondary [overflow-wrap:anywhere]">SKU dokumen: {source.sku.raw || '(kosong)'} · Barcode: {source.barcode.raw || '(kosong)'}</p>
           </div>
-          <label className="flex items-start gap-2 text-sm"><input type="checkbox" aria-label={`Gunakan barang manual ${index + 1}`} checked={row.manual} onChange={e => rowSet(source.id, { manual: e.target.checked, productId: null, name: source.name.value ?? source.name.raw, sku: source.sku.value ?? source.sku.raw, unitConfirmed: false })} />Gunakan barang manual (tanpa membuat master produk)</label>
+          <label className="flex min-h-[var(--ui-control-size)] items-center gap-2 text-sm"><input type="checkbox" aria-label={`Gunakan barang manual ${index + 1}`} checked={row.manual} onChange={e => rowSet(source.id, { manual: e.target.checked, productId: null, name: source.name.value ?? source.name.raw, sku: source.sku.value ?? source.sku.raw, unitConfirmed: false })} />Gunakan barang manual (tanpa membuat master produk)</label>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 min-w-0">
-            <div><label htmlFor={`${id}-${source.id}-name`} className="text-sm">Nama barang hasil impor {index + 1}</label><input id={`${id}-${source.id}-name`} value={row.name} readOnly={!row.manual} onChange={e => rowSet(source.id, { name: e.target.value })} className={inputClass} /><Source field={source.name} /></div>
-            <div><label htmlFor={`${id}-${source.id}-sku`} className="text-sm">SKU hasil impor {index + 1}</label><input id={`${id}-${source.id}-sku`} value={row.sku} readOnly={!row.manual} onChange={e => rowSet(source.id, { sku: e.target.value })} className={inputClass} /></div>
-            <div><label htmlFor={`${id}-${source.id}-quantity`} className="text-sm">Jumlah hasil impor {index + 1}</label><input id={`${id}-${source.id}-quantity`} inputMode="numeric" value={row.quantity} onChange={e => rowSet(source.id, { quantity: e.target.value })} className={inputClass} /><Source field={source.quantity} /></div>
-            <div><label htmlFor={`${id}-${source.id}-price`} className="text-sm">Harga hasil impor {index + 1}</label><input id={`${id}-${source.id}-price`} inputMode="decimal" value={row.unitPrice ?? ''} onChange={e => rowSet(source.id, { unitPrice: e.target.value.trim() || null })} className={inputClass} /><Source field={source.unitPrice} />
+            <div><label htmlFor={`${id}-${source.id}-name`} className="text-[length:var(--ui-text-label)] font-medium">Nama barang hasil impor {index + 1}</label><input id={`${id}-${source.id}-name`} value={row.name} readOnly={!row.manual} onChange={e => rowSet(source.id, { name: e.target.value })} className={inputClass} /><Source field={source.name} /></div>
+            <div><label htmlFor={`${id}-${source.id}-sku`} className="text-[length:var(--ui-text-label)] font-medium">SKU hasil impor {index + 1}</label><input id={`${id}-${source.id}-sku`} value={row.sku} readOnly={!row.manual} onChange={e => rowSet(source.id, { sku: e.target.value })} className={inputClass} /></div>
+            <div><label htmlFor={`${id}-${source.id}-quantity`} className="text-[length:var(--ui-text-label)] font-medium">Jumlah hasil impor {index + 1}</label><input id={`${id}-${source.id}-quantity`} inputMode="numeric" value={row.quantity} onChange={e => rowSet(source.id, { quantity: e.target.value })} className={inputClass} /><Source field={source.quantity} /></div>
+            <div><label htmlFor={`${id}-${source.id}-price`} className="text-[length:var(--ui-text-label)] font-medium">Harga hasil impor {index + 1}</label><input id={`${id}-${source.id}-price`} inputMode="decimal" value={row.unitPrice ?? ''} onChange={e => rowSet(source.id, { unitPrice: e.target.value.trim() || null })} className={inputClass} /><Source field={source.unitPrice} />
               <p className="mt-1 text-[13px] text-brand-secondary">Harga tier katalog (referensi saja): {catalogPrice === null ? 'Tidak tersedia' : `Rp ${catalogPrice.toLocaleString('id-ID')}`}. Harga dokumen tetap.</p></div>
           </div>
           <p className="text-[13px] text-brand-secondary">Satuan dokumen: {source.uom.raw || '(tidak jelas)'} · Satuan katalog: {product?.size || '(tidak tercantum)'}. Tidak ada konversi satuan otomatis.</p>
-          <label className="flex items-start gap-2 text-sm"><input type="checkbox" aria-label={`Saya sudah memeriksa satuan barang ${index + 1}`} checked={row.unitConfirmed} onChange={e => rowSet(source.id, { unitConfirmed: e.target.checked })} />Saya sudah memeriksa jumlah dan satuan</label>
-          {row.unitPrice === null && <label className="flex items-start gap-2 text-sm text-amber-800"><input type="checkbox" aria-label={`Harga kosong akan saya lengkapi di formulir (barang ${index + 1})`} checked={decision.acknowledgedIssueIds.includes(missingId)} onChange={e => acknowledge(missingId, e.target.checked)} />Harga kosong akan saya lengkapi di formulir; Save masih akan menolak harga kosong</label>}
-          {row.unitPrice !== null && Number(row.unitPrice) === 0 && <label className="flex items-start gap-2 text-sm text-amber-800"><input type="checkbox" aria-label={`Harga nol sudah saya periksa (barang ${index + 1})`} checked={decision.acknowledgedIssueIds.includes(zeroId)} onChange={e => acknowledge(zeroId, e.target.checked)} />Harga nol sudah saya periksa dan memang dimaksudkan</label>}
+          <label className="flex min-h-[var(--ui-control-size)] items-center gap-2 text-sm"><input type="checkbox" aria-label={`Saya sudah memeriksa satuan barang ${index + 1}`} checked={row.unitConfirmed} onChange={e => rowSet(source.id, { unitConfirmed: e.target.checked })} />Saya sudah memeriksa jumlah dan satuan</label>
+          {row.unitPrice === null && <label className="flex min-h-[var(--ui-control-size)] items-center gap-2 text-sm text-amber-800"><input type="checkbox" aria-label={`Harga kosong akan saya lengkapi di formulir (barang ${index + 1})`} checked={decision.acknowledgedIssueIds.includes(missingId)} onChange={e => acknowledge(missingId, e.target.checked)} />Harga kosong akan saya lengkapi di formulir; Save masih akan menolak harga kosong</label>}
+          {row.unitPrice !== null && Number(row.unitPrice) === 0 && <label className="flex min-h-[var(--ui-control-size)] items-center gap-2 text-sm text-amber-800"><input type="checkbox" aria-label={`Harga nol sudah saya periksa (barang ${index + 1})`} checked={decision.acknowledgedIssueIds.includes(zeroId)} onChange={e => acknowledge(zeroId, e.target.checked)} />Harga nol sudah saya periksa dan memang dimaksudkan</label>}
         </section>
       })}
       {!!financialIssues.length && <section aria-label="Tinjauan keuangan wajib" className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
@@ -90,7 +90,7 @@ export default function POImportReview({ parsed, decision, customers, products, 
         {financialIssues.map(issue => {
           const index = parsed.rows.findIndex(row => issue.field.startsWith(`rows.${row.id}.`))
           const context = index >= 0 ? ` (barang ${index + 1})` : ''
-          return <label key={issue.id} className="flex gap-2 items-start text-sm text-amber-900"><input type="checkbox" aria-label={`Saya telah meninjau: ${issue.message}${context}`} checked={decision.acknowledgedIssueIds.includes(issue.id)} onChange={e => acknowledge(issue.id, e.target.checked)} /><span>{issue.message}{context}</span></label>
+          return <label key={issue.id} className="flex min-h-[var(--ui-control-size)] gap-2 items-center text-sm text-amber-900"><input type="checkbox" aria-label={`Saya telah meninjau: ${issue.message}${context}`} checked={decision.acknowledgedIssueIds.includes(issue.id)} onChange={e => acknowledge(issue.id, e.target.checked)} /><span>{issue.message}{context}</span></label>
         })}
       </section>}
       {sourceIssues.filter(issue => !['missing-price', 'zero-price'].includes(issue.code) && !isFinancialReviewIssue(issue)).map(issue => <div key={issue.id} className="rounded bg-amber-50 p-3 text-sm text-amber-800"><p>{issue.message}</p></div>)}

@@ -22,7 +22,7 @@ function useIdentity() {
   return `${profile?.id ?? ''}:${profile?.role ?? ''}`
 }
 function ReadError({ message, retry }: { message: string; retry: () => unknown }) {
-  return <Notice tone="error" title={message} actions={<Button variant="secondary" onClick={() => retry()}>Coba lagi</Button>} />
+  return <Notice tone="error" title={message} actions={<Button size="compact" variant="secondary" onClick={() => retry()}>Coba lagi</Button>} />
 }
 const card = 'min-w-0 rounded-xl border border-gray-200 bg-white p-4 sm:p-5'
 const action = 'text-left text-brand-primary'
@@ -53,7 +53,7 @@ function VisitPhoto({ storagePath, identity }: { storagePath: string; identity: 
       return data.signedUrl
     },
   })
-  if (photo.isError || imageFailed) return <div className="text-base text-brand-secondary"><p role="alert">Foto tidak dapat dimuat.</p><Button variant="secondary" className={action} disabled={photo.isFetching} onClick={() => { setImageFailed(false); void photo.refetch() }}>Coba muat foto lagi</Button></div>
+  if (photo.isError || imageFailed) return <div className="text-base text-brand-secondary"><p role="alert">Foto tidak dapat dimuat.</p><Button size="compact" variant="secondary" className={action} disabled={photo.isFetching} onClick={() => { setImageFailed(false); void photo.refetch() }}>Coba muat foto lagi</Button></div>
   if (photo.isPending || photo.isFetching) return <p role="status" className="text-base text-brand-secondary">Memuat foto…</p>
   return <img src={photo.data} onError={() => setImageFailed(true)} alt="Foto check-in" className="max-h-80 w-full rounded-lg object-contain bg-gray-50" />
 }
@@ -83,7 +83,7 @@ export function CustomerVisitHistory({ customerId }: { customerId: string }) {
         {history.data.items.length === 0 && <EmptyState title="Belum ada kunjungan tercatat." />}
         {history.data.items.map(visit => <article key={visit.id} className={card}>
           <SummaryList items={[{ label: 'Waktu check-in', value: formatVisitTimestamp(visit.checked_in_at) }, { label: 'Petugas kunjungan', value: visit.users?.full_name ?? 'Tidak tersedia' }]} />
-          <Button variant="secondary" className={action} aria-expanded={expanded === visit.id} disabled={history.isPending} onClick={() => setExpanded(expanded === visit.id ? null : visit.id)}>{expanded === visit.id ? 'Tutup catatan & foto' : 'Lihat catatan & foto'}</Button>
+          <Button size="compact" variant="quiet" className={action} aria-expanded={expanded === visit.id} disabled={history.isPending} onClick={() => setExpanded(expanded === visit.id ? null : visit.id)}>{expanded === visit.id ? 'Tutup catatan & foto' : 'Lihat catatan & foto'}</Button>
           {expanded === visit.id && <VisitEvidence customerId={customerId} visitId={visit.id} />}
         </article>)}
         <PaginationControls page={history.data.page} total={history.data.total} pageSize={history.data.page_size} pending={history.isPending} onPageChange={page => { setExpanded(null); history.setPage(page) }} />
@@ -128,7 +128,7 @@ export function CustomerOrderHistory({ customerId }: { customerId: string }) {
           <p className="mt-2 text-base font-semibold text-gray-900 break-words [overflow-wrap:anywhere]">Rp {formatMoney(String(po.total_value), 'full')}</p>
           <p className="mt-1 text-[13px] text-brand-secondary">Tanggal PO: {customerDate(po.order_date)}</p>
           <p className="mt-1 text-[13px] text-brand-secondary">Rencana pengiriman: {po.expected_delivery_date ? customerDate(po.expected_delivery_date) : 'Belum tercatat'}</p>
-          <Button variant="secondary" className={action} disabled={history.isPending} aria-expanded={expanded === po.id} onClick={() => setExpanded(expanded === po.id ? null : po.id)}>{expanded === po.id ? 'Tutup pengiriman / SJ' : 'Lihat pengiriman / SJ'}</Button>
+          <Button size="compact" variant="quiet" className={action} disabled={history.isPending} aria-expanded={expanded === po.id} onClick={() => setExpanded(expanded === po.id ? null : po.id)}>{expanded === po.id ? 'Tutup pengiriman / SJ' : 'Lihat pengiriman / SJ'}</Button>
           {expanded === po.id && <CustomerDeliveryHistory key={po.id} poId={po.id} poNumber={po.po_number} />}
         </article>)}
         <PaginationControls page={history.data.page} total={history.data.total} pageSize={history.data.page_size} pending={history.isPending} onPageChange={page => { setExpanded(null); history.setPage(page) }} />

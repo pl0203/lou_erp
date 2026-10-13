@@ -25,6 +25,8 @@ for (const [layout, index] of [['desktop', 0], ['mobile', 1]] as const) {
     expect(links).toHaveLength(2)
     const link = links[index]
     expect(link.getAttribute('href')).toBe('/girard/customer/customer-a')
+    expect(link.classList.contains('min-h-[var(--ui-control-size-compact)]')).toBe(true)
+    expect(link.classList.contains('underline')).toBe(true)
     link.focus(); expect(document.activeElement).toBe(link)
     fireEvent.click(link)
     expect(screen.getByRole('heading', { name: 'Customer detail customer-a' })).toBeTruthy()

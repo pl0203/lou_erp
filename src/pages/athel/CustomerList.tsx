@@ -222,8 +222,8 @@ export default function CustomerList() {
     dialogTrigger.current = trigger; dialogCommitted.current = false; deleteMutation.reset(); setDeleteId(c.id)
   }
   const rowActions = (c: Customer) => <div className="flex flex-wrap justify-end gap-2">
-    {access.capabilities.customer_edit && <Button variant="secondary" disabled={modalOpen || modalPending} onClick={event => openEdit(c, event.currentTarget)}>Ubah</Button>}
-    {access.capabilities.customer_delete && <Button variant="danger" disabled={modalOpen || modalPending} onClick={event => openDelete(c, event.currentTarget)}>Hapus</Button>}
+    {access.capabilities.customer_edit && <Button variant="quiet" size="compact" disabled={modalOpen || modalPending} onClick={event => openEdit(c, event.currentTarget)}>Ubah</Button>}
+    {access.capabilities.customer_delete && <Button variant="danger-quiet" size="compact" disabled={modalOpen || modalPending} onClick={event => openDelete(c, event.currentTarget)}>Hapus</Button>}
   </div>
   return <div className="min-h-screen bg-brand-canvas">
     <AthelNav />
@@ -279,14 +279,14 @@ export default function CustomerList() {
           <Field id="catalog-customer-tier" label="Tier Harga" hint={<CustomerPricingHelp id="customer-pricing-help" />}>{control => <select {...control} value={form.pricing_tier} disabled={modalPending} onChange={event => { if (!mutationBusy.current && !modalPending) setForm(p => ({ ...p, pricing_tier: event.target.value })) }}>{Object.entries(TIER_LABELS).map(([tier, label]) => <option key={tier} value={tier}>{label}</option>)}</select>}</Field>
           {readError && <ReadFailure onRetry={() => { void refetch() }} />}
           {saveMutation.isError && <Notice tone="error" title={(saveMutation.error as Error).message} />}
-          <FormActions><Button variant="secondary" disabled={modalPending} onClick={closeForm}>Batal</Button><Button pending={saveMutation.isPending} disabled={!access.capabilities[originalCustomer ? 'customer_edit' : 'customer_create'] || modalPending || readError} onClick={handleSave}>{saveMutation.isPending ? 'Menyimpan...' : 'Simpan'}</Button></FormActions>
+          <FormActions><Button variant="quiet" disabled={modalPending} onClick={closeForm}>Batal</Button><Button pending={saveMutation.isPending} disabled={!access.capabilities[originalCustomer ? 'customer_edit' : 'customer_create'] || modalPending || readError} onClick={handleSave}>{saveMutation.isPending ? 'Menyimpan...' : 'Simpan'}</Button></FormActions>
         </div>
       </Dialog>}
       {deleteId && <Dialog labelledBy="catalog-customer-delete-title" pending={modalPending} onClose={() => { if (!mutationBusy.current && !modalPending) setDeleteId(null) }} returnFocus={null} fallbackFocus={restoreFocus}>
         <h2 id="catalog-customer-delete-title" className="ui-dialog__title">Hapus pelanggan ini?</h2>
         <p className="ui-dialog__description">Apakah Anda yakin ingin menghapus <strong>{deleteTarget?.name}</strong>? Tindakan ini tidak dapat dibatalkan.</p>
         {deleteMutation.isError && <Notice tone="error" title={(deleteMutation.error as Error).message} className="mt-4" />}
-        <FormActions className="mt-5"><Button variant="secondary" disabled={modalPending} onClick={() => { if (!mutationBusy.current && !modalPending) setDeleteId(null) }}>Batal</Button><Button variant="danger" pending={deleteMutation.isPending} disabled={!access.capabilities.customer_delete || modalPending} onClick={handleDelete}>{deleteMutation.isPending ? 'Menghapus...' : 'Hapus'}</Button></FormActions>
+        <FormActions className="mt-5"><Button variant="quiet" disabled={modalPending} onClick={() => { if (!mutationBusy.current && !modalPending) setDeleteId(null) }}>Batal</Button><Button variant="danger" pending={deleteMutation.isPending} disabled={!access.capabilities.customer_delete || modalPending} onClick={handleDelete}>{deleteMutation.isPending ? 'Menghapus...' : 'Hapus'}</Button></FormActions>
       </Dialog>}
     </MainContent>
   </div>

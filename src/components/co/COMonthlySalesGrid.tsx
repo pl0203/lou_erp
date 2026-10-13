@@ -30,7 +30,7 @@ export default function COMonthlySalesGrid({ rows, entries, editable, disabled, 
                     {editable ? <Field id={`co-sold-${row.stock_key_id}`} label={`Terjual ${row.product_name}`}>
                         {control => <input {...control} className={CO_INPUT} inputMode="numeric" aria-label={`Terjual ${row.product_name}`} disabled={disabled} value={raw} onChange={e => onChange(row, e.target.value)}/>}
                     </Field> : <div><p>Terjual</p><span>{row.sold_quantity ?? 'Belum diisi'}</span></div>}
-                    <div className="min-w-0"><p>{editable ? 'Sisa provisional' : 'Sisa periode tercatat'}: {remaining ?? 'Belum tersedia'}</p>{allocation && <Button type="button" variant="secondary" onClick={() => setExpanded(expanded === row.id ? null : row.id)}>Alokasi {row.product_name}</Button>}</div>
+                    <div className="min-w-0"><p>{editable ? 'Sisa provisional' : 'Sisa periode tercatat'}: {remaining ?? 'Belum tersedia'}</p>{allocation && <Button type="button" variant="quiet" size="compact" onClick={() => setExpanded(expanded === row.id ? null : row.id)}>Alokasi {row.product_name}</Button>}</div>
                 </div>
                 {expanded === row.id && allocation?.(row)}
             </div>;

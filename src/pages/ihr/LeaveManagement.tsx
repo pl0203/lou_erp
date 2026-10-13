@@ -36,7 +36,7 @@ export default function LeaveManagement() {
     <MainContent className="mx-auto max-w-5xl space-y-5 px-4 py-6 sm:py-8 md:px-8">
       <PageHeader title={context.data?.capabilities.request&&['employee','manager'].includes(context.data.memberKind??'')?'Ajukan Cuti':'Manajemen Cuti'} />
       {readState === 'pending' || !identity ? <p role="status">Memuat akses cuti...</p> : readState === 'error' ?
-        <div role="alert" ref={errorPanel} tabIndex={-1} className="ui-notice ui-notice--error"><p>Akses cuti belum dapat dikonfirmasi. Silakan coba lagi.</p><Button variant="secondary" onClick={() => void context.refetch()} className="mt-2">Coba lagi</Button></div> : null}
+        <div role="alert" ref={errorPanel} tabIndex={-1} className="ui-notice ui-notice--error"><p>Akses cuti belum dapat dikonfirmasi. Silakan coba lagi.</p><Button size="compact" variant="secondary" onClick={() => void context.refetch()} className="mt-2">Coba lagi</Button></div> : null}
       {/* Keep only the same actor/scope's ephemeral owner through read failures. Its
           protected UI is suspended until the shared authority read succeeds again. */}
       {identity && !denied && context.data && <>

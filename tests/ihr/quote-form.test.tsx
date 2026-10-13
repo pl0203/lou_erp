@@ -39,7 +39,7 @@ test('review keeps deduction remaining balance and approver visible while routin
  expect(within(result).getByText('70j 15m').closest('details')).toBeNull()
  expect(within(result).getByText('Fictional Manager').closest('details')).toBeNull()
  expect(within(result).getByRole('button',{name:'Ajukan cuti'}).classList.contains('ui-action--primary')).toBe(true)
- expect(screen.getByRole('button',{name:'Hitung pratinjau'}).classList.contains('ui-action--primary')).toBe(true)
+ expect(screen.getByRole('button',{name:'Hitung pratinjau'}).classList.contains('ui-action--secondary')).toBe(true)
  const breakdown=within(result).getByText('Rincian tanggal dan potongan').closest('details')!
  expect(breakdown).toBeTruthy();expect(breakdown.hasAttribute('open')).toBe(false)
  fireEvent.click(within(result).getByText('Rincian per tanggal'))

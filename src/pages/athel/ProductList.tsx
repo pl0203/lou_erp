@@ -216,8 +216,8 @@ export default function ProductList() {
     dialogTrigger.current = trigger; dialogCommitted.current = false; deleteMutation.reset(); setDeleteId(p.id)
   }
   const rowActions = (p: Product) => <div className="flex flex-wrap justify-end gap-2">
-    {access.capabilities.product_edit && <Button variant="secondary" disabled={modalOpen || modalPending} onClick={event => openEdit(p, event.currentTarget)}>Ubah</Button>}
-    {access.capabilities.product_delete && <Button variant="danger" disabled={modalOpen || modalPending} onClick={event => openDelete(p, event.currentTarget)}>Hapus</Button>}
+    {access.capabilities.product_edit && <Button variant="quiet" size="compact" disabled={modalOpen || modalPending} onClick={event => openEdit(p, event.currentTarget)}>Ubah</Button>}
+    {access.capabilities.product_delete && <Button variant="danger-quiet" size="compact" disabled={modalOpen || modalPending} onClick={event => openDelete(p, event.currentTarget)}>Hapus</Button>}
   </div>
   const tiers = ['harga_pokok', 'luar_kota', 'dalam_kota', 'depo_bangunan'] as const
   return <div className="min-h-screen bg-brand-canvas">
@@ -262,7 +262,7 @@ export default function ProductList() {
                   <div className="min-w-0 flex-1"><p className="font-semibold text-brand-primary [overflow-wrap:anywhere]">{p.name}</p><p className="text-[13px] text-brand-secondary font-mono uppercase mt-1 [overflow-wrap:anywhere]">{p.sku}</p>{p.size && <p className="text-[13px] text-brand-secondary mt-1">{p.size}</p>}</div>
                   {rowActions(p)}
                 </div>
-                <Button variant="secondary" aria-expanded={expandedId === p.id} aria-controls={`catalog-prices-${p.id}`} onClick={() => setExpandedId(expandedId === p.id ? null : p.id)}>{expandedId === p.id ? 'Sembunyikan harga ▲' : 'Lihat semua harga ▼'}</Button>
+                <Button variant="quiet" size="compact" aria-expanded={expandedId === p.id} aria-controls={`catalog-prices-${p.id}`} onClick={() => setExpandedId(expandedId === p.id ? null : p.id)}>{expandedId === p.id ? 'Sembunyikan harga ▲' : 'Lihat semua harga ▼'}</Button>
                 {expandedId === p.id && <SummaryList id={`catalog-prices-${p.id}`} className="mt-3" items={tiers.map(tier => ({ label: TIER_LABELS[tier], value: formatCatalogPrice(p[tier]) }))} />}
               </li>)}
             </RecordList>
@@ -284,14 +284,14 @@ export default function ProductList() {
           </fieldset>
           {isError && <Notice tone="error" title="Daftar barang belum dapat dimuat." actions={<Button variant="secondary" onClick={() => { void refetch() }}>Coba lagi</Button>} />}
           {saveMutation.isError && <Notice tone="error" title={(saveMutation.error as Error).message} />}
-          <FormActions><Button variant="secondary" disabled={modalPending} onClick={closeForm}>Batal</Button><Button pending={saveMutation.isPending} disabled={!access.capabilities[editingId ? 'product_edit' : 'product_create'] || modalPending || isError} onClick={handleSave}>{saveMutation.isPending ? 'Menyimpan...' : 'Simpan'}</Button></FormActions>
+          <FormActions><Button variant="quiet" disabled={modalPending} onClick={closeForm}>Batal</Button><Button pending={saveMutation.isPending} disabled={!access.capabilities[editingId ? 'product_edit' : 'product_create'] || modalPending || isError} onClick={handleSave}>{saveMutation.isPending ? 'Menyimpan...' : 'Simpan'}</Button></FormActions>
         </div>
       </Dialog>}
       {deleteId && <Dialog labelledBy="catalog-product-delete-title" pending={modalPending} onClose={() => { if (!mutationBusy.current && !modalPending) setDeleteId(null) }} returnFocus={null} fallbackFocus={restoreFocus}>
         <h2 id="catalog-product-delete-title" className="ui-dialog__title">Hapus barang ini?</h2>
         <p className="ui-dialog__description">Apakah Anda yakin ingin menghapus <strong>{deleteTarget?.name}</strong>? Tindakan ini tidak dapat dibatalkan.</p>
         {deleteMutation.isError && <Notice tone="error" title={(deleteMutation.error as Error).message} className="mt-4" />}
-        <FormActions className="mt-5"><Button variant="secondary" disabled={modalPending} onClick={() => { if (!mutationBusy.current && !modalPending) setDeleteId(null) }}>Batal</Button><Button variant="danger" pending={deleteMutation.isPending} disabled={!access.capabilities.product_delete || modalPending} onClick={handleDelete}>{deleteMutation.isPending ? 'Menghapus...' : 'Hapus'}</Button></FormActions>
+        <FormActions className="mt-5"><Button variant="quiet" disabled={modalPending} onClick={() => { if (!mutationBusy.current && !modalPending) setDeleteId(null) }}>Batal</Button><Button variant="danger" pending={deleteMutation.isPending} disabled={!access.capabilities.product_delete || modalPending} onClick={handleDelete}>{deleteMutation.isPending ? 'Menghapus...' : 'Hapus'}</Button></FormActions>
       </Dialog>}
     </MainContent>
   </div>
