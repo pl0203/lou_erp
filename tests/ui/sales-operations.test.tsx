@@ -131,6 +131,23 @@ test('manager drilldown retains personal, manager, date and visited filters with
   expect(screen.queryByText('Excluded person')).toBeNull(); expect(screen.queryByText('Excluded pending')).toBeNull()
   expect(screen.getAllByRole('link', { name: 'Lihat rincian kunjungan' })[0].getAttribute('href')).toBe('/girard/visit/schedule'); expectMain()
 })
+test('manager table badges preserve whole-word min-content sizing without changing mobile wrapping', async () => {
+  state.role = 'sales_head'
+  state.schedules = ['pending', 'completed', 'missed'].map(status => schedule({ id: status, status }))
+  mount(ManagerSchedule)
+  const table = await screen.findByRole('table', { name: 'Jadwal kunjungan tim' })
+  // This is a CSS wiring regression: jsdom cannot verify actual line breaks.
+  // Normal wrapping retains each status word in the table's min-content size.
+  for (const label of ['Menunggu kunjungan', 'Selesai', 'Terlewat']) {
+    const badge = within(table).getByText(label)
+    expect(badge.classList.contains('ui-status-badge')).toBe(true)
+    expect(badge.classList.contains('[overflow-wrap:normal]')).toBe(true)
+    expect(badge.classList.contains('whitespace-nowrap')).toBe(false)
+    const mobileBadge = screen.getAllByText(label).find(element => !table.contains(element))!
+    expect(mobileBadge.classList.contains('ui-status-badge')).toBe(true)
+    expect(mobileBadge.classList.contains('[overflow-wrap:normal]')).toBe(false)
+  }
+})
 test('manager assignment is a labelled native dialog with associated fields and clean returned focus', async () => {
   state.role = 'sales_manager'; mount(ManagerSchedule); const opener = await openAssignment()
   const dialog = screen.getByRole('dialog', { name: 'Tugaskan kunjungan' }); expect(dialog.tagName).toBe('DIALOG')

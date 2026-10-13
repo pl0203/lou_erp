@@ -325,7 +325,7 @@ function ManagerScheduleContent() {
               <tbody>{schedules.map(schedule => <tr key={schedule.id} className="border-b border-gray-100">
                 <td className="px-5 py-4"><p className="font-medium text-gray-900">{schedule.customers?.name ?? '—'}</p>{schedule.notes && <p className="text-[13px] text-brand-secondary mt-1">{schedule.notes}</p>}</td>
                 <td className="px-5 py-4 text-brand-secondary hidden md:table-cell">{schedule.customers?.city ?? '—'}</td><td className="px-5 py-4 text-gray-700">{schedule.users?.full_name ?? '—'}</td>
-                <td className="px-5 py-4 hidden md:table-cell"><StatusBadge tone={statusTone(schedule.status)}>{statusLabel(schedule.status)}</StatusBadge></td>
+                <td className="px-5 py-4 hidden md:table-cell"><StatusBadge tone={statusTone(schedule.status)} className="[overflow-wrap:normal]">{statusLabel(schedule.status)}</StatusBadge></td>
                 <td className="px-5 py-4"><FormActions><ActionLink size="compact" variant="quiet" to={`/girard/visit/${schedule.id}`}>Lihat rincian kunjungan</ActionLink>
                   {isEditable(schedule.scheduled_date, schedule.status) ? <><Button size="compact" variant="quiet" disabled={locked || deleteMutation.isPending} onClick={event => openEdit(schedule, event.currentTarget)}>Ubah</Button><Button size="compact" variant="danger-quiet" disabled={locked || deleteMutation.isPending} onClick={event => openDelete(schedule, event.currentTarget)}>Hapus</Button></> : <span className="text-[13px] text-brand-secondary">Terkunci</span>}
                 </FormActions></td>
