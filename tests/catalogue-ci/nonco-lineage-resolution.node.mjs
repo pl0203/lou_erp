@@ -41,8 +41,25 @@ test('v2 amendment source is one version/person witness without a customer equal
 });
 test('v2 every immutable visit field and schedule origin is retained', () => {
  const s=fs.readFileSync(sqlPath,'utf8');
- assert.ok(s.includes("previous->'row' - ARRAY['notes','note_version']"));
+ assert.ok(s.includes("(previous->'row') - ARRAY['notes','note_version']"));
  assert.ok(s.includes("r - ARRAY['notes','note_version']"));
  assert.ok(s.includes("previous->'row'->'assigned_by'=r->'assigned_by'"));
  assert.ok(s.includes("previous->'row'->'created_at'=r->'created_at'"));
+});
+
+
+test('JSONB extraction operands are grouped before literal-key deletion',()=>{
+ // Static regression for SQL operator precedence, not SQL execution proof.
+ // PG binary minus binds tighter than the generic JSON extraction operators.
+ const hazards=[];
+ for(const p of [sqlPath,path.join(root,'tests/database/catalogue/nonco-lineage-resolution.sql')]){
+  const sql=fs.readFileSync(p,'utf8');
+  const tokens=[...sql.matchAll(/--[^\n]*|\/\*[\s\S]*?\*\/|'(?:''|[^'])*'|"(?:""|[^"])*"|->>|->|#>>|#>|[A-Za-z_][A-Za-z0-9_]*|[()[\];-]/g)]
+   .filter(t=>!t[0].startsWith('--')&&!t[0].startsWith('/*'));
+  for(let i=0;i<tokens.length-2;i++){
+   if(['->','->>','#>','#>>'].includes(tokens[i][0])&&tokens[i+1][0].startsWith("'")&&tokens[i+2][0]==='-')
+    hazards.push({path:path.relative(root,p),line:sql.slice(0,tokens[i].index).split('\n').length});
+  }
+ }
+ assert.deepEqual(hazards,[],'Group JSON extraction before subtracting keys; otherwise the key literal is coerced as JSON');
 });

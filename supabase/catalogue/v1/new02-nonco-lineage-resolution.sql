@@ -63,7 +63,7 @@ BEGIN
    PERFORM private.catalog_vr_require_v1(previous->>'version'<>version_value OR previous->'row'=r,'AMBIGUOUS_LINEAGE',path);
    -- Visit linkage cannot move during note edits; contradictory retained history refuses.
    IF kind='visit' THEN
-    PERFORM private.catalog_vr_require_v1((previous->'row' - ARRAY['notes','note_version']) = (r - ARRAY['notes','note_version']),'CONTRADICTORY_LINEAGE',path);
+    PERFORM private.catalog_vr_require_v1(((previous->'row') - ARRAY['notes','note_version']) = (r - ARRAY['notes','note_version']),'CONTRADICTORY_LINEAGE',path);
    ELSIF kind='schedule' THEN
     PERFORM private.catalog_vr_require_v1(previous->'row'->'assigned_by'=r->'assigned_by'
      AND previous->'row'->'created_at'=r->'created_at','CONTRADICTORY_LINEAGE',path);

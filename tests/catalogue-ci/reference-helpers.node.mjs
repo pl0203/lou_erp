@@ -270,8 +270,8 @@ test('CLI has no target/apply/output override and refuses outside CI without lea
 });
 test('all nineteen frozen candidate and dependency files and shared harness participate in source identity without changing reviewed inputs',()=>{
  need();for(const [path,digest] of [
- ['supabase/catalogue/v1/new02-nonco-lineage-resolution.sql','1a2ee01cc401d9b7016995230655f0e236438d27d544b150585366b8450436ee'],
- ['tests/catalogue-ci/nonco-lineage-resolution.node.mjs','a4fe682618ce1fcc1f239589e02e6386c4ac84ceff599abd047c902e7884ef37'],
+ ['supabase/catalogue/v1/new02-nonco-lineage-resolution.sql','9417cef406eaa4ea511bb50f77f3e16dba710cdebbf09d7c7c62d438c8864a4f'],
+ ['tests/catalogue-ci/nonco-lineage-resolution.node.mjs','0126d058527c5d8111f8de3a589c645854f1234d62b92dd7d817f14a7f5491ad'],
  ['tests/database/catalogue/nonco-lineage-resolution.sql','f019a10d0be16a5029769efbc6b617f2d0d93bcb7a0457dc0168d7b500cc937d'],
  ['supabase/catalogue/v1/02-co-draft-reference-extraction.sql','ebdc135249aacc7c297fb88ec12640a0c5a7da3cd5cfa76c9f2adfd8050d8aa5'],
  ['tests/catalogue-ci/co-draft-reference-extraction.node.mjs','18586fe2a63975c2d4e970c30d62bdd241cd79423f727948aac0cf08a409b164'],
