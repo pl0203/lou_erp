@@ -378,6 +378,8 @@ jobs:
         run: node --test tests/catalogue-ci/foundation-red.node.mjs
       - name: Check foundation behavior harness without a database
         run: node --test tests/catalogue-ci/foundation.node.mjs
+      - name: Check reference helper harness and frozen source without a database
+        run: node --test tests/catalogue-ci/reference-helpers.node.mjs tests/catalogue-ci/promotion-owner-extraction.node.mjs tests/catalogue/retired-co-line-resolution.source.mjs
       - name: Bind clean candidate bytes before capture
         run: |
           set -euo pipefail
@@ -397,6 +399,7 @@ jobs:
       - name: Install official PostgreSQL client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
       - name: Capture synthetic composed metadata for review
+        id: catalogue-baseline-capture
         run: node scripts/catalogue-capture-baseline.mjs
       - name: Preserve only unverified synthetic catalogue evidence
         uses: actions/upload-artifact@v4
@@ -436,5 +439,19 @@ jobs:
         with:
           name: catalogue-foundation-${{ github.run_id }}-${{ github.run_attempt }}
           path: scale-results/catalogue-foundation
+          if-no-files-found: error
+          retention-days: 7
+      - name: Verify bound pure reference helpers and rollback
+        # Keep this bounded proof observable after a foundation failure, without
+        # masking that failure or claiming foundation/collector completeness.
+        if: ${{ !cancelled() && steps.catalogue-baseline-capture.outcome == 'success' }}
+        id: catalogue-reference-helpers
+        run: node scripts/catalogue-reference-helpers.mjs
+      - name: Preserve only verified synthetic reference helper results
+        if: ${{ always() && steps.catalogue-reference-helpers.outputs.bundle_ready == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalogue-reference-helpers-${{ github.run_id }}-${{ github.run_attempt }}
+          path: scale-results/catalogue-reference-helpers
           if-no-files-found: error
           retention-days: 7
