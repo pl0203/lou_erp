@@ -227,7 +227,7 @@ test('capture strips original error, stdout, stderr and SQL values from thrown f
  expect(JSON.stringify(capture.catalogueCaptureFailure(thrown.phase))).not.toContain('PRIVATE')
 })
 test('public input list is exact and does not enumerate or read unrelated protected source',()=>{
- expect(runner.cataloguePublicSourcePaths).toHaveLength(25)
+ expect(runner.cataloguePublicSourcePaths).toHaveLength(28)
  expect(runner.assertCatalogueCaptureSource(resolve('.')).composition).toHaveLength(42)
  const root=temp(),other=temp()
  mkdirSync(join(root,'supabase/functions/invite-user'),{recursive:true})

@@ -22,7 +22,7 @@ test('adds CO after all 32 original gates without changing their service, source
   expect(added).toContain('if: always()');
   expect(added).not.toMatch(/continue-on-error|timeout-minutes|PGHOST:|PGPORT:|PGPASSWORD:/);
   const catalogue = workflow.subarray(14698).toString('utf8');
-  expect(createHash('sha256').update(catalogue).digest('hex')).toBe('97f332d5f80c3f61fab99f3f8b555dfc916b4f77db388235206abe5045fd24ba');
+  expect(createHash('sha256').update(catalogue).digest('hex')).toBe('9e57e7419b35cba6fc8ac37ab293e031e50cf40720e1f587302a7f4da5785485');
   expect(catalogue.match(/^  [a-zA-Z0-9-]+:/gm)).toEqual(['  catalogue-baseline:']);
   expect(catalogue).not.toMatch(/continue-on-error|^    needs:/m);
 });
