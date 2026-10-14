@@ -13,6 +13,18 @@ export const cataloguePublicSourcePaths=[
  'scripts/catalogue-capture-baseline.mjs','scripts/catalogue-ci-metadata.sql','supabase/catalogue/ci/composition.json',
  'tests/catalogue-ci/checkout.test.ts','tests/catalogue-ci/capture.test.ts',
  'tests/co/ci-workflow.test.ts','tests/co/ci-shallow-checkout.test.ts',
+ 'scripts/catalogue-failfast-probe.mjs',
+ 'tests/catalogue-ci/failfast.node.mjs',
+ 'tests/database/catalogue-failfast/core.mjs',
+ 'tests/database/catalogue-failfast/core.node.mjs',
+ 'tests/database/catalogue-failfast/output.node.mjs',
+ 'tests/database/catalogue-failfast/results.mjs',
+ 'tests/database/catalogue-failfast/runner.mjs',
+ 'tests/database/catalogue-failfast/runner.node.mjs',
+ 'tests/database/catalogue-failfast/scenarios.mjs',
+ 'tests/database/catalogue-failfast/schema.sql',
+ 'tests/database/catalogue-failfast/session.mjs',
+ 'tests/database/catalogue-failfast/session.node.mjs',
 ]
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex')
 export function catalogueCaptureSourceBytes(root,path) {

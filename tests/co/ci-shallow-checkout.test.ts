@@ -36,7 +36,7 @@ test.each(['unchanged', 'original drift', 'append drift', 'catalogue drift', 'ex
     expect(result.error).toBeUndefined()
     expect(result.status, output).toBe(change === 'unchanged' ? 0 : 1)
     if (change !== 'unchanged') {
-      const requiredPin = change === 'original drift' ? '5c12be0b5d567c3f680bba8bf8d631924533e586c775207db54d988d44fb7d27' : change === 'append drift' ? '8d8ec09325e76a1fb7e3e77dfd49ed8ff04da36ccf03af270d27fcace34cfe46' : 'e73d1063f8f96dfe6549bf94024aa72ac5b26fa0e2229e71617f57c4fea6fa30'
+      const requiredPin = change === 'original drift' ? '5c12be0b5d567c3f680bba8bf8d631924533e586c775207db54d988d44fb7d27' : change === 'append drift' ? '8d8ec09325e76a1fb7e3e77dfd49ed8ff04da36ccf03af270d27fcace34cfe46' : '97f332d5f80c3f61fab99f3f8b555dfc916b4f77db388235206abe5045fd24ba'
       expect(output).toContain(requiredPin)
     }
   } finally {

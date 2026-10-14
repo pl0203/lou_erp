@@ -372,6 +372,8 @@ jobs:
             process.exitCode = 1
           }
           JS
+      - name: Check generic fail-fast harness without a database
+        run: node --test tests/database/catalogue-failfast/*.node.mjs tests/catalogue-ci/failfast.node.mjs
       - name: Bind clean candidate bytes before capture
         run: |
           set -euo pipefail
@@ -397,5 +399,16 @@ jobs:
         with:
           name: catalogue-baseline-unverified-${{ github.run_id }}-${{ github.run_attempt }}
           path: scale-results/catalogue-baseline
+          if-no-files-found: error
+          retention-days: 7
+      - name: Run bound generic fail-fast cases after capture
+        id: catalogue-failfast
+        run: node scripts/catalogue-failfast-probe.mjs
+      - name: Preserve only generic fail-fast case results
+        if: ${{ always() && steps.catalogue-failfast.outputs.bundle_ready == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalogue-failfast-${{ github.run_id }}-${{ github.run_attempt }}
+          path: scale-results/catalogue-failfast
           if-no-files-found: error
           retention-days: 7
