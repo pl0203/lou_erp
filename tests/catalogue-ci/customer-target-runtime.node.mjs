@@ -70,7 +70,7 @@ async function orchestrateFailure(kind){
  const calls=[];let setup=false;const bind=()=>({identity});
  const execute=(cmd,args,opts)=>{assert.equal(cmd,'psql');calls.push(opts.input);assert.ok(!opts.input.includes('DROP DATABASE'),'failed phases never dispose');
   if(opts.input.includes('CATALOGUE_FIXTURE_OBSERVATION'))return JSON.stringify(kind==='identity'?{...observation,system_identifier:'99'}:observation);
-  if(opts.input.includes('CATALOGUE_TARGET_ROLLBACK_VERIFIED'))return runner.targetMarkers.map(m=>`${m} 123 456`).join('\n')+'\n'+(kind==='output'?'unexpected\n':'');
+  if(opts.input.includes('CATALOGUE_TARGET_ROLLBACK_VERIFIED')){if(kind==='lifecycle-exec')throw Object.assign(new Error('PRIVATE SQL'),{status:3,signal:null,stdout:runner.targetMarkers[0]+' 123 456\n',stderr:'ERROR:  55006: PRIVATE SQL\n'});return runner.targetMarkers.map(m=>`${m} 123 456`).join('\n')+'\n'+(kind==='output'?'unexpected\n':'');}
   if(opts.input.includes('target_race_preexisting_refused')){setup=true;if(kind==='uncertain')throw new Error('uncertain setup');return 'unexpected setup output\n';}
   throw new Error('Unexpected test adapter call');
  };
@@ -78,9 +78,111 @@ async function orchestrateFailure(kind){
  assert.equal(caught?.message,'CATALOGUE_TARGET_RUNTIME_REFUSED');assert.equal(caught.cleanup,setup?'CLEANUP_UNPROVEN':'NOT_NEEDED');
  if(kind==='identity')assert.ok(calls.every(sql=>!sql.includes('BEGIN;')));
  if(kind==='output')assert.equal(setup,false);
+ if(kind==='lifecycle-exec'){assert.equal(setup,false);assert.deepEqual(caught.diagnostic,{phase:'lifecycle',lifecyclePhase:'TARGET',processExit:'SCRIPT_ERROR',sqlstate:'55006'});}
+ if(kind==='uncertain')assert.equal(caught.diagnostic.phase,'race-setup');
  return calls;
 }
 test('identity mismatch refuses before lifecycle mutations or disposal',async()=>{need();await orchestrateFailure('identity');});
 test('unexpected lifecycle output refuses before committed setup or disposal',async()=>{need();await orchestrateFailure('output');});
 test('failed/uncertain setup never blindly tears down',async()=>{need();await orchestrateFailure('uncertain');});
 test('unexpected committed setup output refuses and leaves cleanup explicitly unproven',async()=>{need();await orchestrateFailure('setup-output');});
+
+test('refusal diagnostics use only exact complete marker-prefix phases',()=>{
+ need();const prefix=n=>runner.targetMarkers.slice(0,n).map(m=>m+' 123 456').join('\n')+(n?'\n':'');
+ const expected=['FOUNDATION','TARGET','VARIANTS_AND_ROLES','ROLLBACK','COMPLETE'];
+ for(let n=0;n<=4;n++){
+  const cause={status:3,signal:null,stdout:prefix(n),stderr:'ERROR:  55006: PRIVATE SQL\nCONTEXT: PRIVATE DATA\n'};
+  assert.deepEqual(runner.targetFailureDiagnostic('lifecycle',cause),{phase:'lifecycle',lifecyclePhase:expected[n],processExit:'SCRIPT_ERROR',sqlstate:'55006'});
+ }
+ for(const stdout of [prefix(1)+'PRIVATE\n',prefix(2).replace('123 456\n','124 456\n'),prefix(1).trimEnd(),runner.targetMarkers[1]+' 123 456\n','PRIVATE\n',undefined]){
+  const d=runner.targetFailureDiagnostic('lifecycle',{status:3,signal:null,stdout,stderr:'ERROR:  55006: PRIVATE\n'});
+  assert.equal(d.lifecyclePhase,'UNKNOWN');assert.ok(!JSON.stringify(d).includes('PRIVATE'));
+ }
+ assert.equal(runner.targetFailureDiagnostic('lifecycle-parse',null,prefix(2)).lifecyclePhase,'VARIANTS_AND_ROLES');
+ assert.equal(runner.targetFailureDiagnostic('not-a-phase',{message:'PRIVATE'}).phase,'unknown');
+});
+test('SQLSTATE requires one strict script-error record and refuses mixed or untrusted errors',()=>{
+ need();const base={status:3,signal:null,stdout:'',stderr:'ERROR:  55006: PRIVATE\n'};
+ assert.equal(runner.targetFailureDiagnostic('lifecycle',base).sqlstate,'55006');
+ const mutations=[
+  {status:1},{status:2},{status:0},{signal:'SIGTERM'},{signal:undefined},{code:'ETIMEDOUT'},{code:'PRIVATE'},
+  {stderr:'55006'},{stderr:'ERROR: PRIVATE'},{stderr:'ERROR:  55006 PRIVATE\n'},
+  {stderr:'ERROR:  lower: PRIVATE\n'},{stderr:'ERROR:  550060: PRIVATE\n'},
+  {stderr:'NOTICE:  55006: PRIVATE\n'},{stderr:'prefix ERROR:  55006: PRIVATE\n'},
+  {stderr:'ERROR:  55006: PRIVATE\nERROR:  23514: PRIVATE\n'},
+  {stderr:'ERROR:  55006: PRIVATE\nFATAL:  08006: PRIVATE\n'},
+  {stderr:'ERROR:  55006: PRIVATE\nPANIC:  XX000: PRIVATE\n'},
+  {stderr:'ERROR:  55006: PRIVATE\npsql: error: PRIVATE\n'},
+  {stderr:Buffer.from('ERROR:  55006: PRIVATE\n')},{stderr:'x'.repeat(512*1024+1)},
+  {stderr:'ERROR:  55006: PRIVATE'},{stderr:'ERROR:  55006: PRIVATE\nPRIVATE\n'},
+  {stderr:'NOTICE: PRIVATE\nERROR:  55006: PRIVATE\n'},{stderr:'ERROR:  55006: PRIVATE\nNOTICE: PRIVATE\n'},
+  {stderr:'ERROR:  55006: PRIVATE\n\n'},{stderr:'ERROR:  55006: PRIVATE\r\n'},
+  {stderr:'ERROR:  55006: PRIVATE\nDETAIL: PRIVATE\nDETAIL: PRIVATE\n'},
+  {stderr:'ERROR:  55006: PRIVATE\nLOCATION: PRIVATE\nDETAIL: PRIVATE\n'},
+ ];
+ for(const change of mutations){
+  const d=runner.targetFailureDiagnostic('lifecycle',{...base,...change});
+  assert.equal(d.sqlstate,null);assert.ok(!JSON.stringify(d).includes('PRIVATE'));
+ }
+ assert.equal(runner.targetFailureDiagnostic('lifecycle',{...base,stderr:'ERROR:  55006: PRIVATE\nDETAIL: PRIVATE\nHINT: PRIVATE\nCONTEXT: PRIVATE\nLOCATION: PRIVATE\n'}).sqlstate,'55006');
+ assert.equal(runner.targetFailureDiagnostic('binding',base).sqlstate,null);
+ assert.equal(runner.targetFailureDiagnostic('races',{...base,sqlstate:'55006',targetSqlstate:'55006'}).sqlstate,null);
+});
+test('process exits use fixed classes without messages, signal names or arbitrary codes',()=>{
+ need();
+ for(const [value,expected] of [
+  [{status:0,signal:null},'EXIT_0'],[{status:1,signal:null},'EXIT_1'],[{status:2,signal:null},'EXIT_2'],[{status:3,signal:null},'SCRIPT_ERROR'],
+  [{status:7,signal:null},'OTHER_NONZERO'],[{signal:'PRIVATE'},'SIGNAL'],[{code:'ETIMEDOUT'},'TIMEOUT'],
+  [{code:'ENOBUFS'},'BUFFER_LIMIT'],[{code:'ENOENT'},'SPAWN_FAILURE'],[{code:'PRIVATE'},'UNKNOWN'],[null,'UNKNOWN'],
+ ])assert.equal(runner.targetProcessExit(value),expected);
+});
+test('framed awaited-session SQLSTATE is propagated only on an actual state mismatch',async()=>{
+ need();let caught;
+ class FailureSession{async query(){return {stdout:'PRIVATE',sqlstate:'55006'};}async close(){}}
+ try{await runner.executeTargetRaces({identity,connection:{},checkSource(){},Session:FailureSession});}catch(error){caught=error;}
+ assert.ok(caught);const d=runner.targetFailureDiagnostic('races',caught);
+ assert.deepEqual(d,{phase:'races',lifecyclePhase:'NOT_APPLICABLE',processExit:'SESSION_SQLSTATE',sqlstate:'55006'});
+ assert.ok(!JSON.stringify(d).includes('PRIVATE'));
+ class MalformedSession{async query(){return {stdout:'PRIVATE',sqlstate:'PRIVATE'};}async close(){}}
+ try{await runner.executeTargetRaces({identity,connection:{},checkSource(){},Session:MalformedSession});}catch(error){caught=error;}
+ assert.equal(runner.targetFailureDiagnostic('races',caught).sqlstate,null);
+});
+test('diagnostic validator refuses extra fields, arbitrary labels and cross-field overclaims',()=>{
+ need();const base={phase:'lifecycle',lifecyclePhase:'TARGET',processExit:'SCRIPT_ERROR',sqlstate:'55006'};
+ assert.deepEqual(runner.validateTargetFailureDiagnostic(base),base);
+ for(const change of [{extra:'PRIVATE'},{phase:'PRIVATE'},{lifecyclePhase:'PRIVATE'},{processExit:'PRIVATE'},{sqlstate:'PRIVATE'},{processExit:'TIMEOUT'},{processExit:'SESSION_SQLSTATE'},{phase:'binding'}]){
+  assert.throws(()=>runner.validateTargetFailureDiagnostic({...base,...change}));
+ }
+});
+
+test('actual synchronous refusal retains bounded phase and NOT_NEEDED before committed setup',async()=>{need();await orchestrateFailure('lifecycle-exec');});
+
+test('diagnostic phase process and SQLSTATE combinations match the producer matrix',()=>{
+ need();
+ const nonExecution=['initialization','binding','source-preflight','lifecycle-parse','source-post-lifecycle','race-setup-parse','source-pre-races','source-post-races','source-post-disposal','unknown'];
+ const synchronous=['identity-preflight','lifecycle','identity-post-lifecycle','race-setup','identity-pre-races','identity-post-races','disposal'];
+ const processKinds=['UNKNOWN','EXIT_0','EXIT_1','EXIT_2','SCRIPT_ERROR','OTHER_NONZERO','SIGNAL','TIMEOUT','BUFFER_LIMIT','SPAWN_FAILURE'];
+ const diagnostic=(phase,processExit,sqlstate)=>({phase,lifecyclePhase:['lifecycle','lifecycle-parse'].includes(phase)?'UNKNOWN':'NOT_APPLICABLE',processExit,sqlstate});
+ for(const phase of nonExecution){
+  assert.deepEqual(runner.validateTargetFailureDiagnostic(diagnostic(phase,'NOT_APPLICABLE',null)),diagnostic(phase,'NOT_APPLICABLE',null));
+  for(const kind of [...processKinds,'SESSION_SQLSTATE'])for(const state of [null,'55006'])assert.throws(()=>runner.validateTargetFailureDiagnostic(diagnostic(phase,kind,state)));
+  assert.throws(()=>runner.validateTargetFailureDiagnostic(diagnostic(phase,'NOT_APPLICABLE','55006')));
+ }
+ for(const phase of synchronous){
+  for(const kind of processKinds){
+   runner.validateTargetFailureDiagnostic(diagnostic(phase,kind,null));
+   if(kind==='SCRIPT_ERROR')runner.validateTargetFailureDiagnostic(diagnostic(phase,kind,'55006'));
+   else assert.throws(()=>runner.validateTargetFailureDiagnostic(diagnostic(phase,kind,'55006')));
+  }
+  for(const state of [null,'55006'])assert.throws(()=>runner.validateTargetFailureDiagnostic(diagnostic(phase,'SESSION_SQLSTATE',state)));
+ }
+ for(const kind of processKinds){
+  runner.validateTargetFailureDiagnostic(diagnostic('races',kind,null));
+  assert.throws(()=>runner.validateTargetFailureDiagnostic(diagnostic('races',kind,'55006')));
+ }
+ assert.throws(()=>runner.validateTargetFailureDiagnostic(diagnostic('races','SESSION_SQLSTATE',null)));
+ for(const state of ['00000','55006'])runner.validateTargetFailureDiagnostic(diagnostic('races','SESSION_SQLSTATE',state));
+ assert.throws(()=>runner.validateTargetFailureDiagnostic({...diagnostic('lifecycle-parse','NOT_APPLICABLE',null),lifecyclePhase:'COMPLETE'}));
+ const complete=runner.targetMarkers.map(m=>m+' 123 456').join('\n')+'\n';
+ assert.equal(runner.targetFailureDiagnostic('lifecycle-parse',null,complete).lifecyclePhase,'UNKNOWN');
+});

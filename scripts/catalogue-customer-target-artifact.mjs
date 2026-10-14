@@ -13,7 +13,7 @@ const defaultRoot=resolve(dirname(fileURLToPath(import.meta.url)),'..'),sha=x=>c
 export const targetRuntimeReviewedFiles=Object.freeze([
  {
   "path": "scripts/catalogue-customer-target-runtime.mjs",
-  "sha256": "08642b53e8f8eaff33f0c850c1558727cdc0053ed18a585b472c382ccc3909f5"
+  "sha256": "a7ec49572af917ed48de59e7b94d15aa7054706aa207b0f5415e473d934a9f61"
  },
  {
   "path": "supabase/catalogue/v1/02-customer-target-tracking.sql",
@@ -21,7 +21,7 @@ export const targetRuntimeReviewedFiles=Object.freeze([
  },
  {
   "path": "tests/catalogue-ci/customer-target-runtime.node.mjs",
-  "sha256": "cfe4d616d6b6b8a9a559466081d851dd8e61609f3a75d106362700882d50cfc3"
+  "sha256": "8bd5660d7537e40d0f2cb35785fa69513d485bf95698cb3ac6397f69225d0c34"
  },
  {
   "path": "tests/catalogue-ci/customer-target-tracking.node.mjs",
@@ -70,36 +70,96 @@ function exactFile(path,expected){
  const fd=openSync(path,constants.O_RDONLY|constants.O_NOFOLLOW);
  try{const stat=fstatSync(fd);assert.ok(stat.isFile()&&stat.nlink===1&&stat.size===Buffer.byteLength(expected));assert.equal(readFileSync(fd,'utf8'),expected);}finally{closeSync(fd);}
 }
+
+// These finite validators must stay local. Importing the runtime here would
+// evaluate it before the source-binding and reviewed-byte prelaunch checks.
+const targetFailurePhases=Object.freeze(['initialization','binding','source-preflight','identity-preflight','lifecycle','lifecycle-parse','source-post-lifecycle','identity-post-lifecycle','race-setup','race-setup-parse','source-pre-races','identity-pre-races','races','source-post-races','identity-post-races','disposal','source-post-disposal']);
+const lifecycleFailurePhases=Object.freeze(['FOUNDATION','TARGET','VARIANTS_AND_ROLES','ROLLBACK','COMPLETE']);
+const targetProcessKinds=Object.freeze(['NOT_APPLICABLE','UNKNOWN','EXIT_0','EXIT_1','EXIT_2','SCRIPT_ERROR','OTHER_NONZERO','SIGNAL','TIMEOUT','BUFFER_LIMIT','SPAWN_FAILURE','SESSION_SQLSTATE']);
+const targetSyncFailurePhases=Object.freeze(['identity-preflight','lifecycle','identity-post-lifecycle','race-setup','identity-pre-races','identity-post-races','disposal']);
+function targetProcessExit(error){
+ if(!error||typeof error!=='object')return 'UNKNOWN';
+ if(error.code==='ETIMEDOUT')return 'TIMEOUT';
+ if(['ENOBUFS','ERR_CHILD_PROCESS_STDIO_MAXBUFFER'].includes(error.code))return 'BUFFER_LIMIT';
+ if(['ENOENT','EACCES'].includes(error.code))return 'SPAWN_FAILURE';
+ if(typeof error.signal==='string'&&error.signal!=='')return 'SIGNAL';
+ if(error.code!==undefined||error.signal!==null)return 'UNKNOWN';
+ if([0,1,2,3].includes(error.status))return ['EXIT_0','EXIT_1','EXIT_2','SCRIPT_ERROR'][error.status];
+ return Number.isSafeInteger(error.status)&&error.status>0?'OTHER_NONZERO':'UNKNOWN';
+}
+function validateTargetFailureDiagnostic(diagnostic){
+ assert.deepEqual(Object.keys(diagnostic),['phase','lifecyclePhase','processExit','sqlstate']);
+ assert.ok([...targetFailurePhases,'unknown'].includes(diagnostic.phase));
+ assert.ok(['NOT_APPLICABLE','UNKNOWN',...lifecycleFailurePhases].includes(diagnostic.lifecyclePhase));
+ assert.ok(targetProcessKinds.includes(diagnostic.processExit));
+ if(['lifecycle','lifecycle-parse'].includes(diagnostic.phase))assert.notEqual(diagnostic.lifecyclePhase,'NOT_APPLICABLE');else assert.equal(diagnostic.lifecyclePhase,'NOT_APPLICABLE');
+ if(diagnostic.phase==='lifecycle-parse')assert.notEqual(diagnostic.lifecyclePhase,'COMPLETE');
+ if(diagnostic.sqlstate!==null){assert.equal(typeof diagnostic.sqlstate,'string');assert.match(diagnostic.sqlstate,/^[0-9A-Z]{5}$/);}
+ if(!targetSyncFailurePhases.includes(diagnostic.phase)&&diagnostic.phase!=='races'){
+  assert.equal(diagnostic.processExit,'NOT_APPLICABLE');assert.equal(diagnostic.sqlstate,null);
+ }else{
+  assert.notEqual(diagnostic.processExit,'NOT_APPLICABLE');
+  if(diagnostic.processExit==='SESSION_SQLSTATE'){
+   assert.equal(diagnostic.phase,'races');assert.notEqual(diagnostic.sqlstate,null);
+  }else if(diagnostic.sqlstate!==null){
+   assert.ok(targetSyncFailurePhases.includes(diagnostic.phase));assert.equal(diagnostic.processExit,'SCRIPT_ERROR');
+  }
+ }
+ return diagnostic;
+}
+
+const targetCleanupByPhase=Object.freeze({
+ initialization:'NOT_NEEDED',binding:'NOT_NEEDED','source-preflight':'NOT_NEEDED','identity-preflight':'NOT_NEEDED',lifecycle:'NOT_NEEDED','lifecycle-parse':'NOT_NEEDED','source-post-lifecycle':'NOT_NEEDED','identity-post-lifecycle':'NOT_NEEDED',
+ 'race-setup':'CLEANUP_UNPROVEN','race-setup-parse':'CLEANUP_UNPROVEN','source-pre-races':'CLEANUP_UNPROVEN','identity-pre-races':'CLEANUP_UNPROVEN',races:'CLEANUP_UNPROVEN','source-post-races':'CLEANUP_UNPROVEN','identity-post-races':'CLEANUP_UNPROVEN',disposal:'CLEANUP_UNPROVEN',
+ 'source-post-disposal':'COMMITTED_SYNTHETIC_CHILD_DISPOSED',
+});
+// Accept only the exact bounded failure envelope from the reviewed runtime.
+// Failure evidence is diagnostic only: no report, manifest or ready=true follows.
+export function parseTargetRuntimeRefusal(child){
+ assert.equal(child.error,undefined);assert.equal(child.status,1);assert.equal(child.signal,null);assert.equal(child.stdout,'');
+ assert.equal(typeof child.stderr,'string');assert.ok(Buffer.byteLength(child.stderr)<=2048);assert.ok(child.stderr.endsWith('\n'));
+ const received=JSON.parse(child.stderr);assert.ok(Object.hasOwn(targetCleanupByPhase,received.diagnostic?.phase));assert.equal(received.cleanup,targetCleanupByPhase[received.diagnostic.phase]);
+ const expected={status:'CATALOGUE_TARGET_RUNTIME_REFUSED',cleanup:received.cleanup,diagnostic:validateTargetFailureDiagnostic(received.diagnostic),implementationAccepted:false};
+ assert.deepEqual(received,expected);assert.equal(child.stderr,JSON.stringify(expected)+'\n');return expected;
+}
+
 export function runCatalogueCustomerTargetArtifact({repoRoot=defaultRoot,env=process.env,execute=execFileSync,launch=spawnSync,bind=catalogueFailfastBinding,readSource=catalogueCaptureSourceBytes}={}){
- let descriptor;
+ let descriptor,phase='initialization',child,launchAttempted=false,runtimeDiagnostic=null,runtimeCleanup=null;
  try{
   assert.equal(typeof env.GITHUB_OUTPUT,'string');descriptor=openSync(env.GITHUB_OUTPUT,constants.O_WRONLY|constants.O_APPEND|constants.O_NOFOLLOW);const outputFile=fstatSync(descriptor);assert.ok(outputFile.isFile()&&outputFile.nlink===1);writeFileSync(descriptor,'bundle_ready=false\n');
-  const binding=bind(repoRoot,env,execute),identity=validateIdentity(binding.identity,env);
-  assert.equal(new Set(cataloguePublicSourcePaths).size,cataloguePublicSourcePaths.length);
+  phase='binding';const binding=bind(repoRoot,env,execute),identity=validateIdentity(binding.identity,env);
+  phase='reviewed-source';assert.equal(new Set(cataloguePublicSourcePaths).size,cataloguePublicSourcePaths.length);
   for(const path of [...reportPaths,...targetRuntimeReviewedFiles.map(x=>x.path),...wrapperPaths])assert.ok(cataloguePublicSourcePaths.includes(path));
   const snapshot=()=>cataloguePublicSourcePaths.map(path=>({path,sha256:sha(readSource(repoRoot,path))}));
   const sources=snapshot(),byPath=new Map(sources.map(x=>[x.path,x.sha256]));
   for(const entry of targetRuntimeReviewedFiles)assert.equal(byPath.get(entry.path),entry.sha256);
   const files=reportPaths.map(path=>({path,sha256:byPath.get(path)}));
-  const checkSource=()=>{assert.deepEqual(bind(repoRoot,env,execute),binding);assert.deepEqual(snapshot(),sources);};
-  const parent=resolve(repoRoot,'scale-results'),parentStat=directory(parent),output=resolve(parent,'catalogue-customer-target-runtime'),pending=resolve(parent,'catalogue-customer-target-runtime-pending');
+  const checkSource=()=>{try{assert.deepEqual(bind(repoRoot,env,execute),binding);assert.deepEqual(snapshot(),sources);}catch(error){runtimeDiagnostic=null;runtimeCleanup=null;throw error;}};
+  phase='destinations';const parent=resolve(repoRoot,'scale-results'),parentStat=directory(parent),output=resolve(parent,'catalogue-customer-target-runtime'),pending=resolve(parent,'catalogue-customer-target-runtime-pending');
   mkdirSync(output);const outputStat=directory(output);mkdirSync(pending);const pendingStat=directory(pending);
   const checkDirectories=()=>{sameDirectory(parent,parentStat);sameDirectory(output,outputStat);sameDirectory(pending,pendingStat);assert.deepEqual(readdirSync(output),[]);};
-  checkSource();checkDirectories();assert.deepEqual(readdirSync(pending),[]);
+  phase='preflight';checkSource();checkDirectories();assert.deepEqual(readdirSync(pending),[]);
   // Capture both streams in memory only. Never persist raw logs or original errors.
-  const child=launch(process.execPath,['scripts/catalogue-customer-target-runtime.mjs'],{cwd:repoRoot,env,encoding:'utf8',timeout:600000,maxBuffer:65536,shell:false,stdio:['ignore','pipe','pipe']});
+  phase='child-launch';launchAttempted=true;child=launch(process.execPath,['scripts/catalogue-customer-target-runtime.mjs'],{cwd:repoRoot,env,encoding:'utf8',timeout:600000,maxBuffer:65536,shell:false,stdio:['ignore','pipe','pipe']});
+  phase='child-result';
+  if(child.status!==0||child.error!==undefined||child.signal!==null||child.stderr!==''){
+   try{checkSource();const refusal=parseTargetRuntimeRefusal(child);runtimeCleanup=refusal.cleanup;runtimeDiagnostic=refusal.diagnostic;}catch{}
+  }
   assert.equal(child.error,undefined);assert.equal(child.status,0);assert.equal(child.signal,null);assert.equal(child.stderr,'');
-  const report=validateReport(child.stdout,identity,files);checkSource();checkDirectories();assert.deepEqual(readdirSync(pending),[]);
-  const manifest=JSON.stringify({format:'catalogue-customer-target-runtime-manifest-v1',status:report.status,files:[{path:'results.json',sha256:sha(child.stdout)}]})+'\n';
+  phase='report-validation';const report=validateReport(child.stdout,identity,files);phase='postflight';checkSource();runtimeCleanup=report.cleanup;checkDirectories();assert.deepEqual(readdirSync(pending),[]);
+  phase='bundle-staging';const manifest=JSON.stringify({format:'catalogue-customer-target-runtime-manifest-v1',status:report.status,files:[{path:'results.json',sha256:sha(child.stdout)}]})+'\n';
   writeFileSync(resolve(pending,'results.json'),child.stdout,{flag:'wx',mode:0o600});writeFileSync(resolve(pending,'manifest.json'),manifest,{flag:'wx',mode:0o600});
   const checkBundle=path=>{assert.deepEqual(readdirSync(path).sort(),['manifest.json','results.json']);exactFile(resolve(path,'results.json'),child.stdout);exactFile(resolve(path,'manifest.json'),manifest);};
-  checkSource();checkDirectories();checkBundle(pending);renameSync(pending,output);
-  sameDirectory(parent,parentStat);sameDirectory(output,pendingStat);checkBundle(output);checkSource();
+  phase='bundle-publication';checkSource();checkDirectories();checkBundle(pending);renameSync(pending,output);
+  phase='final-verification';sameDirectory(parent,parentStat);sameDirectory(output,pendingStat);checkBundle(output);checkSource();
   writeFileSync(descriptor,'bundle_ready=true\n');return report;
- }catch{throw new Error('CATALOGUE_TARGET_ARTIFACT_REFUSED');}
+ }catch(cause){
+  const error=new Error('CATALOGUE_TARGET_ARTIFACT_REFUSED');
+  error.diagnostic=Object.freeze({phase,processExit:launchAttempted?targetProcessExit(child?.error??child??cause):'NOT_STARTED',cleanup:runtimeCleanup,runtime:runtimeDiagnostic});throw error;
+ }
  finally{if(descriptor!==undefined)closeSync(descriptor);}
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){
  try{assert.deepEqual(process.argv.slice(2),[]);const result=runCatalogueCustomerTargetArtifact();console.log(JSON.stringify({status:result.status,cleanup:result.cleanup,implementationAccepted:false}));}
- catch{process.stderr.write('CATALOGUE_TARGET_ARTIFACT_REFUSED\n');process.exitCode=1;}
+ catch(error){process.stderr.write('CATALOGUE_TARGET_ARTIFACT_REFUSED\n');if(process.env.GITHUB_ACTIONS==='true'&&error?.diagnostic)process.stderr.write(JSON.stringify({status:'CATALOGUE_TARGET_ARTIFACT_REFUSED',...error.diagnostic,implementationAccepted:false})+'\n');process.exitCode=1;}
 }

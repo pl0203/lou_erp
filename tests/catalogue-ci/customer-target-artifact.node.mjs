@@ -80,3 +80,94 @@ test('hardlinked command-output file refuses without changing the other destinat
  need();const f=fixture(),target=join(f.directory,'hardlink-output');linkSync(f.output,target);
  assert.throws(()=>wrapper.runCatalogueCustomerTargetArtifact(f.args),/CATALOGUE_TARGET_ARTIFACT_REFUSED/);assert.equal(f.calls(),0);assert.equal(readFileSync(target,'utf8'),'');
 });
+
+function runtimeRefusal(cleanup='NOT_NEEDED',diagnostic={phase:'lifecycle',lifecyclePhase:'TARGET',processExit:'SCRIPT_ERROR',sqlstate:'55006'}){
+ return {status:'CATALOGUE_TARGET_RUNTIME_REFUSED',cleanup,diagnostic,implementationAccepted:false};
+}
+test('bounded runtime refusal preserves cleanup distinctions but never publishes a success artifact',()=>{
+ need();for(const body of [
+  runtimeRefusal(),
+  runtimeRefusal('CLEANUP_UNPROVEN',{phase:'race-setup',lifecyclePhase:'NOT_APPLICABLE',processExit:'SCRIPT_ERROR',sqlstate:'55006'}),
+  runtimeRefusal('COMMITTED_SYNTHETIC_CHILD_DISPOSED',{phase:'source-post-disposal',lifecyclePhase:'NOT_APPLICABLE',processExit:'NOT_APPLICABLE',sqlstate:null}),
+ ]){
+  const f=fixture(),cleanup=body.cleanup;f.args.launch=()=>({status:1,signal:null,stdout:'',stderr:JSON.stringify(body)+'\n'});
+  let caught;try{wrapper.runCatalogueCustomerTargetArtifact(f.args);}catch(error){caught=error;}
+  assert.equal(caught?.message,'CATALOGUE_TARGET_ARTIFACT_REFUSED');
+  assert.deepEqual(caught.diagnostic,{phase:'child-result',processExit:'EXIT_1',cleanup,runtime:body.diagnostic});
+  refused(f);assert.equal(existsSync(join(f.directory,'scale-results/catalogue-customer-target-runtime/manifest.json')),false);
+ }
+});
+test('untrusted child failures never become runtime cleanup or SQLSTATE evidence',()=>{
+ need();const body=JSON.stringify(runtimeRefusal())+'\n';
+ const changes=[
+  {status:0},{status:2},{signal:'SIGTERM'},{error:new Error('PRIVATE')},{stdout:'PRIVATE'},
+  {stderr:body+'PRIVATE\n'},{stderr:'PRIVATE\n'},{stderr:body.trimEnd()},{stderr:'x'.repeat(2049)},
+  {stderr:body.replace('"cleanup":','"cleanup":"NOT_NEEDED","cleanup":')},
+  {stderr:body.replace('"sqlstate":"55006"','"sqlstate":"PRIVATE"')},
+  {stderr:body.replace('"implementationAccepted":false','"implementationAccepted":true')},
+  {stderr:body.replace('"diagnostic":','"extra":"PRIVATE","diagnostic":')},
+  {stderr:body.replace('"cleanup":"NOT_NEEDED"','"cleanup":"ROLLBACK_VERIFIED"')},
+ ];
+ for(const change of changes){
+  const f=fixture();f.args.launch=()=>({status:1,signal:null,stdout:'',stderr:body,...change});
+  let caught;try{wrapper.runCatalogueCustomerTargetArtifact(f.args);}catch(error){caught=error;}
+  assert.equal(caught?.message,'CATALOGUE_TARGET_ARTIFACT_REFUSED');assert.equal(caught.diagnostic.cleanup,null);assert.equal(caught.diagnostic.runtime,null);
+  assert.ok(!JSON.stringify(caught).includes('PRIVATE'));refused(f);
+ }
+});
+test('prelaunch refusal and unknown child outcome do not claim NOT_NEEDED cleanup',()=>{
+ need();const f=fixture();f.drift();let caught;
+ try{wrapper.runCatalogueCustomerTargetArtifact(f.args);}catch(error){caught=error;}
+ assert.equal(caught.diagnostic.processExit,'NOT_STARTED');assert.equal(caught.diagnostic.cleanup,null);assert.equal(caught.diagnostic.runtime,null);refused(f);
+ const g=fixture();g.args.launch=()=>{throw new Error('PRIVATE')};
+ try{wrapper.runCatalogueCustomerTargetArtifact(g.args);}catch(error){caught=error;}
+ assert.equal(caught.diagnostic.processExit,'UNKNOWN');assert.equal(caught.diagnostic.cleanup,null);assert.equal(caught.diagnostic.runtime,null);
+ assert.ok(!JSON.stringify(caught).includes('PRIVATE'));refused(g);
+});
+
+test('wrapper never imports runtime before exact source binding and reviewed-byte gates',()=>{
+ const source=readFileSync('scripts/catalogue-customer-target-artifact.mjs','utf8');
+ assert.deepEqual(source.split('\n').filter(line=>line.startsWith('import ')),[
+  "import assert from 'node:assert/strict';",
+  "import {execFileSync,spawnSync} from 'node:child_process';",
+  "import {createHash} from 'node:crypto';",
+  "import {lstatSync,mkdirSync,writeFileSync,readFileSync,renameSync,readdirSync,openSync,fstatSync,closeSync,constants} from 'node:fs';",
+  "import {resolve,dirname} from 'node:path';",
+  "import {fileURLToPath,pathToFileURL} from 'node:url';",
+  "import {catalogueFailfastBinding} from './catalogue-failfast-probe.mjs';",
+  "import {catalogueCaptureSourceBytes,cataloguePublicSourcePaths} from './catalogue-capture-source.mjs';",
+  "import {catalogueCiIdentity} from './catalogue-ci-profile.mjs';",
+ ]);
+ assert.doesNotMatch(source,/\b(?:import|require)\s*\(/);
+ assert.doesNotMatch(source,/(?:from\s*|import\s*\(|require\s*\()\s*['"][^'"]*catalogue-customer-target-runtime\.mjs['"]/);
+ const binding=source.indexOf('const binding=bind(repoRoot,env,execute)'),pins=source.indexOf('for(const entry of targetRuntimeReviewedFiles)assert.equal'),launch=source.indexOf('child=launch(process.execPath');
+ assert.ok(binding>=0&&pins>binding&&launch>pins);
+});
+
+test('runtime cleanup must match its exact producer phase and unknown phase is untrusted',()=>{
+ need();const before=['initialization','binding','source-preflight','identity-preflight','lifecycle','lifecycle-parse','source-post-lifecycle','identity-post-lifecycle'];
+ const attempted=['race-setup','race-setup-parse','source-pre-races','identity-pre-races','races','source-post-races','identity-post-races','disposal'];
+ const synchronous=['identity-preflight','lifecycle','identity-post-lifecycle','race-setup','identity-pre-races','identity-post-races','disposal'];
+ const diagnostic=phase=>({phase,lifecyclePhase:['lifecycle','lifecycle-parse'].includes(phase)?'UNKNOWN':'NOT_APPLICABLE',processExit:synchronous.includes(phase)?'SCRIPT_ERROR':phase==='races'?'SESSION_SQLSTATE':'NOT_APPLICABLE',sqlstate:synchronous.includes(phase)?'55006':phase==='races'?'00000':null});
+ const child=body=>({status:1,signal:null,stdout:'',stderr:JSON.stringify(body)+'\n'});
+ for(const phase of [...before,...attempted,'source-post-disposal']){
+  const expected=before.includes(phase)?'NOT_NEEDED':attempted.includes(phase)?'CLEANUP_UNPROVEN':'COMMITTED_SYNTHETIC_CHILD_DISPOSED';
+  for(const cleanup of ['NOT_NEEDED','CLEANUP_UNPROVEN','COMMITTED_SYNTHETIC_CHILD_DISPOSED']){
+   const body=runtimeRefusal(cleanup,diagnostic(phase));
+   if(cleanup===expected)assert.deepEqual(wrapper.parseTargetRuntimeRefusal(child(body)),body);
+   else assert.throws(()=>wrapper.parseTargetRuntimeRefusal(child(body)));
+  }
+ }
+ for(const cleanup of ['NOT_NEEDED','CLEANUP_UNPROVEN','COMMITTED_SYNTHETIC_CHILD_DISPOSED'])assert.throws(()=>wrapper.parseTargetRuntimeRefusal(child(runtimeRefusal(cleanup,diagnostic('unknown')))));
+});
+test('refusal and success output with post-child source or binding drift carry no cleanup claim',()=>{
+ need();for(const mode of ['refusal','success'])for(const mutate of [f=>f.drift(),f=>f.changeBinding()]){
+  const f=fixture(),original=f.args.launch;f.args.launch=(...args)=>{
+   const success=original(...args);mutate(f);
+   return mode==='success'?success:{status:1,signal:null,stdout:'',stderr:JSON.stringify(runtimeRefusal())+'\n'};
+  };
+  let caught;try{wrapper.runCatalogueCustomerTargetArtifact(f.args);}catch(error){caught=error;}
+  assert.equal(caught?.message,'CATALOGUE_TARGET_ARTIFACT_REFUSED');assert.equal(caught.diagnostic.processExit,mode==='success'?'EXIT_0':'EXIT_1');
+  assert.equal(caught.diagnostic.cleanup,null);assert.equal(caught.diagnostic.runtime,null);assert.equal(f.calls(),1);refused(f);
+ }
+});
