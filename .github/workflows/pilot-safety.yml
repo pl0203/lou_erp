@@ -278,3 +278,124 @@ jobs:
           path: scale-results/co-final
           if-no-files-found: warn
           retention-days: 7
+
+  # Independent of synthetic-safety: capture does not certify the full application suite.
+  catalogue-baseline:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.repository == 'pl0203/lou_erp' &&
+      github.event.pull_request.head.repo.full_name == 'pl0203/lou_erp' &&
+      github.event.pull_request.base.repo.full_name == 'pl0203/lou_erp' &&
+      github.event.pull_request.head.ref == 'feat/catalogue-mutations-20261014' &&
+      github.event.pull_request.base.ref == 'fix/pilot-database'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic-ci-only
+          POSTGRES_DB: pilot_test
+        ports:
+          - 5432:5432
+        options: >-
+          --log-driver=none
+          --health-cmd "pg_isready -U postgres -d pilot_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      GIT_NO_LAZY_FETCH: '1'
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: synthetic-ci-only
+      PGDATABASE: pilot_test
+      PGTZ: UTC
+      CATALOGUE_CI_PROFILE: github-catalogue-baseline-v1
+      CATALOGUE_CI_SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+      CATALOGUE_CI_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+      CATALOGUE_CI_BASE_REPOSITORY: ${{ github.event.pull_request.base.repo.full_name }}
+      CATALOGUE_CI_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      CATALOGUE_CI_BASE_REF: ${{ github.event.pull_request.base.ref }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          # Metadata only: sparse checkout must not trigger an implicit blob fetch.
+          sparse-checkout: /__catalogue_no_files__
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Fetch only safe exact-head source blobs
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict'
+          import { execFileSync } from 'node:child_process'
+          import { createHash } from 'node:crypto'
+          import { writeFileSync } from 'node:fs'
+          import { resolve } from 'node:path'
+          try {
+            const env = { PATH:process.env.PATH, GIT_NO_LAZY_FETCH:'1', GIT_TERMINAL_PROMPT:'0', GIT_ASKPASS:'/bin/false', SSH_ASKPASS:'/bin/false', GIT_CONFIG_NOSYSTEM:'1', GIT_CONFIG_GLOBAL:'/dev/null' }
+            const git = args => execFileSync('git',args,{env,encoding:'utf8',timeout:120000,shell:false,stdio:['pipe','pipe','pipe']})
+            const head = process.env.CATALOGUE_CI_SOURCE_SHA
+            assert.match(head ?? '',/^[a-f0-9]{40}$/)
+            assert.equal(git(['rev-parse','HEAD']).trim(),head)
+            const entry = git(['ls-tree','-z',head,'--','scripts/catalogue-checkout.mjs'])
+            const match = /^100644 blob ([a-f0-9]{40})\tscripts\/catalogue-checkout\.mjs\0$/.exec(entry)
+            assert.ok(match,'Exact regular checkout helper blob required')
+            const excluded = git(['ls-tree','-rz','--full-tree',head]).split('\0').filter(Boolean).map(line => {
+              const [meta,path] = line.split('\t')
+              assert.ok(path && !path.includes('\n') && !path.includes('\r'),'Invalid tree path')
+              const protectedPath = path.split('/').some(part => /^\.env(?:\.|$)/.test(part) || ['.npmrc','.pgpass','.pg_service.conf'].includes(part)) || path === 'supabase/config.toml' || path.startsWith('supabase/.temp/')
+              return protectedPath ? meta.split(' ')[2] : null
+            }).filter(Boolean)
+            assert.ok(!excluded.includes(match[1]),'Checkout helper aliases an excluded blob')
+            if (excluded.length) {
+              const check = execFileSync('git',['cat-file','--batch-check'],{env,input:excluded.join('\n')+'\n',encoding:'utf8',timeout:10000,shell:false,stdio:['pipe','pipe','pipe']})
+              assert.deepEqual(check.trim().split('\n'),excluded.map(id => `${id} missing`),'Excluded blobs must remain absent')
+            }
+            git(['-c','credential.helper=','-c','core.askPass=','-c','http.extraHeader=','fetch','--no-tags','--no-write-fetch-head','--filter=blob:none','https://github.com/pl0203/lou_erp.git',match[1]])
+            const bytes = execFileSync('git',['cat-file','blob',match[1]],{env,timeout:10000,shell:false,stdio:['pipe','pipe','pipe']})
+            assert.equal(createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex'),match[1])
+            const path = resolve(process.env.RUNNER_TEMP,'catalogue-checkout.mjs')
+            writeFileSync(path,bytes,{flag:'wx'})
+            execFileSync(process.execPath,[path],{env:process.env,stdio:['pipe','pipe','pipe'],timeout:240000,shell:false})
+          } catch {
+            process.stderr.write('CATALOGUE_CHECKOUT_BOOTSTRAP_REFUSED\n')
+            process.exitCode = 1
+          }
+          JS
+      - name: Bind clean candidate bytes before capture
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS' >> "$GITHUB_ENV"
+          import assert from 'node:assert/strict'
+          import { catalogueCaptureSourceIdentity } from './scripts/catalogue-capture-source.mjs'
+          try {
+            const source = catalogueCaptureSourceIdentity()
+            assert.equal(source.clean, true)
+            assert.equal(source.commit, process.env.CATALOGUE_CI_SOURCE_SHA)
+            console.log(`CATALOGUE_CI_CANDIDATE_SHA256=${source.candidate}`)
+          } catch {
+            process.stderr.write('CATALOGUE_SOURCE_BINDING_REFUSED\n')
+            process.exitCode = 1
+          }
+          JS
+      - name: Install official PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Capture synthetic composed metadata for review
+        run: node scripts/catalogue-capture-baseline.mjs
+      - name: Preserve only unverified synthetic catalogue evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalogue-baseline-unverified-${{ github.run_id }}-${{ github.run_attempt }}
+          path: scale-results/catalogue-baseline
+          if-no-files-found: error
+          retention-days: 7

@@ -8,8 +8,8 @@ test('adds CO after all 32 original gates without changing their service, source
   const workflow = readFileSync('.github/workflows/pilot-safety.yml');
   const original = workflow.subarray(0, 13837);
   expect(createHash('sha256').update(original).digest('hex')).toBe('5c12be0b5d567c3f680bba8bf8d631924533e586c775207db54d988d44fb7d27');
-  const added = workflow.subarray(13837).toString('utf8');
-  // Whole appended envelope is pinned: no extra jobs, overrides or displaced steps.
+  const added = workflow.subarray(13837, 14698).toString('utf8');
+  // The complete historical CO envelope remains byte-identical; catalogue is a separately pinned job.
   expect(createHash('sha256').update(added).digest('hex')).toBe('8d8ec09325e76a1fb7e3e77dfd49ed8ff04da36ccf03af270d27fcace34cfe46');
   expect(added.match(/^      - name:/gm)).toHaveLength(2);
   expect(added.indexOf('Guarded final CO composition')).toBeLessThan(added.indexOf('Preserve final CO evidence'));
@@ -21,6 +21,10 @@ test('adds CO after all 32 original gates without changing their service, source
   expect(added).toContain('CO_EVIDENCE_REAL_RACES_PASSED');
   expect(added).toContain('if: always()');
   expect(added).not.toMatch(/continue-on-error|timeout-minutes|PGHOST:|PGPORT:|PGPASSWORD:/);
+  const catalogue = workflow.subarray(14698).toString('utf8');
+  expect(createHash('sha256').update(catalogue).digest('hex')).toBe('e73d1063f8f96dfe6549bf94024aa72ac5b26fa0e2229e71617f57c4fea6fa30');
+  expect(catalogue.match(/^  [a-zA-Z0-9-]+:/gm)).toEqual(['  catalogue-baseline:']);
+  expect(catalogue).not.toMatch(/continue-on-error|^    needs:/m);
 });
 
 test('known generated CI receipt directories cannot invalidate the later clean source binding',()=>{
