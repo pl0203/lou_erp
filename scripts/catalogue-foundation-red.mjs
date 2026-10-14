@@ -9,7 +9,7 @@ import { catalogueFailfastBinding } from './catalogue-failfast-probe.mjs';
 import { catalogueCaptureSourceBytes } from './catalogue-capture-source.mjs';
 import { catalogueCiConnection,catalogueCiIdentityGateSql,catalogueObservationSql,verifyCatalogueCiObservation } from './catalogue-ci-profile.mjs';
 const defaultRoot=resolve(dirname(fileURLToPath(import.meta.url)),'..');
-const testPath='tests/database/catalogue/foundation.sql';
+const testPath='tests/database/catalogue/foundation-red.sql';
 const sha=x=>createHash('sha256').update(x).digest('hex');
 const directory=path=>{const stat=lstatSync(path);assert.ok(stat.isDirectory()&&!stat.isSymbolicLink());return stat;};
 export function assertFoundationMissingContract(error) {

@@ -45,7 +45,7 @@ test('only the real expected SQL assertion failure is classified as missing-cont
  assert.throws(()=>runner.assertFoundationMissingContract(undefined));
 });
 test('the fixed foundation SQL checks fixture setup before missing-contract assertion inside read-only transaction',()=>{
- need();const sql=readFileSync(join(root,'tests/database/catalogue/foundation.sql'),'utf8');
+ need();const sql=readFileSync(join(root,'tests/database/catalogue/foundation-red.sql'),'utf8');
  assert.ok(sql.startsWith('BEGIN READ ONLY;'));assert.ok(sql.endsWith('ROLLBACK;\n'));
  assert.ok(sql.indexOf('CATALOGUE_FOUNDATION_FIXTURE_INVALID')<sql.indexOf('CATALOGUE_FOUNDATION_FIXTURE_READY'));
  assert.ok(sql.indexOf('CATALOGUE_FOUNDATION_FIXTURE_READY')<sql.indexOf('CATALOGUE_FOUNDATION_MISSING_SERVER_COLUMNS'));
@@ -55,7 +55,7 @@ test('the fixed foundation SQL checks fixture setup before missing-contract asse
 test('bound invocation emits only an explicit RED artifact with exact identity and source checksum',()=>withFixture(f=>{
  const report=runner.runCatalogueFoundationRed({repoRoot:f.directory,env:f.env,execute:f.execute});
  assert.equal(report.status,'EXPECTED_MISSING_CONTRACT_RED');assert.equal(report.scope,'synthetic-foundation-contract-only');assert.equal(report.implementationAccepted,false);assert.equal(report.hostedVerified,false);
- assert.deepEqual(report.identity,f.capture.identity);assert.equal(report.testSha256,sha(readFileSync(join(f.directory,'tests/database/catalogue/foundation.sql'))));
+ assert.deepEqual(report.identity,f.capture.identity);assert.equal(report.testSha256,sha(readFileSync(join(f.directory,'tests/database/catalogue/foundation-red.sql'))));
  assert.equal(f.calls.length,3);for(const call of f.calls)assert.ok(call.options.input.includes('SELECT 1/0 AS catalogue_identity_refused;'));
  const out=join(f.directory,'scale-results/catalogue-foundation-red');assert.deepEqual(readdirSync(out).sort(),['manifest.json','results.json']);
  const bytes=readFileSync(join(out,'results.json'),'utf8');assert.ok(!bytes.includes('PRIVATE_CANARY'));assert.ok(!bytes.includes('private internal'));
@@ -63,7 +63,7 @@ test('bound invocation emits only an explicit RED artifact with exact identity a
  assert.equal(readFileSync(f.output,'utf8'),'bundle_ready=false\nbundle_ready=true\n');
 }));
 test('setup failure, unexpected success, source drift and ambient targets cannot authorize an upload',()=>{
- need();for(const change of [f=>f.setError(null),f=>f.setError(Object.assign(expectedError(),{stderr:'ERROR:  PFC02: CATALOGUE_FOUNDATION_FIXTURE_INVALID',stdout:''})),f=>f.env.PGHOST='remote.invalid',f=>{f.capture.identity.ci={...ci,runAttempt:'2'};f.writeCapture();},f=>writeFileSync(join(f.directory,'tests/database/catalogue/foundation.sql'),'SELECT 1;')])withFixture(f=>{
+ need();for(const change of [f=>f.setError(null),f=>f.setError(Object.assign(expectedError(),{stderr:'ERROR:  PFC02: CATALOGUE_FOUNDATION_FIXTURE_INVALID',stdout:''})),f=>f.env.PGHOST='remote.invalid',f=>{f.capture.identity.ci={...ci,runAttempt:'2'};f.writeCapture();},f=>writeFileSync(join(f.directory,'tests/database/catalogue/foundation-red.sql'),'SELECT 1;')])withFixture(f=>{
   change(f);assert.throws(()=>runner.runCatalogueFoundationRed({repoRoot:f.directory,env:f.env,execute:f.execute}),/^Error: CATALOGUE_FOUNDATION_RED_REFUSED$/);
   assert.equal(readFileSync(f.output,'utf8'),'bundle_ready=false\n');assert.equal(existsSync(join(f.directory,'scale-results/catalogue-foundation-red/results.json')),false);
  });
@@ -80,7 +80,7 @@ test('CLI has no target or implementation switch and returns only sanitized refu
  }
 });
 test('only dedicated job and source binding include the red checkpoint and condition its exact upload',()=>{
- need();for(const path of ['scripts/catalogue-foundation-red.mjs','tests/database/catalogue/foundation.sql','tests/catalogue-ci/foundation-red.node.mjs'])assert.ok(cataloguePublicSourcePaths.includes(path));
+ need();for(const path of ['scripts/catalogue-foundation-red.mjs','tests/database/catalogue/foundation-red.sql','tests/catalogue-ci/foundation-red.node.mjs'])assert.ok(cataloguePublicSourcePaths.includes(path));
  const workflow=readFileSync(join(root,'.github/workflows/pilot-safety.yml'),'utf8'),split=workflow.indexOf('\n  catalogue-baseline:');
  assert.equal(sha(workflow.slice(0,split)),'32b1e9ded0e18c707af5e2bdc15c7730a0a61634da296b078240b2d2ad6cf505');
  const job=workflow.slice(split);assert.ok(job.includes('node --test tests/catalogue-ci/foundation-red.node.mjs'));

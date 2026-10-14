@@ -376,6 +376,8 @@ jobs:
         run: node --test tests/database/catalogue-failfast/*.node.mjs tests/catalogue-ci/failfast.node.mjs
       - name: Check foundation RED harness without a database
         run: node --test tests/catalogue-ci/foundation-red.node.mjs
+      - name: Check foundation behavior harness without a database
+        run: node --test tests/catalogue-ci/foundation.node.mjs
       - name: Bind clean candidate bytes before capture
         run: |
           set -euo pipefail
@@ -423,5 +425,16 @@ jobs:
         with:
           name: catalogue-foundation-red-${{ github.run_id }}-${{ github.run_attempt }}
           path: scale-results/catalogue-foundation-red
+          if-no-files-found: error
+          retention-days: 7
+      - name: Verify bound foundation behavior and rollback
+        id: catalogue-foundation
+        run: node scripts/catalogue-foundation.mjs
+      - name: Preserve only verified synthetic foundation results
+        if: ${{ always() && steps.catalogue-foundation.outputs.bundle_ready == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalogue-foundation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: scale-results/catalogue-foundation
           if-no-files-found: error
           retention-days: 7
