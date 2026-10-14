@@ -9,7 +9,12 @@ test('adds CO after all 32 original gates without changing their service, source
   const scheduling = '    needs: catalogue-baseline\n    if: ${{ always() }}\n';
   expect(actual.split(scheduling)).toHaveLength(2);
   expect(actual).toContain(`  synthetic-safety:\n${scheduling}    runs-on: ubuntu-latest`);
-  const normalized = actual.replace(scheduling, '');
+  // Validate and remove only the reviewed source-test expansion. The original
+  // catalogue job pin below remains unchanged, so no other CI byte can drift.
+  const helperSourceLine = '        run: node --test tests/catalogue-ci/reference-helpers.node.mjs tests/catalogue-ci/promotion-owner-extraction.node.mjs tests/catalogue/retired-co-line-resolution.source.mjs tests/catalogue-ci/po-reference-extraction.node.mjs tests/catalogue-ci/visit-reference-extraction.node.mjs tests/catalogue-ci/co-reference-extraction.node.mjs';
+  const addedSuites = ' tests/catalogue-ci/nonco-lineage-resolution.node.mjs tests/catalogue-ci/co-draft-reference-extraction.node.mjs';
+  expect(actual.split(helperSourceLine + addedSuites + '\n')).toHaveLength(2);
+  const normalized = actual.replace(scheduling, '').replace(helperSourceLine + addedSuites + '\n', helperSourceLine + '\n');
   const decoderStart = normalized.indexOf('      - name: Bind independent read decoder source');
   const catalogueStart = normalized.indexOf('  # Independent of synthetic-safety:');
   const decoder = normalized.slice(decoderStart, catalogueStart);

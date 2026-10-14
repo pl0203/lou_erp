@@ -14,7 +14,7 @@ const need=()=>assert.ok(runner,'Bound reference helper runtime runner is not im
 const sha=x=>createHash('sha256').update(x).digest('hex');
 const ci={repository:'pl0203/lou_erp',workflow:'Pilot safety checks',workflowRef:'pl0203/lou_erp/.github/workflows/pilot-safety.yml@refs/pull/30/merge',job:'catalogue-baseline',event:'pull_request',ref:'refs/pull/30/merge',eventSha:'d'.repeat(40),runId:'9',runAttempt:'1',headRef:'feat/catalogue-mutations-20261014',baseRef:'fix/pilot-database'};
 const identity={profile:'github-catalogue-baseline-v1',source:{clean:true,commit:'a'.repeat(40),tree:'b'.repeat(40),candidate:'c'.repeat(64)},serverAddress:'172.18.0.2',serverPort:5432,serverVersion:'170011',systemIdentifier:'123456789',runIdentity:'00000000-0000-4000-8000-000000000001',ci};
-const paths={promotionCandidate:'supabase/catalogue/v1/02-promotion-owner-extraction.sql',promotionSuite:'tests/database/catalogue/promotion-owner-extraction.sql',retiredCandidate:'supabase/catalogue/v1/02-retired-co-line-resolution.sql',retiredSuite:'tests/database/catalogue/retired-co-line-resolution.sql',poCandidate:'supabase/catalogue/v1/02-po-reference-extraction.sql',poSuite:'tests/database/catalogue/po-reference-extraction.sql',visitCandidate:'supabase/catalogue/v1/new02-visit-reference-extraction.sql',visitSuite:'tests/database/catalogue/visit-reference-extraction.sql',coCandidate:'supabase/catalogue/v1/02-co-reference-extraction.sql',coSuite:'tests/database/catalogue/co-reference-extraction.sql'};
+const paths={promotionCandidate:'supabase/catalogue/v1/02-promotion-owner-extraction.sql',promotionSuite:'tests/database/catalogue/promotion-owner-extraction.sql',retiredCandidate:'supabase/catalogue/v1/02-retired-co-line-resolution.sql',retiredSuite:'tests/database/catalogue/retired-co-line-resolution.sql',poCandidate:'supabase/catalogue/v1/02-po-reference-extraction.sql',poSuite:'tests/database/catalogue/po-reference-extraction.sql',visitCandidate:'supabase/catalogue/v1/new02-visit-reference-extraction.sql',visitSuite:'tests/database/catalogue/visit-reference-extraction.sql',coCandidate:'supabase/catalogue/v1/02-co-reference-extraction.sql',coSuite:'tests/database/catalogue/co-reference-extraction.sql',noncoCandidate:'supabase/catalogue/v1/new02-nonco-lineage-resolution.sql',noncoSuite:'tests/database/catalogue/nonco-lineage-resolution.sql',coDraftCandidate:'supabase/catalogue/v1/02-co-draft-reference-extraction.sql',coDraftSuite:'tests/database/catalogue/co-draft-reference-extraction.sql'};
 const parts=()=>Object.fromEntries(Object.entries(paths).map(([key,path])=>[key,readFileSync(join(root,path),'utf8')]));
 const expected=[
  ['CATALOGUE_REFERENCE_PROMOTION_RED_PASSED','PCE01'],
@@ -22,32 +22,38 @@ const expected=[
  ['CATALOGUE_REFERENCE_PO_RED_PASSED','42883'],
  ['CATALOGUE_REFERENCE_VISIT_RED_PASSED','PCV01'],
  ['CATALOGUE_REFERENCE_CO_RED_PASSED','PCE01'],
+ ['CATALOGUE_REFERENCE_NONCO_RED_PASSED','PCN01'],
+ ['CATALOGUE_REFERENCE_CO_DRAFT_RED_PASSED','PCE01'],
  ['CATALOGUE_REFERENCE_PROMOTION_INSTALLED','00000'],
  ['CATALOGUE_REFERENCE_RETIRED_INSTALLED','00000'],
  ['CATALOGUE_REFERENCE_PO_INSTALLED','00000'],
  ['CATALOGUE_REFERENCE_VISIT_INSTALLED','00000'],
  ['CATALOGUE_REFERENCE_CO_INSTALLED','00000'],
+ ['CATALOGUE_REFERENCE_NONCO_INSTALLED','00000'],
+ ['CATALOGUE_REFERENCE_CO_DRAFT_INSTALLED','00000'],
  ['CATALOGUE_REFERENCE_CANDIDATES_APPLIED','00000'],
  ['CATALOGUE_REFERENCE_PROMOTION_SEMANTICS_PASSED','00000'],
  ['CATALOGUE_REFERENCE_RETIRED_SEMANTICS_PASSED','00000'],
  ['CATALOGUE_REFERENCE_PO_SEMANTICS_PASSED','00000'],
  ['CATALOGUE_REFERENCE_VISIT_SEMANTICS_PASSED','00000'],
  ['CATALOGUE_REFERENCE_CO_SEMANTICS_PASSED','00000'],
+ ['CATALOGUE_REFERENCE_NONCO_SEMANTICS_PASSED','00000'],
+ ['CATALOGUE_REFERENCE_CO_DRAFT_SEMANTICS_PASSED','00000'],
  ['CATALOGUE_REFERENCE_ACL_PASSED','00000'],
  ['CATALOGUE_REFERENCE_ROLLBACK_VERIFIED','00000'],
 ];
 const legacyDiagnostic=({phase,completedMarkerIndex,sqlstate})=>({phase,completedMarkerIndex,sqlstate});
 const markers=()=>expected.map(([name,state])=>`${name} 412 827 ${state}`).join('\n')+'\n';
 
-test('one guarded session proves exact missing-helper REDs before all five installations and rolls all back',()=>{
+test('one guarded session proves exact missing-helper REDs before all seven installations and rolls all back',()=>{
  need();assert.deepEqual(runner.referenceSqlPaths,paths);
  const input=parts(),sql=runner.buildCatalogueReferenceSession(identity,input);
  assert.equal((sql.match(/^BEGIN;/gm)||[]).length,1);assert.equal((sql.match(/^ROLLBACK;/gm)||[]).length,1);
  assert.ok(sql.indexOf('SELECT 1/0 AS catalogue_identity_refused;')<sql.indexOf('BEGIN;'));
  assert.ok(sql.indexOf('BEGIN;')<sql.indexOf('CATALOGUE_REFERENCE_PROMOTION_RED_PASSED'));
- for(const candidate of [input.promotionCandidate,input.retiredCandidate,input.poCandidate,input.visitCandidate,input.coCandidate]){
+ for(const candidate of [input.promotionCandidate,input.retiredCandidate,input.poCandidate,input.visitCandidate,input.coCandidate,input.noncoCandidate,input.coDraftCandidate]){
   assert.equal(sql.split(candidate).length,2);
-  assert.ok(sql.indexOf('CATALOGUE_REFERENCE_CO_RED_PASSED')<sql.indexOf(candidate));
+  assert.ok(sql.indexOf('CATALOGUE_REFERENCE_CO_DRAFT_RED_PASSED')<sql.indexOf(candidate));
   assert.ok(sql.indexOf(candidate)<sql.indexOf('CATALOGUE_REFERENCE_CANDIDATES_APPLIED'));
  }
  assert.ok(sql.indexOf('CATALOGUE_REFERENCE_CANDIDATES_APPLIED')<sql.indexOf('CATALOGUE_REFERENCE_PROMOTION_SEMANTICS_PASSED'));
@@ -61,7 +67,7 @@ test('one guarded session proves exact missing-helper REDs before all five insta
 });
 test('RED acceptance catches only each exact missing SQLSTATE and message, including actual server state evidence',()=>{
  need();const sql=runner.buildCatalogueReferenceSession(identity,parts());
- for(const [state,message] of [['PCV01','CATALOGUE_VISIT_REFERENCE_MISSING_FUNCTION'],['PCE01','CATALOGUE_CO_COMMAND_MISSING_FUNCTION'],['PCE01','CATALOGUE_PROMOTION_OWNER_MISSING_FUNCTION'],['P0001','MISSING_RETIRED_CO_LINE_RESOLVER'],['42883','function private.catalog_por_extract_event_v1(regclass, text, jsonb, jsonb, jsonb) does not exist']]){
+ for(const [state,message] of [['PCN01','CATALOGUE_NONCO_MISSING_FUNCTION'],['PCE01','CATALOGUE_CO_DRAFT_MISSING_FUNCTION'],['PCV01','CATALOGUE_VISIT_REFERENCE_MISSING_FUNCTION'],['PCE01','CATALOGUE_CO_COMMAND_MISSING_FUNCTION'],['PCE01','CATALOGUE_PROMOTION_OWNER_MISSING_FUNCTION'],['P0001','MISSING_RETIRED_CO_LINE_RESOLVER'],['42883','function private.catalog_por_extract_event_v1(regclass, text, jsonb, jsonb, jsonb) does not exist']]){
   assert.ok(sql.includes(`EXCEPTION WHEN SQLSTATE '${state}' THEN`));
   assert.ok(sql.includes(`observed_message IS DISTINCT FROM '${message}'`));
   assert.ok(sql.includes(`observed_state IS DISTINCT FROM '${state}'`));
@@ -128,10 +134,12 @@ const signatures=[
  'private.catalog_extract_visit_reference_event_v1(regclass,text,jsonb,jsonb)',
  'private.catalog_co_decimal_version_v1(jsonb,text)',
  'private.catalog_extract_co_command_event_v1(regclass,text,jsonb,jsonb)',
+ 'private.catalog_resolve_nonco_frozen_v1(jsonb,jsonb)',
+ 'private.catalog_extract_co_draft_event_v1(regclass,text,jsonb,jsonb,text)',
 ];
-test('ACL SQL requires exact thirty-nine signatures and specifies omission, overload and family-lookalike refusal',()=>{
+test('ACL SQL requires exact forty-one signatures and specifies omission, overload and family-lookalike refusal',()=>{
  need();assert.deepEqual(runner.referenceHelperSignatures,signatures);assert.ok(Object.isFrozen(runner.referenceHelperSignatures));
- assert.equal(new Set(signatures).size,39);const sql=runner.buildCatalogueReferenceSession(identity,parts());
+ assert.equal(new Set(signatures).size,41);const sql=runner.buildCatalogueReferenceSession(identity,parts());
  for(const signature of signatures)assert.ok(sql.includes(`'${signature}'`),signature);
  assert.match(sql,/pg_catalog\.to_regprocedure\(signature\)::oid/);
  assert.match(sql,/FULL JOIN actual USING\(oid\)/);
@@ -157,7 +165,7 @@ test('unchanged PO suite returning normally cannot qualify RED without an actual
  assert.ok(sql.indexOf("SELECT 1/0 AS catalogue_reference_po_entrypoint_refused;")<sql.indexOf(input.poSuite));
  assert.match(sql,/pg_catalog\.to_regprocedure\('private\.catalog_por_extract_event_v1\(regclass,text,jsonb,jsonb,jsonb\)'\) IS NOT NULL/);
 });
-test('only all eighteen ordered state-bound same-session markers with verified rollback are accepted',()=>{
+test('only all twenty-four ordered state-bound same-session markers with verified rollback are accepted',()=>{
  need();assert.deepEqual(runner.parseCatalogueReferenceOutput(markers()),{backendPid:'412',transactionId:'827'});
  for(const output of ['',markers().trim(),markers()+'PRIVATE_CANARY\n',markers().replace('PCE01','PCE00'),markers().replace('P0001','42P01'),markers().replace('42883','42601'),markers().replace('412 827','413 827'),markers().replace('412 827','412 828'),markers().replace('412','0'),markers().split('\n').slice(0,-2).join('\n')+'\n',markers().split('\n').reverse().join('\n')])assert.throws(()=>runner.parseCatalogueReferenceOutput(output));
 });
@@ -195,11 +203,11 @@ const withFixture=fn=>{const f=fixture();try{return fn(f);}finally{f.cleanup();}
 test('bound runner publishes checksummed narrow helper-only evidence only after one session and both identity checks',()=>withFixture(f=>{
  const report=runner.runCatalogueReferenceHelpers({repoRoot:f.directory,env:f.env,execute:f.execute});
  assert.equal(f.calls.length,3);const session=f.calls[1].options.input;
- for(const key of ['promotionCandidate','retiredCandidate','poCandidate','visitCandidate','coCandidate'])assert.ok(session.includes(readFileSync(join(f.directory,paths[key]),'utf8')));
+ for(const key of ['promotionCandidate','retiredCandidate','poCandidate','visitCandidate','coCandidate','noncoCandidate','coDraftCandidate'])assert.ok(session.includes(readFileSync(join(f.directory,paths[key]),'utf8')));
  assert.equal(report.status,'BOUNDED_REFERENCE_HELPERS_PASSED');
  for(const key of ['task1Complete','implementationAccepted','hostedVerified','trackingReady'])assert.equal(report[key],false);
  assert.equal(report.executionGeneration,1);assert.equal(report.referenceTracking,'NOT_IMPLEMENTED');assert.equal(report.collectorCompleteness,'UNPROVEN');assert.equal(report.fullReferenceClosure,'UNPROVEN');
- assert.deepEqual(report.tests,{promotionMissing:{status:'EXPECTED_RED',sqlstate:'PCE01'},retiredMissing:{status:'EXPECTED_RED',sqlstate:'P0001'},poMissing:{status:'EXPECTED_RED',sqlstate:'42883'},visitMissing:{status:'EXPECTED_RED',sqlstate:'PCV01'},coMissing:{status:'EXPECTED_RED',sqlstate:'PCE01'},promotionSemantics:'PASSED',retiredSemantics:'PASSED',poSemantics:'PASSED',visitSemantics:'PASSED',coSemantics:'PASSED',ownerAndEffectiveAcl:'PASSED',actualApiRoleDenial:'PASSED',rollback:'VERIFIED'});
+ assert.deepEqual(report.tests,{promotionMissing:{status:'EXPECTED_RED',sqlstate:'PCE01'},retiredMissing:{status:'EXPECTED_RED',sqlstate:'P0001'},poMissing:{status:'EXPECTED_RED',sqlstate:'42883'},visitMissing:{status:'EXPECTED_RED',sqlstate:'PCV01'},coMissing:{status:'EXPECTED_RED',sqlstate:'PCE01'},noncoMissing:{status:'EXPECTED_RED',sqlstate:'PCN01'},coDraftMissing:{status:'EXPECTED_RED',sqlstate:'PCE01'},promotionSemantics:'PASSED',retiredSemantics:'PASSED',poSemantics:'PASSED',visitSemantics:'PASSED',coSemantics:'PASSED',noncoSemantics:'PASSED',coDraftSemantics:'PASSED',ownerAndEffectiveAcl:'PASSED',actualApiRoleDenial:'PASSED',rollback:'VERIFIED'});
  assert.deepEqual(report.session,{backendPid:'412',transactionId:'827'});
  assert.deepEqual(report.files,Object.values(paths).map(path=>({path,sha256:sha(readFileSync(join(f.directory,path)))})));
  const out=join(f.directory,'scale-results/catalogue-reference-helpers');assert.deepEqual(readdirSync(out).sort(),['manifest.json','results.json']);
@@ -207,7 +215,7 @@ test('bound runner publishes checksummed narrow helper-only evidence only after 
  assert.equal(readFileSync(f.output,'utf8'),'bundle_ready=false\nbundle_ready=true\n');
 }));
 test('any SQL failure including a missing-helper error escaping its exact checkpoint refuses publication',()=>{
- for(const state of ['PCE01','P0001','42883','PCE00','42P01','42601','42501','57014'])withFixture(f=>{
+ for(const state of ['PCE01','PCN01','P0001','42883','PCE00','42P01','42601','42501','57014'])withFixture(f=>{
   f.setBehavior(()=>{throw Object.assign(new Error('PRIVATE_CANARY'),{status:3,signal:null,stdout:'',stderr:`ERROR:  ${state}: PRIVATE_CANARY\nCONTEXT: SQL PRIVATE_CANARY\n`});});
   assert.throws(()=>runner.runCatalogueReferenceHelpers({repoRoot:f.directory,env:f.env,execute:f.execute}),error=>{
    assert.equal(error.message,'CATALOGUE_REFERENCE_HELPERS_REFUSED');assert.deepEqual(legacyDiagnostic(error.diagnostic),{phase:'session',completedMarkerIndex:-1,sqlstate:state});assert.ok(!JSON.stringify(error).includes('CANARY'));return true;
@@ -260,8 +268,18 @@ test('CLI has no target/apply/output override and refuses outside CI without lea
   assert.equal(result.status,1);assert.equal(result.stdout,'');assert.equal(result.stderr,'CATALOGUE_REFERENCE_HELPERS_REFUSED\n');
  }
 });
-test('all nine frozen candidate files and shared harness participate in source identity without changing reviewed inputs',()=>{
+test('all nineteen frozen candidate and dependency files and shared harness participate in source identity without changing reviewed inputs',()=>{
  need();for(const [path,digest] of [
+ ['supabase/catalogue/v1/new02-nonco-lineage-resolution.sql','1a2ee01cc401d9b7016995230655f0e236438d27d544b150585366b8450436ee'],
+ ['tests/catalogue-ci/nonco-lineage-resolution.node.mjs','a4fe682618ce1fcc1f239589e02e6386c4ac84ceff599abd047c902e7884ef37'],
+ ['tests/database/catalogue/nonco-lineage-resolution.sql','f019a10d0be16a5029769efbc6b617f2d0d93bcb7a0457dc0168d7b500cc937d'],
+ ['supabase/catalogue/v1/02-co-draft-reference-extraction.sql','ebdc135249aacc7c297fb88ec12640a0c5a7da3cd5cfa76c9f2adfd8050d8aa5'],
+ ['tests/catalogue-ci/co-draft-reference-extraction.node.mjs','18586fe2a63975c2d4e970c30d62bdd241cd79423f727948aac0cf08a409b164'],
+ ['tests/database/catalogue/co-draft-reference-extraction.sql','c6bd0a8532bdc4afde74462d41f1003b0eefba3b4426f81ce70bb0d9a28888fe'],
+ ['supabase/catalogue/v1/new02-visit-reference-extraction.sql','5d64d14d3ebc2d7c075d8aba2d49fafece9f970235a54620393577ff2bfec71e'],
+ ['tests/catalogue-ci/visit-reference-extraction.node.mjs','a131739036b12d650f6c41a3e327e16693c38cd262e334ba20de8c3eed70cf86'],
+ [paths.visitSuite,'97759f2d9c9fcba431be421b11d1a0cdb73d1e46250b2ec51bcf9b0227d7370b'],
+ [paths.coCandidate,'4dd6695b14a3587e43bd76df04abfa99916bf49b33344e99660a57ab5ebc12f9'],
  [paths.promotionCandidate,'d53ad17d77fbafbf8542c29fbcd04a3b3457916d296d0f2bf28df78a1389affc'],
  [paths.promotionSuite,'0fe9f8cd7930120014f0eaf86393c913106ec91c9e0fa64ff970a59f24da3f41'],
  ['tests/catalogue-ci/promotion-owner-extraction.node.mjs','f14add017e194827cd1ac8496d90ad0c4c91b36e0161f7b82ae1a03429b9d402'],
@@ -290,7 +308,7 @@ test('public PG17 CI preserves foundation failure and independently gates helper
  assert.ok(job.includes('image: postgres:17'));assert.ok(job.includes('persist-credentials: false'));
  assert.match(job,/id: catalogue-baseline-capture\n\s+run: node scripts\/catalogue-capture-baseline\.mjs/);
  assert.ok(job.indexOf('node --test tests/catalogue-ci/reference-helpers.node.mjs')<job.indexOf('Bind clean candidate bytes before capture'));
- for(const path of ['tests/catalogue-ci/promotion-owner-extraction.node.mjs','tests/catalogue/retired-co-line-resolution.source.mjs','tests/catalogue-ci/po-reference-extraction.node.mjs'])assert.ok(job.includes(path));
+ for(const path of ['tests/catalogue-ci/promotion-owner-extraction.node.mjs','tests/catalogue/retired-co-line-resolution.source.mjs','tests/catalogue-ci/po-reference-extraction.node.mjs','tests/catalogue-ci/nonco-lineage-resolution.node.mjs','tests/catalogue-ci/co-draft-reference-extraction.node.mjs'])assert.ok(job.includes(path));
  assert.ok(job.indexOf('node scripts/catalogue-reference-helpers.mjs')>job.indexOf('node scripts/catalogue-foundation.mjs'));
  assert.match(job,/if: \$\{\{ !cancelled\(\) && steps\.catalogue-baseline-capture\.outcome == 'success' \}\}\n\s+id: catalogue-reference-helpers\n\s+run: node scripts\/catalogue-reference-helpers\.mjs/);
  assert.ok(job.includes("if: ${{ always() && steps.catalogue-reference-helpers.outputs.bundle_ready == 'true' }}"));
@@ -342,7 +360,7 @@ test('successful fake process with malformed output is specifically parse refusa
  f.setBehavior(()=>markers()+'PRIVATE_CANARY\n');
  assert.throws(()=>runner.runCatalogueReferenceHelpers({repoRoot:f.directory,env:f.env,execute:f.execute}),error=>{
   assert.equal(error.diagnostic.phase,'session-parse');assert.equal(error.diagnostic.failureKind,'parse');
-  assert.equal(error.diagnostic.verifiedMarkerPrefixLength,18);assert.ok(!JSON.stringify(error).includes('CANARY'));return true;
+  assert.equal(error.diagnostic.verifiedMarkerPrefixLength,24);assert.ok(!JSON.stringify(error).includes('CANARY'));return true;
  });
  assert.equal(readFileSync(f.output,'utf8'),'bundle_ready=false\n');
  assert.equal(existsSync(join(f.directory,'scale-results/catalogue-reference-helpers/results.json')),false);
@@ -358,17 +376,46 @@ test('reported SQLSTATE remains explicitly untrusted when process code classific
 });
 test('each installed family has an ordered same-session checkpoint before overall installation acceptance',()=>{
  need();const input=parts(),sql=runner.buildCatalogueReferenceSession(identity,input);
- let prior=sql.indexOf('CATALOGUE_REFERENCE_CO_RED_PASSED');
- for(const [key,name] of [['promotionCandidate','PROMOTION'],['retiredCandidate','RETIRED'],['poCandidate','PO'],['visitCandidate','VISIT'],['coCandidate','CO']]){
+ let prior=sql.indexOf('CATALOGUE_REFERENCE_CO_DRAFT_RED_PASSED');
+ for(const [key,name] of [['promotionCandidate','PROMOTION'],['retiredCandidate','RETIRED'],['poCandidate','PO'],['visitCandidate','VISIT'],['coCandidate','CO'],['noncoCandidate','NONCO'],['coDraftCandidate','CO_DRAFT']]){
   const start=sql.indexOf(input[key],prior),marker=sql.indexOf('CATALOGUE_REFERENCE_'+name+'_INSTALLED',start);
   assert.ok(start>prior);assert.ok(marker>start+input[key].length);
   assert.ok(sql.slice(start+input[key].length,marker).includes('catalogue_reference_session_refused'));prior=marker;
  }
  assert.ok(prior<sql.indexOf('CATALOGUE_REFERENCE_CANDIDATES_APPLIED'));
- assert.equal(expected.length,18);
- for(let i=5;i<10;i++){
+ assert.equal(expected.length,24);
+ for(let i=7;i<14;i++){
   const prefix=expected.slice(0,i+1).map(([name,state])=>`${name} 412 827 ${state}`).join('\n')+'\n';
   assert.equal(runner.referenceFailureDiagnostic('session',{status:3,signal:null,code:'unknown',stdout:prefix,stderr:'ERROR: 42501: withheld\n'}).verifiedMarkerPrefixLength,i+1);
   assert.throws(()=>runner.parseCatalogueReferenceOutput(prefix));
+ }
+});
+
+// Source wiring and parser/transport tests only. SQL semantic acceptance remains UNRUN.
+test('bounded lineage and draft suites keep reviewed bytes, exact REDs, typed API probes and postdependency ordering',()=>{
+ need();const input=parts(),sql=runner.buildCatalogueReferenceSession(identity,input);
+ const nonco=input.noncoSuite.replace('\\echo CATALOGUE_NONCO_FROZEN_ASSERTIONS_PASSED\n','');
+ assert.equal(runner.referenceSuiteSql('noncoSuite',input.noncoSuite),nonco);
+ assert.equal(runner.referenceSuiteSql('coDraftSuite',input.coDraftSuite),input.coDraftSuite);
+ for(const changed of [input.noncoSuite.replace('\\echo CATALOGUE_NONCO_FROZEN_ASSERTIONS_PASSED\n',''),input.noncoSuite+'\\echo CATALOGUE_NONCO_FROZEN_ASSERTIONS_PASSED\n'])assert.throws(()=>runner.referenceSuiteSql('noncoSuite',changed));
+ for(const [family,suite] of [['nonco',nonco],['co_draft',input.coDraftSuite]]){
+  assert.ok(sql.includes(`${family}_sqlstate = observed_state`));
+  assert.equal(sql.split(suite).length,2,'GREEN suite executes once unchanged');
+  assert.ok(sql.includes(suite.replaceAll("'","''")),'RED uses same normalized SQL');
+ }
+ for(const [dependent,prerequisite] of [['noncoCandidate','visitCandidate'],['coDraftCandidate','promotionCandidate'],['coDraftCandidate','coCandidate']])assert.ok(sql.indexOf(input[dependent])>sql.indexOf(input[prerequisite])+input[prerequisite].length);
+ for(const probe of ['SELECT private.catalog_resolve_nonco_frozen_v1(NULL::jsonb,NULL::jsonb)','SELECT private.catalog_extract_co_draft_event_v1(NULL::regclass,NULL::text,NULL::jsonb,NULL::jsonb,NULL::text)']){
+  for(const role of ['anon','authenticated','service_role'])assert.ok(sql.slice(sql.lastIndexOf(`SET LOCAL ROLE ${role};`),sql.indexOf('RESET ROLE;',sql.lastIndexOf(`SET LOCAL ROLE ${role};`))).includes(probe));
+ }
+ const before=sql.slice(0,sql.indexOf('BEGIN;')),after=sql.slice(sql.lastIndexOf('ROLLBACK;'));
+ for(const name of ['catalog_resolve_nonco_frozen_v1','catalog_extract_co_draft_event_v1']){assert.ok(before.includes(`'${name}'`));assert.ok(after.includes(`'${name}'`));}
+});
+test('every missing, duplicated or wrong-state lineage/draft marker refuses the expanded evidence protocol',()=>{
+ need();const lines=markers().trimEnd().split('\n');
+ for(let index=0;index<lines.length;index++){
+  assert.throws(()=>runner.parseCatalogueReferenceOutput(lines.filter((_,i)=>i!==index).join('\n')+'\n'));
+  assert.throws(()=>runner.parseCatalogueReferenceOutput([...lines.slice(0,index),lines[index],...lines.slice(index)].join('\n')+'\n'));
+  const bad=[...lines];bad[index]=bad[index].replace(/ [A-Z0-9]{5}$/, ' ZZ999');
+  assert.throws(()=>runner.parseCatalogueReferenceOutput(bad.join('\n')+'\n'));
  }
 });
