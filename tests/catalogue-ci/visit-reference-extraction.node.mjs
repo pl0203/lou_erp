@@ -46,3 +46,28 @@ test('SQL contract has exact missing-function RED, behavioral vectors and actual
  for(const label of ['removed OLD customer retained','authority source customer union','amend root changes resource type','approval wrapper required','historical absent schedule differs from missing key','capture binding survives extraction','UUID-shaped notes stay nonreference','unknown nested key refused','malformed OLD refuses','actual API role denial'])assert.ok(sql.includes(label),label);
  for(const text of ['has_function_privilege','aclexplode','proowner','provolatile','proconfig','prosecdef','SET LOCAL ROLE','RESET ROLE'])assert.ok(sql.includes(text),text);
 });
+test('all PL/pgSQL IF conditions shield SQL CASE from depth-zero THEN',()=>{
+ // Static lexical containment check only, not SQL execution or a PG parser.
+ // PG17 pl_gram.y read_sql_construct stops at K_THEN at depth zero and counts
+ // parentheses/brackets, not CASE/END. Check every IF/ELSIF, not only recovery.
+ const sql=readFileSync(candidate,'utf8');
+ const tokens=[...sql.matchAll(/--[^\n]*|\/\*[\s\S]*?\*\/|'(?:''|[^'])*'|"(?:""|[^"])*"|[A-Za-z_][A-Za-z0-9_]*|[()[\];]/g)]
+  .filter(t=>!t[0].startsWith('--')&&!t[0].startsWith('/*'));
+ const hazards=[];let checked=0;
+ for(let i=0;i<tokens.length;i++){
+  const keyword=tokens[i][0].toUpperCase();
+  if(!['IF','ELSIF'].includes(keyword)||tokens[i-1]?.[0].toUpperCase()==='END')continue;
+  let depth=0,terminated=false;checked++;
+  for(let j=i+1;j<tokens.length;j++){
+   const token=tokens[j][0].toUpperCase();
+   if(token==='('||token==='[')depth++;
+   else if(token===')'||token===']')depth--;
+   else if(token==='CASE'&&depth===0)hazards.push({line:sql.slice(0,tokens[j].index).split('\n').length});
+   else if(token==='THEN'&&depth===0){terminated=true;break;}
+   else if(token===';')break;
+  }
+  assert.ok(terminated,'Every IF condition must reach a top-level THEN');
+ }
+ assert.ok(checked>20,'Inspect all visit helper IF conditions');
+ assert.deepEqual(hazards,[],'Depth-zero SQL CASE truncates a PL/pgSQL IF condition (42601)');
+});

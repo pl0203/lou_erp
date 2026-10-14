@@ -253,7 +253,7 @@ BEGIN
   PERFORM private.catalog_vr_text_v1(r->'created_at',side||'.created_at');
   PERFORM private.catalog_vr_require_v1(jsonb_typeof(r->'abandoned')='boolean','UNKNOWN_SHAPE',side||'.abandoned');
   payload:=r->'payload';receipt:=r->'result';authority:=r->'authority';
-  IF operation=CASE WHEN p_relation='private.pilot_schedule_requests'::regclass THEN 'schedule_recovery_abandoned' ELSE 'visit_recovery_abandoned' END THEN
+  IF operation=(CASE WHEN p_relation='private.pilot_schedule_requests'::regclass THEN 'schedule_recovery_abandoned' ELSE 'visit_recovery_abandoned' END) THEN
    PERFORM private.catalog_vr_require_v1(private.catalog_vr_keys_v1(payload,ARRAY[]::text[]),'UNKNOWN_SHAPE',side||'.payload');
    IF p_relation='private.pilot_schedule_requests'::regclass THEN PERFORM private.catalog_vr_require_v1(private.catalog_vr_keys_v1(authority,ARRAY[]::text[]),'UNKNOWN_SHAPE',side||'.authority'); END IF;
    PERFORM private.catalog_vr_require_v1(r->'abandoned'='true'::jsonb AND receipt='null'::jsonb,'UNKNOWN_SHAPE',side);CONTINUE;
