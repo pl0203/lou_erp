@@ -97,3 +97,12 @@ test('source-known request and receipt cross-resource bindings survive as struct
  const suite=read('tests/database/catalogue/po-reference-extraction.sql');
  for(const label of ['legacy visit schedule binding','legacy sales visit binding','approval source PO binding','save delivery receipt binding','void delivery receipt binding','returned date receipt binding','cancel PO receipt binding','reject sales receipt binding'])assert.ok(suite.includes(label),label);
 });
+
+test('reference deduplication qualifies SRF and derived columns against PLpgSQL variables',()=>{
+ const sql=need();
+ // Removing the SRF qualifier reintroduces SQLSTATE 42702: the entrypoint
+ // declares a local value variable for nested audit JSON.
+ assert.match(sql,/SELECT DISTINCT ref_element\.value AS ref FROM jsonb_array_elements\(state->'refs'\) AS ref_element\(value\)/);
+ assert.match(sql,/jsonb_agg\(identities\.ref ORDER BY CASE identities\.ref->>'kind' WHEN 'customer' THEN 0 ELSE 1 END,\(identities\.ref->>'id'\)::uuid\)/);
+ assert.doesNotMatch(sql,/SELECT DISTINCT value AS ref/);
+});

@@ -331,8 +331,8 @@ BEGIN
    END LOOP;
   END IF;
  END LOOP;
- SELECT coalesce(jsonb_agg(ref ORDER BY CASE ref->>'kind' WHEN 'customer' THEN 0 ELSE 1 END,(ref->>'id')::uuid),'[]')
- INTO refs FROM (SELECT DISTINCT value AS ref FROM jsonb_array_elements(state->'refs')) identities;
+ SELECT coalesce(jsonb_agg(identities.ref ORDER BY CASE identities.ref->>'kind' WHEN 'customer' THEN 0 ELSE 1 END,(identities.ref->>'id')::uuid),'[]')
+ INTO refs FROM (SELECT DISTINCT ref_element.value AS ref FROM jsonb_array_elements(state->'refs') AS ref_element(value)) identities;
  -- Dedup only direct kind+UUID identities. Every edge and origin occurrence is
  -- retained, including different constraints for the same historical resource.
  RETURN jsonb_build_object('ok',true,'extraction',jsonb_set(state,'{refs}',refs));

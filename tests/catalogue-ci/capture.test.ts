@@ -227,7 +227,7 @@ test('capture strips original error, stdout, stderr and SQL values from thrown f
  expect(JSON.stringify(capture.catalogueCaptureFailure(thrown.phase))).not.toContain('PRIVATE')
 })
 test('public input list is exact and does not enumerate or read unrelated protected source',()=>{
- expect(runner.cataloguePublicSourcePaths).toHaveLength(52)
+ expect(runner.cataloguePublicSourcePaths).toHaveLength(58)
  expect(runner.cataloguePublicSourcePaths).toEqual([
   '.github/workflows/pilot-safety.yml','vercel.json','tests/vercel-routing.test.ts',
   'scripts/catalogue-checkout.mjs','scripts/catalogue-ci-profile.mjs','scripts/catalogue-capture-source.mjs',
@@ -249,6 +249,12 @@ test('public input list is exact and does not enumerate or read unrelated protec
   'supabase/catalogue/v1/02-po-reference-extraction.sql',
   'tests/database/catalogue/po-reference-extraction.sql',
   'tests/catalogue-ci/po-reference-extraction.node.mjs',
+  'supabase/catalogue/v1/new02-visit-reference-extraction.sql',
+  'tests/catalogue-ci/visit-reference-extraction.node.mjs',
+  'tests/database/catalogue/visit-reference-extraction.sql',
+  'supabase/catalogue/v1/02-co-reference-extraction.sql',
+  'tests/catalogue-ci/co-reference-extraction.node.mjs',
+  'tests/database/catalogue/co-reference-extraction.sql',
   'supabase/catalogue/v1/01-foundation.sql',
   'tests/database/catalogue/before-foundation.sql',
   'tests/database/catalogue/foundation-red.sql',
