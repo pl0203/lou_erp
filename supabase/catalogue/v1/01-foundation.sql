@@ -134,9 +134,9 @@ ALTER TABLE private.catalog_identity_v1 ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE private.catalog_identity_v1 FROM PUBLIC, anon, authenticated;
 
 INSERT INTO private.catalog_identity_v1(kind, id, lifetime_state, last_version, deleted_at)
-SELECT 'customer', id, 'unknown', catalog_version, NULL FROM public.customers
+SELECT 'customer', id, 'unknown', catalog_version, NULL::timestamptz FROM public.customers
 UNION ALL
-SELECT 'product', id, 'unknown', catalog_version, NULL FROM public.products;
+SELECT 'product', id, 'unknown', catalog_version, NULL::timestamptz FROM public.products;
 
 CREATE FUNCTION private.catalog_identity_guard_v1() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$

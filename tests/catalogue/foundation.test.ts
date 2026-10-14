@@ -37,9 +37,9 @@ describe('catalogue foundation source contract', () => {
     expect(source).toMatch(/VALUES\s*\(true, 1, false\)/)
   })
 
-  it('seeds both pre-existing masters as conservative unknown evidence', () => {
+  it('seeds both pre-existing masters with typed null tombstones and conservative unknown evidence', () => {
     for (const [kind, table] of [['customer', 'customers'], ['product', 'products']]) {
-      expect(source).toContain(`SELECT '${kind}', id, 'unknown', catalog_version, NULL FROM public.${table}`)
+      expect(source).toContain(`SELECT '${kind}', id, 'unknown', catalog_version, NULL::timestamptz FROM public.${table}`)
     }
   })
 
