@@ -31,6 +31,7 @@ const expected=[
  ['CATALOGUE_REFERENCE_ACL_PASSED','00000'],
  ['CATALOGUE_REFERENCE_ROLLBACK_VERIFIED','00000'],
 ];
+const legacyDiagnostic=({phase,completedMarkerIndex,sqlstate})=>({phase,completedMarkerIndex,sqlstate});
 const markers=()=>expected.map(([name,state])=>`${name} 412 827 ${state}`).join('\n')+'\n';
 
 test('one guarded session proves exact missing-helper REDs before all five installations and rolls all back',()=>{
@@ -204,7 +205,7 @@ test('any SQL failure including a missing-helper error escaping its exact checkp
  for(const state of ['PCE01','P0001','42883','PCE00','42P01','42601','42501','57014'])withFixture(f=>{
   f.setBehavior(()=>{throw Object.assign(new Error('PRIVATE_CANARY'),{status:3,signal:null,stdout:'',stderr:`ERROR:  ${state}: PRIVATE_CANARY\nCONTEXT: SQL PRIVATE_CANARY\n`});});
   assert.throws(()=>runner.runCatalogueReferenceHelpers({repoRoot:f.directory,env:f.env,execute:f.execute}),error=>{
-   assert.equal(error.message,'CATALOGUE_REFERENCE_HELPERS_REFUSED');assert.deepEqual(error.diagnostic,{phase:'session',completedMarkerIndex:-1,sqlstate:state});assert.ok(!JSON.stringify(error).includes('CANARY'));return true;
+   assert.equal(error.message,'CATALOGUE_REFERENCE_HELPERS_REFUSED');assert.deepEqual(legacyDiagnostic(error.diagnostic),{phase:'session',completedMarkerIndex:-1,sqlstate:state});assert.ok(!JSON.stringify(error).includes('CANARY'));return true;
   });
   assert.equal(readFileSync(f.output,'utf8'),'bundle_ready=false\n');assert.equal(existsSync(join(f.directory,'scale-results/catalogue-reference-helpers/results.json')),false);
  });
@@ -242,11 +243,11 @@ test('stale evidence, symlink source, altered fragments and missing inputs fail 
 });
 test('diagnostics expose only bounded phase, SQLSTATE and complete same-session marker prefix',()=>{
  need();const error={status:3,signal:null,stdout:expected.slice(0,2).map(([name,state])=>`${name} 412 827 ${state}`).join('\n')+'\n',stderr:'ERROR:  42601: PRIVATE_CANARY\nLINE 1: SECRET_SQL\n'};
- assert.deepEqual(runner.referenceFailureDiagnostic('session',error),{phase:'session',completedMarkerIndex:1,sqlstate:'42601'});
+ assert.deepEqual(legacyDiagnostic(runner.referenceFailureDiagnostic('session',error)),{phase:'session',completedMarkerIndex:1,sqlstate:'42601'});
  for(const change of [{stdout:error.stdout.replace('P0001','42P01')},{stdout:error.stdout.replace('412','413')},{stdout:'PRIVATE_CANARY\n'},{status:2},{signal:'SIGTERM'},{code:'ENOENT'},{stderr:error.stderr+'ERROR: P0001: another\n'}]){
   const diagnostic=runner.referenceFailureDiagnostic('session',{...error,...change});assert.equal(diagnostic.completedMarkerIndex,null);assert.ok(!JSON.stringify(diagnostic).includes('CANARY'));
  }
- assert.deepEqual(runner.referenceFailureDiagnostic('PRIVATE_CANARY',error),{phase:'unknown',completedMarkerIndex:null,sqlstate:null});
+ assert.deepEqual(legacyDiagnostic(runner.referenceFailureDiagnostic('PRIVATE_CANARY',error)),{phase:'unknown',completedMarkerIndex:null,sqlstate:null});
 });
 test('CLI has no target/apply/output override and refuses outside CI without leaking user input',()=>{
  need();for(const args of [[],['--url','PRIVATE_CANARY'],['--apply'],['--output','PRIVATE_CANARY']]){
@@ -302,3 +303,33 @@ test('visit and CO frozen suites execute unchanged except exact CO presentation 
   for(const role of ['anon','authenticated','service_role'])assert.ok(sql.slice(sql.lastIndexOf(`SET LOCAL ROLE ${role};`),sql.indexOf('RESET ROLE;',sql.lastIndexOf(`SET LOCAL ROLE ${role};`))).includes(probe));
  }
 });
+
+// Diagnostics are refusal evidence only, never proof of helper SQL behavior.
+test('refusal diagnostics distinguish execution from parsing and preserve only longest verified prefix',()=>{
+ need(); const prefix=expected.slice(0,2).map(([name,state])=>`${name} 412 827 ${state}`).join('\n')+'\n';
+ const error={status:3,signal:null,stdout:prefix+'PRIVATE_CANARY\n',stderr:'ERROR:  42601: PRIVATE_CANARY\n'};
+ const diagnostic=runner.referenceFailureDiagnostic('session',error);
+ assert.equal(diagnostic.failureKind,'execution');assert.equal(diagnostic.processStatus,3);
+ assert.equal(diagnostic.errorCount,1);assert.equal(diagnostic.verifiedMarkerPrefixLength,2);
+ for(const [key,value,expectedValue] of [['status',2,2],['status',999,'other'],['signal','SIGTERM','SIGTERM'],['signal','PRIVATE_CANARY','other'],['code','ENOBUFS','ENOBUFS'],['code','PRIVATE_CANARY','other']]){
+  const d=runner.referenceFailureDiagnostic('session',{...error,[key]:value});
+  assert.equal(d[{status:'processStatus',signal:'processSignal',code:'processCode'}[key]],expectedValue);
+  assert.ok(!JSON.stringify(d).includes('CANARY'));
+ }
+ const parse=runner.referenceFailureDiagnostic('session-parse',new Error('PRIVATE_CANARY'),prefix+'PRIVATE_CANARY\n');
+ assert.equal(parse.failureKind,'parse');assert.equal(parse.verifiedMarkerPrefixLength,2);
+ assert.equal(parse.processStatus,null);assert.equal(parse.errorCount,null);
+ assert.equal(runner.referenceFailureDiagnostic('session',{...error,stdout:prefix.replace('P0001','42P01')}).verifiedMarkerPrefixLength,1);
+ assert.equal(runner.referenceFailureDiagnostic('session',{...error,stdout:prefix.replace('412','413')}).verifiedMarkerPrefixLength,1);
+ assert.equal(runner.referenceFailureDiagnostic('session',{...error,stderr:error.stderr+error.stderr}).errorCount,'multiple');
+ assert.ok(!JSON.stringify(parse).includes('CANARY'));
+});
+test('successful fake process with malformed output is specifically parse refusal with no publication',()=>withFixture(f=>{
+ f.setBehavior(()=>markers()+'PRIVATE_CANARY\n');
+ assert.throws(()=>runner.runCatalogueReferenceHelpers({repoRoot:f.directory,env:f.env,execute:f.execute}),error=>{
+  assert.equal(error.diagnostic.phase,'session-parse');assert.equal(error.diagnostic.failureKind,'parse');
+  assert.equal(error.diagnostic.verifiedMarkerPrefixLength,13);assert.ok(!JSON.stringify(error).includes('CANARY'));return true;
+ });
+ assert.equal(readFileSync(f.output,'utf8'),'bundle_ready=false\n');
+ assert.equal(existsSync(join(f.directory,'scale-results/catalogue-reference-helpers/results.json')),false);
+}));

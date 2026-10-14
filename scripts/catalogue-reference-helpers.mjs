@@ -236,9 +236,34 @@ function parsePrefix(output) {
 export function parseCatalogueReferenceOutput(output) {
  const {count,backendPid,transactionId}=parsePrefix(output);assert.equal(count,markers.length);return {backendPid,transactionId};
 }
-const failurePhases=['initialization','binding','containment','workspace','source-preflight','identity-preflight','session','source-postflight','identity-postflight','publication'];
-export function referenceFailureDiagnostic(phase,error) {
- const safePhase=failurePhases.includes(phase)?phase:'unknown',result={phase:safePhase,completedMarkerIndex:null,sqlstate:null};
+const failurePhases=['initialization','binding','containment','workspace','source-preflight','identity-preflight','session','session-parse','source-postflight','identity-postflight','publication'];
+// Report only finite classifications. Never expose process messages, output,
+// identifiers, SQL, or payload. This prefix is diagnostic, not acceptance.
+function verifiedMarkerPrefixLength(output) {
+ if(typeof output!=='string')return null;
+ const lines=output.split('\n');let count=0;
+ for(let index=0;index<Math.min(lines.length-1,markers.length);index++) {
+  try {parsePrefix(lines.slice(0,index+1).join('\n')+'\n');count=index+1;}catch {break;}
+ }
+ return count;
+}
+const safeValue=(value,allowed)=>value===undefined||value===null?null:allowed.includes(value)?value:'other';
+export function referenceFailureDiagnostic(phase,error,parseOutput) {
+ const safePhase=failurePhases.includes(phase)?phase:'unknown',result={phase:safePhase,completedMarkerIndex:null,sqlstate:null,
+  failureKind:null,processStatus:null,processSignal:null,processCode:null,errorCount:null,verifiedMarkerPrefixLength:null};
+ if(safePhase==='session-parse') {
+  result.failureKind='parse';result.verifiedMarkerPrefixLength=verifiedMarkerPrefixLength(parseOutput);return Object.freeze(result);
+ }
+ if(['identity-preflight','session','identity-postflight'].includes(safePhase)&&error) {
+  result.failureKind='execution';
+  result.processStatus=safeValue(error.status,[0,1,2,3]);
+  result.processSignal=safeValue(error.signal,['SIGTERM','SIGKILL','SIGABRT','SIGSEGV','SIGPIPE','SIGINT']);
+  result.processCode=safeValue(error.code,['ENOENT','EACCES','ETIMEDOUT','ENOBUFS','E2BIG','ERR_CHILD_PROCESS_STDIO_MAXBUFFER']);
+  if(typeof error.stderr==='string') {
+   const count=error.stderr.split('\n').filter(line=>line.startsWith('ERROR:')).length;result.errorCount=count>1?'multiple':count;
+  }
+  if(safePhase==='session')result.verifiedMarkerPrefixLength=verifiedMarkerPrefixLength(error.stdout);
+ }
  if(!['identity-preflight','session','identity-postflight'].includes(safePhase)||!error||error.status!==3||error.signal!==null||error.code!==undefined||typeof error.stderr!=='string')return Object.freeze(result);
  const errors=error.stderr.split('\n').filter(line=>line.startsWith('ERROR:'));if(errors.length!==1)return Object.freeze(result);
  const state=errors[0].match(/^ERROR:\s+([A-Z0-9]{5}):/);if(!state)return Object.freeze(result);result.sqlstate=state[1];
@@ -246,7 +271,7 @@ export function referenceFailureDiagnostic(phase,error) {
  return Object.freeze(result);
 }
 export function runCatalogueReferenceHelpers({repoRoot=defaultRoot,env=process.env,execute=execFileSync}={}) {
- let descriptor,phase='initialization';
+ let descriptor,sessionOutput,phase='initialization';
  try {
   assert.equal(typeof env.GITHUB_OUTPUT,'string');descriptor=openSync(env.GITHUB_OUTPUT,constants.O_WRONLY|constants.O_APPEND|constants.O_NOFOLLOW);
   assert.ok(fstatSync(descriptor).isFile());writeFileSync(descriptor,'bundle_ready=false\n');
@@ -264,7 +289,7 @@ export function runCatalogueReferenceHelpers({repoRoot=defaultRoot,env=process.e
   phase='source-preflight';checkSource();phase='identity-preflight';verify();
   // One live psql session is required for all five REDs, installations and
   // semantic suites, effective/actual-role ACL checks and verified rollback.
-  phase='session';const session=parseCatalogueReferenceOutput(run(sql));
+  phase='session';sessionOutput=run(sql);phase='session-parse';const session=parseCatalogueReferenceOutput(sessionOutput);
   phase='source-postflight';checkSource();phase='identity-postflight';verify();
   phase='publication';const report={format:'catalogue-reference-helpers-v1',status:'BOUNDED_REFERENCE_HELPERS_PASSED',scope:'synthetic-pure-reference-helpers-only',
    task1Complete:false,implementationAccepted:false,hostedVerified:false,trackingReady:false,executionGeneration:1,identity,session,
@@ -279,7 +304,7 @@ export function runCatalogueReferenceHelpers({repoRoot=defaultRoot,env=process.e
   const result=JSON.stringify(report,null,2)+'\n';writeFileSync(resolve(pending,'results.json'),result,{flag:'wx'});
   writeFileSync(resolve(pending,'manifest.json'),JSON.stringify({format:'catalogue-reference-helpers-manifest-v1',status:report.status,files:[{path:'results.json',sha256:sha(result)}]})+'\n',{flag:'wx'});
   checkSource();renameSync(pending,output);writeFileSync(descriptor,'bundle_ready=true\n');return report;
- }catch(error){const refused=new Error('CATALOGUE_REFERENCE_HELPERS_REFUSED');refused.diagnostic=referenceFailureDiagnostic(phase,error);throw refused;}
+ }catch(error){const refused=new Error('CATALOGUE_REFERENCE_HELPERS_REFUSED');refused.diagnostic=referenceFailureDiagnostic(phase,error,sessionOutput);throw refused;}
  finally {if(descriptor!==undefined)closeSync(descriptor);}
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href) {
