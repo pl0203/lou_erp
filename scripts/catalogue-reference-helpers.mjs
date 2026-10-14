@@ -18,18 +18,22 @@ export const referenceSqlPaths=Object.freeze({
  promotionSuite:'tests/database/catalogue/promotion-owner-extraction.sql',
  retiredCandidate:'supabase/catalogue/v1/02-retired-co-line-resolution.sql',
  retiredSuite:'tests/database/catalogue/retired-co-line-resolution.sql',
+ poCandidate:'supabase/catalogue/v1/02-po-reference-extraction.sql',
+ poSuite:'tests/database/catalogue/po-reference-extraction.sql',
 });
 const markers=Object.freeze([
  ['CATALOGUE_REFERENCE_PROMOTION_RED_PASSED','PCE01'],
  ['CATALOGUE_REFERENCE_RETIRED_RED_PASSED','P0001'],
+ ['CATALOGUE_REFERENCE_PO_RED_PASSED','42883'],
  ['CATALOGUE_REFERENCE_CANDIDATES_APPLIED','00000'],
  ['CATALOGUE_REFERENCE_PROMOTION_SEMANTICS_PASSED','00000'],
  ['CATALOGUE_REFERENCE_RETIRED_SEMANTICS_PASSED','00000'],
+ ['CATALOGUE_REFERENCE_PO_SEMANTICS_PASSED','00000'],
  ['CATALOGUE_REFERENCE_ACL_PASSED','00000'],
  ['CATALOGUE_REFERENCE_ROLLBACK_VERIFIED','00000'],
 ]);
 export function referenceSuiteSql(name,sql) {
- assert.ok(['promotionSuite','retiredSuite'].includes(name));assert.equal(typeof sql,'string');
+ assert.ok(['promotionSuite','retiredSuite','poSuite'].includes(name));assert.equal(typeof sql,'string');
  // Preserve the frozen file. Its two exact presentation-only psql lines are
  // runner-owned here so the SAME SQL can execute inside the RED subtransaction.
  if(name==='promotionSuite')for(const line of ['\\echo CATALOGUE_PROMOTION_OWNER_FIXTURE_READY\n','\\echo CATALOGUE_PROMOTION_OWNER_CONTRACT_PASSED\n']) {
@@ -39,7 +43,38 @@ export function referenceSuiteSql(name,sql) {
  }
  foundationTopLevelSql(sql);return sql;
 }
-const helperPredicate=`n.nspname='private' AND (p.proname LIKE 'catalog_po_%' OR p.proname LIKE 'catalog_rcl_%'
+export const referenceHelperSignatures=Object.freeze([
+ 'private.catalog_po_require_v1(boolean,text,text)',
+ 'private.catalog_po_keys_v1(jsonb,text[])',
+ 'private.catalog_po_uuid_v1(jsonb,text,boolean)',
+ 'private.catalog_po_number_v1(jsonb,numeric,numeric,boolean,text,text,boolean)',
+ 'private.catalog_po_sorted_refs_v1(jsonb)',
+ 'private.catalog_extract_promotion_owner_event_v1(regclass,text,jsonb,jsonb)',
+ 'private.catalog_resolve_promotion_edges_v1(jsonb,jsonb)',
+ 'private.catalog_validate_promotion_owner_event_v1(regclass,text,jsonb,jsonb,jsonb)',
+ 'private.catalog_rcl_fail_v1(text,text)',
+ 'private.catalog_rcl_keys_v1(jsonb,text[],text)',
+ 'private.catalog_rcl_uuid_v1(jsonb,text,boolean)',
+ 'private.catalog_rcl_text_v1(jsonb,text,boolean)',
+ 'private.catalog_rcl_number_v1(jsonb,numeric,numeric,boolean,text)',
+ 'private.catalog_rcl_version_v1(jsonb,text)',
+ 'private.catalog_resolve_retired_co_line_v1(uuid,uuid,uuid,jsonb)',
+ 'private.catalog_por_require_v1(boolean,text,text)',
+ 'private.catalog_por_allowed_v1(jsonb,text[],text[])',
+ 'private.catalog_por_keys_v1(jsonb,text[])',
+ 'private.catalog_por_uuid_v1(jsonb,text,boolean,boolean)',
+ 'private.catalog_por_number_v1(jsonb,numeric,numeric,boolean,text)',
+ 'private.catalog_por_ref_v1(jsonb,text,text,text,text)',
+ 'private.catalog_por_edge_v1(jsonb,text,text,text,text,text,jsonb)',
+ 'private.catalog_por_items_v1(jsonb,jsonb,text,text,text,text,text)',
+ 'private.catalog_por_ack_v1(jsonb,jsonb,text,text)',
+ 'private.catalog_por_text_array_v1(jsonb,text)',
+ 'private.catalog_por_extract_event_v1(regclass,text,jsonb,jsonb,jsonb)',
+]);
+// Family membership uses literal prefixes, never LIKE wildcards. In particular,
+// catalog_por_* must not accidentally satisfy catalog_po_* membership.
+const helperPredicate=`n.nspname='private' AND (pg_catalog.starts_with(p.proname,'catalog_po_')
+ OR pg_catalog.starts_with(p.proname,'catalog_rcl_') OR pg_catalog.starts_with(p.proname,'catalog_por_')
  OR p.proname IN ('catalog_extract_promotion_owner_event_v1','catalog_resolve_promotion_edges_v1',
  'catalog_validate_promotion_owner_event_v1','catalog_resolve_retired_co_line_v1'))`;
 const absentPredicate=`NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE ${helperPredicate})`;
@@ -73,7 +108,17 @@ ${sessionGate()}SELECT ${family}_sqlstate AS catalogue_reference_red_state FROM 
 const aclSql=`DO $catalogue_reference_acl$
 DECLARE f record; role_name text;
 BEGIN
- IF NOT (SELECT count(*) = 15 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE ${helperPredicate}) THEN
+ -- Match both directions by exact signature/OID. A missing signature, overload,
+ -- unexpected family member or same-count replacement cannot satisfy this gate.
+ IF EXISTS (
+  WITH expected AS (
+   SELECT pg_catalog.to_regprocedure(signature)::oid AS oid
+   FROM pg_catalog.unnest(ARRAY[${referenceHelperSignatures.map(quote).join(',')}]) AS inventory(signature)
+  ), actual AS (
+   SELECT p.oid FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE ${helperPredicate}
+  )
+  SELECT 1 FROM expected FULL JOIN actual USING(oid) WHERE expected.oid IS NULL OR actual.oid IS NULL
+ ) THEN
   RAISE EXCEPTION 'CATALOGUE_REFERENCE_FUNCTION_SET_REFUSED';
  END IF;
  FOR f IN SELECT p.* FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace WHERE ${helperPredicate} LOOP
@@ -95,6 +140,7 @@ const apiCalls=[
  'SELECT private.catalog_resolve_promotion_edges_v1(NULL::jsonb,NULL::jsonb)',
  'SELECT private.catalog_validate_promotion_owner_event_v1(NULL::regclass,NULL::text,NULL::jsonb,NULL::jsonb,NULL::jsonb)',
  'SELECT private.catalog_resolve_retired_co_line_v1(NULL::uuid,NULL::uuid,NULL::uuid,NULL::jsonb)',
+ 'SELECT private.catalog_por_extract_event_v1(NULL::regclass,NULL::text,NULL::jsonb,NULL::jsonb,NULL::jsonb)',
 ];
 const actualApiAclSql=['anon','authenticated','service_role'].map(role=>`SET LOCAL ROLE ${role};
 DO $catalogue_reference_api_acl$
@@ -112,9 +158,13 @@ RESET ROLE;
 `).join('');
 export function buildCatalogueReferenceSession(identity,parts) {
  assert.deepEqual(Object.keys(parts).sort(),Object.keys(referenceSqlPaths).sort());
- for(const name of ['promotionCandidate','retiredCandidate'])foundationTopLevelSql(parts[name]);
- const promotion=referenceSuiteSql('promotionSuite',parts.promotionSuite),retired=referenceSuiteSql('retiredSuite',parts.retiredSuite);
- const mark=index=>`\\echo ${markers[index][0]} :catalogue_reference_pid :catalogue_reference_xid ${index<2?':catalogue_reference_red_state':markers[index][1]}\n`;
+ for(const name of ['promotionCandidate','retiredCandidate','poCandidate'])foundationTopLevelSql(parts[name]);
+ const promotion=referenceSuiteSql('promotionSuite',parts.promotionSuite),retired=referenceSuiteSql('retiredSuite',parts.retiredSuite),po=referenceSuiteSql('poSuite',parts.poSuite);
+ // The reviewed PO suite classifies its missing entrypoint and returns normally.
+ // Execute it unchanged, then require a real typed missing-entrypoint failure.
+ // Catching that failure rolls back the suite's temporary functions as well.
+ const poRed=po+'\n'+apiCalls[4]+';';
+ const mark=index=>`\\echo ${markers[index][0]} :catalogue_reference_pid :catalogue_reference_xid ${markers[index][1]!=='00000'?':catalogue_reference_red_state':markers[index][1]}\n`;
  return `\\set ON_ERROR_STOP on
 \\o /dev/null
 ${catalogueCiIdentityGateSql(identity)}${booleanGate(absentPredicate,'catalogue_reference_preexisting_refused')}BEGIN;
@@ -127,16 +177,18 @@ SELECT pg_catalog.pg_backend_pid() AS catalogue_reference_pid, pg_catalog.txid_c
 \\gset
 CREATE TEMP TABLE catalogue_reference_session_v1 ON COMMIT DROP AS
  SELECT pg_catalog.pg_backend_pid() AS backend_pid,pg_catalog.txid_current() AS transaction_id,
- NULL::text AS promotion_sqlstate,NULL::text AS retired_sqlstate;
-${missingCheckpoint(promotion,'promotion','PCE01','CATALOGUE_PROMOTION_OWNER_MISSING_FUNCTION')}${mark(0)}${missingCheckpoint(retired,'retired','P0001','MISSING_RETIRED_CO_LINE_RESOLVER')}${mark(1)}${parts.promotionCandidate}
+ NULL::text AS promotion_sqlstate,NULL::text AS retired_sqlstate,NULL::text AS po_sqlstate;
+${missingCheckpoint(promotion,'promotion','PCE01','CATALOGUE_PROMOTION_OWNER_MISSING_FUNCTION')}${mark(0)}${missingCheckpoint(retired,'retired','P0001','MISSING_RETIRED_CO_LINE_RESOLVER')}${mark(1)}${missingCheckpoint(poRed,'po','42883','function private.catalog_por_extract_event_v1(regclass, text, jsonb, jsonb, jsonb) does not exist')}${mark(2)}${parts.promotionCandidate}
 ${parts.retiredCandidate}
-${sessionGate()}${mark(2)}${promotion}
-${sessionGate()}${mark(3)}${retired}
-${sessionGate()}${mark(4)}${aclSql}${actualApiAclSql}${sessionGate()}${mark(5)}ROLLBACK;
+${parts.poCandidate}
+${sessionGate()}${mark(3)}${promotion}
+${sessionGate()}${mark(4)}${retired}
+${sessionGate()}${mark(5)}${booleanGate("pg_catalog.to_regprocedure('private.catalog_por_extract_event_v1(regclass,text,jsonb,jsonb,jsonb)') IS NOT NULL",'catalogue_reference_po_entrypoint_refused')}${po}
+${sessionGate()}${mark(6)}${aclSql}${actualApiAclSql}${sessionGate()}${mark(7)}ROLLBACK;
 ${catalogueCiIdentityGateSql(identity)}${booleanGate(`${absentPredicate}
  AND pg_catalog.pg_backend_pid()=:'catalogue_reference_pid'::integer
  AND pg_catalog.to_regclass('pg_temp.catalogue_reference_session_v1') IS NULL
- AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc WHERE pronamespace=pg_catalog.pg_my_temp_schema())`,'catalogue_reference_rollback_refused')}${mark(6)}\\o
+ AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc WHERE pronamespace=pg_catalog.pg_my_temp_schema())`,'catalogue_reference_rollback_refused')}${mark(8)}\\o
 `;
 }
 function parsePrefix(output) {
@@ -180,15 +232,15 @@ export function runCatalogueReferenceHelpers({repoRoot=defaultRoot,env=process.e
    cwd:repoRoot,env:connection,input,encoding:'utf8',timeout:180000,maxBuffer:512*1024,shell:false,stdio:['pipe','pipe','pipe']});
   const verify=()=>verifyCatalogueCiObservation(JSON.parse(run(catalogueCiIdentityGateSql(identity)+catalogueObservationSql('pilot_catalogue_test'))),identity,'pilot_catalogue_test');
   phase='source-preflight';checkSource();phase='identity-preflight';verify();
-  // One live psql session is required for both REDs, both installations, both
+  // One live psql session is required for all three REDs, installations and
   // semantic suites, effective/actual-role ACL checks and verified rollback.
   phase='session';const session=parseCatalogueReferenceOutput(run(sql));
   phase='source-postflight';checkSource();phase='identity-postflight';verify();
   phase='publication';const report={format:'catalogue-reference-helpers-v1',status:'BOUNDED_REFERENCE_HELPERS_PASSED',scope:'synthetic-pure-reference-helpers-only',
    task1Complete:false,implementationAccepted:false,hostedVerified:false,trackingReady:false,executionGeneration:1,identity,session,
    files:Object.entries(referenceSqlPaths).map(([name,path])=>({path,sha256:sha(bytes[name])})),
-   tests:{promotionMissing:{status:'EXPECTED_RED',sqlstate:'PCE01'},retiredMissing:{status:'EXPECTED_RED',sqlstate:'P0001'},
-    promotionSemantics:'PASSED',retiredSemantics:'PASSED',ownerAndEffectiveAcl:'PASSED',actualApiRoleDenial:'PASSED',rollback:'VERIFIED'},
+   tests:{promotionMissing:{status:'EXPECTED_RED',sqlstate:'PCE01'},retiredMissing:{status:'EXPECTED_RED',sqlstate:'P0001'},poMissing:{status:'EXPECTED_RED',sqlstate:'42883'},
+    promotionSemantics:'PASSED',retiredSemantics:'PASSED',poSemantics:'PASSED',ownerAndEffectiveAcl:'PASSED',actualApiRoleDenial:'PASSED',rollback:'VERIFIED'},
    referenceTracking:'NOT_IMPLEMENTED',collectorCompleteness:'UNPROVEN',fullReferenceClosure:'UNPROVEN',
    trustedInputAssumption:'AUTHENTICATED_COMPLETE_SOURCE_PROFILE_VALIDATED_FROZEN_HISTORY',
    targetParity:'SYNTHETIC_SAME_SESSION_ONLY',foundationStatus:'SEPARATE_EVIDENCE',broaderLockGraph:'UNPROVEN',commandAndReplaySuites:'UNRUN'};

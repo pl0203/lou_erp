@@ -379,7 +379,7 @@ jobs:
       - name: Check foundation behavior harness without a database
         run: node --test tests/catalogue-ci/foundation.node.mjs
       - name: Check reference helper harness and frozen source without a database
-        run: node --test tests/catalogue-ci/reference-helpers.node.mjs tests/catalogue-ci/promotion-owner-extraction.node.mjs tests/catalogue/retired-co-line-resolution.source.mjs
+        run: node --test tests/catalogue-ci/reference-helpers.node.mjs tests/catalogue-ci/promotion-owner-extraction.node.mjs tests/catalogue/retired-co-line-resolution.source.mjs tests/catalogue-ci/po-reference-extraction.node.mjs
       - name: Bind clean candidate bytes before capture
         run: |
           set -euo pipefail
