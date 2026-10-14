@@ -1,6 +1,23 @@
 // @vitest-environment node
-import { expect, test } from 'vitest'
+import { beforeEach, expect, test, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
+const sourceBoundary = vi.hoisted(() => ({ execute: vi.fn(), refuseReads: false, attemptedReads: [] as unknown[] }))
+vi.mock('node:child_process', () => ({ execFileSync: sourceBoundary.execute }))
+vi.mock('node:fs', async importOriginal => {
+ const actual = await importOriginal<typeof import('node:fs')>()
+ return { ...actual, readFileSync: (...args: Parameters<typeof actual.readFileSync>) => {
+  if (sourceBoundary.refuseReads) {
+   sourceBoundary.attemptedReads.push(args[0])
+   throw new Error('Source read attempted before committed-source refusal')
+  }
+  return Reflect.apply(actual.readFileSync, actual, args)
+ } }
+})
+beforeEach(() => {
+ sourceBoundary.execute.mockReset().mockImplementation(() => { throw new Error('Unexpected child-process transport') })
+ sourceBoundary.refuseReads = false
+ sourceBoundary.attemptedReads.length = 0
+})
 import { coInventoryPin, coReadCommittedSources, coValidateTargetReceipt, CO_MIGRATIONS, coInventoryQuery, coCatalogDelta, coBindEnumReceipt, coSha256 } from '../../scripts/build-co-rollout.mjs'
 const inventory = readFileSync('scripts/co-preflight.sql','utf8')
 test('source allowlist contains only enum00 and forward01–08, never applied owner or fixtures', () => {
@@ -29,11 +46,42 @@ test('target receipt drift is refused rather than repinned', () => {
  expect(()=>coValidateTargetReceipt(Buffer.from('{}'),Buffer.from('{}'))).toThrow(/snapshot.*hash/i)
 })
 test.each(['HEAD','main','../bad','a'.repeat(39)])('immutable source refuses symbolic or malformed candidate %s', candidate => {
+ sourceBoundary.refuseReads = true
  expect(()=>coReadCommittedSources(process.cwd(),candidate)).toThrow(/40.*hex|immutable/i)
+ expect(sourceBoundary.execute).not.toHaveBeenCalled()
+ expect(sourceBoundary.attemptedReads).toEqual([])
+})
+// Unit transport coverage of the actual guard, not real Git integration.
+test('a committed source rejects wrong HEAD before status or protected source reads', () => {
+ const candidate = '7b743bfe5282b0a3d3b6b394c56545cac0ee4a7c'
+ sourceBoundary.refuseReads = true
+ sourceBoundary.execute.mockImplementation((command, args) => {
+  expect(command).toBe('git')
+  expect(args).toEqual(['rev-parse', 'HEAD'])
+  return 'a'.repeat(40) + '\n'
+ })
+ expect(()=>coReadCommittedSources(process.cwd(),candidate)).toThrow('Candidate must equal actual HEAD')
+ expect(sourceBoundary.execute.mock.calls.map(([command, args]) => [command, args])).toEqual([
+  ['git', ['rev-parse', 'HEAD']],
+ ])
+ expect(sourceBoundary.attemptedReads).toEqual([])
 })
 test('a committed source can never silently consume dirty intended worktree inputs', () => {
- // This pre-Task13 commit is immutable but is no longer the current tree once integration is committed.
- expect(()=>coReadCommittedSources(process.cwd(),'7b743bfe5282b0a3d3b6b394c56545cac0ee4a7c')).toThrow(/dirty|HEAD|source/i)
+ const candidate = '7b743bfe5282b0a3d3b6b394c56545cac0ee4a7c'
+ sourceBoundary.refuseReads = true
+ sourceBoundary.execute.mockImplementation((command, args) => {
+  expect(command).toBe('git')
+  if (args.join(' ') === 'rev-parse HEAD') return candidate + '\n'
+  expect(args).toEqual(['status', '--porcelain', '--untracked-files=normal'])
+  return ' M scripts/co-preflight.sql\n'
+ })
+ expect(()=>coReadCommittedSources(process.cwd(),candidate)).toThrow('Dirty source inputs refused')
+ // Exact calls forbid merge-base, show and any later source-materialization path.
+ expect(sourceBoundary.execute.mock.calls.map(([command, args]) => [command, args])).toEqual([
+  ['git', ['rev-parse', 'HEAD']],
+  ['git', ['status', '--porcelain', '--untracked-files=normal']],
+ ])
+ expect(sourceBoundary.attemptedReads).toEqual([])
 })
 
 test('portable delta entries do not pin generated internal-trigger OIDs', () => {

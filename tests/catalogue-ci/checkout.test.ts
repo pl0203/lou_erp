@@ -1,8 +1,8 @@
 // @vitest-environment node
 import { expect, test } from 'vitest'
-import { existsSync,readFileSync,mkdtempSync,rmSync } from 'node:fs'
+import { existsSync,readFileSync,mkdtempSync,rmSync,lstatSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
-import { resolve } from 'node:path'
+import { resolve,dirname,delimiter } from 'node:path'
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
@@ -43,10 +43,16 @@ test('workflow starts metadata-only then explicitly fetches only safe exact-head
 
 test('real sparse Git materialization preserves excluded missing blobs and a clean exact-head source',()=>{
  const root=mkdtempSync(resolve(tmpdir(),'catalogue-safe-checkout-'))
- const env=mod.catalogueCheckoutGitEnv(process.env)
+ // A ceiling equal to cwd alone is ignored; include its parent as well.
+ const env={...mod.catalogueCheckoutGitEnv(process.env),GIT_CEILING_DIRECTORIES:[root,dirname(root)].join(delimiter)}
  const git=(args:string[],input?:string)=>execFileSync('git',args,{cwd:root,env,encoding:'utf8',input,stdio:'pipe'})
  try {
+  // Before init, discovery must fail rather than finding an ancestor repository.
+  expect(()=>git(['rev-parse','--git-dir'])).toThrow(/not a git repository/i)
   git(['init','--quiet'])
+  const fixtureGit=resolve(root,'.git'),fixtureGitStat=lstatSync(fixtureGit)
+  expect(fixtureGitStat.isDirectory()).toBe(true);expect(fixtureGitStat.isSymbolicLink()).toBe(false)
+  expect(git(['rev-parse','--absolute-git-dir']).trim()).toBe(fixtureGit)
   const content='synthetic permitted source\n',safe=git(['hash-object','-w','--stdin'],content).trim(),excluded='b'.repeat(40)
   const tree=git(['mktree','--missing'],`100644 blob ${excluded}\t.env\n100644 blob ${safe}\tcode.txt\n`).trim()
   const commit=git(['-c','user.name=Synthetic Test','-c','user.email=synthetic@example.invalid','commit-tree',tree], 'synthetic fixture\n').trim()
@@ -59,6 +65,10 @@ test('real sparse Git materialization preserves excluded missing blobs and a cle
    if(args.includes('fetch')){fetches.push(args);return ''}
    return execFileSync(file,args,options)
   }
+  // The helper strips the local ceiling; require the owned repository first.
+  const beforeMaterialize=lstatSync(fixtureGit)
+  expect(beforeMaterialize.isDirectory()).toBe(true);expect(beforeMaterialize.isSymbolicLink()).toBe(false)
+  expect(git(['rev-parse','--absolute-git-dir']).trim()).toBe(fixtureGit)
   const result=mod.materializeCatalogueCheckout({repoRoot:root,env:{PATH:process.env.PATH,CATALOGUE_CI_SOURCE_SHA:commit,GITHUB_REPOSITORY:'pl0203/lou_erp',GITHUB_JOB:'catalogue-baseline'},execute})
   expect(result.excludedBlobsAbsent).toBe(true);expect(result.commit).toBe(commit)
   expect(readFileSync(resolve(root,'code.txt'),'utf8')).toBe(content);expect(existsSync(resolve(root,'.env'))).toBe(false)
