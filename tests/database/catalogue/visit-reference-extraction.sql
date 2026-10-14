@@ -122,7 +122,7 @@ BEGIN
  END LOOP;
  r:=pg_temp.vr_audit('approve_request',jsonb_build_object('request',pg_temp.vr_request(),'schedule',NULL),jsonb_build_object('request',pg_temp.vr_request('new','approved',2),'schedule',pg_temp.vr_schedule('target')));
  PERFORM pg_temp.vr_refused(private.catalog_extract_visit_reference_event_v1(audit,'INSERT',NULL,jsonb_set(r,'{old_value}',pg_temp.vr_request())),'UNKNOWN_SHAPE','NEW.old_value','approval wrapper required');
- SELECT jsonb_object_agg(key,'null'::jsonb) INTO empty_schedule FROM jsonb_object_keys(pg_temp.vr_schedule()) key;
+ SELECT jsonb_object_agg(k.field_name,'null'::jsonb) INTO empty_schedule FROM jsonb_object_keys(pg_temp.vr_schedule()) AS k(field_name);
  n:=jsonb_set(r,'{old_value,schedule}',empty_schedule);PERFORM pg_temp.vr_equal(private.catalog_extract_visit_reference_event_v1(audit,'INSERT',NULL,n)->'ok','true','native all-null absent schedule');
  n:=jsonb_set(r,'{old_value}',(r->'old_value')-'schedule');PERFORM pg_temp.vr_refused(private.catalog_extract_visit_reference_event_v1(audit,'INSERT',NULL,n),'UNKNOWN_SHAPE','NEW.old_value','historical absent schedule differs from missing key');
  n:=jsonb_set(r,'{new_value,schedule,outlet_id}',to_jsonb(pg_temp.vr_id('source')));PERFORM pg_temp.vr_refused(private.catalog_extract_visit_reference_event_v1(audit,'INSERT',NULL,n),'CONTRADICTORY_LINEAGE','NEW.new_value.schedule','approval cross-customer binding');

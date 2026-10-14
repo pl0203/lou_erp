@@ -86,3 +86,33 @@ test('synthetic visit SQL expressions have balanced parentheses outside literal 
   assert.deepEqual(stack,[],`${path.pathname}: unmatched opening parentheses`);
  }
 });
+
+test('declared PL/pgSQL blocks keep SRF output names separate from local variables',()=>{
+ // Narrow static namespace audit, not a PostgreSQL parser or SQL proof.
+ const mask=text=>text.replace(/--[^\n]*|\/\*[\s\S]*?\*\/|'(?:''|[^'])*'|"(?:""|[^"])*"/g,
+  match=>match.replace(/[^\n]/g,' '));
+ const outputs={jsonb_object_keys:['jsonb_object_keys'],jsonb_array_elements:['value'],jsonb_each:['key','value'],
+  unnest:['unnest'],aclexplode:['grantor','grantee','privilege_type','is_grantable']};
+ const hazards=[];let sites=0;
+ for(const path of [candidate,suite]){
+  const sql=readFileSync(path,'utf8');
+  for(const block of sql.matchAll(/\$(\w*)\$([\s\S]*?)\$\1\$/g)){
+   const body=mask(block[2]),declarations=body.match(/\bDECLARE\b([\s\S]*?)\bBEGIN\b/i)?.[1];
+   if(!declarations)continue;
+   const variables=new Set([...declarations.matchAll(/(?:^|;)\s*([a-z_][a-z0-9_]*)\s+(?:jsonb|text|numeric|record|integer|boolean|regclass)\b/gi)].map(m=>m[1].toLowerCase()));
+   for(const call of body.matchAll(/\b(?:FROM|JOIN)\s+(?:pg_catalog\.)?(jsonb_object_keys|jsonb_array_elements|jsonb_each|unnest|aclexplode)\s*\(/gi)){
+    sites++;let cursor=call.index+call[0].length,depth=1;
+    while(depth>0&&cursor<body.length){if(body[cursor]==='(')depth++;else if(body[cursor]===')')depth--;cursor++;}
+    assert.equal(depth,0,'Every audited SRF call has a closed argument list');
+    const tail=body.slice(cursor),match=tail.match(/^\s+(?:AS\s+)?([a-z_][a-z0-9_]*)(?:\s*\(([^)]*)\))?/i);
+    const alias=match&&!['loop','where','order','group','limit','on','union','end','else','then'].includes(match[1].toLowerCase())?match:null;
+    let columns=outputs[call[1].toLowerCase()];
+    if(alias?.[2])columns=alias[2].split(',').map(x=>x.trim().toLowerCase());
+    else if(alias&&call[1].toLowerCase()==='jsonb_object_keys')columns=[alias[1].toLowerCase()];
+    for(const column of columns)if(variables.has(column))hazards.push({file:path.pathname,column});
+   }
+  }
+ }
+ assert.equal(sites,9,'Audit every current declared-block SRF site in candidate and fixture');
+ assert.deepEqual(hazards,[],'SRF output aliases must not collide with same-block PL/pgSQL variables (42702)');
+});
