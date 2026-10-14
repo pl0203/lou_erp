@@ -14,7 +14,16 @@ test('adds CO after all 32 original gates without changing their service, source
   const helperSourceLine = '        run: node --test tests/catalogue-ci/reference-helpers.node.mjs tests/catalogue-ci/promotion-owner-extraction.node.mjs tests/catalogue/retired-co-line-resolution.source.mjs tests/catalogue-ci/po-reference-extraction.node.mjs tests/catalogue-ci/visit-reference-extraction.node.mjs tests/catalogue-ci/co-reference-extraction.node.mjs';
   const addedSuites = ' tests/catalogue-ci/nonco-lineage-resolution.node.mjs tests/catalogue-ci/co-draft-reference-extraction.node.mjs';
   expect(actual.split(helperSourceLine + addedSuites + '\n')).toHaveLength(2);
-  const normalized = actual.replace(scheduling, '').replace(helperSourceLine + addedSuites + '\n', helperSourceLine + '\n');
+  // Each new terminal-runtime region is independently pinned before removal.
+  const targetSourceStart=actual.indexOf('      - name: Check customer target harness and artifact wrapper without a database');
+  const targetSourceEnd=actual.indexOf('      - name: Bind clean candidate bytes before capture',targetSourceStart);
+  const targetSource=actual.slice(targetSourceStart,targetSourceEnd);
+  expect(createHash('sha256').update(targetSource).digest('hex')).toBe('8506100f1339b3734e2cd479b518ccc264fa4d9a90f00e8504fc6e9b562d7782');
+  const targetTerminalStart=actual.indexOf('      - name: Verify terminal customer target runtime and disposal');
+  const targetTerminal=actual.slice(targetTerminalStart,targetTerminalStart+1387);
+  expect(createHash('sha256').update(targetTerminal).digest('hex')).toBe('2de4d693426ab98fafe38fc1aba630c7c7aa3294955e997d857a08a9b86e1b41');
+  expect(actual.split(targetSource)).toHaveLength(2);expect(actual.split(targetTerminal)).toHaveLength(2);
+  const normalized = actual.replace(scheduling, '').replace(helperSourceLine + addedSuites + '\n', helperSourceLine + '\n').replace(targetSource,'').replace(targetTerminal,'');
   const decoderStart = normalized.indexOf('      - name: Bind independent read decoder source');
   const catalogueStart = normalized.indexOf('  # Independent of synthetic-safety:');
   const decoder = normalized.slice(decoderStart, catalogueStart);

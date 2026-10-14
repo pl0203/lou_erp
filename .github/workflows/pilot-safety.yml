@@ -445,6 +445,8 @@ jobs:
         run: node --test tests/catalogue-ci/foundation.node.mjs
       - name: Check reference helper harness and frozen source without a database
         run: node --test tests/catalogue-ci/reference-helpers.node.mjs tests/catalogue-ci/promotion-owner-extraction.node.mjs tests/catalogue/retired-co-line-resolution.source.mjs tests/catalogue-ci/po-reference-extraction.node.mjs tests/catalogue-ci/visit-reference-extraction.node.mjs tests/catalogue-ci/co-reference-extraction.node.mjs tests/catalogue-ci/nonco-lineage-resolution.node.mjs tests/catalogue-ci/co-draft-reference-extraction.node.mjs
+      - name: Check customer target harness and artifact wrapper without a database
+        run: node --test tests/catalogue-ci/customer-target-runtime.node.mjs tests/catalogue-ci/customer-target-tracking.node.mjs tests/catalogue-ci/customer-target-artifact.node.mjs
       - name: Bind clean candidate bytes before capture
         run: |
           set -euo pipefail
@@ -529,5 +531,21 @@ jobs:
         with:
           name: catalogue-read-proof-${{ github.run_id }}-${{ github.run_attempt }}
           path: scale-results/catalogue-read-proof
+          if-no-files-found: error
+          retention-days: 7
+      - name: Verify terminal customer target runtime and disposal
+        # FINAL database operation: intentionally consumes the identity-bound child.
+        # The exclusive GitHub job service has no persistent volumes or shared users.
+        # GitHub destroys the entire per-job service at job end, including failures.
+        # Failed or uncertain setup remains CLEANUP_UNPROVEN; no blind cleanup retry.
+        if: ${{ success() && steps.catalogue-baseline-capture.outcome == 'success' && steps.catalogue-failfast.outcome == 'success' && steps.catalogue-foundation-red.outcome == 'success' && steps.catalogue-foundation.outcome == 'success' && steps.catalogue-reference-helpers.outcome == 'success' && steps.catalogue-read-proof.outcome == 'success' && steps.catalogue-read-proof.outputs.bundle_ready == 'true' }}
+        id: catalogue-customer-target-runtime
+        run: node scripts/catalogue-customer-target-artifact.mjs
+      - name: Preserve only validated target runtime and disposal results
+        if: ${{ success() && steps.catalogue-customer-target-runtime.outputs.bundle_ready == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalogue-customer-target-runtime-${{ github.run_id }}-${{ github.run_attempt }}
+          path: scale-results/catalogue-customer-target-runtime
           if-no-files-found: error
           retention-days: 7

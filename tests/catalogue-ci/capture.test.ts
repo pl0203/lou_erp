@@ -227,7 +227,7 @@ test('capture strips original error, stdout, stderr and SQL values from thrown f
  expect(JSON.stringify(capture.catalogueCaptureFailure(thrown.phase))).not.toContain('PRIVATE')
 })
 test('public input list is exact and does not enumerate or read unrelated protected source',()=>{
- expect(runner.cataloguePublicSourcePaths).toHaveLength(102)
+ expect(new Set(runner.cataloguePublicSourcePaths).size).toBe(runner.cataloguePublicSourcePaths.length)
  expect(runner.cataloguePublicSourcePaths).toEqual([
  '.github/workflows/pilot-safety.yml','vercel.json','tests/vercel-routing.test.ts',
  'scripts/catalogue-checkout.mjs','scripts/catalogue-ci-profile.mjs','scripts/catalogue-capture-source.mjs',
@@ -323,6 +323,17 @@ test('public input list is exact and does not enumerate or read unrelated protec
  'tests/setup.ts',
  'tests/catalogue-ci/read-workflow.test.ts',
  'tests/pilot-ci-checkpoint.test.ts',
+ 'scripts/catalogue-customer-target-runtime.mjs',
+ 'supabase/catalogue/v1/02-customer-target-tracking.sql',
+ 'tests/catalogue-ci/customer-target-runtime.node.mjs',
+ 'tests/catalogue-ci/customer-target-tracking.node.mjs',
+ 'tests/database/catalogue/customer-target-race-spec.md',
+ 'tests/database/catalogue/customer-target-races.mjs',
+ 'tests/database/catalogue/customer-target-runtime-authority.sql',
+ 'tests/database/catalogue/customer-target-runtime-variants.sql',
+ 'tests/database/catalogue/customer-target-tracking.sql',
+ 'scripts/catalogue-customer-target-artifact.mjs',
+ 'tests/catalogue-ci/customer-target-artifact.node.mjs',
 ])
  expect(runner.assertCatalogueCaptureSource(resolve('.')).composition).toHaveLength(42)
  const root=temp(),other=temp()

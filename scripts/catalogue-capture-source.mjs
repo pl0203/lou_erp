@@ -102,6 +102,17 @@ export const cataloguePublicSourcePaths=[
  'tests/setup.ts',
  'tests/catalogue-ci/read-workflow.test.ts',
  'tests/pilot-ci-checkpoint.test.ts',
+ 'scripts/catalogue-customer-target-runtime.mjs',
+ 'supabase/catalogue/v1/02-customer-target-tracking.sql',
+ 'tests/catalogue-ci/customer-target-runtime.node.mjs',
+ 'tests/catalogue-ci/customer-target-tracking.node.mjs',
+ 'tests/database/catalogue/customer-target-race-spec.md',
+ 'tests/database/catalogue/customer-target-races.mjs',
+ 'tests/database/catalogue/customer-target-runtime-authority.sql',
+ 'tests/database/catalogue/customer-target-runtime-variants.sql',
+ 'tests/database/catalogue/customer-target-tracking.sql',
+ 'scripts/catalogue-customer-target-artifact.mjs',
+ 'tests/catalogue-ci/customer-target-artifact.node.mjs',
 ]
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex')
 export function catalogueCaptureSourceBytes(root,path) {
