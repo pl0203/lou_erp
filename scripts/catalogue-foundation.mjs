@@ -90,17 +90,47 @@ export function parseCatalogueFoundationOutput(output) {
  }
  return {backendPid,transactionId};
 }
+const failurePhases=Object.freeze(['initialization','binding','containment','workspace','source-preflight','identity-preflight','session','source-postflight','identity-postflight','publication']);
+// Diagnostics never classify acceptance or reproduce SQL, rows or exception text.
+export function foundationFailureDiagnostic(phase,error) {
+ const safePhase=failurePhases.includes(phase)?phase:'unknown';
+ const result={phase:safePhase,completedMarkerIndex:null,sqlstate:null};
+ if(!['identity-preflight','session','identity-postflight'].includes(safePhase)
+   || !error || error.status!==3 || error.signal!==null || error.code!==undefined
+   || typeof error.stderr!=='string')return Object.freeze(result);
+ const errors=error.stderr.split('\n').filter(line=>line.startsWith('ERROR:'));
+ if(errors.length!==1)return Object.freeze(result);
+ const state=errors[0].match(/^ERROR:\s+([A-Z0-9]{5}):/);
+ if(!state)return Object.freeze(result);
+ result.sqlstate=state[1];
+ if(safePhase!=='session'||typeof error.stdout!=='string')return Object.freeze(result);
+ if(error.stdout===''){result.completedMarkerIndex=-1;return Object.freeze(result);}
+ if(!error.stdout.endsWith('\n'))return Object.freeze(result);
+ const lines=error.stdout.slice(0,-1).split('\n');
+ if(lines.length>foundationExpectedMarkers.length)return Object.freeze(result);
+ let pid,xid;
+ for(let index=0;index<lines.length;index++){
+  const match=lines[index].match(/^([A-Z_]+) ([1-9][0-9]*) ([1-9][0-9]*)$/);
+  if(!match||match[1]!==foundationExpectedMarkers[index])return Object.freeze(result);
+  if(index===0){pid=match[2];xid=match[3];}
+  if(match[2]!==pid||match[3]!==xid)return Object.freeze(result);
+ }
+ result.completedMarkerIndex=lines.length-1;return Object.freeze(result);
+}
 export function runCatalogueFoundation({repoRoot=defaultRoot,env=process.env,execute=execFileSync}={}) {
- let descriptor;
+ let descriptor,phase='initialization';
  try {
   assert.equal(typeof env.GITHUB_OUTPUT,'string');
   descriptor=openSync(env.GITHUB_OUTPUT,constants.O_WRONLY|constants.O_APPEND|constants.O_NOFOLLOW);
   assert.ok(fstatSync(descriptor).isFile());writeFileSync(descriptor,'bundle_ready=false\n');
+  phase='binding';
   const binding=catalogueFailfastBinding(repoRoot,env,execute),identity=binding.identity;
   const connection={...catalogueCiConnection(env,identity.source),PGDATABASE:'pilot_catalogue_test',LC_ALL:'C'};
+  phase='containment';
   const bytes=Object.fromEntries(Object.entries(foundationSqlPaths).map(([name,path])=>[name,catalogueCaptureSourceBytes(repoRoot,path)]));
   const parts=Object.fromEntries(Object.entries(bytes).map(([name,body])=>[name,body.toString('utf8')]));
   const sql=buildCatalogueFoundationSession(identity,parts);
+  phase='workspace';
   const parent=resolve(repoRoot,'scale-results');directory(parent);
   const output=resolve(parent,'catalogue-foundation'),pending=resolve(parent,'catalogue-foundation-pending');
   mkdirSync(output);const reserved=directory(output);mkdirSync(pending);directory(pending);
@@ -108,11 +138,13 @@ export function runCatalogueFoundation({repoRoot=defaultRoot,env=process.env,exe
   const run=input=>execute('psql',['-X','--no-password','-qAt','-v','ON_ERROR_STOP=1','-v','VERBOSITY=verbose'],{
    cwd:repoRoot,env:connection,input,encoding:'utf8',timeout:180000,maxBuffer:512*1024,shell:false,stdio:['pipe','pipe','pipe']});
   const verify=()=>verifyCatalogueCiObservation(JSON.parse(run(catalogueCiIdentityGateSql(identity)+catalogueObservationSql('pilot_catalogue_test'))),identity,'pilot_catalogue_test');
-  checkSource();verify();
+  phase='source-preflight';checkSource();phase='identity-preflight';verify();
   // Prechange capture, exact fragment, behavior/role/ACL probes and rollback all
   // execute in this one psql session. Unit fakes never constitute SQL evidence.
+  phase='session';
   const session=parseCatalogueFoundationOutput(run(sql));
-  checkSource();verify();
+  phase='source-postflight';checkSource();phase='identity-postflight';verify();
+  phase='publication';
   const report={format:'catalogue-foundation-v1',status:'BOUNDED_FOUNDATION_BEHAVIOR_PASSED',scope:'synthetic-foundation-only',
    task1Complete:false,implementationAccepted:false,hostedVerified:false,trackingReady:false,executionGeneration:1,
    identity,session,files:Object.entries(foundationSqlPaths).map(([name,path])=>({path,sha256:sha(bytes[name])})),
@@ -124,10 +156,10 @@ export function runCatalogueFoundation({repoRoot=defaultRoot,env=process.env,exe
   writeFileSync(resolve(pending,'results.json'),result,{flag:'wx'});
   writeFileSync(resolve(pending,'manifest.json'),JSON.stringify({format:'catalogue-foundation-manifest-v1',status:report.status,files:[{path:'results.json',sha256:sha(result)}]})+'\n',{flag:'wx'});
   checkSource();renameSync(pending,output);writeFileSync(descriptor,'bundle_ready=true\n');return report;
- } catch {throw new Error('CATALOGUE_FOUNDATION_REFUSED');}
+ } catch(error) {const refused=new Error('CATALOGUE_FOUNDATION_REFUSED');refused.diagnostic=foundationFailureDiagnostic(phase,error);throw refused;}
  finally {if(descriptor!==undefined)closeSync(descriptor);}
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href) {
  try {assert.deepEqual(process.argv.slice(2),[]);const report=runCatalogueFoundation();console.log(JSON.stringify({status:report.status,task1Complete:false,implementationAccepted:false,hostedVerified:false,trackingReady:false}));}
- catch {process.stderr.write('CATALOGUE_FOUNDATION_REFUSED\n');process.exitCode=1;}
+ catch(error) {process.stderr.write('CATALOGUE_FOUNDATION_REFUSED\n');if(process.env.GITHUB_ACTIONS==='true'&&error?.diagnostic)process.stderr.write(JSON.stringify({status:'CATALOGUE_FOUNDATION_REFUSED',...error.diagnostic,implementationAccepted:false})+'\n');process.exitCode=1;}
 }

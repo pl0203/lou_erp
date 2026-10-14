@@ -177,3 +177,38 @@ test('dedicated public CI runs bound foundation after capture and RED with outpu
  assert.ok(!job.includes('continue-on-error:'));assert.ok(!/path:\s*(?:scale-results\s*$|.*\.log\b)/m.test(job));
  for(const path of Object.values(runner.foundationSqlPaths))assert.ok(cataloguePublicSourcePaths.includes(path),`Unbound executable input ${path}`);
 });
+
+
+test('failure diagnostics expose only fixed phase, ordered marker index and SQLSTATE',()=>{
+ need();const error={status:3,signal:null,stdout:runner.foundationExpectedMarkers.slice(0,2).map(x=>`${x} 412 827`).join('\n')+'\n',stderr:'ERROR:  42501: PRIVATE_CANARY\nDETAIL: SECRET_CANARY\n'};
+ assert.equal(typeof runner.foundationFailureDiagnostic,'function');
+ assert.deepEqual(runner.foundationFailureDiagnostic('session',error),{phase:'session',completedMarkerIndex:1,sqlstate:'42501'});
+ assert.deepEqual(runner.foundationFailureDiagnostic('session',{...error,stdout:''}),{phase:'session',completedMarkerIndex:-1,sqlstate:'42501'});
+ assert.deepEqual(runner.foundationFailureDiagnostic('PRIVATE_CANARY',error),{phase:'unknown',completedMarkerIndex:null,sqlstate:null});
+ assert.ok(!JSON.stringify(runner.foundationFailureDiagnostic('session',error)).includes('CANARY'));
+});
+test('failure diagnostics reject malformed mixed or fabricated marker progress',()=>{
+ need();assert.equal(typeof runner.foundationFailureDiagnostic,'function');
+ const marker=runner.foundationExpectedMarkers[0]+' 412 827\n';
+ for(const stdout of ['PRIVATE_CANARY\n',marker+'PRIVATE_CANARY\n',runner.foundationExpectedMarkers[1]+' 412 827\n',marker+runner.foundationExpectedMarkers[1]+' 413 827\n',marker+marker,marker.trim(),runner.foundationExpectedMarkers[0]+' 0 827\n']) {
+  assert.deepEqual(runner.foundationFailureDiagnostic('session',{status:3,signal:null,stdout,stderr:'ERROR:  P0001: PRIVATE_CANARY\n'}),{phase:'session',completedMarkerIndex:null,sqlstate:'P0001'});
+ }
+});
+test('failure diagnostics do not mistake timeout spawn or mixed ERROR output for SQLSTATE',()=>{
+ need();assert.equal(typeof runner.foundationFailureDiagnostic,'function');
+ for(const change of [{status:1},{signal:'SIGTERM'},{code:'ENOENT'},{stderr:'ERROR:  P0001: x\nERROR:  42501: y\n'},{stderr:'prefix ERROR: P0001: PRIVATE_CANARY\n'},{stderr:'ERROR: PRIVATE_CANARY\n'}, {stdout:Buffer.from('PRIVATE_CANARY')}]) {
+  const error={status:3,signal:null,stdout:'',stderr:'ERROR:  P0001: PRIVATE_CANARY\n',...change};
+  const expected=change.stdout?{phase:'session',completedMarkerIndex:null,sqlstate:'P0001'}:{phase:'session',completedMarkerIndex:null,sqlstate:null};
+  assert.deepEqual(runner.foundationFailureDiagnostic('session',error),expected);
+ }
+});
+test('failure diagnostics preserve refusal and never authorize a failure bundle',()=>withFixture(f=>{
+ f.setBehavior(()=>{throw Object.assign(new Error('PRIVATE_CANARY'),{status:3,signal:null,stdout:runner.foundationExpectedMarkers[0]+' 412 827\n',stderr:'ERROR:  P0001: SECRET_CANARY\n'});});
+ assert.throws(()=>runner.runCatalogueFoundation({repoRoot:f.directory,env:f.env,execute:f.execute}),error=>{
+  assert.equal(error.message,'CATALOGUE_FOUNDATION_REFUSED');
+  assert.deepEqual(error.diagnostic,{phase:'session',completedMarkerIndex:0,sqlstate:'P0001'});
+  assert.ok(!JSON.stringify(error).includes('CANARY'));return true;
+ });
+ assert.equal(readFileSync(f.output,'utf8'),'bundle_ready=false\n');
+ assert.equal(existsSync(join(f.directory,'scale-results/catalogue-foundation/results.json')),false);
+}));
