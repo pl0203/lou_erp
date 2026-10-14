@@ -31,6 +31,11 @@ const markers=Object.freeze([
  ['CATALOGUE_REFERENCE_PO_RED_PASSED','42883'],
  ['CATALOGUE_REFERENCE_VISIT_RED_PASSED','PCV01'],
  ['CATALOGUE_REFERENCE_CO_RED_PASSED','PCE01'],
+ ['CATALOGUE_REFERENCE_PROMOTION_INSTALLED','00000'],
+ ['CATALOGUE_REFERENCE_RETIRED_INSTALLED','00000'],
+ ['CATALOGUE_REFERENCE_PO_INSTALLED','00000'],
+ ['CATALOGUE_REFERENCE_VISIT_INSTALLED','00000'],
+ ['CATALOGUE_REFERENCE_CO_INSTALLED','00000'],
  ['CATALOGUE_REFERENCE_CANDIDATES_APPLIED','00000'],
  ['CATALOGUE_REFERENCE_PROMOTION_SEMANTICS_PASSED','00000'],
  ['CATALOGUE_REFERENCE_RETIRED_SEMANTICS_PASSED','00000'],
@@ -205,20 +210,20 @@ CREATE TEMP TABLE catalogue_reference_session_v1 ON COMMIT DROP AS
  SELECT pg_catalog.pg_backend_pid() AS backend_pid,pg_catalog.txid_current() AS transaction_id,
  NULL::text AS promotion_sqlstate,NULL::text AS retired_sqlstate,NULL::text AS po_sqlstate,NULL::text AS visit_sqlstate,NULL::text AS co_sqlstate;
 ${missingCheckpoint(promotion,'promotion','PCE01','CATALOGUE_PROMOTION_OWNER_MISSING_FUNCTION')}${mark(0)}${missingCheckpoint(retired,'retired','P0001','MISSING_RETIRED_CO_LINE_RESOLVER')}${mark(1)}${missingCheckpoint(poRed,'po','42883','function private.catalog_por_extract_event_v1(regclass, text, jsonb, jsonb, jsonb) does not exist')}${mark(2)}${missingCheckpoint(visit,'visit','PCV01','CATALOGUE_VISIT_REFERENCE_MISSING_FUNCTION')}${mark(3)}${missingCheckpoint(co,'co','PCE01','CATALOGUE_CO_COMMAND_MISSING_FUNCTION')}${mark(4)}${parts.promotionCandidate}
-${parts.retiredCandidate}
-${parts.poCandidate}
-${parts.visitCandidate}
-${parts.coCandidate}
-${sessionGate()}${mark(5)}${promotion}
-${sessionGate()}${mark(6)}${retired}
-${sessionGate()}${mark(7)}${booleanGate("pg_catalog.to_regprocedure('private.catalog_por_extract_event_v1(regclass,text,jsonb,jsonb,jsonb)') IS NOT NULL",'catalogue_reference_po_entrypoint_refused')}${po}
-${sessionGate()}${mark(8)}${visit}
-${sessionGate()}${mark(9)}${co}
-${sessionGate()}${mark(10)}${aclSql}${actualApiAclSql}${sessionGate()}${mark(11)}ROLLBACK;
+${sessionGate()}${mark(5)}${parts.retiredCandidate}
+${sessionGate()}${mark(6)}${parts.poCandidate}
+${sessionGate()}${mark(7)}${parts.visitCandidate}
+${sessionGate()}${mark(8)}${parts.coCandidate}
+${sessionGate()}${mark(9)}${sessionGate()}${mark(10)}${promotion}
+${sessionGate()}${mark(11)}${retired}
+${sessionGate()}${mark(12)}${booleanGate("pg_catalog.to_regprocedure('private.catalog_por_extract_event_v1(regclass,text,jsonb,jsonb,jsonb)') IS NOT NULL",'catalogue_reference_po_entrypoint_refused')}${po}
+${sessionGate()}${mark(13)}${visit}
+${sessionGate()}${mark(14)}${co}
+${sessionGate()}${mark(15)}${aclSql}${actualApiAclSql}${sessionGate()}${mark(16)}ROLLBACK;
 ${catalogueCiIdentityGateSql(identity)}${booleanGate(`${absentPredicate}
  AND pg_catalog.pg_backend_pid()=:'catalogue_reference_pid'::integer
  AND pg_catalog.to_regclass('pg_temp.catalogue_reference_session_v1') IS NULL
- AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc WHERE pronamespace=pg_catalog.pg_my_temp_schema())`,'catalogue_reference_rollback_refused')}${mark(12)}\\o
+ AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_proc WHERE pronamespace=pg_catalog.pg_my_temp_schema())`,'catalogue_reference_rollback_refused')}${mark(17)}\\o
 `;
 }
 function parsePrefix(output) {
@@ -250,7 +255,7 @@ function verifiedMarkerPrefixLength(output) {
 const safeValue=(value,allowed)=>value===undefined||value===null?null:allowed.includes(value)?value:'other';
 export function referenceFailureDiagnostic(phase,error,parseOutput) {
  const safePhase=failurePhases.includes(phase)?phase:'unknown',result={phase:safePhase,completedMarkerIndex:null,sqlstate:null,
-  failureKind:null,processStatus:null,processSignal:null,processCode:null,errorCount:null,verifiedMarkerPrefixLength:null};
+  untrustedReportedSqlstate:null,failureKind:null,processStatus:null,processSignal:null,processCode:null,errorCount:null,verifiedMarkerPrefixLength:null};
  if(safePhase==='session-parse') {
   result.failureKind='parse';result.verifiedMarkerPrefixLength=verifiedMarkerPrefixLength(parseOutput);return Object.freeze(result);
  }
@@ -260,7 +265,10 @@ export function referenceFailureDiagnostic(phase,error,parseOutput) {
   result.processSignal=safeValue(error.signal,['SIGTERM','SIGKILL','SIGABRT','SIGSEGV','SIGPIPE','SIGINT']);
   result.processCode=safeValue(error.code,['ENOENT','EACCES','ETIMEDOUT','ENOBUFS','E2BIG','ERR_CHILD_PROCESS_STDIO_MAXBUFFER']);
   if(typeof error.stderr==='string') {
-   const count=error.stderr.split('\n').filter(line=>line.startsWith('ERROR:')).length;result.errorCount=count>1?'multiple':count;
+   const errorLines=error.stderr.split('\n').filter(line=>line.startsWith('ERROR:'));
+   const count=errorLines.length;result.errorCount=count>1?'multiple':count;
+   // Untrusted diagnostic only, never consumed by acceptance or RED gates.
+   if(error.status===3&&error.signal===null&&count===1)result.untrustedReportedSqlstate=errorLines[0].match(/^ERROR:\s+([A-Z0-9]{5}):/)?.[1]??null;
   }
   if(safePhase==='session')result.verifiedMarkerPrefixLength=verifiedMarkerPrefixLength(error.stdout);
  }

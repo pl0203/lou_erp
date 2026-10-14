@@ -22,6 +22,11 @@ const expected=[
  ['CATALOGUE_REFERENCE_PO_RED_PASSED','42883'],
  ['CATALOGUE_REFERENCE_VISIT_RED_PASSED','PCV01'],
  ['CATALOGUE_REFERENCE_CO_RED_PASSED','PCE01'],
+ ['CATALOGUE_REFERENCE_PROMOTION_INSTALLED','00000'],
+ ['CATALOGUE_REFERENCE_RETIRED_INSTALLED','00000'],
+ ['CATALOGUE_REFERENCE_PO_INSTALLED','00000'],
+ ['CATALOGUE_REFERENCE_VISIT_INSTALLED','00000'],
+ ['CATALOGUE_REFERENCE_CO_INSTALLED','00000'],
  ['CATALOGUE_REFERENCE_CANDIDATES_APPLIED','00000'],
  ['CATALOGUE_REFERENCE_PROMOTION_SEMANTICS_PASSED','00000'],
  ['CATALOGUE_REFERENCE_RETIRED_SEMANTICS_PASSED','00000'],
@@ -152,7 +157,7 @@ test('unchanged PO suite returning normally cannot qualify RED without an actual
  assert.ok(sql.indexOf("SELECT 1/0 AS catalogue_reference_po_entrypoint_refused;")<sql.indexOf(input.poSuite));
  assert.match(sql,/pg_catalog\.to_regprocedure\('private\.catalog_por_extract_event_v1\(regclass,text,jsonb,jsonb,jsonb\)'\) IS NOT NULL/);
 });
-test('only all thirteen ordered state-bound same-session markers with verified rollback are accepted',()=>{
+test('only all eighteen ordered state-bound same-session markers with verified rollback are accepted',()=>{
  need();assert.deepEqual(runner.parseCatalogueReferenceOutput(markers()),{backendPid:'412',transactionId:'827'});
  for(const output of ['',markers().trim(),markers()+'PRIVATE_CANARY\n',markers().replace('PCE01','PCE00'),markers().replace('P0001','42P01'),markers().replace('42883','42601'),markers().replace('412 827','413 827'),markers().replace('412 827','412 828'),markers().replace('412','0'),markers().split('\n').slice(0,-2).join('\n')+'\n',markers().split('\n').reverse().join('\n')])assert.throws(()=>runner.parseCatalogueReferenceOutput(output));
 });
@@ -328,8 +333,33 @@ test('successful fake process with malformed output is specifically parse refusa
  f.setBehavior(()=>markers()+'PRIVATE_CANARY\n');
  assert.throws(()=>runner.runCatalogueReferenceHelpers({repoRoot:f.directory,env:f.env,execute:f.execute}),error=>{
   assert.equal(error.diagnostic.phase,'session-parse');assert.equal(error.diagnostic.failureKind,'parse');
-  assert.equal(error.diagnostic.verifiedMarkerPrefixLength,13);assert.ok(!JSON.stringify(error).includes('CANARY'));return true;
+  assert.equal(error.diagnostic.verifiedMarkerPrefixLength,18);assert.ok(!JSON.stringify(error).includes('CANARY'));return true;
  });
  assert.equal(readFileSync(f.output,'utf8'),'bundle_ready=false\n');
  assert.equal(existsSync(join(f.directory,'scale-results/catalogue-reference-helpers/results.json')),false);
 }));
+
+test('reported SQLSTATE remains explicitly untrusted when process code classification is unknown',()=>{
+ need();const error={status:3,signal:null,code:'PRIVATE_CANARY',stdout:'',stderr:'ERROR:  42501: PRIVATE_CANARY\nCONTEXT: PRIVATE_SQL\n'};
+ const d=runner.referenceFailureDiagnostic('session',error);
+ assert.equal(d.untrustedReportedSqlstate,'42501');assert.equal(d.sqlstate,null);assert.equal(d.processCode,'other');
+ assert.ok(!JSON.stringify(d).includes('CANARY'));
+ for(const change of [{status:2},{signal:'SIGTERM'},{stderr:'ERROR:  TOOLONG: PRIVATE_CANARY\n'},{stderr:error.stderr+'ERROR: 42601: second\n'},{stderr:'ERROR:  4250: short\n'}])assert.equal(runner.referenceFailureDiagnostic('session',{...error,...change}).untrustedReportedSqlstate,null);
+ assert.equal(runner.referenceFailureDiagnostic('session-parse',error,'').untrustedReportedSqlstate,null);
+});
+test('each installed family has an ordered same-session checkpoint before overall installation acceptance',()=>{
+ need();const input=parts(),sql=runner.buildCatalogueReferenceSession(identity,input);
+ let prior=sql.indexOf('CATALOGUE_REFERENCE_CO_RED_PASSED');
+ for(const [key,name] of [['promotionCandidate','PROMOTION'],['retiredCandidate','RETIRED'],['poCandidate','PO'],['visitCandidate','VISIT'],['coCandidate','CO']]){
+  const start=sql.indexOf(input[key],prior),marker=sql.indexOf('CATALOGUE_REFERENCE_'+name+'_INSTALLED',start);
+  assert.ok(start>prior);assert.ok(marker>start+input[key].length);
+  assert.ok(sql.slice(start+input[key].length,marker).includes('catalogue_reference_session_refused'));prior=marker;
+ }
+ assert.ok(prior<sql.indexOf('CATALOGUE_REFERENCE_CANDIDATES_APPLIED'));
+ assert.equal(expected.length,18);
+ for(let i=5;i<10;i++){
+  const prefix=expected.slice(0,i+1).map(([name,state])=>`${name} 412 827 ${state}`).join('\n')+'\n';
+  assert.equal(runner.referenceFailureDiagnostic('session',{status:3,signal:null,code:'unknown',stdout:prefix,stderr:'ERROR: 42501: withheld\n'}).verifiedMarkerPrefixLength,i+1);
+  assert.throws(()=>runner.parseCatalogueReferenceOutput(prefix));
+ }
+});
