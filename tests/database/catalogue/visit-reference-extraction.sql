@@ -98,14 +98,14 @@ BEGIN
  PERFORM pg_temp.vr_equal(e,jsonb_build_object('ok',true,'extraction',jsonb_build_object('refs',jsonb_build_array(jsonb_build_object('kind','customer','id',pg_temp.vr_id('target'))),
  'edges','[]'::jsonb,'historicalNulls','[]'::jsonb,'origins',jsonb_build_array(
  jsonb_build_object('ref',jsonb_build_object('kind','customer','id',pg_temp.vr_id('target')),'rowSide','NEW','path','NEW.authority.customer_id'),
- jsonb_build_object('ref',jsonb_build_object('kind','customer','id',pg_temp.vr_id('target')),'rowSide','NEW','path','NEW.payload.customer_id'))))),'exact proposal output');
+ jsonb_build_object('ref',jsonb_build_object('kind','customer','id',pg_temp.vr_id('target')),'rowSide','NEW','path','NEW.payload.customer_id')))),'exact proposal output');
  n:=jsonb_set(r,'{payload,customer_id}',to_jsonb(pg_temp.vr_id('source')));n:=jsonb_set(n,'{authority,customer_id}',to_jsonb(pg_temp.vr_id('source')));
  e:=private.catalog_extract_visit_reference_event_v1(ledger,'UPDATE',r,n);PERFORM pg_temp.vr_equal(e#>'{extraction,refs}',expected,'OLD plus NEW ledger scope');
  PERFORM pg_temp.vr_equal(private.catalog_extract_visit_reference_event_v1(ledger,'DELETE',r,NULL)#>'{extraction,refs}',jsonb_build_array(jsonb_build_object('kind','customer','id',pg_temp.vr_id('target'))),'removed OLD customer retained');
  r:=pg_temp.vr_finalize();e:=private.catalog_extract_visit_reference_event_v1(visits,'INSERT',NULL,r);
  PERFORM pg_temp.vr_equal(e#>'{extraction,edges}',jsonb_build_array(
  jsonb_build_object('kind','schedule','id',pg_temp.vr_id('schedule'),'customerId',pg_temp.vr_id('target'),'origin','NEW.payload.schedule_id','expect',jsonb_build_object('scheduleVersion','1','scheduledDate','2026-02-03')),
- jsonb_build_object('kind','visit','id',pg_temp.vr_id('visit'),'customerId',pg_temp.vr_id('target'),'origin','NEW.result.id','expect',jsonb_build_object('scheduleId',pg_temp.vr_id('schedule'))))),'capture binding survives extraction');
+ jsonb_build_object('kind','visit','id',pg_temp.vr_id('visit'),'customerId',pg_temp.vr_id('target'),'origin','NEW.result.id','expect',jsonb_build_object('scheduleId',pg_temp.vr_id('schedule')))),'capture binding survives extraction');
  PERFORM pg_temp.vr_equal(e#>'{extraction,refs}',jsonb_build_array(jsonb_build_object('kind','customer','id',pg_temp.vr_id('target'))),'UUID-shaped notes stay nonreference');
  FOR op IN SELECT unnest(ARRAY['propose_visit','amend_visit','create_schedule','edit_schedule','delete_schedule','approve_request','reject_request','withdraw_request','edit_visit_note']) LOOP
   b:=CASE op WHEN 'amend_visit' THEN pg_temp.vr_schedule() WHEN 'edit_schedule' THEN pg_temp.vr_schedule() WHEN 'delete_schedule' THEN pg_temp.vr_schedule()

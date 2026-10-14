@@ -71,3 +71,18 @@ test('all PL/pgSQL IF conditions shield SQL CASE from depth-zero THEN',()=>{
  assert.ok(checked>20,'Inspect all visit helper IF conditions');
  assert.deepEqual(hazards,[],'Depth-zero SQL CASE truncates a PL/pgSQL IF condition (42601)');
 });
+
+test('synthetic visit SQL expressions have balanced parentheses outside literal strings',()=>{
+ // Lexical source guard only, not a SQL parser or executed behavior proof.
+ for(const path of [candidate,suite]){
+  const sql=readFileSync(path,'utf8');
+  const tokens=[...sql.matchAll(/--[^\n]*|\/\*[\s\S]*?\*\/|'(?:''|[^'])*'|"(?:""|[^"])*"|[()]/g)];
+  const stack=[],extra=[];
+  for(const token of tokens){
+   if(token[0]==='(')stack.push(token.index);
+   else if(token[0]===')'){if(stack.length)stack.pop();else extra.push(sql.slice(0,token.index).split('\n').length);}
+  }
+  assert.deepEqual(extra,[],`${path.pathname}: unmatched closing parentheses`);
+  assert.deepEqual(stack,[],`${path.pathname}: unmatched opening parentheses`);
+ }
+});
