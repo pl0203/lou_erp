@@ -160,7 +160,17 @@ test('dedicated public CI runs bound foundation after capture and RED with outpu
  need();
  const workflow=readFileSync(resolve(root,'.github/workflows/pilot-safety.yml'),'utf8');
  const split=workflow.indexOf('\n  catalogue-baseline:');assert.ok(split>0);
- assert.equal(createHash('sha256').update(workflow.slice(0,split)).digest('hex'),'32b1e9ded0e18c707af5e2bdc15c7730a0a61634da296b078240b2d2ad6cf505');
+ const sha=value=>createHash('sha256').update(value).digest('hex');
+ // Preserve the historical application/CO prefix; separately pin both reviewed additions.
+ const scheduling='    needs: catalogue-baseline\n    if: ${{ always() }}\n';
+ assert.equal(workflow.split(scheduling).length,2);
+ assert.ok(workflow.includes(`  synthetic-safety:\n${scheduling}    runs-on: ubuntu-latest`));
+ const prefix=workflow.slice(0,split).replace(scheduling,'');
+ const decoderStart=prefix.indexOf('      - name: Bind independent read decoder source');
+ const commentStart=prefix.indexOf('  # Independent of synthetic-safety:');
+ assert.ok(decoderStart>0&&commentStart>decoderStart);
+ assert.equal(sha(prefix.slice(decoderStart,commentStart)),'8921961b19dff1f49d74cf285076cab79c8a3d3467a8e7bd8b1b7453f8980e73');
+ assert.equal(sha(prefix.slice(0,decoderStart)+prefix.slice(commentStart)),'32b1e9ded0e18c707af5e2bdc15c7730a0a61634da296b078240b2d2ad6cf505');
  const job=workflow.slice(split);
  const unit='node --test tests/catalogue-ci/foundation.node.mjs';
  const runtime='node scripts/catalogue-foundation.mjs';

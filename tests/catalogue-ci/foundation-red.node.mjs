@@ -82,7 +82,16 @@ test('CLI has no target or implementation switch and returns only sanitized refu
 test('only dedicated job and source binding include the red checkpoint and condition its exact upload',()=>{
  need();for(const path of ['scripts/catalogue-foundation-red.mjs','tests/database/catalogue/foundation-red.sql','tests/catalogue-ci/foundation-red.node.mjs'])assert.ok(cataloguePublicSourcePaths.includes(path));
  const workflow=readFileSync(join(root,'.github/workflows/pilot-safety.yml'),'utf8'),split=workflow.indexOf('\n  catalogue-baseline:');
- assert.equal(sha(workflow.slice(0,split)),'32b1e9ded0e18c707af5e2bdc15c7730a0a61634da296b078240b2d2ad6cf505');
+ // Preserve the historical application/CO prefix; separately pin both reviewed additions.
+ const scheduling='    needs: catalogue-baseline\n    if: ${{ always() }}\n';
+ assert.equal(workflow.split(scheduling).length,2);
+ assert.ok(workflow.includes(`  synthetic-safety:\n${scheduling}    runs-on: ubuntu-latest`));
+ const prefix=workflow.slice(0,split).replace(scheduling,'');
+ const decoderStart=prefix.indexOf('      - name: Bind independent read decoder source');
+ const commentStart=prefix.indexOf('  # Independent of synthetic-safety:');
+ assert.ok(decoderStart>0&&commentStart>decoderStart);
+ assert.equal(sha(prefix.slice(decoderStart,commentStart)),'8921961b19dff1f49d74cf285076cab79c8a3d3467a8e7bd8b1b7453f8980e73');
+ assert.equal(sha(prefix.slice(0,decoderStart)+prefix.slice(commentStart)),'32b1e9ded0e18c707af5e2bdc15c7730a0a61634da296b078240b2d2ad6cf505');
  const job=workflow.slice(split);assert.ok(job.includes('node --test tests/catalogue-ci/foundation-red.node.mjs'));
  assert.ok(job.indexOf('node scripts/catalogue-foundation-red.mjs')>job.indexOf('node scripts/catalogue-failfast-probe.mjs'));
  assert.ok(job.includes("if: ${{ always() && steps.catalogue-foundation-red.outputs.bundle_ready == 'true' }}"));assert.ok(job.includes('path: scale-results/catalogue-foundation-red'));

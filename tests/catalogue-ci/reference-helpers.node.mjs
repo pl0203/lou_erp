@@ -277,7 +277,16 @@ test('all nine frozen candidate files and shared harness participate in source i
 });
 test('public PG17 CI preserves foundation failure and independently gates helper evidence on successful baseline capture',()=>{
  need();const workflow=readFileSync(join(root,'.github/workflows/pilot-safety.yml'),'utf8'),split=workflow.indexOf('\n  catalogue-baseline:'),job=workflow.slice(split);
- assert.equal(sha(workflow.slice(0,split)),'32b1e9ded0e18c707af5e2bdc15c7730a0a61634da296b078240b2d2ad6cf505');
+ // Preserve the historical application/CO prefix; separately pin both reviewed additions.
+ const scheduling='    needs: catalogue-baseline\n    if: ${{ always() }}\n';
+ assert.equal(workflow.split(scheduling).length,2);
+ assert.ok(workflow.includes(`  synthetic-safety:\n${scheduling}    runs-on: ubuntu-latest`));
+ const prefix=workflow.slice(0,split).replace(scheduling,'');
+ const decoderStart=prefix.indexOf('      - name: Bind independent read decoder source');
+ const commentStart=prefix.indexOf('  # Independent of synthetic-safety:');
+ assert.ok(decoderStart>0&&commentStart>decoderStart);
+ assert.equal(sha(prefix.slice(decoderStart,commentStart)),'8921961b19dff1f49d74cf285076cab79c8a3d3467a8e7bd8b1b7453f8980e73');
+ assert.equal(sha(prefix.slice(0,decoderStart)+prefix.slice(commentStart)),'32b1e9ded0e18c707af5e2bdc15c7730a0a61634da296b078240b2d2ad6cf505');
  assert.ok(job.includes('image: postgres:17'));assert.ok(job.includes('persist-credentials: false'));
  assert.match(job,/id: catalogue-baseline-capture\n\s+run: node scripts\/catalogue-capture-baseline\.mjs/);
  assert.ok(job.indexOf('node --test tests/catalogue-ci/reference-helpers.node.mjs')<job.indexOf('Bind clean candidate bytes before capture'));
