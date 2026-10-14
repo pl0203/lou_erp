@@ -227,7 +227,50 @@ test('capture strips original error, stdout, stderr and SQL values from thrown f
  expect(JSON.stringify(capture.catalogueCaptureFailure(thrown.phase))).not.toContain('PRIVATE')
 })
 test('public input list is exact and does not enumerate or read unrelated protected source',()=>{
- expect(runner.cataloguePublicSourcePaths).toHaveLength(41)
+ expect(runner.cataloguePublicSourcePaths).toHaveLength(49)
+ expect(runner.cataloguePublicSourcePaths).toEqual([
+  '.github/workflows/pilot-safety.yml','vercel.json','tests/vercel-routing.test.ts',
+  'scripts/catalogue-checkout.mjs','scripts/catalogue-ci-profile.mjs','scripts/catalogue-capture-source.mjs',
+  'scripts/catalogue-capture-baseline.mjs','scripts/catalogue-ci-metadata.sql','supabase/catalogue/ci/composition.json',
+  'tests/catalogue-ci/checkout.test.ts','tests/catalogue-ci/capture.test.ts',
+  'tests/co/ci-workflow.test.ts','tests/co/ci-shallow-checkout.test.ts',
+  'scripts/catalogue-failfast-probe.mjs',
+  'scripts/catalogue-foundation-red.mjs',
+  'tests/database/catalogue/foundation.sql',
+  'scripts/catalogue-foundation.mjs',
+  'scripts/catalogue-reference-helpers.mjs',
+  'tests/catalogue-ci/reference-helpers.node.mjs',
+  'supabase/catalogue/v1/02-promotion-owner-extraction.sql',
+  'tests/database/catalogue/promotion-owner-extraction.sql',
+  'tests/catalogue-ci/promotion-owner-extraction.node.mjs',
+  'supabase/catalogue/v1/02-retired-co-line-resolution.sql',
+  'tests/database/catalogue/retired-co-line-resolution.sql',
+  'tests/catalogue/retired-co-line-resolution.source.mjs',
+  'supabase/catalogue/v1/01-foundation.sql',
+  'tests/database/catalogue/before-foundation.sql',
+  'tests/database/catalogue/foundation-red.sql',
+  'tests/database/catalogue/legacy-columns.sql',
+  'tests/database/catalogue/roles.sql',
+  'tests/catalogue-ci/foundation.node.mjs',
+  'tests/catalogue-ci/foundation-binding.test.ts',
+  'tests/catalogue/foundation.test.ts',
+  'tests/catalogue/foundation-lock-source.test.ts',
+  'tests/catalogue/authority-source.test.ts',
+  'tests/catalogue/authority-manifest.test.ts',
+  'tests/catalogue/fixtures/authority-observed-grants.json',
+  'tests/catalogue-ci/foundation-red.node.mjs',
+  'tests/catalogue-ci/failfast.node.mjs',
+  'tests/database/catalogue-failfast/core.mjs',
+  'tests/database/catalogue-failfast/core.node.mjs',
+  'tests/database/catalogue-failfast/output.node.mjs',
+  'tests/database/catalogue-failfast/results.mjs',
+  'tests/database/catalogue-failfast/runner.mjs',
+  'tests/database/catalogue-failfast/runner.node.mjs',
+  'tests/database/catalogue-failfast/scenarios.mjs',
+  'tests/database/catalogue-failfast/schema.sql',
+  'tests/database/catalogue-failfast/session.mjs',
+  'tests/database/catalogue-failfast/session.node.mjs',
+ ])
  expect(runner.assertCatalogueCaptureSource(resolve('.')).composition).toHaveLength(42)
  const root=temp(),other=temp()
  mkdirSync(join(root,'supabase/functions/invite-user'),{recursive:true})
