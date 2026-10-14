@@ -26,10 +26,62 @@ export function expandTargetLifecycle(suite,candidate,authority='') {
  foundationTopLevelSql(checked);
  return suite.replace(include,()=>candidate+'\n'+authority+'\n');
 }
-export const targetMarkers=Object.freeze(['CATALOGUE_TARGET_FOUNDATION_PASSED','CATALOGUE_TARGET_LIFECYCLE_PASSED','CATALOGUE_TARGET_VARIANTS_PASSED','CATALOGUE_TARGET_ROLLBACK_VERIFIED']);
+export const targetMarkers=Object.freeze(["CATALOGUE_TARGET_FOUNDATION_PASSED","CATALOGUE_TARGET_SETUP_PASSED","CATALOGUE_TARGET_INSTALL_PASSED","CATALOGUE_TARGET_AUTHORITY_PASSED","CATALOGUE_TARGET_EVENTS_PASSED","CATALOGUE_TARGET_CASCADE_DROP_PASSED","CATALOGUE_TARGET_CASCADE_ADD_PASSED","CATALOGUE_TARGET_CASCADE_PASSED","CATALOGUE_TARGET_AUTHENTICATED_PASSED","CATALOGUE_TARGET_MISSING_IDENTITY_PASSED","CATALOGUE_TARGET_ASSERTION_ONLY_PASSED","CATALOGUE_TARGET_LIFECYCLE_PASSED","CATALOGUE_TARGET_VARIANTS_PASSED","CATALOGUE_TARGET_ROLLBACK_VERIFIED"]);
+
+export function instrumentTargetLifecycle(suite,candidate,authority){
+ // Validate all original bytes before adding only fixed diagnostic echo lines.
+ // No SQL statement or transaction boundary is changed, wrapped, or reordered.
+ const plain=expandTargetLifecycle(suite,candidate,authority);assert.equal(typeof authority,'string');assert.ok(authority.length>0);
+ const marker=i=>'\\echo '+targetMarkers[i]+' :target_pid :target_xid\n';
+ const checkpoints=[
+  [
+    "SELECT pg_temp.foundation_assert((SELECT lifetime_state='unknown' FROM private.catalog_identity_v1 WHERE kind='customer' AND id=md5('target-fiction-3')::uuid),'savepoint rolls evidence back with target');\n",
+    4
+  ],
+  [
+    "ALTER TABLE public.customer_targets DROP CONSTRAINT customer_targets_customer_id_fkey;\n",
+    5
+  ],
+  [
+    "ALTER TABLE public.customer_targets ADD CONSTRAINT customer_targets_customer_id_fkey FOREIGN KEY(customer_id) REFERENCES public.customers(id) ON DELETE CASCADE;\n",
+    6
+  ],
+  [
+    "SELECT pg_temp.foundation_assert((SELECT lifetime_state='used' AND deleted_at IS NOT NULL FROM private.catalog_identity_v1 WHERE kind='customer' AND id=md5('target-fiction-4')::uuid),'cascade OLD and parent tombstone retained');\n",
+    7
+  ],
+  [
+    "SELECT pg_temp.foundation_assert(NOT EXISTS(SELECT 1 FROM private.catalog_identity_v1 WHERE lifetime_state='unused'),'no new unused allocation');\n",
+    8
+  ],
+  [
+    "ROLLBACK TO SAVEPOINT missing_target_identity;\n",
+    9
+  ],
+  [
+    "ROLLBACK TO SAVEPOINT assertion_only;\n",
+    10
+  ]
+];
+ let marked=suite;
+ for(const [anchor,index]of checkpoints){
+  assert.equal(suite.split(anchor).length,2,'Exact unique reviewed boundary required');
+  marked=marked.replace(anchor,()=>anchor+marker(index));
+ }
+ assert.equal(marked.split(include).length,2);
+ marked=marked.replace(include,()=>marker(1)+candidate+'\n'+marker(2)+authority+'\n'+marker(3));
+ let restored=marked,prior=-1;
+ for(let i=1;i<=10;i++){
+  const line=marker(i);assert.equal(marked.split(line).length,2,'Fixed milestone must occur exactly once');
+  const position=marked.indexOf(line);assert.ok(position>prior,'Fixed milestone order required');prior=position;
+  restored=restored.replace(line,'');
+ }
+ assert.equal(restored,plain,'Diagnostics must preserve every original SQL byte');
+ return marked;
+}
 
 const targetFailurePhases=Object.freeze(['initialization','binding','source-preflight','identity-preflight','lifecycle','lifecycle-parse','source-post-lifecycle','identity-post-lifecycle','race-setup','race-setup-parse','source-pre-races','identity-pre-races','races','source-post-races','identity-post-races','disposal','source-post-disposal']);
-const lifecycleFailurePhases=Object.freeze(['FOUNDATION','TARGET','VARIANTS_AND_ROLES','ROLLBACK','COMPLETE']);
+const lifecycleFailurePhases=Object.freeze(["FOUNDATION","TARGET_SETUP","TARGET_INSTALL","TARGET_AUTHORITY","TARGET_EVENTS","TARGET_CASCADE_DROP","TARGET_CASCADE_ADD","TARGET_CASCADE_EVENTS","TARGET_AUTHENTICATED","TARGET_MISSING_IDENTITY","TARGET_ASSERTION_ONLY","TARGET_SESSION_GATE","VARIANTS_AND_ROLES","ROLLBACK","COMPLETE"]);
 const targetProcessKinds=Object.freeze(['NOT_APPLICABLE','UNKNOWN','EXIT_0','EXIT_1','EXIT_2','SCRIPT_ERROR','OTHER_NONZERO','SIGNAL','TIMEOUT','BUFFER_LIMIT','SPAWN_FAILURE','SESSION_SQLSTATE']);
 const targetSyncFailurePhases=Object.freeze(['identity-preflight','lifecycle','identity-post-lifecycle','race-setup','identity-pre-races','identity-post-races','disposal']);
 const targetQueryState=Symbol('validated target session SQLSTATE');
@@ -114,9 +166,9 @@ SET LOCAL search_path=''; SET LOCAL standard_conforming_strings=on; SET LOCAL st
 SELECT pg_backend_pid() AS target_pid,txid_current() AS target_xid\n\\gset
 CREATE TEMP TABLE target_runtime_session ON COMMIT DROP AS SELECT pg_backend_pid() pid,txid_current() xid;
 ${parts.before}\n${parts.foundation}\n${parts.legacy}\n${sessionGate()}${mark(0)}
-${expandTargetLifecycle(parts.lifecycle,parts.target,parts.authority)}\n${sessionGate()}${mark(1)}
-${parts.variants}\n${parts.roles}\n${sessionGate()}${mark(2)}ROLLBACK;
-${catalogueCiIdentityGateSql(identity)}${gate(`${absent} AND pg_backend_pid()=:'target_pid'::integer AND to_regclass('pg_temp.target_runtime_session') IS NULL`,'target_rollback_refused')}${mark(3)}\\o\n`;
+${instrumentTargetLifecycle(parts.lifecycle,parts.target,parts.authority)}\n${sessionGate()}${mark(11)}
+${parts.variants}\n${parts.roles}\n${sessionGate()}${mark(12)}ROLLBACK;
+${catalogueCiIdentityGateSql(identity)}${gate(`${absent} AND pg_backend_pid()=:'target_pid'::integer AND to_regclass('pg_temp.target_runtime_session') IS NULL`,'target_rollback_refused')}${mark(13)}\\o\n`;
 }
 export function parseTargetOutput(output){
  assert.equal(typeof output,'string');assert.ok(output.endsWith('\n'));const lines=output.slice(0,-1).split('\n');assert.equal(lines.length,targetMarkers.length);let pid,xid;

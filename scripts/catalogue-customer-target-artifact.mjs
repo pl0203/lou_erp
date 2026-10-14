@@ -13,7 +13,7 @@ const defaultRoot=resolve(dirname(fileURLToPath(import.meta.url)),'..'),sha=x=>c
 export const targetRuntimeReviewedFiles=Object.freeze([
  {
   "path": "scripts/catalogue-customer-target-runtime.mjs",
-  "sha256": "a7ec49572af917ed48de59e7b94d15aa7054706aa207b0f5415e473d934a9f61"
+  "sha256": "3ea3f3ad23eb4942d25b329145d7802e3d2e9d57e0f2af427dc6986633b79cec"
  },
  {
   "path": "supabase/catalogue/v1/02-customer-target-tracking.sql",
@@ -21,7 +21,7 @@ export const targetRuntimeReviewedFiles=Object.freeze([
  },
  {
   "path": "tests/catalogue-ci/customer-target-runtime.node.mjs",
-  "sha256": "8bd5660d7537e40d0f2cb35785fa69513d485bf95698cb3ac6397f69225d0c34"
+  "sha256": "71e1f9a97277f3623996bb22ca0f97c69a0c7dadc1210218e59e812b443cc439"
  },
  {
   "path": "tests/catalogue-ci/customer-target-tracking.node.mjs",
@@ -74,7 +74,7 @@ function exactFile(path,expected){
 // These finite validators must stay local. Importing the runtime here would
 // evaluate it before the source-binding and reviewed-byte prelaunch checks.
 const targetFailurePhases=Object.freeze(['initialization','binding','source-preflight','identity-preflight','lifecycle','lifecycle-parse','source-post-lifecycle','identity-post-lifecycle','race-setup','race-setup-parse','source-pre-races','identity-pre-races','races','source-post-races','identity-post-races','disposal','source-post-disposal']);
-const lifecycleFailurePhases=Object.freeze(['FOUNDATION','TARGET','VARIANTS_AND_ROLES','ROLLBACK','COMPLETE']);
+const lifecycleFailurePhases=Object.freeze(["FOUNDATION","TARGET_SETUP","TARGET_INSTALL","TARGET_AUTHORITY","TARGET_EVENTS","TARGET_CASCADE_DROP","TARGET_CASCADE_ADD","TARGET_CASCADE_EVENTS","TARGET_AUTHENTICATED","TARGET_MISSING_IDENTITY","TARGET_ASSERTION_ONLY","TARGET_SESSION_GATE","VARIANTS_AND_ROLES","ROLLBACK","COMPLETE"]);
 const targetProcessKinds=Object.freeze(['NOT_APPLICABLE','UNKNOWN','EXIT_0','EXIT_1','EXIT_2','SCRIPT_ERROR','OTHER_NONZERO','SIGNAL','TIMEOUT','BUFFER_LIMIT','SPAWN_FAILURE','SESSION_SQLSTATE']);
 const targetSyncFailurePhases=Object.freeze(['identity-preflight','lifecycle','identity-post-lifecycle','race-setup','identity-pre-races','identity-post-races','disposal']);
 function targetProcessExit(error){

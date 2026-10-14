@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 let runner;try{runner=await import('../../scripts/catalogue-customer-target-runtime.mjs');}catch{}
 const need=()=>assert.ok(runner,'Guarded raw target runtime harness missing');
 const read=p=>readFileSync(new URL('../../'+p,import.meta.url),'utf8');
+const expectedLifecyclePhases=["FOUNDATION","TARGET_SETUP","TARGET_INSTALL","TARGET_AUTHORITY","TARGET_EVENTS","TARGET_CASCADE_DROP","TARGET_CASCADE_ADD","TARGET_CASCADE_EVENTS","TARGET_AUTHENTICATED","TARGET_MISSING_IDENTITY","TARGET_ASSERTION_ONLY","TARGET_SESSION_GATE","VARIANTS_AND_ROLES","ROLLBACK","COMPLETE"];
 const identity={profile:'github-catalogue-baseline-v1',source:{clean:true,commit:'a'.repeat(40),tree:'b'.repeat(40),candidate:'c'.repeat(64)},serverAddress:'172.18.0.2',serverPort:5432,serverVersion:'170011',systemIdentifier:'123456789',runIdentity:'00000000-0000-4000-8000-000000000001',ci:{}};
 const parts=()=>Object.fromEntries(Object.entries(runner.targetRuntimePaths).map(([k,p])=>[k,read(p)]));
 test('frozen lifecycle is expanded exactly once; altered savepoints, meta commands and boundaries are refused',()=>{
@@ -66,11 +67,11 @@ test('committed race fixture is minimal and never creates or grants cluster role
 });
 const env={PATH:'/usr/bin',CI:'true',GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:'pl0203/lou_erp',GITHUB_WORKFLOW:'Pilot safety checks',GITHUB_JOB:'catalogue-baseline',GITHUB_EVENT_NAME:'pull_request',CATALOGUE_CI_PROFILE:'github-catalogue-baseline-v1',CATALOGUE_CI_HEAD_REPOSITORY:'pl0203/lou_erp',CATALOGUE_CI_BASE_REPOSITORY:'pl0203/lou_erp',CATALOGUE_CI_HEAD_REF:'feat/catalogue-mutations-20261014',CATALOGUE_CI_BASE_REF:'fix/pilot-database',CATALOGUE_CI_SOURCE_SHA:'a'.repeat(40),CATALOGUE_CI_CANDIDATE_SHA256:'c'.repeat(64),PGHOST:'127.0.0.1',PGPORT:'5432',PGUSER:'postgres',PGDATABASE:'pilot_test',PGPASSWORD:'synthetic-ci-only',GITHUB_RUN_ID:'1',GITHUB_RUN_ATTEMPT:'1',GITHUB_SHA:'d'.repeat(40),GITHUB_REF:'refs/pull/30/merge',GITHUB_WORKFLOW_REF:'pl0203/lou_erp/.github/workflows/pilot-safety.yml@refs/pull/30/merge'};
 const observation={database:'pilot_catalogue_test',operator:'postgres',database_owner:'postgres',server_address:'172.18.0.2',server_port:5432,server_version_num:'170011',system_identifier:'123456789',marker:{kind:'r',owner:'postgres',rows:[{singleton:true,purpose:'disposable-catalogue-ci-v1',identity}]}};
-async function orchestrateFailure(kind){
+async function orchestrateFailure(kind,prefixCount=1){
  const calls=[];let setup=false;const bind=()=>({identity});
  const execute=(cmd,args,opts)=>{assert.equal(cmd,'psql');calls.push(opts.input);assert.ok(!opts.input.includes('DROP DATABASE'),'failed phases never dispose');
   if(opts.input.includes('CATALOGUE_FIXTURE_OBSERVATION'))return JSON.stringify(kind==='identity'?{...observation,system_identifier:'99'}:observation);
-  if(opts.input.includes('CATALOGUE_TARGET_ROLLBACK_VERIFIED')){if(kind==='lifecycle-exec')throw Object.assign(new Error('PRIVATE SQL'),{status:3,signal:null,stdout:runner.targetMarkers[0]+' 123 456\n',stderr:'ERROR:  55006: PRIVATE SQL\n'});return runner.targetMarkers.map(m=>`${m} 123 456`).join('\n')+'\n'+(kind==='output'?'unexpected\n':'');}
+  if(opts.input.includes('CATALOGUE_TARGET_ROLLBACK_VERIFIED')){if(kind==='lifecycle-exec')throw Object.assign(new Error('PRIVATE SQL'),{status:3,signal:null,stdout:runner.targetMarkers.slice(0,prefixCount).map(m=>m+' 123 456\n').join(''),stderr:'ERROR:  55006: PRIVATE SQL\n'});return runner.targetMarkers.map(m=>`${m} 123 456`).join('\n')+'\n'+(kind==='output'?'unexpected\n':'');}
   if(opts.input.includes('target_race_preexisting_refused')){setup=true;if(kind==='uncertain')throw new Error('uncertain setup');return 'unexpected setup output\n';}
   throw new Error('Unexpected test adapter call');
  };
@@ -78,7 +79,7 @@ async function orchestrateFailure(kind){
  assert.equal(caught?.message,'CATALOGUE_TARGET_RUNTIME_REFUSED');assert.equal(caught.cleanup,setup?'CLEANUP_UNPROVEN':'NOT_NEEDED');
  if(kind==='identity')assert.ok(calls.every(sql=>!sql.includes('BEGIN;')));
  if(kind==='output')assert.equal(setup,false);
- if(kind==='lifecycle-exec'){assert.equal(setup,false);assert.deepEqual(caught.diagnostic,{phase:'lifecycle',lifecyclePhase:'TARGET',processExit:'SCRIPT_ERROR',sqlstate:'55006'});}
+ if(kind==='lifecycle-exec'){assert.equal(setup,false);assert.deepEqual(caught.diagnostic,{phase:'lifecycle',lifecyclePhase:expectedLifecyclePhases[prefixCount],processExit:'SCRIPT_ERROR',sqlstate:'55006'});}
  if(kind==='uncertain')assert.equal(caught.diagnostic.phase,'race-setup');
  return calls;
 }
@@ -89,8 +90,8 @@ test('unexpected committed setup output refuses and leaves cleanup explicitly un
 
 test('refusal diagnostics use only exact complete marker-prefix phases',()=>{
  need();const prefix=n=>runner.targetMarkers.slice(0,n).map(m=>m+' 123 456').join('\n')+(n?'\n':'');
- const expected=['FOUNDATION','TARGET','VARIANTS_AND_ROLES','ROLLBACK','COMPLETE'];
- for(let n=0;n<=4;n++){
+ const expected=expectedLifecyclePhases;
+ for(let n=0;n<=runner.targetMarkers.length;n++){
   const cause={status:3,signal:null,stdout:prefix(n),stderr:'ERROR:  55006: PRIVATE SQL\nCONTEXT: PRIVATE DATA\n'};
   assert.deepEqual(runner.targetFailureDiagnostic('lifecycle',cause),{phase:'lifecycle',lifecyclePhase:expected[n],processExit:'SCRIPT_ERROR',sqlstate:'55006'});
  }
@@ -98,7 +99,7 @@ test('refusal diagnostics use only exact complete marker-prefix phases',()=>{
   const d=runner.targetFailureDiagnostic('lifecycle',{status:3,signal:null,stdout,stderr:'ERROR:  55006: PRIVATE\n'});
   assert.equal(d.lifecyclePhase,'UNKNOWN');assert.ok(!JSON.stringify(d).includes('PRIVATE'));
  }
- assert.equal(runner.targetFailureDiagnostic('lifecycle-parse',null,prefix(2)).lifecyclePhase,'VARIANTS_AND_ROLES');
+ assert.equal(runner.targetFailureDiagnostic('lifecycle-parse',null,prefix(runner.targetMarkers.indexOf('CATALOGUE_TARGET_LIFECYCLE_PASSED')+1)).lifecyclePhase,'VARIANTS_AND_ROLES');
  assert.equal(runner.targetFailureDiagnostic('not-a-phase',{message:'PRIVATE'}).phase,'unknown');
 });
 test('SQLSTATE requires one strict script-error record and refuses mixed or untrusted errors',()=>{
@@ -119,6 +120,8 @@ test('SQLSTATE requires one strict script-error record and refuses mixed or untr
   {stderr:'ERROR:  55006: PRIVATE\n\n'},{stderr:'ERROR:  55006: PRIVATE\r\n'},
   {stderr:'ERROR:  55006: PRIVATE\nDETAIL: PRIVATE\nDETAIL: PRIVATE\n'},
   {stderr:'ERROR:  55006: PRIVATE\nLOCATION: PRIVATE\nDETAIL: PRIVATE\n'},
+  {stderr:'ERROR:  23502: PRIVATE\nSCHEMA NAME: PRIVATE\nTABLE NAME: PRIVATE\nCOLUMN NAME: PRIVATE\nLOCATION: PRIVATE\n'},
+  {stderr:'ERROR:  23514: PRIVATE\nCONTEXT: PRIVATE\nPRIVATE continuation\nLOCATION: PRIVATE\n'},
  ];
  for(const change of mutations){
   const d=runner.targetFailureDiagnostic('lifecycle',{...base,...change});
@@ -148,7 +151,7 @@ test('framed awaited-session SQLSTATE is propagated only on an actual state mism
  assert.equal(runner.targetFailureDiagnostic('races',caught).sqlstate,null);
 });
 test('diagnostic validator refuses extra fields, arbitrary labels and cross-field overclaims',()=>{
- need();const base={phase:'lifecycle',lifecyclePhase:'TARGET',processExit:'SCRIPT_ERROR',sqlstate:'55006'};
+ need();const base={phase:'lifecycle',lifecyclePhase:'TARGET_SETUP',processExit:'SCRIPT_ERROR',sqlstate:'55006'};
  assert.deepEqual(runner.validateTargetFailureDiagnostic(base),base);
  for(const change of [{extra:'PRIVATE'},{phase:'PRIVATE'},{lifecyclePhase:'PRIVATE'},{processExit:'PRIVATE'},{sqlstate:'PRIVATE'},{processExit:'TIMEOUT'},{processExit:'SESSION_SQLSTATE'},{phase:'binding'}]){
   assert.throws(()=>runner.validateTargetFailureDiagnostic({...base,...change}));
@@ -185,4 +188,53 @@ test('diagnostic phase process and SQLSTATE combinations match the producer matr
  assert.throws(()=>runner.validateTargetFailureDiagnostic({...diagnostic('lifecycle-parse','NOT_APPLICABLE',null),lifecyclePhase:'COMPLETE'}));
  const complete=runner.targetMarkers.map(m=>m+' 123 456').join('\n')+'\n';
  assert.equal(runner.targetFailureDiagnostic('lifecycle-parse',null,complete).lifecyclePhase,'UNKNOWN');
+});
+
+test('fixed target milestones are unique exact insertions without changing reviewed SQL bytes or order',()=>{
+ need();const p=parts(),plain=runner.expandTargetLifecycle(p.lifecycle,p.target,p.authority),sql=runner.instrumentTargetLifecycle(p.lifecycle,p.target,p.authority);
+ const expected=["CATALOGUE_TARGET_FOUNDATION_PASSED","CATALOGUE_TARGET_SETUP_PASSED","CATALOGUE_TARGET_INSTALL_PASSED","CATALOGUE_TARGET_AUTHORITY_PASSED","CATALOGUE_TARGET_EVENTS_PASSED","CATALOGUE_TARGET_CASCADE_DROP_PASSED","CATALOGUE_TARGET_CASCADE_ADD_PASSED","CATALOGUE_TARGET_CASCADE_PASSED","CATALOGUE_TARGET_AUTHENTICATED_PASSED","CATALOGUE_TARGET_MISSING_IDENTITY_PASSED","CATALOGUE_TARGET_ASSERTION_ONLY_PASSED","CATALOGUE_TARGET_LIFECYCLE_PASSED","CATALOGUE_TARGET_VARIANTS_PASSED","CATALOGUE_TARGET_ROLLBACK_VERIFIED"];
+ assert.deepEqual(runner.targetMarkers,expected);
+ let restored=sql,last=-1;
+ for(const marker of expected.slice(1,-3)){
+  const line='\\echo '+marker+' :target_pid :target_xid\n';
+  assert.equal(sql.split(line).length,2);assert.ok(sql.indexOf(line)>last);last=sql.indexOf(line);restored=restored.replace(line,'');
+ }
+ assert.equal(restored,plain);
+ assert.ok(sql.indexOf('CATALOGUE_TARGET_SETUP_PASSED')<sql.indexOf(p.target));
+ assert.ok(sql.indexOf(p.target)<sql.indexOf('CATALOGUE_TARGET_INSTALL_PASSED'));
+ assert.ok(sql.indexOf('CATALOGUE_TARGET_INSTALL_PASSED')<sql.indexOf(p.authority));
+ assert.ok(sql.indexOf(p.authority)<sql.indexOf('CATALOGUE_TARGET_AUTHORITY_PASSED'));
+ const boundaries=[
+  ["'savepoint rolls evidence back with target');",'CATALOGUE_TARGET_EVENTS_PASSED'],
+  ['ALTER TABLE public.customer_targets DROP CONSTRAINT customer_targets_customer_id_fkey;','CATALOGUE_TARGET_CASCADE_DROP_PASSED'],
+  ['ALTER TABLE public.customer_targets ADD CONSTRAINT customer_targets_customer_id_fkey FOREIGN KEY(customer_id) REFERENCES public.customers(id) ON DELETE CASCADE;','CATALOGUE_TARGET_CASCADE_ADD_PASSED'],
+  ["'cascade OLD and parent tombstone retained');",'CATALOGUE_TARGET_CASCADE_PASSED'],
+  ["'no new unused allocation');",'CATALOGUE_TARGET_AUTHENTICATED_PASSED'],
+  ['ROLLBACK TO SAVEPOINT missing_target_identity;','CATALOGUE_TARGET_MISSING_IDENTITY_PASSED'],
+  ['ROLLBACK TO SAVEPOINT assertion_only;','CATALOGUE_TARGET_ASSERTION_ONLY_PASSED'],
+ ];
+ for(const [anchor,marker]of boundaries){assert.equal(sql.split(anchor).length,2);assert.ok(sql.includes(anchor+'\n\\echo '+marker+' :target_pid :target_xid\n'));}
+ const full=runner.buildTargetLifecycleSession(identity,p);
+ for(const marker of expected)assert.equal(full.split('\\echo '+marker+' :target_pid :target_xid\n').length,2);
+ assert.ok(full.indexOf('CATALOGUE_TARGET_ASSERTION_ONLY_PASSED')<full.indexOf('CATALOGUE_TARGET_LIFECYCLE_PASSED'));
+ for(const changed of [p.lifecycle.replace('ROLLBACK TO SAVEPOINT assertion_only;',''),p.lifecycle+'\nROLLBACK TO SAVEPOINT assertion_only;\n'])assert.throws(()=>runner.instrumentTargetLifecycle(changed,p.target,p.authority));
+});
+test('complete milestone output rejects missing duplicate reordered partial noisy or cross-session lines',()=>{
+ need();const lines=runner.targetMarkers.map(m=>m+' 123 456\n'),complete=lines.join('');
+ assert.deepEqual(runner.parseTargetOutput(complete),{backendPid:'123',transactionId:'456'});
+ for(let i=0;i<lines.length;i++){
+  assert.throws(()=>runner.parseTargetOutput(lines.filter((_,j)=>j!==i).join('')));
+  assert.throws(()=>runner.parseTargetOutput([...lines.slice(0,i),lines[i],...lines.slice(i)].join('')));
+  if(i+1<lines.length){const swapped=[...lines];[swapped[i],swapped[i+1]]=[swapped[i+1],swapped[i]];assert.throws(()=>runner.parseTargetOutput(swapped.join('')));}
+  for(const changed of ['124 456','123 457']){const mismatched=[...lines];mismatched[i]=lines[i].replace('123 456',changed);assert.throws(()=>runner.parseTargetOutput(mismatched.join('')));}
+  const prefix=lines.slice(0,i+1).join('');
+  for(const stdout of [prefix.slice(0,-1),prefix+'PRIVATE\n',prefix+lines[i],prefix.replace(lines[0],lines[i])]){
+   if(stdout===prefix)continue;
+   assert.equal(runner.targetFailureDiagnostic('lifecycle',{status:3,signal:null,stdout,stderr:'PRIVATE\n'}).lifecyclePhase,'UNKNOWN');
+  }
+ }
+ assert.throws(()=>runner.parseTargetOutput(complete+'PRIVATE\n'));
+});
+test('every target subinterval refusal stays before committed setup and claims no disposal',async()=>{
+ need();for(let n=1;n<=11;n++)await orchestrateFailure('lifecycle-exec',n);
 });

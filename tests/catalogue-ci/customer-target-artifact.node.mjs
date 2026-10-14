@@ -81,7 +81,7 @@ test('hardlinked command-output file refuses without changing the other destinat
  assert.throws(()=>wrapper.runCatalogueCustomerTargetArtifact(f.args),/CATALOGUE_TARGET_ARTIFACT_REFUSED/);assert.equal(f.calls(),0);assert.equal(readFileSync(target,'utf8'),'');
 });
 
-function runtimeRefusal(cleanup='NOT_NEEDED',diagnostic={phase:'lifecycle',lifecyclePhase:'TARGET',processExit:'SCRIPT_ERROR',sqlstate:'55006'}){
+function runtimeRefusal(cleanup='NOT_NEEDED',diagnostic={phase:'lifecycle',lifecyclePhase:'TARGET_SETUP',processExit:'SCRIPT_ERROR',sqlstate:'55006'}){
  return {status:'CATALOGUE_TARGET_RUNTIME_REFUSED',cleanup,diagnostic,implementationAccepted:false};
 }
 test('bounded runtime refusal preserves cleanup distinctions but never publishes a success artifact',()=>{
@@ -170,4 +170,19 @@ test('refusal and success output with post-child source or binding drift carry n
   assert.equal(caught?.message,'CATALOGUE_TARGET_ARTIFACT_REFUSED');assert.equal(caught.diagnostic.processExit,mode==='success'?'EXIT_0':'EXIT_1');
   assert.equal(caught.diagnostic.cleanup,null);assert.equal(caught.diagnostic.runtime,null);assert.equal(f.calls(),1);refused(f);
  }
+});
+
+test('fine-grained lifecycle refusal labels preserve exact cleanup and phase constraints',()=>{
+ need();const labels=["TARGET_SETUP","TARGET_INSTALL","TARGET_AUTHORITY","TARGET_EVENTS","TARGET_CASCADE_DROP","TARGET_CASCADE_ADD","TARGET_CASCADE_EVENTS","TARGET_AUTHENTICATED","TARGET_MISSING_IDENTITY","TARGET_ASSERTION_ONLY","TARGET_SESSION_GATE"];
+ for(const lifecyclePhase of labels){
+  const body=runtimeRefusal('NOT_NEEDED',{phase:'lifecycle',lifecyclePhase,processExit:'SCRIPT_ERROR',sqlstate:null});
+  const child={status:1,signal:null,stdout:'',stderr:JSON.stringify(body)+'\n'};
+  assert.deepEqual(wrapper.parseTargetRuntimeRefusal(child),body);
+  for(const cleanup of ['CLEANUP_UNPROVEN','COMMITTED_SYNTHETIC_CHILD_DISPOSED'])assert.throws(()=>wrapper.parseTargetRuntimeRefusal({...child,stderr:JSON.stringify({...body,cleanup})+'\n'}));
+  for(const phase of ['binding','race-setup','races','source-post-disposal'])assert.throws(()=>wrapper.parseTargetRuntimeRefusal({...child,stderr:JSON.stringify({...body,diagnostic:{...body.diagnostic,phase}})+'\n'}));
+  const f=fixture();f.args.launch=()=>child;let caught;try{wrapper.runCatalogueCustomerTargetArtifact(f.args);}catch(error){caught=error;}
+  assert.equal(caught?.message,'CATALOGUE_TARGET_ARTIFACT_REFUSED');assert.deepEqual(caught.diagnostic,{phase:'child-result',processExit:'EXIT_1',cleanup:'NOT_NEEDED',runtime:body.diagnostic});refused(f);
+ }
+ const body=runtimeRefusal('NOT_NEEDED',{phase:'lifecycle',lifecyclePhase:'TARGET_ARBITRARY',processExit:'SCRIPT_ERROR',sqlstate:null});
+ assert.throws(()=>wrapper.parseTargetRuntimeRefusal({status:1,signal:null,stdout:'',stderr:JSON.stringify(body)+'\n'}));
 });
