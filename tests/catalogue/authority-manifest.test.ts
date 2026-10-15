@@ -53,8 +53,19 @@ describe('catalogue public-source synthetic authority manifest', () => {
 
   it('covers every public-source synthetic column with the candidate capability predicate', () => {
     expect(manifest).not.toBeNull()
-    const predicates = [...sql.matchAll(/a\.attname NOT IN \(([^)]+)\)/g)]
-    expect(predicates.length).toBe(4)
+    const declarations = [...sql.matchAll(/CREATE(?: OR REPLACE)? FUNCTION ((?:public|private)\.[a-z0-9_]+)\([\s\S]*? AS \$\$([\s\S]*?)\$\$;/g)]
+    const predicates = [
+      { name: 'public.pilot_procurement_access_v1', count: 2 },
+      { name: 'public.pilot_procurement_access_v2', count: 2 },
+      { name: 'private.catalog_authorize_v1', count: 1 },
+    ].flatMap(({ name, count }) => {
+      const bodies = declarations.filter(declaration => declaration[1] === name)
+      expect(bodies, `Expected one exact ${name} function`).toHaveLength(1)
+      const scoped = [...(bodies[0]?.[2] ?? '').matchAll(/a\.attname NOT IN \(([^)]+)\)/g)]
+      expect(scoped, `Legacy-column predicates in ${name}`).toHaveLength(count)
+      return scoped
+    })
+    expect([...sql.matchAll(/a\.attname NOT IN \(([^)]+)\)/g)]).toHaveLength(predicates.length)
     for (const predicate of predicates) {
       expect([...predicate[1].matchAll(/'([^']+)'/g)].map(x => x[1]).sort()).toEqual(['catalog_version', 'is_enabled'])
       for (const profile of Object.values(manifest?.profiles ?? {}) as any[]) {

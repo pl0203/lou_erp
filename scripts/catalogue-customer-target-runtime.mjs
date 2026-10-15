@@ -198,6 +198,49 @@ export function targetExpectedContentionSql(kind){
  IF ${expected} THEN RAISE EXCEPTION 'Wrong contention' USING ERRCODE='PCT02'; END IF; RAISE; END; END $target_contention$;`;
 }
 const begin=`BEGIN; SET LOCAL statement_timeout='8s'; SET LOCAL lock_timeout='1500ms'; SET LOCAL idle_in_transaction_session_timeout='30s'; SET LOCAL ROLE authenticated; SELECT set_config('request.jwt.claim.sub',${actor}::text,true);`;
+// Fixed status/recovery proof, sharing only the already guarded terminal child.
+const statusCustomerA='10000000-0000-4000-8000-000000000073',statusCustomerB='10000000-0000-4000-8000-000000000074';
+const statusActorA='5e186f1c-c18f-6670-7b74-d7d2f4e8a28e',statusActorB='20000000-0000-4000-8000-000000000073';
+const statusRequestA='30000000-0000-4000-8000-000000000101',statusRequestLater='30000000-0000-4000-8000-000000000102';
+const statusRequestAbandon='30000000-0000-4000-8000-000000000103',statusRequestStale='30000000-0000-4000-8000-000000000104',statusRequestSnapshot='30000000-0000-4000-8000-000000000105';
+export const statusRecoveryCases=Object.freeze(['inflight_dispatch_and_recovery_busy','committed_fresh_session_replay','replay_after_later_status_change','abandonment_fences_delayed_dispatch','actor_request_namespace_isolation','stale_master_version_refuses','repeatable_read_terminal_safety']);
+export function statusRequestBarrierSql(pid,actorId,requestId){
+ assert.ok(Number.isSafeInteger(pid)&&pid>0);
+ return `WITH k AS (SELECT hashtextextended('catalog_request_v1:' || ${uuid(actorId)}::text || ':' || ${uuid(requestId)}::text,1801427914) AS v)
+SELECT EXISTS(SELECT 1 FROM pg_locks,k WHERE pid=${pid} AND locktype='advisory' AND mode='ExclusiveLock' AND granted
+ AND database=(SELECT oid FROM pg_database WHERE datname=current_database()) AND objsubid=1
+ AND classid=((k.v >> 32) & 4294967295)::oid AND objid=(k.v & 4294967295)::oid)
+ AND cardinality(pg_blocking_pids(${pid}))=0;`;
+}
+export function statusBeginSql(actorId,isolation='READ COMMITTED'){
+ assert.ok(['READ COMMITTED','REPEATABLE READ'].includes(isolation));uuid(actorId);
+ return `BEGIN ISOLATION LEVEL ${isolation}; SET LOCAL statement_timeout='8s'; SET LOCAL lock_timeout='1500ms'; SET LOCAL idle_in_transaction_session_timeout='30s'; SET LOCAL ROLE authenticated; SELECT set_config('request.jwt.claim.sub',${quote(actorId)},true);`;
+}
+export function validateStatusReceipt(receipt,{actorId,requestId,targetId,beforeVersion,beforeEnabled,afterVersion,afterEnabled}){
+ assert.equal(typeof receipt?.committed_at,'string');assert.match(receipt.committed_at,/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/);
+ assert.deepEqual(receipt,{version:1,request_id:requestId,actor_id:actorId,operation:'set_enabled',kind:'customer',id:targetId,before:{catalog_version:beforeVersion,is_enabled:beforeEnabled},after:{catalog_version:afterVersion,is_enabled:afterEnabled},committed_at:receipt.committed_at});return receipt;
+}
+const statusCommand=(requestId,targetId,version,enabled)=>`SELECT public.pilot_catalog_transaction_v1(${uuid(requestId)},'set_enabled',${quote(JSON.stringify({kind:'customer',id:targetId,expected_version:version,is_enabled:enabled}))}::jsonb);`;
+const statusReconcile=(requestId,abandon)=>`SELECT public.pilot_reconcile_catalog_v1(${uuid(requestId)},${abandon?'true':'false'});`;
+// Re-raise only the named application error, leaving an actually aborted client
+// transaction. A swallowed exception or a different 55P03 never passes.
+function statusRefusalSql(statement,state,detail){
+ assert.ok(['55P03','22023','40001'].includes(state));assert.ok(['CATALOG_REQUEST_BUSY','CATALOG_REQUEST_ABANDONED','CATALOG_VERSION_CONFLICT'].includes(detail));
+ assert.ok(statement.startsWith('SELECT public.pilot_'));
+ return `DO $status_refusal$ DECLARE detail text; BEGIN BEGIN ${statement.replace(/^SELECT /,'PERFORM ')}
+ RAISE EXCEPTION 'Missing status refusal' USING ERRCODE='PCT03';
+ EXCEPTION WHEN SQLSTATE '${state}' THEN GET STACKED DIAGNOSTICS detail=PG_EXCEPTION_DETAIL;
+ IF detail IS DISTINCT FROM '${detail}' THEN RAISE EXCEPTION 'Wrong status refusal' USING ERRCODE='PCT04'; END IF; RAISE; END; END $status_refusal$;`;
+}
+const statusSnapshotConflictSql=`DO $status_snapshot$ DECLARE state text;constraint_name text;schema text;relation text;message text; BEGIN BEGIN
+ PERFORM public.pilot_reconcile_catalog_v1(${uuid(statusRequestSnapshot)},true);
+ RAISE EXCEPTION 'Stale snapshot returned a terminal result' USING ERRCODE='PCT05';
+ EXCEPTION WHEN unique_violation OR serialization_failure THEN
+ GET STACKED DIAGNOSTICS state=RETURNED_SQLSTATE,constraint_name=CONSTRAINT_NAME,schema=SCHEMA_NAME,relation=TABLE_NAME,message=MESSAGE_TEXT;
+ IF (state='23505' AND (constraint_name IS DISTINCT FROM 'catalog_requests_v1_pkey' OR schema IS DISTINCT FROM 'private' OR relation IS DISTINCT FROM 'catalog_requests_v1'))
+ OR (state='40001' AND message IS DISTINCT FROM 'could not serialize access due to concurrent update') THEN
+ RAISE EXCEPTION 'Wrong stale snapshot conflict' USING ERRCODE='PCT06'; END IF; RAISE; END; END $status_snapshot$;`;
+
 export async function executeTargetRaces({identity,connection,checkSource,Session=PsqlSession}){
  const sessions=[];const expected=async(s,sql,state)=>{
   const r=await s.query(sql);assert.equal(typeof r.sqlstate,'string');assert.match(r.sqlstate,/^[0-9A-Z]{5}$/);
@@ -206,7 +249,7 @@ export async function executeTargetRaces({identity,connection,checkSource,Sessio
  try{
   for(const name of ['target_a','target_b','target_observer']){const s=new Session({name,env:connection});sessions.push(s);await ok(s,catalogueCiIdentityGateSql(identity)+"SET statement_timeout='8s'; SET idle_in_transaction_session_timeout='30s';\n\\set ON_ERROR_STOP off\nSELECT 1;");}
   const [a,b,observer]=sessions;const pids=requireTargetPids(await Promise.all(sessions.map(async s=>Number(await ok(s,'SELECT pg_backend_pid();')))));
-  const verify=async()=>{checkSource();for(const s of sessions)verifyCatalogueCiObservation(JSON.parse(await ok(s,catalogueObservationSql('pilot_catalogue_test'))),identity,'pilot_catalogue_test');};
+  let retiredSession;const verify=async()=>{checkSource();for(const s of sessions.filter(s=>s!==retiredSession))verifyCatalogueCiObservation(JSON.parse(await ok(s,catalogueObservationSql('pilot_catalogue_test'))),identity,'pilot_catalogue_test');};
   await verify();await ok(a,begin);await ok(b,begin);await ok(a,mark(customerA,'2098-01'));await ok(b,mark(customerB,'2098-02'));
   assert.equal(await ok(observer,targetAdvisoryBarrierSql(pids[0],customerA)),'t');assert.equal(await ok(observer,targetAdvisoryBarrierSql(pids[1],customerB)),'t');
   await expected(b,targetExpectedContentionSql('advisory'),'55P03');
@@ -218,7 +261,63 @@ export async function executeTargetRaces({identity,connection,checkSource,Sessio
   assert.equal(await ok(observer,`SELECT EXISTS(SELECT 1 FROM pg_locks WHERE pid=${pids[0]} AND locktype='relation' AND relation='private.catalog_identity_v1'::regclass AND mode='AccessExclusiveLock' AND granted AND database=(SELECT oid FROM pg_database WHERE datname=current_database()));`),'t');
   await ok(b,begin);await expected(b,targetExpectedContentionSql('relation'),'55P03');await expected(b,'SELECT 1;','25P02');
   await ok(b,'ROLLBACK;');await ok(a,'ROLLBACK;');assert.equal(await ok(observer,`SELECT count(*)=0 FROM public.customer_targets WHERE customer_id=${uuid(customerA)} AND year_month='2098-05';`),'t');await verify();
-  return {status:'BOUNDED_TARGET_RACES_PASSED',backendPids:pids,cases:['reversed_raw_target_statements','evidence_relation_contention']};
+  // The original two target races above are unchanged. Every status RPC below
+  // enters through authenticated + a fictional JWT, never the definer role.
+  const start=async(s,actorId=statusActorA,isolation='READ COMMITTED')=>{
+   await ok(s,statusBeginSql(actorId,isolation));
+   assert.equal(await ok(s,`SELECT current_user='authenticated' AND auth.uid()=${uuid(actorId)} AND NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname=current_user AND (rolsuper OR rolbypassrls)) AND row_security_active('public.customers');`),'t');
+  };
+  const json=async(s,sql)=>JSON.parse(await ok(s,sql));
+  const snapshot=()=>json(observer,`SELECT jsonb_build_object('masters',(SELECT jsonb_agg(jsonb_build_object('id',id,'version',catalog_version::text,'enabled',is_enabled) ORDER BY id) FROM public.customers WHERE id IN(${uuid(statusCustomerA)},${uuid(statusCustomerB)})),'identities',(SELECT jsonb_agg(to_jsonb(i) ORDER BY id) FROM private.catalog_identity_v1 i WHERE kind='customer' AND id IN(${uuid(statusCustomerA)},${uuid(statusCustomerB)})),'requests',(SELECT coalesce(jsonb_agg(to_jsonb(r) ORDER BY actor_id,request_id),'[]'::jsonb) FROM private.catalog_requests_v1 r));`);
+  const state=async(versionA,enabledA,versionB,enabledB,requests)=>assert.equal(await ok(observer,`SELECT (SELECT catalog_version=${versionA} AND is_enabled=${enabledA} FROM public.customers WHERE id=${uuid(statusCustomerA)}) AND (SELECT catalog_version=${versionB} AND is_enabled=${enabledB} FROM public.customers WHERE id=${uuid(statusCustomerB)}) AND (SELECT last_version=${versionA} FROM private.catalog_identity_v1 WHERE kind='customer' AND id=${uuid(statusCustomerA)}) AND (SELECT last_version=${versionB} FROM private.catalog_identity_v1 WHERE kind='customer' AND id=${uuid(statusCustomerB)}) AND (SELECT count(*)=${requests} FROM private.catalog_requests_v1);`),'t');
+  const receipt=(value,actorId,requestId,targetId,beforeVersion,beforeEnabled,afterVersion,afterEnabled)=>validateStatusReceipt(value,{actorId,requestId,targetId,beforeVersion,beforeEnabled,afterVersion,afterEnabled});
+  const firstCommand=statusCommand(statusRequestA,statusCustomerA,'1',false);
+  await state(1,true,1,true,0);const beforeCommand=await snapshot();
+  await start(a);const original=receipt(await json(a,firstCommand),statusActorA,statusRequestA,statusCustomerA,'1',true,'2',false);
+  assert.equal(await ok(observer,statusRequestBarrierSql(pids[0],statusActorA,statusRequestA)),'t');
+  // The first dispatch is still uncommitted and owns the observed request key.
+  for(const sql of [firstCommand,statusReconcile(statusRequestA,false),statusReconcile(statusRequestA,true)]){
+   await start(b);await expected(b,statusRefusalSql(sql,'55P03','CATALOG_REQUEST_BUSY'),'55P03');
+   await expected(b,'SELECT 1;','25P02');assert.deepEqual(await snapshot(),beforeCommand);await ok(b,'ROLLBACK;');
+  }
+  await ok(a,'COMMIT;');await state(2,false,1,true,1);await verify();
+  // The exact replay connection must be born AFTER the winning commit.
+  await b.close();retiredSession=b;const replay=new Session({name:'target_status_replay',env:connection});sessions.push(replay);
+  await ok(replay,catalogueCiIdentityGateSql(identity)+"SET statement_timeout='8s'; SET idle_in_transaction_session_timeout='30s';\n\\set ON_ERROR_STOP off\nSELECT 1;");
+  const replayPid=Number(await ok(replay,'SELECT pg_backend_pid();'));assert.ok(Number.isSafeInteger(replayPid)&&replayPid>0);assert.equal(new Set([...pids,replayPid]).size,4);await verify();
+  const committed={status:'committed',receipt:original},afterCommit=await snapshot();
+  await start(replay);assert.deepEqual(await json(replay,firstCommand),original);
+  for(const abandon of [false,true])assert.deepEqual(await json(replay,statusReconcile(statusRequestA,abandon)),committed);
+  await ok(replay,'COMMIT;');assert.deepEqual(await snapshot(),afterCommit);await state(2,false,1,true,1);
+  await start(replay);receipt(await json(replay,statusCommand(statusRequestLater,statusCustomerA,'2',true)),statusActorA,statusRequestLater,statusCustomerA,'2',false,'3',true);await ok(replay,'COMMIT;');
+  await state(3,true,1,true,2);const afterLater=await snapshot();await start(replay);
+  assert.deepEqual(await json(replay,firstCommand),original);assert.deepEqual(await json(replay,statusReconcile(statusRequestA,true)),committed);
+  await ok(replay,'COMMIT;');assert.deepEqual(await snapshot(),afterLater);await verify();
+  // Different actors may own the same request UUID concurrently. One abandons;
+  // the other commits, and neither terminal state may be reinterpreted.
+  await start(replay);assert.deepEqual(await json(replay,statusReconcile(statusRequestAbandon,true)),{status:'abandoned'});
+  assert.equal(await ok(observer,statusRequestBarrierSql(replayPid,statusActorA,statusRequestAbandon)),'t');
+  await start(a,statusActorB);const other=receipt(await json(a,statusCommand(statusRequestAbandon,statusCustomerB,'1',false)),statusActorB,statusRequestAbandon,statusCustomerB,'1',true,'2',false);
+  assert.equal(await ok(observer,statusRequestBarrierSql(pids[0],statusActorB,statusRequestAbandon)),'t');
+  await ok(replay,'COMMIT;');await ok(a,'COMMIT;');await state(3,true,2,false,4);const afterAbandon=await snapshot();
+  await start(a);await expected(a,statusRefusalSql(statusCommand(statusRequestAbandon,statusCustomerA,'3',false),'22023','CATALOG_REQUEST_ABANDONED'),'22023');
+  await expected(a,'SELECT 1;','25P02');assert.deepEqual(await snapshot(),afterAbandon);await ok(a,'ROLLBACK;');
+  await start(replay);assert.deepEqual(await json(replay,statusReconcile(statusRequestAbandon,false)),{status:'abandoned'});await ok(replay,'COMMIT;');
+  await start(a,statusActorB);assert.deepEqual(await json(a,statusReconcile(statusRequestAbandon,true)),{status:'committed',receipt:other});await ok(a,'COMMIT;');assert.deepEqual(await snapshot(),afterAbandon);
+  await start(replay);await expected(replay,statusRefusalSql(statusCommand(statusRequestStale,statusCustomerA,'2',false),'40001','CATALOG_VERSION_CONFLICT'),'40001');
+  await expected(replay,'SELECT 1;','25P02');assert.deepEqual(await snapshot(),afterAbandon);await ok(replay,'ROLLBACK;');await verify();
+  // A real master read pins the RR snapshot before A commits, without first
+  // reserving the request key. Unknown is safe; false abandonment is not.
+  await start(replay,statusActorA,'REPEATABLE READ');assert.equal(await ok(replay,`SELECT catalog_version::text FROM public.customers WHERE id=${uuid(statusCustomerA)};`),'3');
+  await start(a);const snapshotWinner=receipt(await json(a,statusCommand(statusRequestSnapshot,statusCustomerA,'3',false)),statusActorA,statusRequestSnapshot,statusCustomerA,'3',true,'4',false);await ok(a,'COMMIT;');
+  await state(4,false,2,false,5);const afterSnapshotWinner=await snapshot();
+  assert.deepEqual(await json(replay,statusReconcile(statusRequestSnapshot,false)),{status:'unknown'});
+  const conflict=await replay.query(statusSnapshotConflictSql);assert.ok(['23505','40001'].includes(conflict.sqlstate));
+  await expected(replay,'SELECT 1;','25P02');assert.deepEqual(await snapshot(),afterSnapshotWinner);await ok(replay,'ROLLBACK;');
+  await start(replay);for(const abandon of [false,true])assert.deepEqual(await json(replay,statusReconcile(statusRequestSnapshot,abandon)),{status:'committed',receipt:snapshotWinner});await ok(replay,'COMMIT;');
+  assert.deepEqual(await snapshot(),afterSnapshotWinner);await state(4,false,2,false,5);await verify();
+  const statusRecovery={status:'BOUNDED_STATUS_RECOVERY_RACES_PASSED',replayBackendPid:replayPid,cases:statusRecoveryCases};
+  return {status:'BOUNDED_TARGET_RACES_PASSED',backendPids:pids,cases:['reversed_raw_target_statements','evidence_relation_contention'],statusRecovery};
  }finally{await Promise.allSettled(sessions.map(s=>s.close()));}
 }
 export function buildTargetRaceSetup(identity,parts){
@@ -227,10 +326,10 @@ export function buildTargetRaceSetup(identity,parts){
  // may escape the rollback lifecycle into the committed synthetic race setup.
  return `\\set ON_ERROR_STOP on\n\\o /dev/null\n${catalogueCiIdentityGateSql(identity)}${gate(absent,'target_race_preexisting_refused')}BEGIN;
 SET LOCAL statement_timeout='30s'; SET LOCAL lock_timeout='3s'; SET LOCAL search_path='';
-INSERT INTO auth.users(id) VALUES(${actor});
-INSERT INTO public.users(id,full_name,email,role,is_active) VALUES(${actor},'Fictional race executive','target-race@example.invalid','executive'::public.user_role,true);
+INSERT INTO auth.users(id) VALUES(${actor}),(${uuid(statusActorB)});
+INSERT INTO public.users(id,full_name,email,role,is_active) VALUES(${actor},'Fictional race executive','target-race@example.invalid','executive'::public.user_role,true),(${uuid(statusActorB)},'Fictional status race executive','status-race@example.invalid','executive'::public.user_role,true);
 ${parts.foundation}\n${parts.target}
-INSERT INTO public.customers(id,name) VALUES(${uuid(customerA)},'Fictional race A'),(${uuid(customerB)},'Fictional race B');
+INSERT INTO public.customers(id,name) VALUES(${uuid(customerA)},'Fictional race A'),(${uuid(customerB)},'Fictional race B'),(${uuid(statusCustomerA)},'Fictional status race A'),(${uuid(statusCustomerB)},'Fictional status race B');
 COMMIT;\n`;
 }
 export async function runCatalogueCustomerTargetRuntime({repoRoot=root,env=process.env,execute=execFileSync,Session=PsqlSession,bind=catalogueFailfastBinding,readSource=catalogueCaptureSourceBytes}={}){

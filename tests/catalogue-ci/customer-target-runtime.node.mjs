@@ -259,3 +259,75 @@ test('complete milestone output rejects missing duplicate reordered partial nois
 test('every target subinterval refusal stays before committed setup and claims no disposal',async()=>{
  need();for(let n=1;n<=11;n++)await orchestrateFailure('lifecycle-exec',n);
 });
+
+test('status request barrier binds the exact actor request namespace and real backend',()=>{
+ need();assert.equal(typeof runner.statusRequestBarrierSql,'function','Status request barrier missing');
+ const actor='20000000-0000-4000-8000-000000000073',request='30000000-0000-4000-8000-000000000101';
+ const sql=runner.statusRequestBarrierSql(123,actor,request);
+ for(const part of ['catalog_request_v1:',actor,request,'1801427914','objsubid=1','classid','objid','current_database()','pg_blocking_pids'])assert.ok(sql.includes(part),part);
+ for(const args of [['123 OR true',actor,request],[123,"x'; SELECT 1",request],[123,actor,'bad']])assert.throws(()=>runner.statusRequestBarrierSql(...args));
+});
+test('status clients use actual authenticated role JWT and bounded transactions',()=>{
+ need();assert.equal(typeof runner.statusBeginSql,'function','Status real-role begin missing');
+ const actor='20000000-0000-4000-8000-000000000073';
+ for(const isolation of ['READ COMMITTED','REPEATABLE READ']){
+  const sql=runner.statusBeginSql(actor,isolation);
+  for(const part of [`BEGIN ISOLATION LEVEL ${isolation}`,'SET LOCAL ROLE authenticated','request.jwt.claim.sub',actor,"statement_timeout='8s'","lock_timeout='1500ms'","idle_in_transaction_session_timeout='30s'"])assert.ok(sql.includes(part),part);
+ }
+ assert.throws(()=>runner.statusBeginSql(actor,'SERIALIZABLE; COMMIT;'));
+ assert.throws(()=>runner.statusBeginSql('bad'));
+});
+test('status receipt proof refuses changed identity transitions extra fields and missing timestamp',()=>{
+ need();assert.equal(typeof runner.validateStatusReceipt,'function','Exact status receipt validation missing');
+ const expected={actorId:'20000000-0000-4000-8000-000000000073',requestId:'30000000-0000-4000-8000-000000000101',targetId:'10000000-0000-4000-8000-000000000073',beforeVersion:'1',beforeEnabled:true,afterVersion:'2',afterEnabled:false};
+ const receipt={version:1,request_id:expected.requestId,actor_id:expected.actorId,operation:'set_enabled',kind:'customer',id:expected.targetId,before:{catalog_version:'1',is_enabled:true},after:{catalog_version:'2',is_enabled:false},committed_at:'2026-10-15T12:00:00+00:00'};
+ assert.deepEqual(runner.validateStatusReceipt(receipt,expected),receipt);
+ for(const mutate of [r=>{r.actor_id=expected.requestId;},r=>{r.request_id=expected.actorId;},r=>{r.after.catalog_version='3';},r=>{r.after.is_enabled=true;},r=>{r.before.catalog_version=1;},r=>{r.committed_at='';},r=>{delete r.committed_at;},r=>{r.extra=true;}]){const value=structuredClone(receipt);mutate(value);assert.throws(()=>runner.validateStatusReceipt(value,expected));}
+});
+test('status committed setup adds only two fictional masters and one existing-role actor',()=>{
+ need();const sql=runner.buildTargetRaceSetup(identity,parts());
+ for(const part of ['Fictional status race A','Fictional status race B','Fictional status race executive','status-race@example.invalid'])assert.ok(sql.includes(part),part);
+ assert.doesNotMatch(sql,/CREATE ROLE|ALTER ROLE|GRANT\s+catalogue_foundation_inherited_probe/);
+});
+test('status race proof requires fresh connection terminal safety and unchanged bounded cleanup',()=>{
+ need();assert.deepEqual(runner.statusRecoveryCases,['inflight_dispatch_and_recovery_busy','committed_fresh_session_replay','replay_after_later_status_change','abandonment_fences_delayed_dispatch','actor_request_namespace_isolation','stale_master_version_refuses','repeatable_read_terminal_safety']);
+ const s=read('scripts/catalogue-customer-target-runtime.mjs');
+ for(const part of ['target_status_replay','statusRequestBarrierSql(pids[0]','statusRecovery','catalog_requests_v1_pkey',"schema IS DISTINCT FROM 'private'","relation IS DISTINCT FROM 'catalog_requests_v1'",'REPEATABLE READ',"'CATALOG_REQUEST_BUSY'","'CATALOG_REQUEST_ABANDONED'","'CATALOG_VERSION_CONFLICT'",'row_security_active',"'25P02'"])assert.ok(s.includes(part),part);
+ assert.match(s,/await b\.close\(\);[\s\S]*new Session\(\{name:'target_status_replay',env:connection\}\);sessions\.push\(replay\)/);
+ assert.match(s,/new Set\(\[\.\.\.pids,replayPid\]\)\.size,4/);
+ assert.ok(s.includes('sessions.filter(s=>s!==retiredSession)'));assert.doesNotMatch(s,/sessions\.filter\(s=>!s\.closed\)/);
+ assert.ok(s.includes('finally{await Promise.allSettled(sessions.map(s=>s.close()));}'));
+});
+
+test('status replacement connection failure closes every owned client without claiming success',async()=>{
+ need();const clients=[];let statusCommitted=false,statusDispatched=false,busy=0,sourceChecks=0;
+ const actorId='5e186f1c-c18f-6670-7b74-d7d2f4e8a28e',requestId='30000000-0000-4000-8000-000000000101',targetId='10000000-0000-4000-8000-000000000073';
+ class ReplacementFailureSession{
+  constructor({name}){this.name=name;this.pid=201+clients.length;this.closed=false;this.aborted=false;clients.push(this);if(name==='target_status_replay'){assert.equal(clients[1].closed,true);assert.equal(statusCommitted,true);assert.equal(busy,3);}}
+  async query(sql){
+   assert.equal(this.closed,false);const result=(stdout='',sqlstate='00000')=>({stdout:stdout+'\n',sqlstate});
+   if(this.name==='target_status_replay')return result('','55006');
+   if(sql==='SELECT pg_backend_pid();')return result(String(this.pid));
+   if(sql.includes('CATALOGUE_FIXTURE_OBSERVATION'))return result(JSON.stringify(observation));
+   if(sql==='SELECT 1;'&&this.aborted)return result('','25P02');
+   if(sql==='ROLLBACK;'){this.aborted=false;return result();}
+   if(sql==='COMMIT;'){if(statusDispatched&&this.name==='target_a')statusCommitted=true;return result();}
+   if(sql.startsWith('DO $target_contention$')){this.aborted=true;return result('','55P03');}
+   if(sql.startsWith('DO $status_refusal$')){assert.ok(sql.includes("'CATALOG_REQUEST_BUSY'"));this.aborted=true;busy++;return result('','55P03');}
+   if(sql.startsWith('SELECT public.pilot_catalog_transaction_v1(')){
+    assert.equal(this.name,'target_a');assert.ok(sql.includes(requestId));statusDispatched=true;
+    return result(JSON.stringify({version:1,request_id:requestId,actor_id:actorId,operation:'set_enabled',kind:'customer',id:targetId,before:{catalog_version:'1',is_enabled:true},after:{catalog_version:'2',is_enabled:false},committed_at:'2026-10-15T12:00:00+00:00'}));
+   }
+   if(sql.startsWith("SELECT jsonb_build_object('masters'"))return result('{"unchanged":true}');
+   if(sql.startsWith('SELECT current_database()='))return result('1');
+   if(sql.startsWith('BEGIN')||sql.startsWith('INSERT INTO public.customer_targets')||sql.startsWith('SET CONSTRAINTS'))return result();
+   if(sql.startsWith('WITH k AS')||sql.startsWith('SELECT EXISTS(')||sql.startsWith('SELECT (SELECT')||sql.startsWith('SELECT count(*)=0')||sql.startsWith("SELECT current_user='authenticated'"))return result('t');
+   assert.fail('Unexpected source/mock query');
+  }
+  async close(){this.closed=true;}
+ }
+ let caught;try{await runner.executeTargetRaces({identity,connection:{},checkSource(){sourceChecks++;},Session:ReplacementFailureSession});}catch(error){caught=error;}
+ assert.deepEqual(clients.map(s=>s.name),['target_a','target_b','target_observer','target_status_replay']);
+ assert.ok(clients.every(s=>s.closed));assert.equal(statusCommitted,true);assert.equal(busy,3);assert.ok(sourceChecks>=4);
+ assert.deepEqual(runner.targetFailureDiagnostic('races',caught),{phase:'races',lifecyclePhase:'NOT_APPLICABLE',processExit:'SESSION_SQLSTATE',sqlstate:'55006'});
+});
