@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 const state = vi.hoisted(() => ({ send: vi.fn(), unresolved: false }))
+vi.mock('../../src/lib/catalogue/useCatalogueOrderOptions',()=>({useCatalogueOrderOptions:(kind:string)=>({data:kind==='customer'?[{id:'c',name:'Store',pricing_tier:'luar_kota',is_enabled:true}]:[{id:'11111111-1111-4111-8111-111111111111',name:'Tiles',sku:'SKU',luar_kota:20,is_enabled:true}],isError:false,isFetching:false,refetch:vi.fn()})}))
 vi.mock('../../src/lib/supabase', () => ({ supabase: {} }))
 vi.mock('../../src/lib/AuthContext', () => ({ useAuth: () => ({ user: { id: 'actor' }, profile: { id: 'actor', role: 'po_admin', is_active: true }, loading: false }) }))
 vi.mock('../../src/components/AthelNav', () => ({ default: () => null }))

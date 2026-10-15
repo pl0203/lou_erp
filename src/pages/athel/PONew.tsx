@@ -7,10 +7,10 @@ import PromoStockWarning, { usePromoStockSubmission } from '../../components/Pro
 import PODocumentImport from '../../components/poImport/PODocumentImport'
 import { useAuth } from '../../lib/AuthContext'
 import { POCustomerLookup, POProductLookup } from '../../components/POLookup'
-import { POLineItemsHeader, POLineRow, exactCatalogIdentity } from '../../components/POLineItems'
+import { POLineItemsHeader, POLineRow } from '../../components/POLineItems'
+import { useCatalogueOrderOptions } from '../../lib/catalogue/useCatalogueOrderOptions'
 import { resolveCatalogPrice } from '../../lib/catalogPricing'
 import ReadFailure from '../../components/ReadFailure'
-import { readCompleteQuery } from '../../lib/reads/completeQuery'
 import TransactionRecovery from '../../components/TransactionRecovery'
 import { createTransactionSender, useTransactionSender } from '../../lib/orderTransactions'
 import type { TransactionSender } from '../../lib/orderTransactions'
@@ -18,8 +18,7 @@ import { validateOrderLines } from '../../lib/orderValidation'
 import { hasOrderItemChanges, useUnsavedChanges } from '../../lib/useUnsavedChanges'
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { supabase } from '../../lib/supabase'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import AthelNav from '../../components/AthelNav'
 
 type LineItem = {
@@ -29,12 +28,6 @@ type LineItem = {
   sku: string
   quantity: number
   unit_price: number
-}
-
-type Customer = {
-  id: string
-  name: string
-  pricing_tier: string
 }
 
 type Product = {
@@ -65,24 +58,6 @@ const TIER_LABELS: Record<string, string> = {
   dalam_kota:    'Dalam Kota',
   depo_bangunan: 'Depo Bangunan',
   others: 'Others',
-}
-
-async function fetchCustomers(signal?: AbortSignal): Promise<Customer[]> {
-  const data = await readCompleteQuery((offset, limit) => supabase
-    .from('customers')
-    .select('id, name, pricing_tier', { count: 'exact' })
-    .order('id')
-    .range(offset, offset + limit - 1), row => row.id, signal)
-  return data.sort((a, b) => a.name.localeCompare(b.name))
-}
-
-async function fetchProducts(signal?: AbortSignal): Promise<Product[]> {
-  const data = await readCompleteQuery((offset, limit) => supabase
-    .from('products')
-    .select('id, name, sku, size, unit_price, harga_pokok, luar_kota, dalam_kota, depo_bangunan', { count: 'exact' })
-    .order('id')
-    .range(offset, offset + limit - 1), row => row.id, signal)
-  return data.sort((a, b) => a.name.localeCompare(b.name))
 }
 
 export async function createPO(payload: {
@@ -123,8 +98,8 @@ export default function PONew() {
   const formDirty = !!customerId || !!poNumber || !!expectedDelivery || !!notes || orderDate !== initialOrderDate || itemsDirty
   const unsaved = useUnsavedChanges(formDirty || importDirty)
 
-  const { data: customers, isError: customerReadError, isFetching: customersFetching, refetch: retryCustomers } = useQuery({ queryKey: ['customers'], queryFn: ({ signal }) => fetchCustomers(signal) })
-  const { data: products, isError: productReadError, isFetching: productsFetching, refetch: retryProducts } = useQuery({ queryKey: ['products', 'complete', 'po-new'], queryFn: ({ signal }) => fetchProducts(signal) })
+  const { data: customers, isError: customerReadError, isFetching: customersFetching, refetch: retryCustomers } = useCatalogueOrderOptions('customer', 'enabled-for-order')
+  const { data: products, isError: productReadError, isFetching: productsFetching, refetch: retryProducts } = useCatalogueOrderOptions('product', 'enabled-for-order')
 
   const onCommitted = (po: { id: string }) => {
     queryClient.invalidateQueries()
@@ -143,15 +118,9 @@ export default function PONew() {
   const selectedCustomer = customers?.find(c => c.id === customerId)
   const pricingTier = selectedCustomer?.pricing_tier ?? 'others'
 
-  const updateLine = (index: number, field: keyof LineItem, value: string | number | null) => {
-    setLineItems(prev => prev.map((item, i) => i === index ? { ...item, [field]: value, ...(field === 'sku' ? { product_id: exactCatalogIdentity(String(value), products ?? []) } : {}) } : item))
-  }
-
-  const addLine = () => {
-    const key = crypto.randomUUID()
-    pendingFocus.current = { key, field: 'name' }
-    setEntryError(null); setEntryNotice('')
-    setLineItems(prev => [...prev, { ...newLine(), _key: key }])
+  const updateLine = (index: number, field: keyof LineItem, value: string | number) => {
+    if (field !== 'quantity' && field !== 'unit_price') return
+    setLineItems(prev => prev.map((item, i) => i === index ? { ...item, [field]: value } : item))
   }
 
   const removeLine = (index: number) => {
@@ -177,6 +146,8 @@ export default function PONew() {
   }
   const validateLine = (item: LineItem) => {
     try {
+      const product = products?.find(product => product.id === item.product_id)
+      if (!product || product.sku !== item.sku || product.name !== item.product_name) throw new Error('Pilih ulang barang dari katalog aktif.')
       validateOrderLines([item])
     } catch (error) {
       setEntryError({ key: item._key!, message: (error as Error).message })
@@ -192,7 +163,7 @@ export default function PONew() {
 
   const handleSubmit = () => {
     if (mutation.isPending) return
-    if (!customerId) return alert('Pilih pelanggan terlebih dahulu.')
+    if (!selectedCustomer) return alert('Pilih pelanggan aktif terlebih dahulu.')
     if (!poNumber.trim()) return alert('Masukkan nomor PO terlebih dahulu.')
     if (lineItems.length === 0) {
       alert('PO harus memiliki minimal satu barang.')
@@ -237,7 +208,7 @@ export default function PONew() {
             const draft = accept ? accept() : proposed
             if (!draft) return
             setCustomerId(draft.customerId); setPoNumber(draft.poNumber); setOrderDate(draft.orderDate)
-            setExpectedDelivery(draft.expectedDelivery); setNotes(draft.notes); setLineItems(draft.lineItems.map(line => ({ ...line, product_id: line.product_id ?? exactCatalogIdentity(line.sku, products ?? []) })))
+            setExpectedDelivery(draft.expectedDelivery); setNotes(draft.notes); setLineItems(draft.lineItems)
             setEntryError(null); setEntryNotice(''); setImportDirty(false)
           }, { when: formDirty, message: 'Ganti detail PO dan semua barang dengan hasil dokumen yang sudah diperiksa? Dokumen tidak disimpan dan PO belum dikirim.' })} />
 
@@ -316,7 +287,7 @@ export default function PONew() {
             <div className="min-w-0 space-y-2">
               <POLineItemsHeader />
               {lineItems.map((item, i) => (
-                <POLineRow key={item._key} lineKey={item._key!} item={item}
+                <POLineRow identityLocked key={item._key} lineKey={item._key!} item={item}
                   onChange={(field, value) => updateLine(i, field, value)}
                   onRemove={() => removeLine(i)}
                   nameRef={node => {
@@ -333,11 +304,8 @@ export default function PONew() {
             </div>
           )}
 
-          <p className="mt-4 text-[13px] text-gray-600">Barang manual hanya disimpan pada PO ini; tidak menambahkan produk baru ke katalog. Nama, SKU, jumlah, dan harga dicatat sebagai rincian pesanan.</p>
+          <p className="mt-4 text-[13px] text-gray-600">Barang baru harus dipilih dari katalog aktif. Nama dan SKU mengikuti pilihan katalog; harga pesanan tetap dapat ditinjau.</p>
           <div className="flex flex-wrap items-center justify-between gap-3 mt-4 pt-4 border-t border-gray-100">
-            <Button variant="secondary" type="button" onClick={addLine} >
-              + Tambah barang manual
-            </Button>
             <div className="min-w-0 text-sm text-brand-secondary [overflow-wrap:anywhere]">
               Total: <span className="text-gray-900 font-semibold text-base ml-1">
                 {Number.isFinite(total) ? `Rp ${total.toLocaleString('id-ID')}` : 'Harga belum lengkap'}

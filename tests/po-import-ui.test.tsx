@@ -8,6 +8,10 @@ import type { LocalDocument, ParsedPO, ReviewDecision } from '../src/lib/poImpor
 
 const state = vi.hoisted(() => ({ send: vi.fn(), read: vi.fn(), parse: vi.fn(), prepare: vi.fn(), navigate: vi.fn(),
  customers: [] as any[], products: [] as any[], fetching: false, error: false, actor: 'u', role: 'po_admin', profileActive: true, realMatches: false }))
+vi.mock('../src/lib/catalogue/useCatalogueOrderOptions', () => ({ useCatalogueOrderOptions: (kind: string, purpose: string) => ({
+ data: (kind === 'customer' ? state.customers : state.products).map(row => ({ ...row, is_enabled: row.is_enabled ?? true })).filter(row => purpose === 'all-for-history' || row.is_enabled),
+ isFetching: state.fetching, isError: state.error, refetch: vi.fn(),
+}) }))
 vi.mock('../src/lib/supabase', () => ({ supabase: {} }))
 vi.mock('../src/lib/AuthContext', () => ({ useAuth: () => ({ user: state.actor ? { id: state.actor } : null, profile: state.actor ? { id: state.actor, role: state.role, is_active: state.profileActive } : null, loading: false, error: null }) }))
 vi.mock('../src/components/AthelNav', () => ({ default: () => null }))
@@ -36,7 +40,7 @@ beforeEach(() => {
   if (!po.complete || !po.layout) issues.push({ id: 'fallback', message: 'Dokumen tidak lengkap; isi PO secara manual', blocking: true })
   if (!customers.some(c => c.id === d.customerId)) issues.push({ id: 'customer', message: 'Pilih pelanggan', blocking: true })
   if (!d.poNumber || !d.orderDate) issues.push({ id: 'header', message: 'Lengkapi nomor dan tanggal PO', blocking: true })
-  if (!row || (!row.manual && !products.some(p => p.id === row.productId))) issues.push({ id: 'product', message: 'Pilih produk atau barang manual', blocking: true })
+  if (!row || (row.manual || !products.some(p => p.id === row.productId))) issues.push({ id: 'product', message: 'Pilih produk atau barang manual', blocking: true })
   if (row && !row.unitConfirmed) issues.push({ id: 'unit', message: 'Konfirmasi satuan', blocking: true })
   const missingId = po.rows[0].issues.find(i => i.code === 'missing-price')?.id ?? `${po.rows[0].id}:missing-price`
   if (row && row.unitPrice === null && !d.acknowledgedIssueIds.includes(missingId)) issues.push({ id: missingId, message: 'Akui harga kosong', blocking: true })
@@ -81,12 +85,14 @@ test.each([false, null])('unknown/incomplete documents provide honest manual fal
  expect((screen.getByRole('button', { name: 'Terapkan ke formulir' }) as HTMLButtonElement).disabled).toBe(true); expect(state.send).not.toHaveBeenCalled()
 })
 
-test('customer ambiguity requires deliberate choice and unmatched row requires deliberate manual decision', async () => {
- state.customers.push({ id: 'duplicate', name: 'Synthetic buyer', pricing_tier: 'others' }); state.products = []
+test('customer ambiguity requires deliberate choice and unmatched import cannot become manual', async () => {
+ state.customers.push({ id:'duplicate',name:'Synthetic buyer',pricing_tier:'others' }); state.products=[]
  mount(); await review(); expect((screen.getByLabelText('Pelanggan hasil impor') as HTMLSelectElement).value).toBe('')
- fireEvent.change(screen.getByLabelText('Pelanggan hasil impor'), { target: { value: 'c' } }); fireEvent.click(screen.getByLabelText('Gunakan barang manual 1')); confirmReview(); apply()
- await waitFor(() => expect((screen.getByPlaceholderText('mis. PO-2024-001') as HTMLInputElement).value).toBe('SYN-PO'))
- expect(state.send).not.toHaveBeenCalled(); expect(screen.getByDisplayValue('Synthetic product')).toBeTruthy()
+ fireEvent.change(screen.getByLabelText('Pelanggan hasil impor'), { target:{value:'c'} })
+ expect(screen.queryByLabelText('Gunakan barang manual 1')).toBeNull()
+ confirmReview(); apply()
+ expect((screen.getByPlaceholderText('mis. PO-2024-001') as HTMLInputElement).value).toBe('')
+ expect(state.send).not.toHaveBeenCalled()
 })
 
 test('declining replacement preserves manual edits and importer remains usable', async () => {

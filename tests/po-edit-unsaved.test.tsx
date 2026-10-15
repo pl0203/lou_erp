@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 const state = vi.hoisted(() => ({ send: vi.fn(), reconcile: vi.fn(), unresolved: false, readError: false }))
 const version = '2026-10-01T00:00:00Z'
+vi.mock('../src/lib/catalogue/useCatalogueOrderOptions',()=>({useCatalogueOrderOptions:(kind:string)=>({data:kind==='customer'?[{id:'customer',name:'Store A',pricing_tier:'others',is_enabled:true},{id:'other-customer',name:'Store B',pricing_tier:'others',is_enabled:true}]:[{id:'new-product',name:'New item',sku:'NEW',luar_kota:10,is_enabled:true}],isError:false,isFetching:false,refetch:vi.fn()})}))
 vi.mock('../src/lib/supabase', () => ({ supabase: {
   from: (table: string) => {
     let id = 'po'
@@ -85,7 +86,7 @@ test('pristine recovery can show the saved PO without a discard warning', async 
   expect(beforeUnload()).toBe(false)
 })
 
-test.each(['notes', 'expiry', 'customer', 'name', 'sku', 'quantity', 'price', 'add', 'remove'])('%s edit is guarded before sidebar navigation or browser unload', async field => {
+test.each(['notes', 'expiry', 'customer', 'quantity', 'price', 'add', 'remove'])('%s edit is guarded before sidebar navigation or browser unload', async field => {
   const { router } = await mount()
   if (field === 'notes') changeNotes()
   if (field === 'expiry') fireEvent.change(screen.getByLabelText('Tanggal Kedaluwarsa PO (opsional)'), { target: { value: '2026-12-31' } })
@@ -93,11 +94,9 @@ test.each(['notes', 'expiry', 'customer', 'name', 'sku', 'quantity', 'price', 'a
     fireEvent.change(screen.getByRole('combobox', { name: 'Pelanggan' }), { target: { value: 'Store B' } })
     fireEvent.click(screen.getByRole('option', { name: 'Store B' }))
   }
-  if (field === 'name') fireEvent.change(screen.getByLabelText('Nama produk Original item'), { target: { value: 'New name' } })
-  if (field === 'sku') fireEvent.change(screen.getByLabelText('SKU Original item'), { target: { value: 'NEW' } })
   if (field === 'quantity') fireEvent.change(screen.getByLabelText('Qty Original item'), { target: { value: '3' } })
   if (field === 'price') fireEvent.change(screen.getByLabelText('Harga satuan'), { target: { value: '0' } })
-  if (field === 'add') fireEvent.click(screen.getByRole('button', { name: '+ Tambah barang manual' }))
+  if (field === 'add') { const lookup=screen.getByRole('combobox',{name:'Cari SKU atau nama barang'}); fireEvent.change(lookup,{target:{value:'NEW'}}); fireEvent.keyDown(lookup,{key:'Enter'}) }
   if (field === 'remove') fireEvent.click(screen.getByRole('button', { name: 'Hapus Original item' }))
   expect(beforeUnload()).toBe(true)
   fireEvent.click(screen.getByRole('link', { name: 'Dashboard' }))
@@ -150,13 +149,13 @@ test('repeated links use the latest destination; Escape keeps the draft and warn
   await waitFor(() => expect(router.state.location.pathname).toBe('/reports'))
 })
 
-test('reverting draft fields and removing a newly added blank line restores pristine state', async () => {
+test('reverting draft fields and removing a newly selected catalogue line restores pristine state', async () => {
   const { router } = await mount(); changeNotes(); changeNotes('')
   fireEvent.change(screen.getByLabelText('Harga satuan'), { target: { value: '' } })
   expect(beforeUnload()).toBe(true)
   fireEvent.change(screen.getByLabelText('Harga satuan'), { target: { value: '10' } })
-  fireEvent.click(screen.getByRole('button', { name: '+ Tambah barang manual' }))
-  fireEvent.click(screen.getByRole('button', { name: 'Hapus barang baru' }))
+  const lookup=screen.getByRole('combobox',{name:'Cari SKU atau nama barang'}); fireEvent.change(lookup,{target:{value:'NEW'}}); fireEvent.keyDown(lookup,{key:'Enter'})
+  fireEvent.click(screen.getByRole('button', { name: 'Hapus New item' }))
   expect(beforeUnload()).toBe(false)
   fireEvent.click(screen.getByRole('link', { name: 'Batal' }))
   await waitFor(() => expect(router.state.location.pathname).toBe('/athel/po/po'))
@@ -246,7 +245,7 @@ test.each(['save'])('%s pending makes draft controls read-only until the result 
     expect(screen.getByLabelText(label).matches(':disabled')).toBe(true)
   }
   expect(screen.getByPlaceholderText('Catatan (opsional)...').matches(':disabled')).toBe(true)
-  expect(screen.getByRole('button', { name: '+ Tambah barang manual' }).matches(':disabled')).toBe(true)
+  expect(screen.getByRole('combobox', { name: 'Cari SKU atau nama barang' }).matches(':disabled')).toBe(true)
   expect(screen.getByRole('button', { name: 'Hapus Original item' }).matches(':disabled')).toBe(true)
   await act(async () => resolve(operation === 'save' ? { id: 'po' } : { state: 'committed', result: { id: 'po' } }))
 })
@@ -295,3 +294,9 @@ test.each(['before', 'during', 'after rejected retry'])('recovery of draft A can
   expect(screen.getByDisplayValue('Draft B')).toBeTruthy()
   expect(beforeUnload()).toBe(true)
 })
+
+ test('saved identity cannot be edited into a new manual row or dirty the draft', async () => {
+   await mount()
+   for (const label of ['Nama produk Original item', 'SKU Original item']) expect((screen.getByLabelText(label) as HTMLInputElement).disabled).toBe(true)
+   expect(beforeUnload()).toBe(false)
+ })

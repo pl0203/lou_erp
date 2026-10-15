@@ -6,6 +6,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 const state = vi.hoisted(() => ({ send: vi.fn(), products: [] as any[], customers: [] as any[], lines: [] as any[], history: false, productsFetching: false, productsError: false }))
+vi.mock('../src/lib/catalogue/useCatalogueOrderOptions', () => ({ useCatalogueOrderOptions: (kind: string, purpose: string) => ({
+ data: (kind === 'customer' ? state.customers : state.products).map(row => ({ ...row, is_enabled: row.is_enabled ?? true })).filter(row => purpose === 'all-for-history' || row.is_enabled),
+ isFetching: kind === 'product' && state.productsFetching, isError: kind === 'product' && state.productsError, refetch: vi.fn(),
+}) }))
 vi.mock('../src/lib/supabase', () => ({ supabase: {} }))
 vi.mock('../src/components/AthelNav', () => ({ default: () => null }))
 vi.mock('../src/components/TransactionRecovery', () => ({ default: () => null }))
@@ -205,20 +209,39 @@ test('saving rejects an edit quantity below its active delivery minimum', () => 
  expect(state.send).not.toHaveBeenCalled()
 })
 
-test.each(['new', 'edit'] as const)('%s manual add provides inline fields without adding another lookup', kind => {
+test.each(['new', 'edit'] as const)('%s admits only explicit catalogue selections and locks canonical identity', kind => {
  state.lines = []; mount(kind); if (kind === 'new') customer()
- fireEvent.click(screen.getByRole('button', { name: '+ Tambah barang manual' }))
- expect(screen.getAllByRole('combobox')).toHaveLength(2)
- expect(document.activeElement).toBe(screen.getByPlaceholderText('Nama produk'))
- expect((screen.getByLabelText('Harga satuan') as HTMLInputElement).value).toBe('')
- fireEvent.change(screen.getByLabelText('Harga satuan'), { target: { value: '0' } })
- if (kind === 'new') fireEvent.change(screen.getByPlaceholderText('mis. PO-2024-001'), { target: { value: 'TEST' } })
- fireEvent.click(screen.getByRole('button', { name: kind === 'new' ? 'Simpan PO' : 'Simpan Perubahan' }))
- expect(screen.getByRole('alert').textContent).toMatch(/nama produk/)
- expect(document.activeElement).toBe(screen.getByPlaceholderText('Nama produk'))
- expect(state.send).not.toHaveBeenCalled()
+ expect(screen.queryByRole('button', { name: '+ Tambah barang manual' })).toBeNull()
+ exact(); const name = screen.getByDisplayValue('Product p') as HTMLInputElement
+ expect(name.disabled).toBe(true); expect((screen.getByDisplayValue('SKU') as HTMLInputElement).disabled).toBe(true)
+ fireEvent.change(name, { target: { value: 'Fabricated' } })
+ fireEvent.change(screen.getByRole('spinbutton', { name:'Qty Product p' }), { target:{value:'2'} })
+ expect(screen.getByDisplayValue('Product p')).toBeTruthy()
+ expect((screen.getByLabelText('Harga satuan') as HTMLInputElement).disabled).toBe(false)
 })
-
+test('disabled customer retains historical manual line, caps its quantity, and blocks new demand', () => {
+ state.customers[0].is_enabled = false; mount('edit')
+ expect(screen.getByDisplayValue('Historical')).toBeTruthy()
+ const quantity = screen.getByRole('spinbutton', { name: 'Qty Historical' }) as HTMLInputElement
+ expect(quantity.max).toBe('2')
+ expect((screen.getByRole('combobox', { name: 'Cari SKU atau nama barang' }) as HTMLInputElement).disabled).toBe(true)
+ fireEvent.change(quantity, { target: { value: '3' } }); fireEvent.click(screen.getByRole('button', { name: 'Simpan Perubahan' }))
+ expect(screen.getByRole('alert').textContent).toMatch(/nonaktif/); expect(state.send).not.toHaveBeenCalled()
+})
+test('disabled product retains saved identity and agreed price with its own per-line cap', async () => {
+ state.products[0].is_enabled = false; state.lines[0].product_id = 'p'; mount('edit')
+ expect(screen.getByDisplayValue('Historical')).toBeTruthy()
+ const quantity = screen.getByRole('spinbutton', { name: 'Qty Historical' }) as HTMLInputElement
+ expect(quantity.max).toBe('2'); fireEvent.change(quantity, { target: { value: '1' } })
+ fireEvent.click(screen.getByRole('button', { name: 'Simpan Perubahan' })); await waitFor(() => expect(state.send).toHaveBeenCalled())
+ expect(state.send.mock.calls[0][1].items[0]).toMatchObject({ id:'l', product_id:'p', sku:'OLD', product_name:'Historical', quantity:1, unit_price:123.45 })
+})
+test('enabled customer retains existing manual quantity and zero agreed-price editing', async () => {
+ mount('edit'); fireEvent.change(screen.getByRole('spinbutton', { name: 'Qty Historical' }), { target: { value:'7' } })
+ fireEvent.change(screen.getByLabelText('Harga satuan'), { target:{value:'0'} })
+ fireEvent.click(screen.getByRole('button', { name:'Simpan Perubahan' })); await waitFor(() => expect(state.send).toHaveBeenCalled())
+ expect(state.send.mock.calls[0][1].items[0]).toMatchObject({id:'l',product_id:null,sku:'OLD',product_name:'Historical',quantity:7,unit_price:0})
+})
 test.each(['new', 'edit'] as const)('%s empty-list Save blocks writes and returns focus to the shared lookup', kind => {
  state.lines = []; mount(kind)
  if (kind === 'new') {
@@ -230,12 +253,6 @@ test.each(['new', 'edit'] as const)('%s empty-list Save blocks writes and return
  expect(alert).toHaveBeenCalledWith('PO harus memiliki minimal satu barang.')
  expect(state.send).not.toHaveBeenCalled()
  expect(document.activeElement).toBe(screen.getByRole('combobox', { name: 'Cari SKU atau nama barang' }))
-})
-
-test.each(['new', 'edit'] as const)('%s explains manual item scope before entry or save', kind => {
- mount(kind)
- expect(screen.getByText(/Barang manual hanya disimpan pada PO ini/)).toBeTruthy()
- expect(screen.getByText(/tidak menambahkan produk baru ke katalog/)).toBeTruthy()
 })
 
 // The real data router uses Node Request, which requires a Node-compatible signal.

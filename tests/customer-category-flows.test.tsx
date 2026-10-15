@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { customerBackend } from './helpers/customerBackend'
 import { CUSTOMER_CATEGORIES } from '../src/lib/customerCategory'
-const state = vi.hoisted(() => ({ backend: null as any }))
+const state = vi.hoisted(() => ({ backend: null as any, catalogueReads: [] as any[] }))
 const customerId = '11111111-1111-4111-8111-111111111111'
 vi.mock('../src/lib/AuthContext', () => ({ useAuth: () => ({ user: { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }, profile: { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role: 'executive', is_active: true }, loading: false, error: null }) }))
 vi.mock('../src/lib/procurementAccess', () => ({ useProcurementAccess: () => ({ready:true,capabilities:{customer_create:true,customer_edit:true,customer_delete:false,product_create:true,product_edit:true,product_delete:true},require:()=>{}}) }))
@@ -25,10 +25,14 @@ vi.mock('../src/lib/supabase', () => ({ supabase: {
       if (name === 'pilot_procurement_access_v2') return { data: { version: 2, as_of: '2026-10-15T00:00:00Z', actor_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role: 'executive',
         customer_create: true, customer_edit: true, customer_delete: false, product_create: true, product_edit: true, product_delete: true,
         customer_set_enabled: true, product_set_enabled: true, customer_delete_mode: 'none', product_delete_mode: 'direct' }, error: null }
-      if (args.p_kind !== 'customer') throw new Error(`Unexpected catalogue kind ${args.p_kind}`)
+      state.catalogueReads.push({ ...args })
+      if (!['customer','product'].includes(args.p_kind)) throw new Error(`Unexpected catalogue kind ${args.p_kind}`)
       if (state.backend.state.readError) return { data: null, error: new Error('Read denied') }
-      const fields = ['id','name','address','city','phone','email','pricing_tier','customer_category','is_enabled','catalog_version']
-      const rows = state.backend.state.customers.map((row: any) => Object.fromEntries(fields.map(field => [field,
+      const fields = args.p_kind === 'customer'
+        ? ['id','name','address','city','phone','email','pricing_tier','customer_category','is_enabled','catalog_version']
+        : ['id','name','sku','size','unit_price','harga_pokok','luar_kota','dalam_kota','depo_bangunan','is_enabled','catalog_version']
+      const source = args.p_kind === 'customer' ? state.backend.state.customers : [{ id:'33333333-3333-4333-8333-333333333333',sku:'SKU',name:'Product p',size:null,unit_price:100,harga_pokok:0,luar_kota:20,dalam_kota:30,depo_bangunan:40 }]
+      const rows = source.map((row: any) => Object.fromEntries(fields.map(field => [field,
         field === 'is_enabled' ? true : field === 'catalog_version' ? '1' : row[field]])))
         .sort((a: any, b: any) => a.id.localeCompare(b.id))
         .filter((row: any) => (!args.p_search || row.name.includes(args.p_search)) && (args.p_status === 'all' || row.is_enabled === (args.p_status === 'enabled')))
@@ -49,7 +53,7 @@ import POEdit from '../src/pages/athel/POEdit'
 const clients: QueryClient[] = []
 const stops: (() => void)[] = []
 beforeEach(() => {
-  state.backend = customerBackend(); state.backend.state.customers[0].id = customerId
+  state.backend = customerBackend(); state.backend.state.customers[0].id = customerId; state.catalogueReads = []
   // Deterministic generated UUID keeps the existing Alpha/new-row assertions ordered.
   vi.spyOn(crypto, 'randomUUID').mockReturnValue('22222222-2222-4222-8222-222222222222')
 })
@@ -234,6 +238,7 @@ for (const kind of kinds) {
     const lookup = await draft.findByRole('combobox', { name: 'Cari SKU atau nama barang' })
     if (po === 'new') {
       const customer = draft.getByRole('combobox', { name: 'Pelanggan' })
+      await waitFor(() => expect((customer as HTMLInputElement).disabled).toBe(false))
       fireEvent.change(customer, { target: { value: 'Alpha' } }); fireEvent.click(draft.getByRole('option', { name: /Alpha shop/ }))
     }
     await waitFor(() => expect((lookup as HTMLInputElement).disabled).toBe(false))
@@ -251,14 +256,21 @@ for (const kind of kinds) {
       const historicalPrice = within(historicalCard as HTMLElement).getByLabelText('Harga satuan') as HTMLInputElement
       expect(historicalPrice.disabled).toBe(true); expect(historicalPrice.value).toBe('123.45')
     }
-    const readsBefore = state.backend.state.reads.filter((r: any) => r.table === 'customers' && r.projection === 'id, name, pricing_tier').length
+    const optionReads = (purpose: string) => state.catalogueReads.filter(r => r.p_kind === 'customer' && r.p_purpose === purpose).length
+    const readsBefore = optionReads('enabled-for-order')
+    const historyBefore = optionReads('all-for-history')
+    const catalogueProductsBefore = state.catalogueReads.filter(r => r.p_kind === 'product').length
     const productsBefore = state.backend.state.reads.filter((r: any) => r.table === 'products').length
     const linesBefore = state.backend.state.rpcReads
     const poBefore = state.backend.state.reads.filter((r: any) => r.table === 'purchase_orders').length
     openEdit(); choose('perorangan'); save(kind)
     await waitFor(() => expect(page().queryByRole('combobox', { name: /Kategori Pelanggan/ })).toBeNull())
-    await waitFor(() => expect(state.backend.state.reads.filter((r: any) => r.table === 'customers' && r.projection === 'id, name, pricing_tier').length).toBe(readsBefore + 1))
+    await waitFor(() => expect(optionReads('enabled-for-order')).toBe(readsBefore + 1))
+    if (po === 'edit') await waitFor(() => expect(optionReads('all-for-history')).toBe(historyBefore + 1))
     await waitFor(() => expect(client.isFetching()).toBe(0))
+    const optionQueries = client.getQueryCache().findAll().filter(query => query.queryKey[0] === 'catalogue' && query.queryKey[5] === 'read' && query.queryKey[6] === 'customer' && ['enabled-for-order','all-for-history'].includes(String(query.queryKey[7])))
+    expect(optionQueries).toHaveLength(po === 'edit' ? 2 : 1)
+    optionQueries.forEach(query => expect((query.state.data as any).rows.find((row: any) => row.id === customerId).customer_category).toBe('perorangan'))
     expect(draft.getByRole('spinbutton', { name: 'Qty Product p' })).toBe(quantity)
     expect(quantity.closest('[data-po-line]')).toBe(card); expect(quantity.value).toBe('9'); expect(price.value).toBe('77.25'); expect(price.disabled).toBe(false)
     if (po === 'edit') {
@@ -267,10 +279,11 @@ for (const kind of kinds) {
       const historicalPrice = within(historicalCard as HTMLElement).getByLabelText('Harga satuan') as HTMLInputElement
       expect(historicalPrice.disabled).toBe(true); expect(historicalPrice.value).toBe('123.45')
     }
+    expect(state.catalogueReads.filter(r => r.p_kind === 'product')).toHaveLength(catalogueProductsBefore)
     expect(state.backend.state.reads.filter((r: any) => r.table === 'products')).toHaveLength(productsBefore)
     expect(state.backend.state.reads.filter((r: any) => r.table === 'purchase_orders')).toHaveLength(poBefore)
     expect(state.backend.state.rpcReads).toBe(linesBefore)
-    expect(client.getQueryCache().findAll().filter(query => ['po', 'po_line_state', 'products'].includes(String(query.queryKey[0]))).every(query => !query.state.isInvalidated)).toBe(true)
+    expect(client.getQueryCache().findAll().filter(query => ['po', 'po_line_state', 'products'].includes(String(query.queryKey[0])) || query.queryKey[0] === 'catalogue' && query.queryKey[5] === 'read' && query.queryKey[6] === 'product').every(query => !query.state.isInvalidated)).toBe(true)
   })
 }
 
