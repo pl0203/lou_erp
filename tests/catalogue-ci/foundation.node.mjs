@@ -94,7 +94,7 @@ test('behavior suites are real DML and actual-role probes rather than source-con
 // These dependency-injected unit tests prove runner containment and evidence
 // classification. Only an actual guarded PG17 invocation can prove SQL behavior.
 import { createHash } from 'node:crypto';
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync,writeFileSync,mkdirSync,copyFileSync,rmSync,symlinkSync,readdirSync,existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -238,6 +238,29 @@ test('failure diagnostics expose only fixed phase, ordered marker index and SQLS
  assert.deepEqual(runner.foundationFailureDiagnostic('session',{...error,stdout:''}),{phase:'session',completedMarkerIndex:-1,sqlstate:'42501'});
  assert.deepEqual(runner.foundationFailureDiagnostic('PRIVATE_CANARY',error),{phase:'unknown',completedMarkerIndex:null,sqlstate:null});
  assert.ok(!JSON.stringify(runner.foundationFailureDiagnostic('session',error)).includes('CANARY'));
+});
+test('failure diagnostics retain validated SQLSTATE and marker prefix when early exit closes a large input pipe',()=>{
+ need();
+ const stdout=runner.foundationExpectedMarkers[0]+' 412 827\n';
+ const stderr='ERROR:  23514: PRIVATE_CANARY\nDETAIL: SECRET_CANARY\n';
+ // Real installed-Node child only, not SQL: an early nonzero exit can leave a
+ // large stdin buffer unwritten and add EPIPE to an otherwise complete result.
+ let failure;
+ try {
+  execFileSync(process.execPath,['-e',`const fs=require('node:fs');fs.writeSync(1,${JSON.stringify(stdout)});fs.writeSync(2,${JSON.stringify(stderr)});process.exit(3);`],
+   {input:'x'.repeat(1024*1024),encoding:'utf8',timeout:10000,maxBuffer:512*1024,shell:false,stdio:['pipe','pipe','pipe']});
+ } catch(error) { failure=error; }
+ assert.equal(failure?.status,3);assert.equal(failure.signal,null);assert.equal(failure.code,'EPIPE');
+ assert.deepEqual(runner.foundationFailureDiagnostic('session',failure),{phase:'session',completedMarkerIndex:0,sqlstate:'23514'});
+ assert.ok(!JSON.stringify(runner.foundationFailureDiagnostic('session',failure)).includes('CANARY'));
+ for(const change of [{status:1},{status:null},{signal:'SIGTERM'},{code:'ENOBUFS'},
+  {stderr:'ERROR:  23514: PRIVATE_CANARY\nERROR:  42501: SECRET_CANARY\n'},
+  {stderr:'prefix ERROR: 23514: PRIVATE_CANARY\n'}]) {
+  assert.deepEqual(runner.foundationFailureDiagnostic('session',{...failure,stdout,stderr,...change}),
+   {phase:'session',completedMarkerIndex:null,sqlstate:null});
+ }
+ assert.deepEqual(runner.foundationFailureDiagnostic('session',{...failure,stdout:'PRIVATE_CANARY\n',stderr}),
+  {phase:'session',completedMarkerIndex:null,sqlstate:'23514'});
 });
 test('failure diagnostics reject malformed mixed or fabricated marker progress',()=>{
  need();assert.equal(typeof runner.foundationFailureDiagnostic,'function');

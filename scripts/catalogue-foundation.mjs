@@ -116,7 +116,10 @@ export function foundationFailureDiagnostic(phase,error) {
  const safePhase=failurePhases.includes(phase)?phase:'unknown';
  const result={phase:safePhase,completedMarkerIndex:null,sqlstate:null};
  if(!['identity-preflight','session','identity-postflight'].includes(safePhase)
-   || !error || error.status!==3 || error.signal!==null || error.code!==undefined
+   // psql can exit on its first SQL error before consuming a large session.
+   // Node then reports EPIPE as well as the completed exit status and streams.
+   // This is diagnostic-only: every other spawn/timeout/buffer error is refused.
+   || !error || error.status!==3 || error.signal!==null || ![undefined,'EPIPE'].includes(error.code)
    || typeof error.stderr!=='string')return Object.freeze(result);
  const errors=error.stderr.split('\n').filter(line=>line.startsWith('ERROR:'));
  if(errors.length!==1)return Object.freeze(result);
