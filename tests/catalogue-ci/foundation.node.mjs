@@ -13,6 +13,8 @@ const fixtureParts = () => Object.fromEntries([
  ['foundation','SELECT pg_temp.foundation_assert(true, \'behavior\');'],
  ['legacy','SELECT pg_temp.foundation_assert(true, \'legacy\');'],
  ['roles','SELECT pg_temp.foundation_assert(true, \'roles\');'],
+ ['orderCandidate','SELECT 1 AS inactive_order_candidate;'],
+ ['orders','SELECT 1 AS private_order_behavior;'],
 ]);
 test('one guarded SQL session applies exact candidate between prechange and postchange suites, then rolls back', () => {
  need(); const parts=fixtureParts(), sql=runner.buildCatalogueFoundationSession(identity, parts);
@@ -22,7 +24,9 @@ test('one guarded SQL session applies exact candidate between prechange and post
  assert.ok(sql.indexOf(parts.candidate) < sql.indexOf(parts.foundation));
  assert.ok(sql.indexOf(parts.foundation) < sql.indexOf(parts.legacy));
  assert.ok(sql.indexOf(parts.legacy) < sql.indexOf(parts.roles));
- assert.ok(sql.indexOf(parts.roles) < sql.lastIndexOf('ROLLBACK;'));
+ assert.ok(sql.indexOf(parts.roles) < sql.indexOf(parts.orderCandidate));
+ assert.ok(sql.indexOf(parts.orderCandidate) < sql.indexOf(parts.orders));
+ assert.ok(sql.indexOf(parts.orders) < sql.lastIndexOf('ROLLBACK;'));
  assert.ok(sql.lastIndexOf('ROLLBACK;') < sql.indexOf('CATALOGUE_FOUNDATION_ROLLBACK_VERIFIED'));
  assert.equal((sql.match(/^BEGIN;/gm)||[]).length,1);
  assert.equal((sql.match(/^ROLLBACK;/gm)||[]).length,1);
@@ -33,7 +37,7 @@ test('candidate transaction boundaries, client commands, and missing suites are 
  need();for(const candidate of ['COMMIT;','BEGIN; SELECT 1; ROLLBACK;','END;','START TRANSACTION;','PREPARE TRANSACTION \'x\';','\\i outside.sql','SELECT 1;\n\\quit','CREATE FUNCTION x() RETURNS void LANGUAGE plpgsql AS $$ BEGIN NULL; END $$; COMMIT;']) {
   assert.throws(()=>runner.buildCatalogueFoundationSession(identity,{...fixtureParts(),candidate}));
  }
- for(const key of ['before','candidate','foundation','legacy','roles']) {const parts=fixtureParts();delete parts[key];assert.throws(()=>runner.buildCatalogueFoundationSession(identity,parts));}
+ for(const key of ['before','candidate','foundation','legacy','roles','orderCandidate','orders']) {const parts=fixtureParts();delete parts[key];assert.throws(()=>runner.buildCatalogueFoundationSession(identity,parts));}
  // PL/pgSQL blocks and literals are not top-level transaction commands.
  assert.doesNotThrow(()=>runner.buildCatalogueFoundationSession(identity,{...fixtureParts(),candidate:"CREATE FUNCTION x() RETURNS void LANGUAGE plpgsql AS $$ BEGIN RAISE NOTICE 'COMMIT'; END $$;"}));
 });
@@ -42,7 +46,7 @@ test('only complete ordered live-session markers and verified rollback constitut
  assert.deepEqual(runner.parseCatalogueFoundationOutput(output),{backendPid:'412',transactionId:'827'});
  for(const changed of [output.replace('412 827','413 827'),output.replace('412 827','412 828'),output.replace('CATALOGUE_FOUNDATION_ROLLBACK_VERIFIED 412 827\n',''),output+'UNEXPECTED\n',output.replace('412','0'),output.split('\n').reverse().join('\n')]) assert.throws(()=>runner.parseCatalogueFoundationOutput(changed));
 });
-test('status command session rejects preexisting request objects and verifies their rollback with the same six markers', () => {
+test('status command session rejects preexisting request objects and verifies their rollback with the six original foundation markers', () => {
  need(); const sql=runner.buildCatalogueFoundationSession(identity,fixtureParts());
  for(const object of [
   "pg_catalog.to_regclass('private.catalog_requests_v1') IS NULL",
@@ -55,7 +59,7 @@ test('status command session rejects preexisting request objects and verifies th
   assert.ok(sql.indexOf(object)<sql.indexOf('BEGIN;'));
   assert.ok(sql.lastIndexOf(object)>sql.lastIndexOf('ROLLBACK;'));
  }
- assert.equal(runner.foundationExpectedMarkers.length,6);
+ assert.equal(runner.foundationExpectedMarkers.length,7);
  assert.equal((sql.match(/^\\echo CATALOGUE_FOUNDATION_/gm)||[]).length,6);
 });
 test('status command SQL remains an exact session fragment with real authenticated RPC assertions', () => {
@@ -254,3 +258,18 @@ test('failure diagnostics preserve refusal and never authorize a failure bundle'
  assert.equal(readFileSync(f.output,'utf8'),'bundle_ready=false\n');
  assert.equal(existsSync(join(f.directory,'scale-results/catalogue-foundation/results.json')),false);
 }));
+
+test('inactive PO core is bound into the existing rollback session without activating cutover',()=>{
+ need();
+ assert.equal(runner.foundationSqlPaths.orderCandidate,'supabase/catalogue/v1/04-order-boundaries.sql');
+ assert.equal(runner.foundationSqlPaths.orders,'tests/database/catalogue/orders.sql');
+ assert.ok(runner.foundationExpectedMarkers.includes('CATALOGUE_ORDERS_CORE_PASSED'));
+ const candidate=readFileSync(resolve(root,runner.foundationSqlPaths.orderCandidate),'utf8');
+ const suite=readFileSync(resolve(root,runner.foundationSqlPaths.orders),'utf8');
+ assert.doesNotThrow(()=>runner.foundationTopLevelSql(candidate));
+ assert.doesNotThrow(()=>runner.foundationTopLevelSql(suite));
+ for(const token of ['private.catalog_po_transaction_core_v2','private.catalog_po_transaction_v2','private.catalog_po_legacy_transaction_v1','0b1e19441a499ae9c864b2d21aef28ba','FOR NO KEY UPDATE','CATALOG_DISABLED','CATALOG_TRACKING_INCOMPLETE'])assert.ok(candidate.includes(token),token);
+ assert.ok(!candidate.includes('DROP CONSTRAINT catalog_foundation'));
+ assert.ok(!suite.includes('DROP CONSTRAINT catalog_foundation'));
+ for(const label of ['private core explicitly writes generation two','production generation two remains unavailable','exact replay ignores later disabled targets','fabricated persisted identity refused','disabled customer caps each persisted line','trusted conversion refuses disabled product','manual history preserves zero price','post-stage07 executive review remains required'])assert.ok(suite.includes(label),label);
+});

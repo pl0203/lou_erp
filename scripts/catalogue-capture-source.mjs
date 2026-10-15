@@ -17,6 +17,8 @@ export const cataloguePublicSourcePaths=[
  'scripts/catalogue-foundation-red.mjs',
  'tests/database/catalogue/foundation.sql',
  'scripts/catalogue-foundation.mjs',
+ 'supabase/catalogue/v1/04-order-boundaries.sql',
+ 'tests/database/catalogue/orders.sql',
  'scripts/catalogue-reference-helpers.mjs',
  'tests/catalogue-ci/reference-helpers.node.mjs',
  'supabase/catalogue/v1/02-promotion-owner-extraction.sql',
