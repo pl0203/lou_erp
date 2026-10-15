@@ -96,6 +96,22 @@ test('CO actual-role suite covers canonical keys, immutable history, final compo
  assert.match(behavior,/SET LOCAL ROLE authenticated/);assert.match(behavior,/SET LOCAL ROLE anon/);assert.match(behavior,/SET LOCAL ROLE service_role/);
  assert.match(behavior,/SET CONSTRAINTS ALL IMMEDIATE;\nSET CONSTRAINTS ALL DEFERRED;/);
 });
+test('CO positive actor fixture is independent of earlier role revocation probes',()=>{
+ const roles=read('tests/database/catalogue/roles.sql');
+ assert.ok(roles.includes("UPDATE public.users SET role='po_admin' WHERE id=md5('catalogue-foundation-actor-1')::uuid;"));
+ assert.ok(roles.includes("UPDATE public.users SET is_active=false WHERE id=md5('catalogue-foundation-actor-1')::uuid;"));
+ assert.equal(behavior.includes('catalogue-foundation-actor-1'),false,'CO must not reuse the actor revoked by the earlier suite');
+ const auth="INSERT INTO auth.users(id) VALUES(md5('co-guard-actor')::uuid);";
+ const profile="VALUES(md5('co-guard-actor')::uuid,'Fictional CO guard actor','co-guard@example.invalid','co_admin',true);";
+ const claims="SELECT set_config('request.jwt.claim.sub',md5('co-guard-actor')::uuid::text,true);";
+ assert.ok(behavior.indexOf(auth)>=0&&behavior.indexOf(auth)<behavior.indexOf(profile));
+ assert.ok(behavior.indexOf(profile)<behavior.indexOf(claims));
+ assert.ok(behavior.includes("'dedicated CO fixture starts active with CO authority'"));
+ assert.ok(behavior.includes("UPDATE public.users SET role='po_admin' WHERE id=md5('co-guard-actor')::uuid;"));
+ assert.ok(behavior.includes("UPDATE public.users SET role='co_admin',is_active=false WHERE id=md5('co-guard-actor')::uuid;"));
+ assert.ok(behavior.includes("UPDATE public.users SET is_active=true WHERE id=md5('co-guard-actor')::uuid;"));
+ assert.ok(behavior.includes("set_config('request.jwt.claim.sub',md5('catalogue-foundation-actor-2')"));
+});
 test('CO SQL and source checks are captured and rollback-gated in the existing bounded runner',()=>{
  assert.equal(foundationSqlPaths.coOrderCandidate,'supabase/catalogue/v1/new06-co-order-boundaries.sql');assert.equal(foundationSqlPaths.coOrders,'tests/database/catalogue/co-orders.sql');
  assert.ok(foundationExpectedMarkers.includes('CATALOGUE_CO_ORDERS_CORE_PASSED'));

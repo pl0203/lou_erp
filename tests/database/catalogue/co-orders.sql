@@ -17,9 +17,15 @@ REVOKE ALL ON FUNCTION pg_temp.catalog_co_test_call(uuid,text,jsonb),pg_temp.cat
 GRANT EXECUTE ON FUNCTION pg_temp.catalog_co_test_call(uuid,text,jsonb),pg_temp.catalog_co_test_gate(uuid,text,jsonb),pg_temp.catalog_co_binding(uuid,jsonb) TO authenticated;
 CREATE TEMP TABLE catalogue_co_results(label text PRIMARY KEY,request_id uuid,operation text,payload jsonb,result jsonb) ON COMMIT DROP;
 GRANT SELECT,INSERT,UPDATE ON pg_temp.catalogue_co_results TO authenticated;
+-- The earlier role suite intentionally leaves its CO actor inactive and
+-- reassigned to PO. This suite owns a separate actor, including revocation tests.
+INSERT INTO auth.users(id) VALUES(md5('co-guard-actor')::uuid);
+INSERT INTO public.users(id,full_name,email,role,is_active)
+VALUES(md5('co-guard-actor')::uuid,'Fictional CO guard actor','co-guard@example.invalid','co_admin',true);
+SELECT pg_temp.foundation_assert((SELECT role='co_admin' AND is_active FROM public.users WHERE id=md5('co-guard-actor')::uuid),'dedicated CO fixture starts active with CO authority');
 INSERT INTO public.customers(id,name,customer_category) VALUES(md5('co-guard-customer')::uuid,'Fictional CO guard customer','perorangan'),(md5('co-guard-other')::uuid,'Fictional second CO customer','perorangan');
 INSERT INTO public.products(id,name,sku) VALUES(md5('co-guard-product-a')::uuid,'Saved catalogue A','CO-GUARD-A'),(md5('co-guard-product-b')::uuid,'Saved catalogue B','CO-GUARD-B');
-SELECT set_config('request.jwt.claim.sub',md5('catalogue-foundation-actor-1')::uuid::text,true);
+SELECT set_config('request.jwt.claim.sub',md5('co-guard-actor')::uuid::text,true);
 SET LOCAL ROLE authenticated;
 SELECT pg_temp.foundation_raises($q$SELECT private.catalog_co_transaction_core_v2(md5('co-direct-core')::uuid,'create_co','{}')$q$,'42501','authenticated cannot call admitted CO core');
 SELECT pg_temp.foundation_raises($q$SELECT private.catalog_co_command_begin_v2(md5('co-direct-begin')::uuid,'create_co','{}')$q$,'42501','authenticated cannot call v2 begin');
@@ -201,7 +207,7 @@ RESET ROLE;
 -- Synthetic owner-created finalized evidence is only a linkage fixture, never
 -- a claim about provider object bytes or authorization to upload real evidence.
 INSERT INTO private.co_evidence(id,customer_id,draft_id,draft_version,customer_version,report_month,created_by,request_id,mime_type,byte_size,sha256,version,finalized_draft_version)
-SELECT md5('co-report-evidence')::uuid,d.customer_id,d.id,d.version,s.version,d.report_month,md5('catalogue-foundation-actor-1')::uuid,md5('co-report-fill')::uuid,'application/pdf',1,repeat('a',64),2,d.version+1
+SELECT md5('co-report-evidence')::uuid,d.customer_id,d.id,d.version,s.version,d.report_month,md5('co-guard-actor')::uuid,md5('co-report-fill')::uuid,'application/pdf',1,repeat('a',64),2,d.version+1
 FROM private.co_drafts d JOIN private.co_customer_state s ON s.customer_id=d.customer_id WHERE d.id=(SELECT (result->>'id')::uuid FROM pg_temp.catalogue_co_results WHERE label='report-draft');
 UPDATE private.co_drafts SET evidence_id=md5('co-report-evidence')::uuid WHERE id=(SELECT (result->>'id')::uuid FROM pg_temp.catalogue_co_results WHERE label='report-draft');
 INSERT INTO pg_temp.catalogue_co_results(label,request_id,operation,payload)
@@ -267,17 +273,17 @@ SELECT set_config('request.jwt.claim.sub',md5('catalogue-foundation-actor-2')::u
 SET LOCAL ROLE authenticated;
 SELECT pg_temp.foundation_raises($q$SELECT public.pilot_co_transaction_v1(request_id,operation,payload) FROM pg_temp.catalogue_co_results WHERE label='create'$q$,'42501','PO role cannot recover another or former CO receipt');
 RESET ROLE;
-UPDATE public.users SET role='po_admin' WHERE id=md5('catalogue-foundation-actor-1')::uuid;
-SELECT set_config('request.jwt.claim.sub',md5('catalogue-foundation-actor-1')::uuid::text,true);
+UPDATE public.users SET role='po_admin' WHERE id=md5('co-guard-actor')::uuid;
+SELECT set_config('request.jwt.claim.sub',md5('co-guard-actor')::uuid::text,true);
 SET LOCAL ROLE authenticated;
 SELECT pg_temp.foundation_raises($q$SELECT public.pilot_co_transaction_v1(request_id,operation,payload) FROM pg_temp.catalogue_co_results WHERE label='create'$q$,'42501','former CO current authority revoked before own receipt recovery');
 SELECT pg_temp.foundation_raises($q$SELECT public.pilot_reconcile_co_v1(md5('co-create')::uuid,false)$q$,'42501','former CO cannot reconcile own receipt');
 RESET ROLE;
-UPDATE public.users SET role='co_admin',is_active=false WHERE id=md5('catalogue-foundation-actor-1')::uuid;
+UPDATE public.users SET role='co_admin',is_active=false WHERE id=md5('co-guard-actor')::uuid;
 SET LOCAL ROLE authenticated;
 SELECT pg_temp.foundation_raises($q$SELECT public.pilot_co_transaction_v1(request_id,operation,payload) FROM pg_temp.catalogue_co_results WHERE label='create'$q$,'42501','inactive CO cannot recover committed receipt');
 RESET ROLE;
-UPDATE public.users SET is_active=true WHERE id=md5('catalogue-foundation-actor-1')::uuid;
+UPDATE public.users SET is_active=true WHERE id=md5('co-guard-actor')::uuid;
 SET LOCAL ROLE anon;
 SELECT pg_temp.foundation_raises($q$SELECT public.pilot_co_transaction_v1(md5('co-anon')::uuid,'create_co','{}')$q$,'42501','anonymous CO entrypoint remains denied');
 RESET ROLE;
