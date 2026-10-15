@@ -44,6 +44,11 @@ export function foundationTopLevelSql(sql) {
 }
 const noFoundationPredicate=`pg_catalog.to_regclass('private.catalog_identity_v1') IS NULL
  AND pg_catalog.to_regclass('private.catalog_cutover_v1') IS NULL
+ AND pg_catalog.to_regclass('private.catalog_requests_v1') IS NULL
+ AND pg_catalog.to_regprocedure('private.catalog_request_terminal_v1()') IS NULL
+ AND pg_catalog.to_regprocedure('private.catalog_authorize_v1(text,uuid)') IS NULL
+ AND pg_catalog.to_regprocedure('public.pilot_catalog_transaction_v1(uuid,text,jsonb)') IS NULL
+ AND pg_catalog.to_regprocedure('public.pilot_reconcile_catalog_v1(uuid,boolean)') IS NULL
  AND pg_catalog.to_regprocedure('public.pilot_procurement_access_v2()') IS NULL
  AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_attribute a WHERE a.attrelid IN ('public.customers'::regclass,'public.products'::regclass)
   AND a.attnum>0 AND NOT a.attisdropped AND a.attname IN ('is_enabled','catalog_version'))
@@ -149,7 +154,11 @@ export function runCatalogueFoundation({repoRoot=defaultRoot,env=process.env,exe
    task1Complete:false,implementationAccepted:false,hostedVerified:false,trackingReady:false,executionGeneration:1,
    identity,session,files:Object.entries(foundationSqlPaths).map(([name,path])=>({path,sha256:sha(bytes[name])})),
    tests:{prechange:'PASSED',foundation:'PASSED',legacyColumns:'PASSED',roles:'PASSED',rollback:'VERIFIED'},
-   targetParity:'SYNTHETIC_SAME_SESSION_ONLY',broaderLockGraph:'UNPROVEN',referenceTracking:'NOT_IMPLEMENTED',commandAndReplaySuites:'UNRUN'};
+   targetParity:'SYNTHETIC_SAME_SESSION_ONLY',broaderLockGraph:'UNPROVEN',referenceTracking:'NOT_IMPLEMENTED',
+   commandAndReplaySuites:'SET_ENABLED_SEQUENTIAL_SAME_SESSION_PASSED',
+   commandProof:{operations:['set_enabled'],role:'authenticated',authorization:'VERIFIED_SYNTHETIC_POLICY_ONLY',
+    sequentialReplay:'PASSED',sequentialAbandonment:'PASSED',rollbackAtomicity:'PASSED',
+    concurrentCommandReconcile:'UNRUN',committedCrossSessionRecovery:'UNRUN',hostedPolicyParity:'UNVERIFIED'}};
   checkSource();directory(parent);directory(pending);const current=directory(output);
   assert.equal(current.ino,reserved.ino);assert.equal(current.dev,reserved.dev);assert.deepEqual(readdirSync(output),[]);
   const result=JSON.stringify(report,null,2)+'\n';

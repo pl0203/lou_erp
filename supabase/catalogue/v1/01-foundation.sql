@@ -441,6 +441,188 @@ BEGIN
 END $catalog_authority_postflight$;
 -- END POST-COLUMN AUTHORITY.
 
+-- One bounded command vertical. This is the explicitly reviewed 42-phase
+-- synthetic policy, not a mechanism for preserving arbitrary hosted RLS.
+-- Status changes do not depend on lifetime-unused evidence or tracker readiness.
+-- Only minimal request binding and terminal state are retained, never form data.
+CREATE TABLE private.catalog_requests_v1 (
+  actor_id uuid NOT NULL,
+  request_id uuid NOT NULL,
+  status text NOT NULL CHECK (status IN ('committed', 'abandoned')),
+  binding jsonb,
+  receipt jsonb,
+  PRIMARY KEY (actor_id, request_id),
+  CONSTRAINT catalog_request_terminal_shape_v1 CHECK (
+    (status = 'abandoned' AND binding IS NULL AND receipt IS NULL)
+    OR (status = 'committed' AND binding IS NOT NULL AND receipt IS NOT NULL
+      AND jsonb_typeof(binding) = 'object' AND jsonb_typeof(receipt) = 'object'))
+);
+ALTER TABLE private.catalog_requests_v1 ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE private.catalog_requests_v1 FROM PUBLIC, anon, authenticated, service_role;
+
+CREATE FUNCTION private.catalog_request_terminal_v1() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+BEGIN
+  RAISE EXCEPTION 'Catalogue terminal request evidence is immutable'
+    USING ERRCODE = '23514', DETAIL = 'CATALOG_REQUEST_IMMUTABLE';
+END $$;
+REVOKE ALL ON FUNCTION private.catalog_request_terminal_v1() FROM PUBLIC, anon, authenticated, service_role;
+CREATE TRIGGER catalog_request_terminal_v1 BEFORE UPDATE OR DELETE ON private.catalog_requests_v1
+FOR EACH ROW EXECUTE FUNCTION private.catalog_request_terminal_v1();
+CREATE TRIGGER catalog_request_no_truncate_v1 BEFORE TRUNCATE ON private.catalog_requests_v1
+FOR EACH STATEMENT EXECUTE FUNCTION private.catalog_request_terminal_v1();
+
+CREATE FUNCTION private.catalog_authorize_v1(p_kind text, p_id uuid) RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE actor uuid := auth.uid(); actor_role public.user_role; target_table regclass; writable boolean;
+BEGIN
+  -- current_user here is the definer, not the API caller. Neither a JWT claim
+  -- alone nor service/owner execution supplies the authenticated entry boundary.
+  IF current_setting('role', true) IS DISTINCT FROM 'authenticated' OR actor IS NULL THEN
+    RAISE EXCEPTION 'Catalogue access denied' USING ERRCODE = '42501', DETAIL = 'CATALOG_ACCESS_DENIED';
+  END IF;
+  -- Hold the current profile against role/active changes until this transaction
+  -- ends. FOR KEY SHARE would not prevent updates to these authority columns.
+  LOCK TABLE public.users IN ROW SHARE MODE NOWAIT;
+  SELECT u.role INTO actor_role FROM public.users u WHERE u.id = actor AND u.is_active FOR SHARE NOWAIT;
+  IF NOT FOUND OR actor_role IS NULL OR actor_role NOT IN ('co_admin', 'po_admin', 'executive') THEN
+    RAISE EXCEPTION 'Catalogue access denied' USING ERRCODE = '42501', DETAIL = 'CATALOG_ACCESS_DENIED';
+  END IF;
+  IF p_kind IS NULL AND p_id IS NULL THEN RETURN actor; END IF;
+  IF p_kind IS NULL OR p_kind NOT IN ('customer', 'product') OR p_id IS NULL THEN
+    RAISE EXCEPTION 'Catalogue access denied' USING ERRCODE = '42501', DETAIL = 'CATALOG_ACCESS_DENIED';
+  END IF;
+  target_table := CASE p_kind WHEN 'customer' THEN 'public.customers'::regclass ELSE 'public.products'::regclass END;
+  SELECT coalesce(bool_and(pg_catalog.has_column_privilege('authenticated', a.attrelid, a.attnum, 'UPDATE')), false)
+    INTO writable FROM pg_catalog.pg_attribute a
+    WHERE a.attrelid = target_table AND a.attnum > 0 AND NOT a.attisdropped
+      AND a.attname NOT IN ('is_enabled', 'catalog_version');
+  -- The synthetic masters have all-row permissive writes, restrictive active
+  -- profile checks, and this customer visibility rule. CO UPDATE denials were
+  -- replaced above. PO/executive visibility is supplied by the existing helper.
+  IF NOT writable OR (p_kind = 'customer' AND NOT coalesce(
+      actor_role = 'co_admin' OR private.pilot_can_access_customer(p_id), false)) THEN
+    RAISE EXCEPTION 'Catalogue access denied' USING ERRCODE = '42501', DETAIL = 'CATALOG_ACCESS_DENIED';
+  END IF;
+  RETURN actor;
+END $$;
+REVOKE ALL ON FUNCTION private.catalog_authorize_v1(text,uuid) FROM PUBLIC, anon, authenticated, service_role;
+
+CREATE FUNCTION public.pilot_catalog_transaction_v1(p_request_id uuid, p_operation text, p_payload jsonb) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE actor uuid; target_kind text; target_id uuid; expected_version bigint; desired boolean;
+  request_binding jsonb; prior private.catalog_requests_v1%ROWTYPE;
+  before_version bigint; before_enabled boolean; after_version bigint; result jsonb;
+BEGIN
+  actor := private.catalog_authorize_v1(NULL, NULL);
+  IF p_request_id IS NULL OR p_operation IS DISTINCT FROM 'set_enabled'
+    OR jsonb_typeof(p_payload) IS DISTINCT FROM 'object' THEN
+    RAISE EXCEPTION 'Invalid catalogue command' USING ERRCODE = '22023', DETAIL = 'CATALOG_INVALID_INPUT';
+  END IF;
+  IF NOT (p_payload ?& ARRAY['kind', 'id', 'expected_version', 'is_enabled'])
+    OR p_payload - ARRAY['kind', 'id', 'expected_version', 'is_enabled'] <> '{}'::jsonb
+    OR jsonb_typeof(p_payload->'kind') IS DISTINCT FROM 'string'
+    OR p_payload->>'kind' NOT IN ('customer', 'product')
+    OR jsonb_typeof(p_payload->'id') IS DISTINCT FROM 'string'
+    OR (p_payload->>'id') !~ '^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$'
+    OR jsonb_typeof(p_payload->'expected_version') IS DISTINCT FROM 'string'
+    OR (p_payload->>'expected_version') !~ '^[1-9][0-9]*$'
+    OR length(p_payload->>'expected_version') > 19
+    OR jsonb_typeof(p_payload->'is_enabled') IS DISTINCT FROM 'boolean' THEN
+    RAISE EXCEPTION 'Invalid catalogue command' USING ERRCODE = '22023', DETAIL = 'CATALOG_INVALID_INPUT';
+  END IF;
+  IF (p_payload->>'expected_version')::numeric > 9223372036854775807 THEN
+    RAISE EXCEPTION 'Invalid catalogue version' USING ERRCODE = '22023', DETAIL = 'CATALOG_INVALID_INPUT';
+  END IF;
+  target_kind := p_payload->>'kind'; target_id := (p_payload->>'id')::uuid;
+  expected_version := (p_payload->>'expected_version')::bigint; desired := (p_payload->>'is_enabled')::boolean;
+  request_binding := jsonb_build_object('operation', p_operation) || p_payload;
+  -- Both RPCs use exactly this actor/request namespace. Hash collisions only
+  -- cause conservative busy refusals; identity and binding use exact equality.
+  IF NOT pg_catalog.pg_try_advisory_xact_lock(pg_catalog.hashtextextended(
+      'catalog_request_v1:' || actor::text || ':' || p_request_id::text, 1801427914)) THEN
+    RAISE EXCEPTION 'Catalogue request is busy' USING ERRCODE = '55P03', DETAIL = 'CATALOG_REQUEST_BUSY';
+  END IF;
+  LOCK TABLE private.catalog_requests_v1 IN ROW EXCLUSIVE MODE NOWAIT;
+  SELECT * INTO prior FROM private.catalog_requests_v1 WHERE actor_id = actor AND request_id = p_request_id;
+  IF FOUND THEN
+    IF prior.status = 'abandoned' THEN
+      RAISE EXCEPTION 'Catalogue request was abandoned' USING ERRCODE = '22023', DETAIL = 'CATALOG_REQUEST_ABANDONED';
+    END IF;
+    IF prior.binding IS DISTINCT FROM request_binding THEN
+      RAISE EXCEPTION 'Catalogue request binding differs' USING ERRCODE = '22023', DETAIL = 'CATALOG_REQUEST_CONFLICT';
+    END IF;
+    PERFORM private.catalog_authorize_v1(target_kind, target_id);
+    -- A later update/deletion must not reinterpret an already committed request.
+    RETURN prior.receipt;
+  END IF;
+  PERFORM private.catalog_authorize_v1(target_kind, target_id);
+  -- Lock the selected master before the existing AFTER identity reservation.
+  -- No lifetime-evidence lock is taken in reverse order by this command.
+  IF target_kind = 'customer' THEN
+    LOCK TABLE public.customers IN ROW EXCLUSIVE MODE NOWAIT;
+    SELECT catalog_version, is_enabled INTO before_version, before_enabled FROM public.customers WHERE id = target_id FOR UPDATE NOWAIT;
+  ELSE
+    LOCK TABLE public.products IN ROW EXCLUSIVE MODE NOWAIT;
+    SELECT catalog_version, is_enabled INTO before_version, before_enabled FROM public.products WHERE id = target_id FOR UPDATE NOWAIT;
+  END IF;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Catalogue target not found' USING ERRCODE = 'P0002', DETAIL = 'CATALOG_NOT_FOUND';
+  END IF;
+  IF before_version <> expected_version THEN
+    RAISE EXCEPTION 'Catalogue version changed' USING ERRCODE = '40001', DETAIL = 'CATALOG_VERSION_CONFLICT';
+  END IF;
+  after_version := before_version;
+  IF before_enabled IS DISTINCT FROM desired THEN
+    IF target_kind = 'customer' THEN
+      UPDATE public.customers SET is_enabled = desired WHERE id = target_id RETURNING catalog_version INTO after_version;
+    ELSE
+      UPDATE public.products SET is_enabled = desired WHERE id = target_id RETURNING catalog_version INTO after_version;
+    END IF;
+  END IF;
+  -- No UPDATE at all for the same state, including at bigint maximum.
+  result := jsonb_build_object('version', 1, 'request_id', p_request_id, 'actor_id', actor,
+    'operation', p_operation, 'kind', target_kind, 'id', target_id,
+    'before', jsonb_build_object('catalog_version', before_version::text, 'is_enabled', before_enabled),
+    'after', jsonb_build_object('catalog_version', after_version::text, 'is_enabled', desired),
+    'committed_at', statement_timestamp());
+  INSERT INTO private.catalog_requests_v1(actor_id, request_id, status, binding, receipt)
+    VALUES (actor, p_request_id, 'committed', request_binding, result);
+  RETURN result;
+END $$;
+REVOKE ALL ON FUNCTION public.pilot_catalog_transaction_v1(uuid,text,jsonb) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.pilot_catalog_transaction_v1(uuid,text,jsonb) TO authenticated;
+
+CREATE FUNCTION public.pilot_reconcile_catalog_v1(p_request_id uuid, p_abandon boolean) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE actor uuid; prior private.catalog_requests_v1%ROWTYPE;
+BEGIN
+  actor := private.catalog_authorize_v1(NULL, NULL);
+  IF p_request_id IS NULL OR p_abandon IS NULL THEN
+    RAISE EXCEPTION 'Invalid catalogue recovery' USING ERRCODE = '22023', DETAIL = 'CATALOG_INVALID_INPUT';
+  END IF;
+  IF NOT pg_catalog.pg_try_advisory_xact_lock(pg_catalog.hashtextextended(
+      'catalog_request_v1:' || actor::text || ':' || p_request_id::text, 1801427914)) THEN
+    RAISE EXCEPTION 'Catalogue request is busy' USING ERRCODE = '55P03', DETAIL = 'CATALOG_REQUEST_BUSY';
+  END IF;
+  LOCK TABLE private.catalog_requests_v1 IN ROW EXCLUSIVE MODE NOWAIT;
+  SELECT * INTO prior FROM private.catalog_requests_v1 WHERE actor_id = actor AND request_id = p_request_id;
+  IF FOUND THEN
+    IF prior.status = 'committed' THEN
+      PERFORM private.catalog_authorize_v1(prior.binding->>'kind', (prior.binding->>'id')::uuid);
+      RETURN jsonb_build_object('status', 'committed', 'receipt', prior.receipt);
+    END IF;
+    RETURN jsonb_build_object('status', 'abandoned');
+  END IF;
+  IF NOT p_abandon THEN RETURN jsonb_build_object('status', 'unknown'); END IF;
+  -- A terminal insert, not an expiring reservation. A later dispatch with this
+  -- exact actor/request pair must refuse forever. Other actors remain isolated.
+  INSERT INTO private.catalog_requests_v1(actor_id, request_id, status) VALUES (actor, p_request_id, 'abandoned');
+  RETURN jsonb_build_object('status', 'abandoned');
+END $$;
+REVOKE ALL ON FUNCTION public.pilot_reconcile_catalog_v1(uuid,boolean) FROM PUBLIC, anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.pilot_reconcile_catalog_v1(uuid,boolean) TO authenticated;
+
 -- New-object default ACLs are not assumed safe. Unexpected grants abort this
 -- transaction rather than widening the reviewed client/private entry points.
 DO $catalog_new_object_acl_postflight$
@@ -452,9 +634,15 @@ BEGIN
       'private.catalog_master_before_v1()'::regprocedure,
       'private.catalog_master_after_v1()'::regprocedure,
       'private.catalog_master_truncate_v1()'::regprocedure,
+      'private.catalog_request_terminal_v1()'::regprocedure,
+      'private.catalog_authorize_v1(text,uuid)'::regprocedure,
+      'public.pilot_catalog_transaction_v1(uuid,text,jsonb)'::regprocedure,
+      'public.pilot_reconcile_catalog_v1(uuid,boolean)'::regprocedure,
       'public.pilot_procurement_access_v2()'::regprocedure)
       AND a.grantee <> p.proowner
-      AND NOT (p.oid = 'public.pilot_procurement_access_v2()'::regprocedure
+      AND NOT (p.oid IN ('public.pilot_procurement_access_v2()'::regprocedure,
+          'public.pilot_catalog_transaction_v1(uuid,text,jsonb)'::regprocedure,
+          'public.pilot_reconcile_catalog_v1(uuid,boolean)'::regprocedure)
         AND a.grantee = 'authenticated'::regrole::oid
         AND a.privilege_type = 'EXECUTE' AND NOT a.is_grantable)
   ) THEN
@@ -463,7 +651,8 @@ BEGIN
   IF EXISTS (
     SELECT 1 FROM pg_catalog.pg_class c
     CROSS JOIN LATERAL pg_catalog.aclexplode(coalesce(c.relacl, pg_catalog.acldefault('r', c.relowner))) a
-    WHERE c.oid IN ('private.catalog_identity_v1'::regclass, 'private.catalog_cutover_v1'::regclass)
+    WHERE c.oid IN ('private.catalog_identity_v1'::regclass, 'private.catalog_cutover_v1'::regclass,
+      'private.catalog_requests_v1'::regclass)
       AND a.grantee <> c.relowner
   ) THEN
     RAISE EXCEPTION 'CATALOG_FOUNDATION_TABLE_ACL_DRIFT: unexpected new-table grantee';

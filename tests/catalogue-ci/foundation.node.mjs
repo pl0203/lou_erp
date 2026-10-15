@@ -42,6 +42,34 @@ test('only complete ordered live-session markers and verified rollback constitut
  assert.deepEqual(runner.parseCatalogueFoundationOutput(output),{backendPid:'412',transactionId:'827'});
  for(const changed of [output.replace('412 827','413 827'),output.replace('412 827','412 828'),output.replace('CATALOGUE_FOUNDATION_ROLLBACK_VERIFIED 412 827\n',''),output+'UNEXPECTED\n',output.replace('412','0'),output.split('\n').reverse().join('\n')]) assert.throws(()=>runner.parseCatalogueFoundationOutput(changed));
 });
+test('status command session rejects preexisting request objects and verifies their rollback with the same six markers', () => {
+ need(); const sql=runner.buildCatalogueFoundationSession(identity,fixtureParts());
+ for(const object of [
+  "pg_catalog.to_regclass('private.catalog_requests_v1') IS NULL",
+  "pg_catalog.to_regprocedure('private.catalog_request_terminal_v1()') IS NULL",
+  "pg_catalog.to_regprocedure('private.catalog_authorize_v1(text,uuid)') IS NULL",
+  "pg_catalog.to_regprocedure('public.pilot_catalog_transaction_v1(uuid,text,jsonb)') IS NULL",
+  "pg_catalog.to_regprocedure('public.pilot_reconcile_catalog_v1(uuid,boolean)') IS NULL",
+ ]) {
+  assert.equal(sql.split(object).length,3,`Both preexistence and rollback must cover ${object}`);
+  assert.ok(sql.indexOf(object)<sql.indexOf('BEGIN;'));
+  assert.ok(sql.lastIndexOf(object)>sql.lastIndexOf('ROLLBACK;'));
+ }
+ assert.equal(runner.foundationExpectedMarkers.length,6);
+ assert.equal((sql.match(/^\\echo CATALOGUE_FOUNDATION_/gm)||[]).length,6);
+});
+test('status command SQL remains an exact session fragment with real authenticated RPC assertions', () => {
+ need(); const candidate=readFileSync(resolve(root,runner.foundationSqlPaths.candidate),'utf8');
+ const behavior=readFileSync(resolve(root,runner.foundationSqlPaths.foundation),'utf8');
+ assert.doesNotThrow(()=>runner.foundationTopLevelSql(candidate));
+ assert.doesNotThrow(()=>runner.foundationTopLevelSql(behavior));
+ for(const signature of ['CREATE FUNCTION public.pilot_catalog_transaction_v1(', 'CREATE FUNCTION public.pilot_reconcile_catalog_v1('])assert.ok(candidate.includes(signature));
+ assert.ok(behavior.includes('SET LOCAL ROLE authenticated;'));
+ for(const label of ['status no-op does not UPDATE the master', 'exact replay after later master change',
+  'another actor cannot see the original receipt', 'abandonment fences delayed dispatch',
+  'receipt failure rolls back master identity and request', 'recovery rechecks the stored kind capability',
+  'same request under inactive profile is denied', 'status receipt preserves exact bigint text'])assert.ok(behavior.includes(label),label);
+});
 test('behavior suites are real DML and actual-role probes rather than source-contract assertions',()=>{
  need();const read=name=>readFileSync(resolve(root,`tests/database/catalogue/${name}.sql`),'utf8');
  const before=read('before-foundation'),foundation=read('foundation'),legacy=read('legacy-columns'),roles=read('roles');
@@ -102,6 +130,10 @@ test('bound runner uses one behavior process and emits checksummed strictly boun
  for(const key of ['task1Complete','implementationAccepted','hostedVerified','trackingReady'])assert.equal(report[key],false);
  assert.equal(report.executionGeneration,1);assert.equal(report.targetParity,'SYNTHETIC_SAME_SESSION_ONLY');assert.equal(report.broaderLockGraph,'UNPROVEN');
  assert.equal(report.tests.rollback,'VERIFIED');assert.deepEqual(report.session,{backendPid:'412',transactionId:'827'});
+ assert.equal(report.commandAndReplaySuites,'SET_ENABLED_SEQUENTIAL_SAME_SESSION_PASSED');
+ assert.deepEqual(report.commandProof,{operations:['set_enabled'],role:'authenticated',
+  authorization:'VERIFIED_SYNTHETIC_POLICY_ONLY',sequentialReplay:'PASSED',sequentialAbandonment:'PASSED',
+  rollbackAtomicity:'PASSED',concurrentCommandReconcile:'UNRUN',committedCrossSessionRecovery:'UNRUN',hostedPolicyParity:'UNVERIFIED'});
  assert.deepEqual(report.files,Object.values(runner.foundationSqlPaths).map(path=>({path,sha256:sha(readFileSync(join(f.directory,path)))})));
  const out=join(f.directory,'scale-results/catalogue-foundation');assert.deepEqual(readdirSync(out).sort(),['manifest.json','results.json']);
  const bytes=readFileSync(join(out,'results.json'),'utf8');assert.deepEqual(JSON.parse(readFileSync(join(out,'manifest.json'),'utf8')).files,[{path:'results.json',sha256:sha(bytes)}]);
