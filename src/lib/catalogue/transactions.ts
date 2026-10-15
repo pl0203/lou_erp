@@ -40,6 +40,8 @@ export type CatalogueTransactionSender = {
   reconcile(abandon?: boolean): Promise<CatalogueRecovery>
   /** Call only after the owner has accepted canonical current state, including a deleted target. */
   acknowledgeRecovered(): Promise<void>
+  /** Call only after terminal abandonment and the required canonical/authority refresh. */
+  acknowledgeAbandoned(): Promise<void>
 }
 interface Pending {
   version: 1
@@ -51,6 +53,7 @@ interface Pending {
   fingerprint: string
   binding: CatalogueRequestBinding
   receipt?: CatalogueReceipt
+  abandoned?: true
 }
 const unresolved = () => new Error('Hasil penyimpanan sebelumnya belum terkonfirmasi. Pulihkan hasilnya sebelum menyimpan lagi.')
 const busy = () => new Error('Penyimpanan atau pemulihan katalog masih berlangsung.')
@@ -117,6 +120,9 @@ export function createCatalogueTransactionSender(options: CatalogueSenderOptions
   const storageProvider = options.storage, authorize = options.authorize, isCurrent = options.isCurrent
   const key = `catalogue-request:${encodeURIComponent(JSON.stringify([backend, actorId, role, 1, scope]))}`
   let inFlight = false, usedStorage: CatalogueStorage | undefined
+  // Exact terminal evidence survives a successful removal followed by a failed
+  // native-lock release/current-owner check. It never grants success by itself.
+  let lastAcknowledged: Pending | undefined, lastVerifiedTerminal: Pending | undefined
   function current() {
     if (!isCurrent() || transport.backend !== backend) invalidCatalogue('identity changed')
   }
@@ -133,12 +139,16 @@ export function createCatalogueTransactionSender(options: CatalogueSenderOptions
     const raw = storage().getItem(key)
     if (raw === null) return null
     const row = catalogueRecord(JSON.parse(raw))
-    exactCatalogueFields(row, ['version', 'backend', 'actor_id', 'role', 'scope', 'request_id', 'fingerprint', 'binding', ...(Object.hasOwn(row, 'receipt') ? ['receipt'] : [])])
+    exactCatalogueFields(row, ['version', 'backend', 'actor_id', 'role', 'scope', 'request_id', 'fingerprint', 'binding', ...(Object.hasOwn(row, 'receipt') ? ['receipt'] : []), ...(Object.hasOwn(row, 'abandoned') ? ['abandoned'] : [])])
     if (row.version !== 1 || row.backend !== backend || row.actor_id !== actorId || row.role !== role || row.scope !== scope) invalidCatalogue('recovery scope')
     if (typeof row.fingerprint !== 'string' || !/^[a-f0-9]{64}$/.test(row.fingerprint)) invalidCatalogue('request fingerprint')
     const request: Pending = { version: 1, backend, actor_id: actorId, role, scope,
       request_id: parseCatalogueUUID(row.request_id), fingerprint: row.fingerprint, binding: parseCatalogueRequestBinding(row.binding) }
     if (Object.hasOwn(row, 'receipt')) request.receipt = parseCatalogueReceipt(row.receipt, receiptBinding(request))
+    if (Object.hasOwn(row, 'abandoned')) {
+      if (row.abandoned !== true || request.receipt) invalidCatalogue('abandoned terminal metadata')
+      request.abandoned = true
+    }
     return request
   }
   function unchanged(expected: Pending): Pending {
@@ -170,36 +180,70 @@ export function createCatalogueTransactionSender(options: CatalogueSenderOptions
       if (role !== 'co_admin' || access[`${binding.kind}_delete_mode`] !== 'guarded') invalidCatalogue('guarded delete authority')
     } else if (!access[`${binding.kind}_${binding.operation}`]) invalidCatalogue('operation authority')
   }
-  async function exclusively<T>(action: () => Promise<T>): Promise<T> {
+  async function exclusively<T>(action: (afterRelease: (check: () => void) => void) => Promise<T>): Promise<T> {
     if (inFlight) throw busy()
     inFlight = true
     try {
       current()
+      let settlement = () => {}
       const result = await transport.withExclusiveLock(key, async () => {
         current()
-        return action()
+        return action(check => { settlement = check })
       })
       // Releasing a native lock is another async boundary; the original owner must still be current.
       current()
+      settlement()
       return result
     } finally { inFlight = false }
   }
-  async function reconcile(abandon: boolean): Promise<CatalogueRecovery> {
+  async function reconcile(abandon: boolean, afterRelease: (check: () => void) => void, expected?: Pending): Promise<CatalogueRecovery> {
     current()
     if (typeof abandon !== 'boolean') invalidCatalogue('abandon')
-    const request = read()
+    const durable = read(), request = durable ?? lastAcknowledged
     if (!request) return { status: 'unknown' }
+    if (expected && !same(request, expected)) invalidCatalogue('terminal acknowledgement changed')
+    const unchangedRecovery = () => {
+      if (durable) unchanged(request)
+      else if (lastAcknowledged !== request || read() !== null) invalidCatalogue('acknowledged recovery replaced')
+    }
+    if (!durable) afterRelease(unchangedRecovery)
+    unchangedRecovery()
     await requireAuthority(request.binding)
-    unchanged(request)
+    unchangedRecovery()
     const { data, error } = await transport.rpc('pilot_reconcile_catalog_v1', { p_request_id: request.request_id, p_abandon: abandon })
     current()
-    unchanged(request)
+    unchangedRecovery()
     if (error) throw rpcError(error)
     const result = parseCatalogueRecovery(data, receiptBinding(request))
     if (request.receipt && (result.status !== 'committed' || !same(result.receipt, request.receipt))) invalidCatalogue('changed committed recovery')
-    if (result.status === 'committed') save({ ...request, receipt: result.receipt })
-    else if (result.status === 'abandoned') remove(request)
+    if (request.abandoned && result.status !== 'abandoned') invalidCatalogue('changed abandoned recovery')
+    if (!durable && !request.receipt && !request.abandoned) invalidCatalogue('missing terminal acknowledgement')
+    const terminal = result.status === 'committed' ? { ...request, receipt: result.receipt }
+      : result.status === 'abandoned' ? { ...request, abandoned: true as const } : undefined
+    if (durable && terminal) save(terminal)
+    // Acknowledgment's internal replay must never replace its entry snapshot.
+    if (!expected && terminal) lastVerifiedTerminal = terminal
     return result
+  }
+  async function acknowledge(status: 'committed' | 'abandoned', afterRelease: (check: () => void) => void) {
+    current()
+    // The consumer serializes reconcile → canonical acceptance → acknowledgment.
+    // A competing durable request cannot inherit another request's canonical acceptance.
+    const expected = lastVerifiedTerminal, durable = read(), request = durable ?? lastAcknowledged
+    if (!expected || !request || !same(request, expected)
+      || (status === 'committed' ? !request.receipt : !request.abandoned)) invalidCatalogue('unconfirmed recovery')
+    const result = await reconcile(false, afterRelease, expected)
+    if (result.status !== status || result.status === 'committed' && !same(result.receipt, expected.receipt)) invalidCatalogue('unconfirmed recovery')
+    current()
+    if (durable) {
+      unchanged(expected)
+      // Record only already validated terminal metadata, never an unknown attempt.
+      lastAcknowledged = expected
+      remove(expected)
+    } else if (read() !== null || lastAcknowledged !== request || !same(request, expected)) invalidCatalogue('acknowledged recovery replaced')
+    afterRelease(() => {
+      if (read() !== null || !same(lastAcknowledged, expected)) invalidCatalogue('acknowledged recovery replaced')
+    })
   }
   const send = async <K extends CatalogueOperation>(operation: K, input: CatalogueOperationPayloads[K]): Promise<CatalogueReceipt> => {
     if (inFlight) throw busy()
@@ -221,29 +265,25 @@ export function createCatalogueTransactionSender(options: CatalogueSenderOptions
       const request: Pending = { version: 1, backend, actor_id: actorId, role, scope,
         request_id: parseCatalogueUUID(crypto.randomUUID()), fingerprint: hash, binding }
       save(request)
+      lastAcknowledged = undefined
+      lastVerifiedTerminal = undefined
       const { data, error } = await transport.rpc('pilot_catalog_transaction_v1', { p_request_id: request.request_id, p_operation: operation, p_payload: payload })
       current()
       unchanged(request)
       // Even a definitive refusal requires explicit terminal reconciliation before a different request.
       if (error) throw rpcError(error)
       const receipt = parseCatalogueReceipt(data, receiptBinding(request))
-      save({ ...request, receipt })
+      const terminal = { ...request, receipt }
+      save(terminal)
+      lastVerifiedTerminal = terminal
       return receipt
     })
   }
   return Object.assign(send, {
     // Advisory only. All state transitions recheck durable state with exclusive lock ownership.
     hasUnresolved() { try { return inFlight || read() !== null } catch { return true } },
-    reconcile(abandon = false) { return exclusively(() => reconcile(abandon)) },
-    acknowledgeRecovered() {
-      return exclusively(async () => {
-        current()
-        const request = read()
-        if (!request?.receipt) invalidCatalogue('unconfirmed recovery')
-        const result = await reconcile(false)
-        if (result.status !== 'committed' || !same(result.receipt, request.receipt)) invalidCatalogue('unconfirmed recovery')
-        remove(request)
-      })
-    },
+    reconcile(abandon = false) { return exclusively(afterRelease => reconcile(abandon, afterRelease)) },
+    acknowledgeRecovered() { return exclusively(afterRelease => acknowledge('committed', afterRelease)) },
+    acknowledgeAbandoned() { return exclusively(afterRelease => acknowledge('abandoned', afterRelease)) },
   })
 }

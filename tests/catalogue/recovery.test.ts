@@ -101,6 +101,8 @@ describe('durable catalogue sender', () => {
     r.respond(async () => ({ data: { status: 'abandoned' }, error: null }))
     expect(await r.send.reconcile(true)).toEqual({ status: 'abandoned' })
     expect(r.calls[1].args).toEqual({ p_request_id: old, p_abandon: true })
+    expect(r.send.hasUnresolved()).toBe(true)
+    await r.send.acknowledgeAbandoned()
     expect(r.send.hasUnresolved()).toBe(false)
     r.respond(async (_name, args) => ({ data: makeReceipt(args), error: null }))
     await r.send('set_enabled', payload as any)
@@ -374,4 +376,179 @@ describe('durable catalogue sender', () => {
     await second.send('edit', { expected_version: '1', id: target, values: { sku: 'ORIGINAL', name: 'Before' }, kind: 'product' } as any)
     expect(second.saved().fingerprint).toBe(r.saved().fingerprint)
   })
+})
+
+test('terminal abandonment stays durable until its owner explicitly acknowledges refreshed state', async () => {
+  const r = setup()
+  r.respond(async () => ({ data: null, error: { details: 'CATALOG_VERSION_CONFLICT' } }))
+  await expect(r.send('set_enabled', payload as any)).rejects.toThrow()
+  const request = r.saved().request_id
+  r.respond(async () => ({ data: { status: 'abandoned' }, error: null }))
+  expect(await r.send.reconcile(true)).toEqual({ status: 'abandoned' })
+  expect(r.saved().abandoned).toBe(true); expect(r.saved().request_id).toBe(request)
+  const reloaded = r.create()
+  expect(reloaded.hasUnresolved()).toBe(true)
+  await expect(reloaded('set_enabled', payload as any)).rejects.toThrow()
+  expect(await reloaded.reconcile(false)).toEqual({ status: 'abandoned' })
+  await reloaded.acknowledgeAbandoned()
+  expect(reloaded.hasUnresolved()).toBe(false)
+})
+
+test('abandonment survives native lock release rejection and remount without reverting to unknown', async () => {
+  const r = setup(); r.respond(async () => ({ data: null, error: { message: 'refused' } }))
+  await expect(r.send('set_enabled', payload as any)).rejects.toThrow()
+  const entered = deferred<void>(), release = deferred<void>()
+  r.respond(async () => ({ data: { status: 'abandoned' }, error: null }))
+  const sender = createCatalogueTransactionSender(r.options, { ...r.transport, withExclusiveLock: async (_key, action) => {
+    const result = await action(); entered.resolve(); await release.promise; return result
+  } })
+  const pending = sender.reconcile(true); await entered.promise
+  expect(r.saved().abandoned).toBe(true)
+  r.setCurrent(false); release.resolve(); await expect(pending).rejects.toThrow()
+  r.setCurrent(true)
+  const reloaded = r.create()
+  expect(await reloaded.reconcile(false)).toEqual({ status: 'abandoned' })
+  expect(reloaded.hasUnresolved()).toBe(true)
+  await reloaded.acknowledgeAbandoned(); expect(reloaded.hasUnresolved()).toBe(false)
+})
+
+for (const terminal of ['committed', 'abandoned'] as const) {
+  test(`${terminal} acknowledgement can recover after removal succeeds but native lock release rejects`, async () => {
+    const r = setup()
+    if (terminal === 'abandoned') r.respond(async () => ({ data: null, error: { message: 'refused' } }))
+    const receipt = await r.send('set_enabled', payload as any).catch(() => undefined)
+    const outcome = terminal === 'committed' ? { status: terminal, receipt } : { status: terminal }
+    r.respond(async () => ({ data: outcome, error: null }))
+    if (terminal === 'abandoned') await r.send.reconcile(true)
+    const entered = deferred<void>(), release = deferred<void>(); let gate = false
+    const sender = createCatalogueTransactionSender(r.options, { ...r.transport, withExclusiveLock: async (_key, action) => {
+      const result = await action(); if (gate) { gate = false; entered.resolve(); await release.promise }; return result
+    } })
+    await sender.reconcile(false); gate = true
+    const acknowledge = () => terminal === 'committed' ? sender.acknowledgeRecovered() : sender.acknowledgeAbandoned()
+    const pending = acknowledge(); await entered.promise
+    expect(r.storage.values.size).toBe(0)
+    r.setCurrent(false); release.resolve(); await expect(pending).rejects.toThrow()
+    await expect(sender.reconcile(false)).rejects.toThrow()
+    r.setCurrent(true)
+    expect(await sender.reconcile(false)).toEqual(outcome)
+    await acknowledge(); expect(sender.hasUnresolved()).toBe(false)
+    expect(r.calls.filter(call => call.name === 'pilot_catalog_transaction_v1')).toHaveLength(1)
+  })
+  test.each(['throw', 'silent'])(`${terminal} acknowledgement preserves durable terminal metadata when removal is %s`, async fault => {
+    const r = setup()
+    if (terminal === 'abandoned') r.respond(async () => ({ data: null, error: { message: 'refused' } }))
+    const receipt = await r.send('set_enabled', payload as any).catch(() => undefined)
+    const outcome = terminal === 'committed' ? { status: terminal, receipt } : { status: terminal }
+    r.respond(async () => ({ data: outcome, error: null }))
+    if (terminal === 'abandoned') await r.send.reconcile(true)
+    const remove = r.storage.removeItem.bind(r.storage)
+    r.storage.removeItem = () => { if (fault === 'throw') throw new Error('remove denied') }
+    const acknowledge = () => terminal === 'committed' ? r.send.acknowledgeRecovered() : r.send.acknowledgeAbandoned()
+    await expect(acknowledge()).rejects.toThrow()
+    expect(r.send.hasUnresolved()).toBe(true); expect(await r.send.reconcile(false)).toEqual(outcome)
+    r.storage.removeItem = remove; await acknowledge(); expect(r.send.hasUnresolved()).toBe(false)
+  })
+}
+
+test('terminal fallback refuses a replacement record introduced during fresh authority', async () => {
+  const r = setup(), receipt = await r.send('set_enabled', payload as any)
+  const [key, raw] = [...r.storage.values][0]
+  r.respond(async () => ({ data: { status: 'committed', receipt }, error: null }))
+  let replace = false
+  const sender = createCatalogueTransactionSender({ ...r.options, authorize: async () => {
+    if (replace) r.storage.setItem(key, raw)
+    return access
+  } }, r.transport)
+  await sender.reconcile(false)
+  await sender.acknowledgeRecovered(); expect(r.storage.values.size).toBe(0)
+  replace = true
+  const before = r.calls.length
+  await expect(sender.reconcile(false)).rejects.toThrow()
+  expect(r.storage.getItem(key)).toBe(raw); expect(r.calls).toHaveLength(before)
+})
+
+test('abandoned terminal metadata rejects malformed flags and a conflicting committed receipt', async () => {
+  const r = setup(); r.respond(async () => ({ data: null, error: { message: 'refused' } }))
+  await expect(r.send('set_enabled', payload as any)).rejects.toThrow()
+  r.respond(async () => ({ data: { status: 'abandoned' }, error: null })); await r.send.reconcile(true)
+  const [key, raw] = [...r.storage.values][0], saved = JSON.parse(raw)
+  for (const patch of [{ abandoned: false }, { abandoned: 'true' }, { receipt: makeReceipt(r.calls[0].args) }]) {
+    r.storage.setItem(key, JSON.stringify({ ...saved, ...patch }))
+    await expect(r.create().reconcile(false)).rejects.toThrow()
+  }
+})
+
+for (const terminal of ['committed', 'abandoned'] as const) {
+  test(`${terminal} acknowledgment refuses a replacement before or during its replay`, async () => {
+    const r = setup()
+    if (terminal === 'abandoned') r.respond(async () => ({ data: null, error: { message: 'refused' } }))
+    const receipt = await r.send('set_enabled', payload as any).catch(() => undefined)
+    const outcome = terminal === 'committed' ? { status: terminal, receipt } : { status: terminal }
+    r.respond(async () => ({ data: outcome, error: null }))
+    if (terminal === 'abandoned') await r.send.reconcile(true)
+    const [key, raw] = [...r.storage.values][0], saved = JSON.parse(raw)
+    const replacement = JSON.stringify({ ...saved, request_id: other, ...(receipt ? { receipt: { ...receipt, request_id: other } } : {}) })
+    const acknowledge = () => terminal === 'committed' ? r.send.acknowledgeRecovered() : r.send.acknowledgeAbandoned()
+    const before = r.calls.length
+    r.storage.setItem(key, replacement)
+    await expect(acknowledge()).rejects.toThrow()
+    expect(r.calls).toHaveLength(before); expect(r.storage.getItem(key)).toBe(replacement)
+    r.storage.setItem(key, raw)
+    r.respond(async () => { r.storage.setItem(key, replacement); return { data: outcome, error: null } })
+    await expect(acknowledge()).rejects.toThrow()
+    expect(r.storage.getItem(key)).toBe(replacement)
+    // Only a separate, fresh reconcile can establish the replacement terminal.
+    const nextOutcome = terminal === 'committed' ? { status: terminal, receipt: { ...receipt!, request_id: other } } : outcome
+    r.respond(async () => ({ data: nextOutcome, error: null }))
+    expect(await r.send.reconcile(false)).toEqual(nextOutcome)
+    await acknowledge(); expect(r.storage.values.size).toBe(0)
+  })
+  test.each(['reconcile', 'acknowledge'])(`${terminal} %s refuses a replacement arriving during native lock release`, async operation => {
+    const r = setup()
+    if (terminal === 'abandoned') r.respond(async () => ({ data: null, error: { message: 'refused' } }))
+    const receipt = await r.send('set_enabled', payload as any).catch(() => undefined)
+    const outcome = terminal === 'committed' ? { status: terminal, receipt } : { status: terminal }
+    r.respond(async () => ({ data: outcome, error: null }))
+    if (terminal === 'abandoned') await r.send.reconcile(true)
+    const [key, raw] = [...r.storage.values][0], saved = JSON.parse(raw)
+    const replacement = JSON.stringify({ ...saved, request_id: other, ...(receipt ? { receipt: { ...receipt, request_id: other } } : {}) })
+    const entered = deferred<void>(), release = deferred<void>(); let gated = false
+    const sender = createCatalogueTransactionSender(r.options, { ...r.transport, withExclusiveLock: async (_key, action) => {
+      const result = await action(); if (gated) { entered.resolve(); await release.promise }; return result
+    } })
+    const acknowledge = () => terminal === 'committed' ? sender.acknowledgeRecovered() : sender.acknowledgeAbandoned()
+    await sender.reconcile(false)
+    if (operation === 'reconcile') await acknowledge()
+    gated = true
+    const pending = operation === 'reconcile' ? sender.reconcile(false) : acknowledge()
+    await entered.promise
+    expect(r.storage.values.size).toBe(0)
+    r.storage.setItem(key, replacement); release.resolve()
+    await expect(pending).rejects.toThrow()
+    expect(r.storage.getItem(key)).toBe(replacement)
+    expect(r.calls.filter(call => call.name === 'pilot_catalog_transaction_v1')).toHaveLength(1)
+  })
+}
+
+test('terminal fallback checks replacement after RPC and is cleared only by verified new persistence', async () => {
+  const r = setup(), receipt = await r.send('set_enabled', payload as any)
+  const [key, raw] = [...r.storage.values][0]
+  r.respond(async () => ({ data: { status: 'committed', receipt }, error: null }))
+  await r.send.acknowledgeRecovered()
+  r.respond(async () => { r.storage.setItem(key, raw); return { data: { status: 'committed', receipt }, error: null } })
+  await expect(r.send.reconcile(false)).rejects.toThrow()
+  expect(r.storage.getItem(key)).toBe(raw)
+  r.storage.removeItem(key)
+  r.respond(async () => ({ data: { status: 'committed', receipt }, error: null }))
+  expect(await r.send.reconcile(false)).toEqual({ status: 'committed', receipt })
+  // A newly persisted unresolved attempt must not inherit the old terminal evidence.
+  r.respond(async () => { throw new Error('new response lost') })
+  await expect(r.send('set_enabled', payload as any)).rejects.toThrow('new response lost')
+  const newRequest = r.saved().request_id
+  expect(newRequest).not.toBe(receipt.request_id)
+  r.storage.removeItem(key)
+  const before = r.calls.length
+  expect(await r.send.reconcile(false)).toEqual({ status: 'unknown' })
+  expect(r.calls).toHaveLength(before)
 })

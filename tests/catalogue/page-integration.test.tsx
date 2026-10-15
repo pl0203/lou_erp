@@ -1,0 +1,283 @@
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+// These tests exercise the real backend adapter, authority hook and durable sender.
+// Only the Supabase boundary, auth provider and native browser lock are synthetic.
+const state = vi.hoisted(() => ({
+  actor: '11111111-1111-4111-8111-111111111111', role: 'co_admin', backend: 'https://catalogue.example.invalid',
+  customers: [] as any[], products: [] as any[], receipts: new Map<string, any>(), abandoned: new Set<string>(),
+  command: vi.fn(), writes: vi.fn(), reads: vi.fn(), authority: vi.fn(),
+  missingRpc: false, conflict: false, deny: false, commandGate: null as Promise<void> | null,
+  readGate: null as Promise<void> | null, count: null as string | null, client: null as any,
+}))
+vi.mock('../../src/components/AthelNav', () => ({ default: () => null }))
+vi.mock('../../src/lib/AuthContext', () => ({ useAuth: () => ({ user: { id: state.actor }, profile: { id: state.actor, role: state.role, is_active: true }, loading: false, error: null }) }))
+vi.mock('../../src/lib/supabase', () => {
+  const supabase = {
+    supabaseUrl: state.backend, rest: { url: `${state.backend}/rest/v1`, schemaName: 'public' },
+    rpc(name: string, args: any = {}) {
+      const operation = async () => {
+        const maintainer = ['co_admin', 'po_admin', 'executive'].includes(state.role)
+        const co = state.role === 'co_admin', granted = maintainer && !state.deny
+        if (name === 'pilot_procurement_access_v1') return { data: { version: 1, as_of: '2026-10-15T00:00:00Z', actor_id: state.actor, role: state.role,
+          customer_create: granted && !co, customer_edit: granted && !co, customer_delete: false,
+          product_create: granted && !co, product_edit: granted && !co, product_delete: granted && !co }, error: null }
+        if (name === 'pilot_procurement_access_v2') {
+          state.authority()
+          return { data: { version: 2, as_of: '2026-10-15T00:00:00Z', actor_id: state.actor, role: state.role,
+            customer_create: granted, customer_edit: granted, customer_delete: granted && co,
+            product_create: granted, product_edit: granted, product_delete: granted,
+            customer_set_enabled: granted, product_set_enabled: granted,
+            customer_delete_mode: granted && co ? 'guarded' : 'none', product_delete_mode: granted ? co ? 'guarded' : 'direct' : 'none' }, error: null }
+        }
+        if (name === 'pilot_catalog_page_v1') {
+          state.reads(args)
+          if (state.readGate) await state.readGate
+          let rows = [...(args.p_kind === 'customer' ? state.customers : state.products)].sort((a, b) => a.id.localeCompare(b.id))
+          rows = rows.filter(row => (!args.p_search || row.name.includes(args.p_search)) && (args.p_status === 'all' || row.is_enabled === (args.p_status === 'enabled')))
+          return { data: { version: 1, actor_id: state.actor, role: state.role, kind: args.p_kind, purpose: args.p_purpose,
+            status: args.p_status, search: args.p_search, page: args.p_page, page_size: args.p_page_size,
+            total_count: state.count ?? String(rows.length), rows: rows.slice((args.p_page - 1) * args.p_page_size, args.p_page * args.p_page_size) }, error: null }
+        }
+        if (name === 'pilot_catalog_transaction_v1') {
+          state.command(args)
+          if (state.missingRpc) return { data: null, error: { code: 'PGRST202', message: 'missing' } }
+          if (state.conflict) return { data: null, error: { details: 'CATALOG_VERSION_CONFLICT' } }
+          const target = (args.p_payload.kind === 'customer' ? state.customers : state.products).find(row => row.id === args.p_payload.id)!
+          const before = { catalog_version: target.catalog_version, is_enabled: target.is_enabled }
+          target.catalog_version = String(BigInt(target.catalog_version) + (target.is_enabled === args.p_payload.is_enabled ? 0n : 1n))
+          target.is_enabled = args.p_payload.is_enabled
+          const receipt = { version: 1, request_id: args.p_request_id, actor_id: state.actor, operation: args.p_operation,
+            kind: args.p_payload.kind, id: target.id, before, after: { catalog_version: target.catalog_version, is_enabled: target.is_enabled }, committed_at: '2026-10-15T00:00:00Z' }
+          state.receipts.set(args.p_request_id, receipt)
+          if (state.commandGate) await state.commandGate
+          return { data: receipt, error: null }
+        }
+        if (name === 'pilot_reconcile_catalog_v1') {
+          if (args.p_abandon && !state.receipts.has(args.p_request_id)) state.abandoned.add(args.p_request_id)
+          return { data: state.receipts.has(args.p_request_id) ? { status: 'committed', receipt: state.receipts.get(args.p_request_id) }
+            : { status: state.abandoned.has(args.p_request_id) ? 'abandoned' : 'unknown' }, error: null }
+        }
+        throw new Error(`Unexpected RPC: ${name}`)
+      }
+      let signal: AbortSignal | undefined
+      const request = { abortSignal(value: AbortSignal) { signal = value; return request }, then(resolve: any, reject: any) {
+        return Promise.resolve().then(() => { signal?.throwIfAborted(); return operation() }).then(resolve, reject)
+      } }
+      return request
+    },
+    from(table: string) { state.writes(table); throw new Error('No table writes are allowed in status tests') },
+  }
+  return { get supabase() { return state.client ?? supabase } }
+})
+import CustomerList from '../../src/pages/athel/CustomerList'
+import ProductList from '../../src/pages/athel/ProductList'
+import { catalogueKeys } from '../../src/lib/catalogue/queryKeys'
+import { useCataloguePage } from '../../src/lib/catalogue/useCataloguePage'
+import { supabase } from '../../src/lib/supabase'
+
+const uuid = (index: number) => `22222222-2222-4222-8222-${String(index).padStart(12, '0')}`
+const version = '9007199254740993'
+const customer = (index: number) => ({ id: uuid(index), name: `Customer ${index}`, address: null, city: 'Jakarta', phone: null, email: null, pricing_tier: 'others', customer_category: null, catalog_version: version, is_enabled: true })
+const product = (index: number) => ({ id: uuid(index), name: `Product ${index}`, sku: `SKU-${index}`, size: null, unit_price: 17, harga_pokok: null, luar_kota: 12.34, dalam_kota: 20, depo_bangunan: 0, catalog_version: version, is_enabled: true })
+const clients: QueryClient[] = []
+function deferred() { let resolve!: () => void; return { promise: new Promise<void>(done => { resolve = done }), resolve: () => resolve() } }
+function mount(Page: React.ComponentType, client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })) {
+  clients.push(client)
+  return { client, ...render(<QueryClientProvider client={client}><Page /></QueryClientProvider>) }
+}
+beforeEach(() => {
+  state.actor = '11111111-1111-4111-8111-111111111111'; state.role = 'co_admin'; state.customers = [customer(1)]; state.products = [product(1)]
+  state.receipts.clear(); state.abandoned.clear(); state.command.mockClear(); state.writes.mockClear(); state.reads.mockClear(); state.authority.mockClear()
+  state.missingRpc = false; state.conflict = false; state.deny = false; state.commandGate = null; state.readGate = null; state.count = null; state.client = null
+  localStorage.clear()
+  Object.defineProperty(navigator, 'locks', { configurable: true, value: { request: async (name: string, _options: unknown, action: any) => action({ name, mode: 'exclusive' }) } })
+})
+afterEach(() => { cleanup(); clients.splice(0).forEach(client => client.clear()); localStorage.clear(); vi.restoreAllMocks() })
+
+const pages = [
+  { Page: CustomerList, kind: 'customer', desktop: 'Daftar pelanggan', mobile: 'Daftar pelanggan seluler', name: 'Customer 1' },
+  { Page: ProductList, kind: 'product', desktop: 'Daftar barang', mobile: 'Daftar barang seluler', name: 'Product 1' },
+] as const
+async function begin(desktop: string) {
+  const region = await screen.findByRole('region', { name: desktop })
+  const button = within(region).getAllByRole('button', { name: 'Nonaktifkan' })[0]
+  await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false))
+  fireEvent.click(button)
+  const confirm = screen.getByRole('button', { name: 'Konfirmasi Nonaktifkan' })
+  fireEvent.click(confirm); fireEvent.click(confirm)
+}
+
+describe.each(pages)('$kind status page integration', ({ Page, kind, desktop, mobile }) => {
+  it.each(['co_admin', 'po_admin', 'executive'])('offers only status commands to %s on both responsive representations', async role => {
+    state.role = role; mount(Page)
+    for (const scope of [await screen.findByRole('region', { name: desktop }), screen.getByRole('list', { name: mobile })]) {
+      expect(within(scope).getByText('Aktif')).toBeTruthy()
+      await waitFor(() => expect((within(scope).getByRole('button', { name: 'Nonaktifkan' }) as HTMLButtonElement).disabled).toBe(false))
+      expect((within(scope).getByRole('button', { name: 'Hapus bila tidak digunakan' }) as HTMLButtonElement).disabled).toBe(true)
+    }
+    if (role === 'co_admin') expect(screen.queryByRole('button', { name: 'Ubah' })).toBeNull()
+    await begin(desktop)
+    await screen.findByText('Hasil belum terkonfirmasi')
+    expect(state.command).toHaveBeenCalledOnce()
+    expect(state.command.mock.calls[0][0]).toMatchObject({ p_operation: 'set_enabled', p_payload: { kind, expected_version: version, is_enabled: false } })
+    fireEvent.click(screen.getByRole('button', { name: 'Periksa hasil' }))
+    await waitFor(() => expect(screen.queryByText('Hasil belum terkonfirmasi')).toBeNull())
+    expect(localStorage.length).toBe(0); expect(state.writes).not.toHaveBeenCalled()
+    expect(state.authority.mock.calls.length).toBeGreaterThan(2)
+    expect(within(screen.getByRole('region', { name: desktop })).getByText('Nonaktif')).toBeTruthy()
+  })
+  it.each(['sales_person', 'sales_manager', 'sales_head'])('does not grant status commands to %s', async role => {
+    state.role = role; mount(Page); await screen.findByRole('region', { name: desktop })
+    expect(screen.queryByRole('button', { name: 'Nonaktifkan' })).toBeNull(); expect(state.command).not.toHaveBeenCalled()
+  })
+  it('does not fall back to tables when the command RPC is missing', async () => {
+    state.missingRpc = true; mount(Page); await begin(desktop)
+    await screen.findByText('Hasil belum terkonfirmasi'); expect(state.command).toHaveBeenCalledOnce(); expect(state.writes).not.toHaveBeenCalled()
+  })
+  it('fails closed without native cross-context locks', async () => {
+    Object.defineProperty(navigator, 'locks', { configurable: true, value: undefined }); mount(Page)
+    const region = await screen.findByRole('region', { name: desktop })
+    expect((within(region).getByRole('button', { name: 'Nonaktifkan' }) as HTMLButtonElement).disabled).toBe(true); expect(state.command).not.toHaveBeenCalled()
+  })
+})
+
+it('keeps one recovery owner after a row leaves the filter and never invalidates saved PO/CO history', async () => {
+  const { client } = mount(CustomerList)
+  const histories = [['purchase_orders'], ['co', state.backend, state.actor, state.role, 'history']] as const
+  histories.forEach(key => client.setQueryData(key, { saved: true }))
+  await begin('Daftar pelanggan'); await screen.findByText('Hasil belum terkonfirmasi')
+  fireEvent.change(screen.getByLabelText('Status pelanggan'), { target: { value: 'enabled' } })
+  await screen.findAllByText('Tidak ada pelanggan ditemukan.')
+  expect(screen.getAllByText('Hasil belum terkonfirmasi')).toHaveLength(1)
+  fireEvent.click(screen.getByRole('button', { name: 'Periksa hasil' }))
+  await waitFor(() => expect(screen.queryByText('Hasil belum terkonfirmasi')).toBeNull())
+  expect(state.reads).toHaveBeenCalledWith(expect.objectContaining({ p_kind: 'customer', p_purpose: 'all-for-history', p_status: 'all', p_search: '' }))
+  histories.forEach(key => { expect(client.getQueryData(key)).toEqual({ saved: true }); expect(client.getQueryState(key)?.isInvalidated).toBe(false) })
+})
+it('recovers a product attempt after unmount on the customer page without resending', async () => {
+  const gate = deferred(); state.commandGate = gate.promise
+  const first = mount(ProductList); await begin('Daftar barang'); await waitFor(() => expect(state.command).toHaveBeenCalledOnce())
+  first.unmount(); mount(CustomerList); await screen.findByText('Hasil belum terkonfirmasi')
+  await act(async () => gate.resolve())
+  fireEvent.click(screen.getByRole('button', { name: 'Periksa hasil' }))
+  await waitFor(() => expect(screen.queryByText('Hasil belum terkonfirmasi')).toBeNull())
+  expect(state.reads).toHaveBeenCalledWith(expect.objectContaining({ p_kind: 'product', p_purpose: 'all-for-history' }))
+  expect(state.command).toHaveBeenCalledOnce(); expect(localStorage.length).toBe(0)
+})
+it('requires explicit terminal abandonment after a definitive stale-version refusal', async () => {
+  state.conflict = true; mount(CustomerList); await begin('Daftar pelanggan'); await screen.findByText('Hasil belum terkonfirmasi')
+  fireEvent.click(screen.getByRole('button', { name: 'Periksa hasil' })); await screen.findByText(/Hasil belum diketahui/)
+  expect(localStorage.length).toBe(1)
+  fireEvent.click(screen.getByRole('button', { name: 'Batalkan permintaan tersimpan' }))
+  expect(localStorage.length).toBe(1)
+  fireEvent.click(screen.getByRole('button', { name: 'Konfirmasi pembatalan permintaan' }))
+  await waitFor(() => expect(screen.queryByText('Hasil belum terkonfirmasi')).toBeNull())
+  expect(localStorage.length).toBe(0); expect(state.command).toHaveBeenCalledOnce()
+  await waitFor(() => expect((within(screen.getByRole('region', { name: 'Daftar pelanggan' })).getByRole('button', { name: 'Nonaktifkan' }) as HTMLButtonElement).disabled).toBe(false))
+})
+it('never acknowledges a canonical read older than its receipt and accepts a newer version without overwriting it', async () => {
+  mount(CustomerList); await begin('Daftar pelanggan'); await screen.findByText('Hasil belum terkonfirmasi')
+  state.customers[0].catalog_version = version; state.customers[0].is_enabled = true
+  fireEvent.click(screen.getByRole('button', { name: 'Periksa hasil' })); await screen.findByText('Data terbaru belum dapat diverifikasi. Periksa hasil kembali.')
+  expect(localStorage.length).toBe(1)
+  state.customers[0].catalog_version = '9007199254740995'
+  fireEvent.click(screen.getByRole('button', { name: 'Periksa hasil' }))
+  await waitFor(() => expect(screen.queryByText('Hasil belum terkonfirmasi')).toBeNull())
+  expect(state.customers[0].is_enabled).toBe(true); expect(state.customers[0].catalog_version).toBe('9007199254740995')
+})
+it('retains recovery when storage cannot durably acknowledge', async () => {
+  mount(CustomerList); await begin('Daftar pelanggan'); await screen.findByText('Hasil belum terkonfirmasi')
+  vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => { throw new Error('blocked') })
+  fireEvent.click(screen.getByRole('button', { name: 'Periksa hasil' })); await screen.findByText(/Pemulihan belum berhasil/)
+  expect(localStorage.length).toBe(1); expect(state.command).toHaveBeenCalledOnce()
+})
+it('loses authority before confirmation without dispatching', async () => {
+  const { client } = mount(CustomerList)
+  const region = await screen.findByRole('region', { name: 'Daftar pelanggan' })
+  await waitFor(() => expect((within(region).getByRole('button', { name: 'Nonaktifkan' }) as HTMLButtonElement).disabled).toBe(false))
+  fireEvent.click(within(region).getByRole('button', { name: 'Nonaktifkan' }))
+  state.deny = true
+  await act(async () => { await client.invalidateQueries({ queryKey: catalogueKeys.authority({ backend: state.backend, actorId: state.actor, role: 'co_admin' }) }) })
+  fireEvent.click(screen.getByRole('button', { name: 'Konfirmasi Nonaktifkan' })); expect(state.command).not.toHaveBeenCalled()
+})
+it('rejects a stale confirmation rather than rebasing onto a newer row', async () => {
+  const { client } = mount(CustomerList)
+  const region = await screen.findByRole('region', { name: 'Daftar pelanggan' })
+  await waitFor(() => expect((within(region).getByRole('button', { name: 'Nonaktifkan' }) as HTMLButtonElement).disabled).toBe(false))
+  fireEvent.click(within(region).getByRole('button', { name: 'Nonaktifkan' }))
+  state.customers[0].catalog_version = '9007199254740994'
+  await act(async () => { await client.invalidateQueries({ queryKey: ['catalogue'] }) })
+  fireEvent.click(screen.getByRole('button', { name: 'Konfirmasi Nonaktifkan' }))
+  await screen.findByText(/Data berubah. Batalkan/); expect(state.command).not.toHaveBeenCalled()
+})
+it('preserves product pricing disclosure while status filters change', async () => {
+  mount(ProductList); await screen.findByRole('list', { name: 'Daftar barang seluler' })
+  fireEvent.click(screen.getByRole('button', { name: /Lihat semua harga/ }))
+  const mobile = screen.getByRole('list', { name: 'Daftar barang seluler' })
+  expect(within(mobile).getByText('Belum diisi')).toBeTruthy(); expect(within(mobile).getByText('Rp 0')).toBeTruthy(); expect(within(mobile).getByText('Rp 12,34')).toBeTruthy()
+})
+it('old controller callbacks cannot revive across actor A-B-A', async () => {
+  let controller!: ReturnType<typeof useCataloguePage<'customer'>>
+  function Probe() { controller = useCataloguePage({ kind: 'customer', search: '', page: 1, pageSize: 10, status: 'all' }); return null }
+  const view = mount(Probe); await waitFor(() => expect(controller.authority?.customer_set_enabled).toBe(true))
+  const old = controller.sender!, owner = controller.owner!
+  state.actor = '33333333-3333-4333-8333-333333333333'; view.rerender(<QueryClientProvider client={view.client}><Probe /></QueryClientProvider>)
+  state.actor = '11111111-1111-4111-8111-111111111111'; view.rerender(<QueryClientProvider client={view.client}><Probe /></QueryClientProvider>)
+  await waitFor(() => expect(controller.authority?.customer_set_enabled).toBe(true))
+  expect(owner.isCurrent()).toBe(false)
+  await expect(old('set_enabled', { kind: 'customer', id: uuid(1), expected_version: version as any, is_enabled: false })).rejects.toThrow()
+  expect(state.command).not.toHaveBeenCalled()
+})
+
+it('keeps recovery reachable while moving to a different catalogue page', async () => {
+  state.customers = Array.from({ length: 12 }, (_, index) => customer(index + 1))
+  mount(CustomerList); await begin('Daftar pelanggan'); await screen.findByText('Hasil belum terkonfirmasi')
+  fireEvent.click(screen.getByRole('button', { name: 'Berikutnya' }))
+  await screen.findAllByText('Customer 11')
+  expect(screen.queryByText('Customer 1')).toBeNull(); expect(screen.getAllByText('Hasil belum terkonfirmasi')).toHaveLength(1)
+  fireEvent.click(screen.getByRole('button', { name: 'Periksa hasil' }))
+  await waitFor(() => expect(screen.queryByText('Hasil belum terkonfirmasi')).toBeNull())
+  expect(state.command).toHaveBeenCalledOnce()
+})
+it('does not dispatch when recovery storage cannot persist the request', async () => {
+  vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('storage unavailable') })
+  mount(CustomerList); await begin('Daftar pelanggan')
+  await screen.findByText('Perubahan belum terkonfirmasi. Periksa hasil di bagian pemulihan katalog.')
+  expect(state.command).not.toHaveBeenCalled(); expect(state.writes).not.toHaveBeenCalled()
+})
+it('refuses an otherwise validated count that cannot be represented safely by pagination controls', async () => {
+  state.customers = Array.from({ length: 10 }, (_, index) => customer(index + 1)); state.count = '9007199254740993'
+  mount(CustomerList); await screen.findByRole('alert')
+  expect(screen.queryByText('0 pelanggan')).toBeNull(); expect(screen.queryByText('Customer 1')).toBeNull(); expect(state.command).not.toHaveBeenCalled()
+})
+it('old controller callbacks cannot revive across backend A-B-A', async () => {
+  let controller!: ReturnType<typeof useCataloguePage<'customer'>>
+  function Probe() { controller = useCataloguePage({ kind: 'customer', search: '', page: 1, pageSize: 10, status: 'all' }); return null }
+  const view = mount(Probe); await waitFor(() => expect(controller.authority?.customer_set_enabled).toBe(true))
+  const original = supabase, old = controller.sender!, owner = controller.owner!
+  state.client = { ...original, supabaseUrl: 'https://other.example.invalid', rest: { url: 'https://other.example.invalid/rest/v1', schemaName: 'public' } }
+  view.rerender(<QueryClientProvider client={view.client}><Probe /></QueryClientProvider>)
+  state.client = original; view.rerender(<QueryClientProvider client={view.client}><Probe /></QueryClientProvider>)
+  await waitFor(() => expect(controller.authority?.customer_set_enabled).toBe(true))
+  expect(owner.isCurrent()).toBe(false)
+  await expect(old('set_enabled', { kind: 'customer', id: uuid(1), expected_version: version as any, is_enabled: false })).rejects.toThrow()
+  expect(state.command).not.toHaveBeenCalled()
+})
+
+it('keeps terminal abandonment recoverable across unmount before canonical refresh finishes', async () => {
+  state.conflict = true
+  const first = mount(CustomerList); await begin('Daftar pelanggan'); await screen.findByText('Hasil belum terkonfirmasi')
+  const gate = deferred(); state.readGate = gate.promise
+  fireEvent.click(screen.getByRole('button', { name: 'Batalkan permintaan tersimpan' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Konfirmasi pembatalan permintaan' }))
+  await waitFor(() => expect(JSON.parse(localStorage.getItem(localStorage.key(0)!)!).abandoned).toBe(true))
+  first.unmount()
+  mount(ProductList); await screen.findByText('Hasil belum terkonfirmasi')
+  state.readGate = null; await act(async () => gate.resolve())
+  await waitFor(() => expect((screen.getByRole('button', { name: 'Periksa hasil' }) as HTMLButtonElement).disabled).toBe(false))
+  fireEvent.click(screen.getByRole('button', { name: 'Periksa hasil' }))
+  await waitFor(() => expect(screen.queryByText('Hasil belum terkonfirmasi')).toBeNull())
+  expect(localStorage.length).toBe(0); expect(state.command).toHaveBeenCalledOnce()
+})

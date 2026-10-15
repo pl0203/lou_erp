@@ -5,57 +5,65 @@ import { Button } from '../ui/Button'
 import { Notice } from '../ui/Feedback'
 
 export interface CatalogueOwner {
-  /** Stable mounted form/record owner; replace on actor, backend, role or authority epoch changes. */
+  /** Stable operation owner; replace on actor, backend, role or mounted owner changes. */
   key: string
   actorId: string
   role: CatalogueMaintainerRole
   isCurrent(): boolean
 }
-/** A committed-owner lease, invalidated by cleanup even during an A → B → A transition. */
-export function useCatalogueOwnerLease(owner: CatalogueOwner, sender: CatalogueTransactionSender, authority: unknown) {
-  const epoch = useRef(0)
-  const active = useRef(false)
+/** Authority refresh is part of sending/reconciling. It must not retire its own
+ * operation lease; owner.isCurrent still checks fresh authority at every boundary. */
+export function useCatalogueOwnerLease(owner: CatalogueOwner, sender: CatalogueTransactionSender) {
+  const epoch = useRef(0), active = useRef(false)
   useLayoutEffect(() => {
-    active.current = true
-    epoch.current += 1
-    return () => { active.current = false; epoch.current += 1 }
-  }, [owner, sender, authority])
+    active.current = true; epoch.current++
+    return () => { active.current = false; epoch.current++ }
+  }, [owner, sender])
   return () => {
     const captured = epoch.current
     return () => active.current && epoch.current === captured && owner.isCurrent()
   }
 }
-
 export interface CatalogueRecoveryProps {
   owner: CatalogueOwner
   sender: CatalogueTransactionSender
   available: boolean
-  /** Refresh and validate current canonical state for this exact receipt, including deletion.
-   * Return true only after accepting that state; never treat RPC success alone as acceptance. */
   acceptCanonical(receipt: CatalogueReceipt): Promise<boolean>
-  /** Invoked only after canonical acceptance AND durable sender acknowledgement. */
   onConfirmed(receipt: CatalogueReceipt): void
+  /** Required canonical/authority refresh after a terminal abandoned result. */
+  acceptAbandoned?(): Promise<boolean>
+  onAbandoned?(): void
 }
-
-export function CatalogueRecovery({ owner, sender, available, acceptCanonical, onConfirmed }: CatalogueRecoveryProps) {
-  const [busy, setBusy] = useState(false)
-  const [message, setMessage] = useState<string | null>(null)
-  const lock = useRef<symbol | null>(null)
-  const lease = useCatalogueOwnerLease(owner, sender, available)
+export function CatalogueRecovery({ owner, sender, available, acceptCanonical, onConfirmed, acceptAbandoned, onAbandoned }: CatalogueRecoveryProps) {
+  const [busy, setBusy] = useState(false), [message, setMessage] = useState<string | null>(null)
+  const [confirmAbandon, setConfirmAbandon] = useState(false), [abandoned, setAbandoned] = useState(false)
+  const lock = useRef<symbol | null>(null), live = useRef(false)
+  const lease = useCatalogueOwnerLease(owner, sender)
   useLayoutEffect(() => {
-    lock.current = null; setBusy(false); setMessage(null)
-  }, [owner, sender, available])
-  async function check() {
-    if (lock.current || !available || !owner.isCurrent()) return
-    const current = lease()
-    const operation = Symbol()
+    live.current = true; lock.current = null; setBusy(false); setMessage(null); setConfirmAbandon(false); setAbandoned(false)
+    return () => { live.current = false }
+  }, [owner, sender])
+  async function check(abandon = false) {
+    if (lock.current || !available || !owner.isCurrent() || abandon && (!confirmAbandon || !acceptAbandoned || !onAbandoned)) return
+    const current = lease(), operation = Symbol()
     lock.current = operation; setBusy(true); setMessage(null)
+    let terminalAbandoned = abandoned
     try {
-      const result = await sender.reconcile(false)
+      // Local terminal state is presentation only. Every explicit check revalidates
+      // the actual durable/fallback request before canonical acceptance.
+      const result = await sender.reconcile(abandon)
       if (!current()) return
-      if (result.status !== 'committed') {
-        setMessage('Hasil belum diketahui. Identitas permintaan tetap disimpan; jangan kirim ulang.')
+      if (result.status === 'abandoned') {
+        terminalAbandoned = true; setAbandoned(true); setConfirmAbandon(false)
+        if (acceptAbandoned && onAbandoned && await acceptAbandoned() && current()) {
+          await sender.acknowledgeAbandoned()
+          if (current()) onAbandoned()
+        } else if (current()) setMessage('Permintaan telah dibatalkan. Data dan kewenangan terbaru belum dapat diverifikasi; periksa kembali.')
         return
+      }
+      setAbandoned(false); terminalAbandoned = false
+      if (result.status === 'unknown') {
+        setMessage('Hasil belum diketahui. Identitas permintaan tetap disimpan; jangan kirim ulang.'); return
       }
       if (result.receipt.actor_id !== owner.actorId) throw new Error('Pemilik hasil tidak sesuai.')
       const accepted = await acceptCanonical(result.receipt)
@@ -64,15 +72,22 @@ export function CatalogueRecovery({ owner, sender, available, acceptCanonical, o
       await sender.acknowledgeRecovered()
       if (current()) onConfirmed(result.receipt)
     } catch {
-      if (current()) setMessage('Pemulihan belum berhasil. Identitas permintaan tetap disimpan; periksa hasil kembali.')
+      if (current()) setMessage(terminalAbandoned ? 'Permintaan telah dibatalkan. Data dan kewenangan terbaru belum dapat diverifikasi; periksa kembali.' : 'Pemulihan belum berhasil. Identitas permintaan tetap disimpan; periksa hasil kembali.')
     } finally {
-      if (lock.current === operation) lock.current = null
-      if (current()) setBusy(false)
+      if (live.current && lock.current === operation) { lock.current = null; setBusy(false) }
     }
   }
-  return <Notice tone="warning" title="Hasil belum terkonfirmasi" actions={<Button size="compact" variant="secondary" pending={busy} disabled={!available || !owner.isCurrent()} onClick={check}>Periksa hasil</Button>}>
-    <p>Jangan kirim ulang. Tutup hanya setelah hasil dan data terbaru terverifikasi.</p>
+  return <Notice tone="warning" title="Hasil belum terkonfirmasi" actions={<>
+    <Button size="compact" variant="secondary" pending={busy} disabled={busy || !available || !owner.isCurrent()} onClick={() => { void check(false) }}>Periksa hasil</Button>
+    {acceptAbandoned && onAbandoned && !abandoned && <Button size="compact" variant="danger-quiet" disabled={busy || !available || !owner.isCurrent()} onClick={() => setConfirmAbandon(true)}>Batalkan permintaan tersimpan</Button>}
+  </>}>
+    <p>Jangan kirim ulang. Pemulihan tetap tersedia meskipun baris tidak terlihat pada halaman ini.</p>
     {!available && <p>Pemulihan belum tersedia untuk kewenangan atau backend saat ini.</p>}
+    {confirmAbandon && <div>
+      <p>Batalkan hanya permintaan yang belum selesai. Jika perubahan sudah tersimpan, hasilnya tetap dipulihkan; perubahan tidak dibatalkan dan tidak dikirim ulang.</p>
+      <Button variant="danger" disabled={busy || !available || !owner.isCurrent()} onClick={() => { void check(true) }}>Konfirmasi pembatalan permintaan</Button>
+      <Button variant="secondary" disabled={busy} onClick={() => setConfirmAbandon(false)}>Kembali</Button>
+    </div>}
     {message && <p>{message}</p>}
   </Notice>
 }

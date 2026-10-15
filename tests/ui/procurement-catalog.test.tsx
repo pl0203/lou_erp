@@ -18,7 +18,22 @@ vi.mock('../../src/lib/promotionTransactions', async original => ({ ...await ori
 vi.mock('../../src/lib/promotions', async original => ({ ...await original<any>(), fetchPromotions: async () => { if (state.readGate) await state.readGate; if (state.readError) throw new Error('Read denied'); return state.promotions } }))
 vi.mock('../../src/lib/reads/reports', async original => ({ ...await original<any>(), fetchDashboardData: async () => { if (state.readGate) await state.readGate; if (state.readError) throw new Error('Read denied'); return state.dashboard } }))
 vi.mock('../../src/components/athel/DashboardCharts', () => ({ default: () => <section aria-label="Synthetic charts">Charts</section> }))
-vi.mock('../../src/lib/supabase', () => ({ supabase: { functions: { invoke: state.invoke }, auth: { getUser: () => state.backend.auth.getUser() }, from: (table: string) => {
+vi.mock('../../src/lib/supabase', () => ({ supabase: {
+  supabaseUrl: 'https://catalogue.example.invalid', rest: { url: 'https://catalogue.example.invalid/rest/v1', schemaName: 'public' },
+  rpc: (name: string, args: any = {}) => {
+    const q: any = { abortSignal: () => q, then: (resolve: any, reject: any) => (async () => {
+      if (name === 'pilot_procurement_access_v2') return { data: { version: 2, as_of: '2026-10-15T00:00:00Z', actor_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role: state.role,
+        customer_create: true, customer_edit: true, customer_delete: false, product_create: true, product_edit: true, product_delete: true,
+        customer_set_enabled: true, product_set_enabled: true, customer_delete_mode: 'none', product_delete_mode: 'direct' }, error: null }
+      if (name !== 'pilot_catalog_page_v1') throw new Error(`Unexpected catalogue RPC ${name}`)
+      if (state.readGate) await state.readGate
+      if (state.readError || args.p_kind === 'customer' && state.backend.state.readError) return { data: null, error: new Error('Read denied') }
+      const fields = args.p_kind === 'customer' ? ['id','name','address','city','phone','email','pricing_tier','customer_category','is_enabled','catalog_version'] : ['id','name','sku','size','unit_price','harga_pokok','luar_kota','dalam_kota','depo_bangunan','is_enabled','catalog_version']
+      const rows = (args.p_kind === 'customer' ? state.backend.state.customers : state.products).map((row: any) => Object.fromEntries(fields.map(field => [field, row[field]]))).sort((a: any, b: any) => a.id.localeCompare(b.id))
+        .filter((row: any) => (!args.p_search || row.name.includes(args.p_search)) && (args.p_status === 'all' || row.is_enabled === (args.p_status === 'enabled')))
+      return { data: { version: 1, actor_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role: state.role, kind: args.p_kind, purpose: args.p_purpose, status: args.p_status, search: args.p_search, page: args.p_page, page_size: args.p_page_size, total_count: String(rows.length), rows: rows.slice((args.p_page - 1) * args.p_page_size, args.p_page * args.p_page_size) }, error: null }
+    })().then(resolve, reject) }; return q
+  }, functions: { invoke: state.invoke }, auth: { getUser: () => state.backend.auth.getUser() }, from: (table: string) => {
   if (table !== 'products') {
     const q = state.backend.from(table), originalThen = q.then
     let write = false
@@ -53,11 +68,11 @@ import PromotionImage from '../../src/components/PromotionImage'
 import { monthlyOptions } from '../../src/components/athel/dashboardChartOptions'
 
 const actor = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', id = '11111111-1111-4111-8111-111111111111'
-const product = () => ({ id, name: 'Unset product', sku: 'TEST', size: null, unit_price: 17, harga_pokok: null, luar_kota: 12.34, dalam_kota: 999999999999.99, depo_bangunan: 0 })
+const product = () => ({ id, is_enabled: true, catalog_version: '1', name: 'Unset product', sku: 'TEST', size: null, unit_price: 17, harga_pokok: null, luar_kota: 12.34, dalam_kota: 999999999999.99, depo_bangunan: 0 })
 const promotion = () => ({ id, product_id: id, product_name: 'Tiles', sku: 'SKU', size: null, start_date: '2020-01-01', end_date: '2020-01-02', is_active: true, stock_managed: true, remaining_quantity: 3, stock_version: 1, image_path: `promotions/${actor}/${id}/22222222-2222-4222-8222-222222222222.png`, harga_pokok: null, luar_kota: 0, dalam_kota: 71, depo_bangunan: null })
 const clients: QueryClient[] = []
 beforeEach(() => {
-  onlineManager.setOnline(true); state.backend = customerBackend(); state.products = [product()]; state.promotions = [promotion()]
+  onlineManager.setOnline(true); state.backend = customerBackend(); Object.assign(state.backend.state.customers[0], { id: '22222222-2222-4222-8222-222222222222', is_enabled: true, catalog_version: '1' }); state.products = [product()]; state.promotions = [promotion()]
   state.role = 'executive'; state.readError = false; state.readGate = null; state.writeGate = null; state.writeError = false; state.unresolved = false; state.customerDelete = false
   state.write.mockReset(); state.send.mockReset().mockResolvedValue({ id, stock_version: 2 }); state.reconcile.mockReset(); state.acknowledge.mockReset()
   state.invoke.mockReset().mockResolvedValue({ data: { promotion_id: id, signed_url: 'https://example.invalid/image', expires_in: 300 }, error: null })
@@ -148,7 +163,7 @@ test('dashboard cold paused read has explicit unavailable feedback rather than a
 test.each([['customers', CustomerList, 'athel_customers', '0 pelanggan'], ['products', ProductList, 'products', '0 barang']] as const)('%s authoritative empty total is available while cached refresh is paused', async (kind, Page, key, zero) => {
   if (kind === 'customers') state.backend.state.customers = []; else state.products = []
   const { client } = mount(Page); await screen.findByText(zero)
-  onlineManager.setOnline(false); await act(async () => { void client.invalidateQueries({ queryKey: [key] }) })
+  onlineManager.setOnline(false); await act(async () => { void client.invalidateQueries({ queryKey: [key === 'athel_customers' || key === 'products' ? 'catalogue' : key] }) })
   expect(screen.getByText(zero)).toBeTruthy(); await waitFor(() => expect(screen.getAllByRole('status').some(notice => /menunggu|tertunda|koneksi/i.test(notice.textContent ?? ''))).toBe(true))
   expect(screen.queryByText(/Halaman 1.*1/)).toBeNull()
 })
@@ -172,7 +187,7 @@ test('category instances keep unique associated fields and explicit category-ver
   for (const control of selects) { expect(control.closest('.ui-field')).toBeTruthy(); expect(document.getElementById(control.getAttribute('aria-describedby')!)?.textContent).toContain('Kategori tidak mengubah tier harga') }
 })
 test('duplicate catalog labels keep SKU identity and exact missing, zero, fractional and maximum prices in both representations', async () => {
-  state.products.push({ ...product(), id: 'other', sku: 'OTHER', size: '30x60' }); mount(ProductList); await screen.findAllByText('Unset product')
+  state.products.push({ ...product(), id: '33333333-3333-4333-8333-333333333333', sku: 'OTHER', size: '30x60' }); mount(ProductList); await screen.findAllByText('Unset product')
   const table = screen.getByRole('region', { name: 'Daftar barang' }), mobile = screen.getByRole('list', { name: 'Daftar barang seluler' })
   expect(within(table).getAllByRole('row')).toHaveLength(3); expect(within(mobile).getAllByRole('listitem')).toHaveLength(2)
   for (const scope of [table, mobile]) { expect(within(scope).getByText('TEST')).toBeTruthy(); expect(within(scope).getByText('OTHER')).toBeTruthy() }
@@ -188,7 +203,7 @@ test('duplicate catalog labels keep SKU identity and exact missing, zero, fracti
   expect(state.write.mock.calls[0][1]).toMatchObject({ harga_pokok: null, depo_bangunan: 0, luar_kota: 12.34, dalam_kota: 999999999999.99 }); expect(state.write.mock.calls[0][1]).not.toHaveProperty('unit_price')
 })
 test('duplicate customer labels retain category, tier and branch identity in desktop rows and mobile cards', async () => {
-  state.backend.state.customers.push({ ...state.backend.state.customers[0], id: 'branch', city: 'Surabaya', phone: '123', customer_category: 'perorangan', pricing_tier: 'others' })
+  state.backend.state.customers.push({ ...state.backend.state.customers[0], id: '33333333-3333-4333-8333-333333333333', city: 'Surabaya', phone: '123', customer_category: 'perorangan', pricing_tier: 'others' })
   mount(CustomerList); await screen.findAllByText('Alpha shop')
   const table = screen.getByRole('region', { name: 'Daftar pelanggan' }), mobile = screen.getByRole('list', { name: 'Daftar pelanggan seluler' })
   expect(within(table).getAllByRole('row')).toHaveLength(3); expect(within(mobile).getAllByRole('listitem')).toHaveLength(2)
@@ -222,7 +237,7 @@ test('product delete dialog retains failure, exposes retry and restores cancella
 })
 test('an open product dialog keeps a failed background read and its retry reachable', async () => {
   const { client } = mount(ProductList); await screen.findAllByText('Unset product'); fireEvent.click(screen.getAllByRole('button', { name: 'Ubah' })[0])
-  state.readError = true; await act(async () => { await client.invalidateQueries({ queryKey: ['products'] }) })
+  state.readError = true; await act(async () => { await client.invalidateQueries({ queryKey: ['catalogue'] }) })
   const dialog = screen.getByRole('dialog'), alert = await within(dialog).findByRole('alert')
   expect((within(dialog).getByRole('button', { name: 'Simpan' }) as HTMLButtonElement).disabled).toBe(true)
   state.readError = false; fireEvent.click(within(alert).getByRole('button', { name: 'Coba lagi' }))

@@ -1,7 +1,11 @@
+import { useCataloguePage } from '../../lib/catalogue/useCataloguePage'
+import type { CatalogueRow, CatalogueStatus } from '../../lib/catalogue/contracts'
+import { CatalogueStatusActions } from '../../components/catalogue/CatalogueStatusActions'
+import { CatalogueRecovery } from '../../components/catalogue/CatalogueRecovery'
 import { useProcurementAccess } from '../../lib/procurementAccess'
 import { parseCatalogPrice, formatCatalogPrice } from '../../lib/catalogPricing'
 import { useEffect, useRef, useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import AthelNav from '../../components/AthelNav'
 import PaginationControls from '../../components/PaginationControls'
@@ -12,21 +16,11 @@ import { Field } from '../../components/ui/Field'
 import { FilterBar } from '../../components/ui/FilterBar'
 import { FormActions } from '../../components/ui/FormActions'
 import { Dialog } from '../../components/ui/Dialog'
-import { EmptyState, Notice } from '../../components/ui/Feedback'
+import { EmptyState, Notice, StatusBadge } from '../../components/ui/Feedback'
 import { RecordList } from '../../components/ui/RecordList'
 import { SummaryList } from '../../components/ui/SummaryList'
 
-type Product = {
-  id: string
-  name: string
-  sku: string
-  size: string | null
-  unit_price: number | null
-  harga_pokok: number | null
-  luar_kota: number | null
-  dalam_kota: number | null
-  depo_bangunan: number | null
-}
+type Product = CatalogueRow<'product'>
 
 type ProductForm = {
   name: string
@@ -36,11 +30,6 @@ type ProductForm = {
   luar_kota: string
   dalam_kota: string
   depo_bangunan: string
-}
-
-type ProductListResponse = {
-  items: Product[]
-  total: number
 }
 
 const EMPTY_FORM: ProductForm = {
@@ -54,31 +43,6 @@ const EMPTY_FORM: ProductForm = {
 }
 
 const PAGE_SIZE = 10
-
-async function fetchProducts(search: string, page: number): Promise<ProductListResponse> {
-  const from = (page - 1) * PAGE_SIZE
-  const to = from + PAGE_SIZE - 1
-  const trimmedSearch = search.trim()
-
-  let query = supabase
-    .from('products')
-    .select('id, name, sku, size, unit_price, harga_pokok, luar_kota, dalam_kota, depo_bangunan', { count: 'exact' })
-    .order('name')
-    .order('id')
-    .range(from, to)
-
-  if (trimmedSearch) {
-    query = query.or(literalSearchFilter(['name', 'sku'], trimmedSearch))
-  }
-
-  const { data, error, count } = await query
-  if (error) throw error
-
-  return {
-    items: data ?? [],
-    total: count ?? 0,
-  }
-}
 
 async function saveProduct(form: ProductForm, editingId: string | null) {
   const payload = {
@@ -125,6 +89,7 @@ export default function ProductList() {
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [page, setPage] = useState(1)
+  const [status, setStatus] = useState<CatalogueStatus>('all')
   const mutationBusy = useRef(false)
   const dialogTrigger = useRef<HTMLElement | null>(null)
   const dialogCommitted = useRef(false)
@@ -139,13 +104,10 @@ export default function ProductList() {
 
   useEffect(() => {
     setPage(1)
-  }, [debouncedSearch])
+  }, [debouncedSearch, status])
 
-  const { data, isError, isFetching, isPlaceholderData, fetchStatus, refetch } = useQuery({
-    queryKey: ['products', debouncedSearch, page],
-    queryFn: () => fetchProducts(debouncedSearch, page),
-    placeholderData: previousData => previousData,
-  })
+  const catalogue = useCataloguePage({ kind: 'product', search: debouncedSearch, page, pageSize: PAGE_SIZE, status })
+  const { data, isError, isFetching, isPlaceholderData, fetchStatus, refetch } = catalogue
 
   const products = data?.items ?? []
   const totalItems = data?.total ?? 0
@@ -156,7 +118,7 @@ export default function ProductList() {
     onSettled: () => { mutationBusy.current = false },
     onSuccess: () => {
       dialogCommitted.current = true
-      queryClient.invalidateQueries({ queryKey: ['products'] })
+      queryClient.invalidateQueries({ queryKey: ['products'] }); void catalogue.refresh()
       setShowForm(false)
       setEditingId(null)
       setForm(EMPTY_FORM)
@@ -168,7 +130,7 @@ export default function ProductList() {
     onSettled: () => { mutationBusy.current = false },
     onSuccess: () => {
       dialogCommitted.current = true
-      queryClient.invalidateQueries({ queryKey: ['products'] })
+      queryClient.invalidateQueries({ queryKey: ['products'] }); void catalogue.refresh()
       setDeleteId(null)
     },
   })
@@ -177,7 +139,7 @@ export default function ProductList() {
   const modalPending = saveMutation.isPending || deleteMutation.isPending
 
   const openEdit = (p: Product, trigger: HTMLElement) => {
-    if (!access.capabilities.product_edit || mutationBusy.current || modalOpen || modalPending) return
+    if (!access.capabilities.product_edit || mutationBusy.current || modalOpen || modalPending || catalogue.unresolved) return
     dialogTrigger.current = trigger
     dialogCommitted.current = false
     saveMutation.reset()
@@ -195,7 +157,7 @@ export default function ProductList() {
   }
 
   const handleSave = () => {
-    if (!access.capabilities[editingId ? 'product_edit' : 'product_create'] || mutationBusy.current || modalPending || isError) return
+    if (!access.capabilities[editingId ? 'product_edit' : 'product_create'] || mutationBusy.current || modalPending || isError || catalogue.unresolved) return
     if (!form.sku.trim()) return alert('SKU wajib diisi.')
     if (!form.name.trim()) return alert('Nama barang wajib diisi.')
     mutationBusy.current = true
@@ -212,12 +174,13 @@ export default function ProductList() {
 
   const closeForm = () => { if (!mutationBusy.current && !modalPending) { setShowForm(false); setEditingId(null); setForm(EMPTY_FORM) } }
   const openDelete = (p: Product, trigger: HTMLElement) => {
-    if (!access.capabilities.product_delete || mutationBusy.current || modalOpen || modalPending) return
+    if (!access.capabilities.product_delete || mutationBusy.current || modalOpen || modalPending || catalogue.unresolved) return
     dialogTrigger.current = trigger; dialogCommitted.current = false; deleteMutation.reset(); setDeleteId(p.id)
   }
   const rowActions = (p: Product) => <div className="flex flex-wrap justify-end gap-2">
-    {access.capabilities.product_edit && <Button variant="quiet" size="compact" disabled={modalOpen || modalPending} onClick={event => openEdit(p, event.currentTarget)}>Ubah</Button>}
-    {access.capabilities.product_delete && <Button variant="danger-quiet" size="compact" disabled={modalOpen || modalPending} onClick={event => openDelete(p, event.currentTarget)}>Hapus</Button>}
+    {access.capabilities.product_edit && <Button variant="quiet" size="compact" disabled={modalOpen || modalPending || catalogue.unresolved} onClick={event => openEdit(p, event.currentTarget)}>Ubah</Button>}
+    {access.capabilities.product_delete && <Button variant="danger-quiet" size="compact" disabled={modalOpen || modalPending || catalogue.unresolved} onClick={event => openDelete(p, event.currentTarget)}>Hapus</Button>}
+    {catalogue.owner && catalogue.sender ? <CatalogueStatusActions kind="product" row={p} owner={catalogue.owner} sender={catalogue.sender} authority={catalogue.authority} commandsAvailable={catalogue.commandsAvailable} disabled={modalOpen || modalPending || catalogue.unresolved} /> : <StatusBadge tone={p.is_enabled ? 'success' : 'neutral'}>{p.is_enabled ? 'Aktif' : 'Nonaktif'}</StatusBadge>}
   </div>
   const tiers = ['harga_pokok', 'luar_kota', 'dalam_kota', 'depo_bangunan'] as const
   return <div className="min-h-screen bg-brand-canvas">
@@ -225,15 +188,17 @@ export default function ProductList() {
     <MainContent>
       <div inert={modalOpen} aria-hidden={modalOpen ? true : undefined}>
         <div ref={successFocus} tabIndex={-1} className="bg-white border-b border-brand-divider px-4 md:px-8 py-5">
-          <PageHeader title="Daftar Barang" description={data ? `${totalItems} barang` : 'Jumlah barang belum tersedia'} actions={access.capabilities.product_create && <Button disabled={modalOpen || modalPending || isError} onClick={event => {
-            if (!access.capabilities.product_create || mutationBusy.current || modalOpen || modalPending) return
+          <PageHeader title="Daftar Barang" description={data ? `${totalItems} barang` : 'Jumlah barang belum tersedia'} actions={access.capabilities.product_create && <Button disabled={modalOpen || modalPending || isError || catalogue.unresolved} onClick={event => {
+            if (!access.capabilities.product_create || mutationBusy.current || modalOpen || modalPending || catalogue.unresolved) return
             dialogTrigger.current = event.currentTarget; dialogCommitted.current = false; saveMutation.reset(); setEditingId(null); setForm(EMPTY_FORM); setShowForm(true)
           }}>+ Tambah Barang</Button>} />
         </div>
         <div className="px-4 md:px-8 py-4">
-          <FilterBar label="Filter daftar barang"><Field id="catalog-product-search" label="Cari barang" className="w-full sm:w-80">{control => <input {...control} type="text" placeholder="Cari berdasarkan nama atau SKU..." value={search} onChange={event => handleSearch(event.target.value)} />}</Field></FilterBar>
+          <FilterBar label="Filter daftar barang"><Field id="catalog-product-search" label="Cari barang" className="w-full sm:w-80">{control => <input {...control} type="text" placeholder="Cari berdasarkan nama atau SKU..." value={search} onChange={event => handleSearch(event.target.value)} />}</Field><Field id="catalog-product-status" label="Status barang">{control => <select {...control} value={status} onChange={event => setStatus(event.target.value as CatalogueStatus)}><option value="all">Semua status</option><option value="enabled">Aktif</option><option value="disabled">Nonaktif</option></select>}</Field></FilterBar>
         </div>
         <div className="px-4 md:px-8 pb-6 space-y-4">
+          {catalogue.unresolved && !catalogue.busy && catalogue.owner && catalogue.sender && <CatalogueRecovery owner={catalogue.owner} sender={catalogue.sender} available={catalogue.recoveryAvailable} acceptCanonical={catalogue.acceptCanonical} acceptAbandoned={catalogue.acceptAbandoned} onConfirmed={catalogue.onConfirmed} onAbandoned={catalogue.onAbandoned} />}
+
           {isError && <Notice tone="error" title="Daftar barang belum dapat dimuat." actions={<Button variant="secondary" onClick={() => { void refetch() }}>Coba lagi</Button>} />}
           {!isError && !data && <Notice tone="info" title={fetchStatus === 'paused' ? 'Memuat data barang tertunda. Menunggu koneksi…' : 'Memuat data barang...'} />}
           {!isError && data && fetchStatus === 'paused' && <Notice tone="info" title="Pembaruan data barang tertunda. Menunggu koneksi; hasil terakhir tetap ditampilkan." />}
@@ -296,4 +261,3 @@ export default function ProductList() {
     </MainContent>
   </div>
 }
-import { literalSearchFilter } from '../../lib/reads/literalSearch'

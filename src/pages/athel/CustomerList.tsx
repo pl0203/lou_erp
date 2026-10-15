@@ -1,3 +1,7 @@
+import { useCataloguePage } from '../../lib/catalogue/useCataloguePage'
+import type { CatalogueRow, CatalogueStatus } from '../../lib/catalogue/contracts'
+import { CatalogueStatusActions } from '../../components/catalogue/CatalogueStatusActions'
+import { CatalogueRecovery } from '../../components/catalogue/CatalogueRecovery'
 import CustomerPricingHelp from '../../components/CustomerPricingHelp'
 import { useProcurementAccess } from '../../lib/procurementAccess'
 import { hasInvalidCustomerCategories } from '../../lib/customerCategoryRows'
@@ -6,7 +10,7 @@ import ReadFailure from '../../components/ReadFailure'
 import { parseCustomerCategory, formatCustomerCategory, type CustomerCategory } from '../../lib/customerCategory'
 import { confirmCustomerWrite, refreshCustomerCaches } from '../../lib/customerWrites'
 import { useEffect, useRef, useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import AthelNav from '../../components/AthelNav'
 import PaginationControls from '../../components/PaginationControls'
@@ -21,16 +25,7 @@ import { EmptyState, Notice, StatusBadge } from '../../components/ui/Feedback'
 import { RecordList } from '../../components/ui/RecordList'
 import { SummaryList } from '../../components/ui/SummaryList'
 
-type Customer = {
-  id: string
-  name: string
-  address: string | null
-  city: string | null
-  phone: string | null
-  email: string | null
-  pricing_tier: string
-  customer_category: CustomerCategory | null
-}
+type Customer = CatalogueRow<'customer'>
 
 type CustomerForm = {
   name: string
@@ -40,11 +35,6 @@ type CustomerForm = {
   email: string
   pricing_tier: string
   customer_category: CustomerCategory | null | ''
-}
-
-type CustomerListResponse = {
-  items: Customer[]
-  total: number
 }
 
 const EMPTY_FORM: CustomerForm = {
@@ -66,31 +56,6 @@ const TIER_LABELS: Record<string, string> = {
 }
 
 const PAGE_SIZE = 10
-
-async function fetchCustomers(search: string, page: number): Promise<CustomerListResponse> {
-  const from = (page - 1) * PAGE_SIZE
-  const to = from + PAGE_SIZE - 1
-  const trimmedSearch = search.trim()
-
-  let query = supabase
-    .from('customers')
-    .select('id, name, address, city, phone, email, pricing_tier, customer_category', { count: 'exact' })
-    .order('name')
-    .order('id')
-    .range(from, to)
-
-  if (trimmedSearch) {
-    query = query.or(literalSearchFilter(['name', 'city'], trimmedSearch))
-  }
-
-  const { data, error, count } = await query
-  if (error) throw error
-
-  return {
-    items: (data ?? []).map(row => ({ ...row, customer_category: parseCustomerCategory(row.customer_category, { allowUnclassified: true }) })),
-    total: count ?? 0,
-  }
-}
 
 async function saveCustomer(form: CustomerForm, original: Customer | null) {
   const category = parseCustomerCategory(form.customer_category, { allowUnclassified: original !== null })
@@ -128,6 +93,7 @@ export default function CustomerList() {
   const [form, setForm] = useState<CustomerForm>(EMPTY_FORM)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [page, setPage] = useState(1)
+  const [status, setStatus] = useState<CatalogueStatus>('all')
   const mutationBusy = useRef(false)
   const dialogTrigger = useRef<HTMLElement | null>(null)
   const dialogCommitted = useRef(false)
@@ -142,13 +108,10 @@ export default function CustomerList() {
 
   useEffect(() => {
     setPage(1)
-  }, [debouncedSearch])
+  }, [debouncedSearch, status])
 
-  const { data, isFetching, isPlaceholderData, fetchStatus, isError: queryReadError, refetch } = useQuery({
-    queryKey: ['athel_customers', debouncedSearch, page],
-    queryFn: () => fetchCustomers(debouncedSearch, page),
-    placeholderData: previousData => previousData,
-  })
+  const catalogue = useCataloguePage({ kind: 'customer', search: debouncedSearch, page, pageSize: PAGE_SIZE, status })
+  const { data, isFetching, isPlaceholderData, fetchStatus, isError: queryReadError, refetch } = catalogue
 
   const customers = data?.items ?? []
   const readError = queryReadError || hasInvalidCustomerCategories(customers)
@@ -158,7 +121,7 @@ export default function CustomerList() {
   const saveMutation = useMutation({
     mutationFn: () => { access.require(originalCustomer ? 'customer_edit' : 'customer_create'); return saveCustomer(form, originalCustomer) },
     onSettled: async () => {
-      try { await refreshCustomerCaches(queryClient) }
+      try { await Promise.all([refreshCustomerCaches(queryClient), catalogue.refresh()]) }
       finally { mutationBusy.current = false }
     },
     onSuccess: () => {
@@ -174,7 +137,7 @@ export default function CustomerList() {
     onSettled: () => { mutationBusy.current = false },
     onSuccess: () => {
       dialogCommitted.current = true
-      queryClient.invalidateQueries({ queryKey: ['athel_customers'] })
+      queryClient.invalidateQueries({ queryKey: ['athel_customers'] }); void catalogue.refresh()
       setDeleteId(null)
     },
   })
@@ -183,7 +146,7 @@ export default function CustomerList() {
   const modalPending = saveMutation.isPending || deleteMutation.isPending
 
   const openEdit = (c: Customer, trigger: HTMLElement) => {
-    if (!access.capabilities.customer_edit || mutationBusy.current || modalOpen || modalPending) return
+    if (!access.capabilities.customer_edit || mutationBusy.current || modalOpen || modalPending || catalogue.unresolved) return
     dialogTrigger.current = trigger
     dialogCommitted.current = false
     saveMutation.reset()
@@ -202,7 +165,7 @@ export default function CustomerList() {
   }
 
   const handleSave = () => {
-    if (!access.capabilities[originalCustomer ? 'customer_edit' : 'customer_create'] || mutationBusy.current || modalPending || readError) return
+    if (!access.capabilities[originalCustomer ? 'customer_edit' : 'customer_create'] || mutationBusy.current || modalPending || readError || catalogue.unresolved) return
     if (!form.name.trim()) return alert('Nama pelanggan wajib diisi.')
     mutationBusy.current = true
     saveMutation.mutate()
@@ -218,25 +181,28 @@ export default function CustomerList() {
 
   const closeForm = () => { if (!mutationBusy.current && !modalPending) { setShowForm(false); setEditingId(null); setForm(EMPTY_FORM) } }
   const openDelete = (c: Customer, trigger: HTMLElement) => {
-    if (!access.capabilities.customer_delete || mutationBusy.current || modalOpen || modalPending) return
+    if (!access.capabilities.customer_delete || mutationBusy.current || modalOpen || modalPending || catalogue.unresolved) return
     dialogTrigger.current = trigger; dialogCommitted.current = false; deleteMutation.reset(); setDeleteId(c.id)
   }
   const rowActions = (c: Customer) => <div className="flex flex-wrap justify-end gap-2">
-    {access.capabilities.customer_edit && <Button variant="quiet" size="compact" disabled={modalOpen || modalPending} onClick={event => openEdit(c, event.currentTarget)}>Ubah</Button>}
-    {access.capabilities.customer_delete && <Button variant="danger-quiet" size="compact" disabled={modalOpen || modalPending} onClick={event => openDelete(c, event.currentTarget)}>Hapus</Button>}
+    {access.capabilities.customer_edit && <Button variant="quiet" size="compact" disabled={modalOpen || modalPending || catalogue.unresolved} onClick={event => openEdit(c, event.currentTarget)}>Ubah</Button>}
+    {access.capabilities.customer_delete && <Button variant="danger-quiet" size="compact" disabled={modalOpen || modalPending || catalogue.unresolved} onClick={event => openDelete(c, event.currentTarget)}>Hapus</Button>}
+    {catalogue.owner && catalogue.sender ? <CatalogueStatusActions kind="customer" row={c} owner={catalogue.owner} sender={catalogue.sender} authority={catalogue.authority} commandsAvailable={catalogue.commandsAvailable} disabled={modalOpen || modalPending || catalogue.unresolved} /> : <StatusBadge tone={c.is_enabled ? 'success' : 'neutral'}>{c.is_enabled ? 'Aktif' : 'Nonaktif'}</StatusBadge>}
   </div>
   return <div className="min-h-screen bg-brand-canvas">
     <AthelNav />
     <MainContent>
       <div inert={modalOpen} aria-hidden={modalOpen ? true : undefined}>
         <div ref={successFocus} tabIndex={-1} className="bg-white border-b border-brand-divider px-4 md:px-8 py-5">
-          <PageHeader title="Daftar Pelanggan" description={data ? `${totalItems} pelanggan` : 'Jumlah pelanggan belum tersedia'} actions={access.capabilities.customer_create && <Button disabled={readError || modalOpen || modalPending} onClick={event => {
-            if (!access.capabilities.customer_create || mutationBusy.current || modalOpen || modalPending) return
+          <PageHeader title="Daftar Pelanggan" description={data ? `${totalItems} pelanggan` : 'Jumlah pelanggan belum tersedia'} actions={access.capabilities.customer_create && <Button disabled={readError || modalOpen || modalPending || catalogue.unresolved} onClick={event => {
+            if (!access.capabilities.customer_create || mutationBusy.current || modalOpen || modalPending || catalogue.unresolved) return
             dialogTrigger.current = event.currentTarget; dialogCommitted.current = false; saveMutation.reset(); setOriginalCustomer(null); setEditingId(null); setForm(EMPTY_FORM); setShowForm(true)
           }}>+ Tambah Pelanggan</Button>} />
         </div>
-        <div className="px-4 md:px-8 py-4"><FilterBar label="Filter daftar pelanggan"><Field id="catalog-customer-search" label="Cari pelanggan" className="w-full sm:w-80">{control => <input {...control} type="text" placeholder="Cari pelanggan..." value={search} onChange={event => handleSearch(event.target.value)} />}</Field></FilterBar></div>
+        <div className="px-4 md:px-8 py-4"><FilterBar label="Filter daftar pelanggan"><Field id="catalog-customer-search" label="Cari pelanggan" className="w-full sm:w-80">{control => <input {...control} type="text" placeholder="Cari pelanggan..." value={search} onChange={event => handleSearch(event.target.value)} />}</Field><Field id="catalog-customer-status" label="Status pelanggan">{control => <select {...control} value={status} onChange={event => setStatus(event.target.value as CatalogueStatus)}><option value="all">Semua status</option><option value="enabled">Aktif</option><option value="disabled">Nonaktif</option></select>}</Field></FilterBar></div>
         <div className="px-4 md:px-8 pb-6 space-y-4">
+          {catalogue.unresolved && !catalogue.busy && catalogue.owner && catalogue.sender && <CatalogueRecovery owner={catalogue.owner} sender={catalogue.sender} available={catalogue.recoveryAvailable} acceptCanonical={catalogue.acceptCanonical} acceptAbandoned={catalogue.acceptAbandoned} onConfirmed={catalogue.onConfirmed} onAbandoned={catalogue.onAbandoned} />}
+
           {readError && <ReadFailure onRetry={() => { void refetch() }} />}
           {!readError && !data && <Notice tone="info" title={fetchStatus === 'paused' ? 'Memuat data pelanggan tertunda. Menunggu koneksi…' : 'Memuat data pelanggan...'} />}
           {!readError && data && fetchStatus === 'paused' && <Notice tone="info" title="Pembaruan data pelanggan tertunda. Menunggu koneksi; hasil terakhir tetap ditampilkan." />}
@@ -291,4 +257,3 @@ export default function CustomerList() {
     </MainContent>
   </div>
 }
-import { literalSearchFilter } from '../../lib/reads/literalSearch'
