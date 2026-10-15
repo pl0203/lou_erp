@@ -24,8 +24,10 @@ INSERT INTO public.customer_targets(customer_id,year_month,set_by) VALUES(md5('t
 ROLLBACK TO SAVEPOINT target_rollback;
 SELECT pg_temp.foundation_assert((SELECT lifetime_state='unknown' FROM private.catalog_identity_v1 WHERE kind='customer' AND id=md5('target-fiction-3')::uuid),'savepoint rolls evidence back with target');
 -- Fictional CASCADE variant only; not an assertion about any remote substrate.
+SET CONSTRAINTS public.catalog_customer_targets_assert_v1 IMMEDIATE;
 ALTER TABLE public.customer_targets DROP CONSTRAINT customer_targets_customer_id_fkey;
 ALTER TABLE public.customer_targets ADD CONSTRAINT customer_targets_customer_id_fkey FOREIGN KEY(customer_id) REFERENCES public.customers(id) ON DELETE CASCADE;
+SET CONSTRAINTS public.catalog_customer_targets_assert_v1 DEFERRED;
 INSERT INTO public.customer_targets(customer_id,year_month,set_by) VALUES(md5('target-fiction-4')::uuid,'2099-01',md5('catalogue-foundation-actor-3')::uuid);
 DELETE FROM public.customers WHERE id=md5('target-fiction-4')::uuid;
 SET CONSTRAINTS public.catalog_customer_targets_assert_v1 IMMEDIATE;

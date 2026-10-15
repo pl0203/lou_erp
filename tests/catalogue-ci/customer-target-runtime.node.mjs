@@ -21,6 +21,20 @@ test('frozen lifecycle is expanded exactly once; altered savepoints, meta comman
  assert.throws(()=>runner.expandTargetLifecycle(p.lifecycle.replace('ROLLBACK TO SAVEPOINT target_rollback;','COMMIT;'),p.target));
  assert.throws(()=>runner.expandTargetLifecycle(p.lifecycle,p.target+'\nCOMMIT;'));
 });
+test('cascade fixture drains queued target assertions before DDL and restores deferred event checks',()=>{
+ need();const p=parts();
+ const boundary=[
+  'SET CONSTRAINTS public.catalog_customer_targets_assert_v1 IMMEDIATE;',
+  'ALTER TABLE public.customer_targets DROP CONSTRAINT customer_targets_customer_id_fkey;',
+  'ALTER TABLE public.customer_targets ADD CONSTRAINT customer_targets_customer_id_fkey FOREIGN KEY(customer_id) REFERENCES public.customers(id) ON DELETE CASCADE;',
+  'SET CONSTRAINTS public.catalog_customer_targets_assert_v1 DEFERRED;',
+  "INSERT INTO public.customer_targets(customer_id,year_month,set_by) VALUES(md5('target-fiction-4')::uuid,'2099-01',md5('catalogue-foundation-actor-3')::uuid);",
+ ].join('\n');
+ for(const sql of [p.lifecycle,runner.expandTargetLifecycle(p.lifecycle,p.target,p.authority),runner.buildTargetLifecycleSession(identity,p)]){
+  const unmarked=sql.split('\n').filter(line=>!line.startsWith('\\echo ')).join('\n');
+  assert.equal(unmarked.split(boundary).length,2,'One named drain/DDL/defer boundary before cascade events required');
+ }
+});
 test('lifecycle, authority parity and NULL variants stay in one source-bound rollback session',()=>{
  need();const p=parts(),sql=runner.buildTargetLifecycleSession(identity,p);
  assert.equal((sql.match(/^BEGIN;/gm)||[]).length,1);assert.equal((sql.match(/^ROLLBACK;/gm)||[]).length,1);assert.doesNotMatch(sql,/^COMMIT;/m);

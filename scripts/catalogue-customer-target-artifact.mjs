@@ -13,7 +13,7 @@ const defaultRoot=resolve(dirname(fileURLToPath(import.meta.url)),'..'),sha=x=>c
 export const targetRuntimeReviewedFiles=Object.freeze([
  {
   "path": "scripts/catalogue-customer-target-runtime.mjs",
-  "sha256": "6eea0e1425dc85db3139ff392d816efb549dc61e6cc1d3d0c6c61aa84d48fa2a"
+  "sha256": "d89df533221b1a9a54905b11d41d80cb643b5b178d1da9a7e7e784beeab77dbb"
  },
  {
   "path": "supabase/catalogue/v1/02-customer-target-tracking.sql",
@@ -21,7 +21,7 @@ export const targetRuntimeReviewedFiles=Object.freeze([
  },
  {
   "path": "tests/catalogue-ci/customer-target-runtime.node.mjs",
-  "sha256": "0e3ad736ead2c34d66c64df9137b21d2b0f3d01af8bad718cf603cf0e06a2771"
+  "sha256": "d22c7e3a14fab1e642befd7af0e2c2658469200a69094bf3f8cd07a5ffd7a854"
  },
  {
   "path": "tests/catalogue-ci/customer-target-tracking.node.mjs",
@@ -45,7 +45,7 @@ export const targetRuntimeReviewedFiles=Object.freeze([
  },
  {
   "path": "tests/database/catalogue/customer-target-tracking.sql",
-  "sha256": "f8494408feb44862246b4572e2d6f0636ea46dd07bfa58915dac47f41ec80730"
+  "sha256": "82e49e5a6da51b084a02b8632a8e16241c8dd27a81fee6985325ecab37dfe026"
  }
 ].map(Object.freeze));
 const reportPaths=Object.freeze(['tests/database/catalogue/before-foundation.sql','supabase/catalogue/v1/01-foundation.sql','tests/database/catalogue/legacy-columns.sql','tests/database/catalogue/roles.sql','supabase/catalogue/v1/02-customer-target-tracking.sql','tests/database/catalogue/customer-target-tracking.sql','tests/database/catalogue/customer-target-runtime-authority.sql','tests/database/catalogue/customer-target-runtime-variants.sql']);
