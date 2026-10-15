@@ -27,11 +27,12 @@ export const foundationSqlPaths=Object.freeze({
  lifetime:'tests/database/catalogue/lifetime-admission.sql',
  createEditCandidate:'supabase/catalogue/v1/new08-catalogue-create-edit.sql',
  createEdit:'tests/database/catalogue/create-edit.sql',
+ publicRouters:'tests/database/catalogue/generation-two-routers.sql',
 });
 export const foundationExpectedMarkers=Object.freeze([
  'CATALOGUE_FOUNDATION_BEFORE_CAPTURED','CATALOGUE_FOUNDATION_CANDIDATE_APPLIED',
  'CATALOGUE_FOUNDATION_BEHAVIOR_PASSED','CATALOGUE_FOUNDATION_LEGACY_PASSED',
- 'CATALOGUE_FOUNDATION_ROLES_PASSED','CATALOGUE_ORDERS_CORE_PASSED','CATALOGUE_CO_ORDERS_CORE_PASSED','CATALOGUE_LIFETIME_WRITERS_PASSED','CATALOGUE_CREATE_EDIT_CORE_PASSED','CATALOGUE_FOUNDATION_ROLLBACK_VERIFIED',
+ 'CATALOGUE_FOUNDATION_ROLES_PASSED','CATALOGUE_ORDERS_CORE_PASSED','CATALOGUE_CO_ORDERS_CORE_PASSED','CATALOGUE_LIFETIME_WRITERS_PASSED','CATALOGUE_CREATE_EDIT_CORE_PASSED','CATALOGUE_PUBLIC_ROUTER_DISPATCH_ONLY_PASSED','CATALOGUE_FOUNDATION_ROLLBACK_VERIFIED',
 ]);
 // Erase SQL comments/quoted values before examining top-level statements. This
 // is a containment check, not a PostgreSQL grammar/behavior substitute.
@@ -114,8 +115,9 @@ ${sessionGate()}${parts.lifetimeCandidate}
 ${sessionGate()}${parts.lifetime}
 ${sessionGate()}${mark(7)}${parts.createEditCandidate}
 ${sessionGate()}${parts.createEdit}
-${sessionGate()}${mark(8)}ROLLBACK;
-${catalogueCiIdentityGateSql(identity)}${booleanGate(`${noFoundationPredicate}\n AND pg_catalog.pg_backend_pid()=:'catalogue_foundation_pid'::integer\n AND pg_catalog.to_regclass('pg_temp.catalogue_foundation_session_v1') IS NULL`,'catalogue_foundation_rollback_refused')}${mark(9)}\\o
+${sessionGate()}${mark(8)}${parts.publicRouters}
+${sessionGate()}${mark(9)}ROLLBACK;
+${catalogueCiIdentityGateSql(identity)}${booleanGate(`${noFoundationPredicate}\n AND pg_catalog.pg_backend_pid()=:'catalogue_foundation_pid'::integer\n AND pg_catalog.to_regclass('pg_temp.catalogue_foundation_session_v1') IS NULL`,'catalogue_foundation_rollback_refused')}${mark(10)}\\o
 `;
 }
 export function parseCatalogueFoundationOutput(output) {
@@ -235,6 +237,11 @@ export function runCatalogueFoundation({repoRoot=defaultRoot,env=process.env,exe
    createEditProof:{operations:['create','edit'],role:'authenticated',authorization:'VERIFIED_SYNTHETIC_POLICY_ONLY',
     sequentialReplay:'PASSED',sequentialRecovery:'PASSED',rollbackAtomicity:'PASSED',
     createsRemainUnknown:true,productionGeneration:1,trackingReady:false,concurrency:'UNRUN',hostedPolicyParity:'UNVERIFIED'},
+   publicRouterProof:{scope:'PUBLIC_ROUTER_DISPATCH_ONLY',routers:['po','co','promotion','owner','schedule','visit','evidence','attest'],
+    roles:['authenticated','service_role'],dispatch:'SEQUENTIAL_SAME_SESSION_PASSED',replay:'EXACT_PUBLIC_RECEIPTS_AND_OWNER_NOOP_PASSED',
+    fixtureSubtransactionRestoration:'ROWS_CONSTRAINTS_SESSION_VERIFIED',freshNotReadyRefusals:['po','co','owner'],
+    productionGeneration:1,trackingReady:false,globalLifetimeCertification:'NOT_PROVEN',rawCompatibility:'UNPROVEN',
+    loadedLegacyRetirement:'UNPROVEN',concurrency:'UNRUN',hostedParity:'UNVERIFIED'},
    commandAndReplaySuites:'SET_ENABLED_SEQUENTIAL_SAME_SESSION_PASSED',
    commandProof:{operations:['set_enabled'],role:'authenticated',authorization:'VERIFIED_SYNTHETIC_POLICY_ONLY',
     sequentialReplay:'PASSED',sequentialAbandonment:'PASSED',rollbackAtomicity:'PASSED',

@@ -33,6 +33,8 @@ export const cataloguePublicSourcePaths=[
  'tests/database/catalogue/create-edit-races.mjs',
  'tests/catalogue-ci/create-edit.node.mjs',
  'tests/catalogue-ci/create-edit-races.node.mjs',
+ 'tests/database/catalogue/generation-two-routers.sql',
+ 'tests/catalogue-ci/generation-two-routers.node.mjs',
  'src/pages/athel/CustomerList.tsx',
  'src/pages/athel/ProductList.tsx',
  'src/lib/catalogue/useCataloguePage.ts',

@@ -166,7 +166,7 @@ test.each(immediatePaths)('$kind $action releases its owner lock without bypassi
   expect(client.getMutationCache().getAll()).toHaveLength(1)
   if (path.action === 'save') {
     await screen.findByText('Hasil belum terkonfirmasi')
-    expect(screen.queryByRole('dialog')).toBeNull(); expect(localStorage.length).toBe(1)
+    expect(screen.getByRole('dialog')).toBe(dialog); expect(localStorage.length).toBe(1)
     fireEvent.click(screen.getByRole('button', { name: 'Periksa hasil' })); await screen.findByText(/Hasil belum diketahui/)
     expect(client.getMutationCache().getAll()).toHaveLength(1)
     state.writeGate = null; state.writeError = false; state.backend.state.customerResponse = 'ok'
@@ -174,10 +174,11 @@ test.each(immediatePaths)('$kind $action releases its owner lock without bypassi
     fireEvent.click(screen.getByRole('button', { name: 'Konfirmasi pembatalan permintaan' }))
     await waitFor(() => expect(screen.queryByText('Hasil belum terkonfirmasi')).toBeNull())
     expect(localStorage.length).toBe(0)
-    const opener = screen.getAllByRole('button', { name: 'Ubah' })[0]
-    await waitFor(() => expect((opener as HTMLButtonElement).disabled).toBe(false)); fireEvent.click(opener)
-    if (path.kind === 'customer') fireEvent.change(associated('Nama Pelanggan *'), { target: { value: 'Edited shop' } })
-    const retry = screen.getByRole('button', { name: 'Simpan' }); act(() => { fireEvent.click(retry); fireEvent.click(retry) })
+    expect(screen.getByRole('dialog')).toBe(dialog)
+    if (path.kind === 'customer') expect(associated('Nama Pelanggan *').value).toBe('Edited shop')
+    const retry = screen.getByRole('button', { name: 'Simpan' })
+    await waitFor(() => expect((retry as HTMLButtonElement).disabled).toBe(false))
+    act(() => { fireEvent.click(retry); fireEvent.click(retry) })
   } else {
     await within(dialog).findByRole('alert')
     state.writeGate = null; state.writeError = false; state.backend.state.customerResponse = 'ok'
@@ -306,7 +307,9 @@ test('customer pending save locks category and contact fields while preserving t
   const category = screen.getByRole('combobox', { name: /Kategori Pelanggan/ }) as HTMLSelectElement
   expect(category.disabled || category.closest('fieldset')?.disabled).toBe(true); expect(associated('Telepon').disabled).toBe(true)
   fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' }); expect(screen.getByRole('dialog')).toBeTruthy()
-  await act(async () => gate.resolve()); await screen.findByText('Hasil belum terkonfirmasi'); expect(screen.queryByRole('dialog')).toBeNull(); expect(localStorage.length).toBe(1)
+  await act(async () => gate.resolve()); await screen.findByText('Hasil belum terkonfirmasi'); expect(screen.getByRole('dialog')).toBeTruthy(); expect(localStorage.length).toBe(1)
+  expect(associated('Nama Pelanggan *').value).toBe('Edited shop'); expect(associated('Telepon').disabled).toBe(true)
+  expect((screen.getByRole('button', { name: 'Simpan' }) as HTMLButtonElement).disabled).toBe(true)
   expect(state.write.mock.calls[0][1]).toMatchObject({ name: 'Edited shop' })
 })
 test('customer successful edit keeps focus on its stable owner destination when delayed refresh removes the old row', async () => {

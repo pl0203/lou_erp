@@ -343,19 +343,45 @@ it('creates a product through the receipt contract, never a raw insert', async (
   await waitFor(() => expect(screen.queryByText('Hasil belum terkonfirmasi')).toBeNull())
   expect(localStorage.length).toBe(0); expect(state.writes).not.toHaveBeenCalled()
 })
-it('keeps a refused edit recoverable outside its closed modal, without automatic retry', async () => {
-  mount(ProductList)
-  const region = await screen.findByRole('region', { name: 'Daftar barang' })
+it.each([['customer', CustomerList, 'Nama Pelanggan *', 'Daftar pelanggan'], ['product', ProductList, 'Nama Barang *', 'Daftar barang']] as const)('keeps refused %s draft frozen with keyboard-accessible recovery until explicit abandonment', async (kind, Page, nameLabel, regionLabel) => {
+  mount(Page)
+  const region = await screen.findByRole('region', { name: regionLabel })
   const edit = within(region).getByRole('button', { name: 'Ubah' })
   await waitFor(() => expect((edit as HTMLButtonElement).disabled).toBe(false))
   fireEvent.click(edit); state.conflict = true
-  fireEvent.change(screen.getByLabelText('Nama Barang *'), { target: { value: 'Attempt' } })
+  const name = screen.getByLabelText(nameLabel) as HTMLInputElement
+  fireEvent.change(name, { target: { value: 'Attempt' } })
+  const originalVersion = (kind === 'customer' ? state.customers : state.products)[0].catalog_version
   fireEvent.click(screen.getByRole('button', { name: 'Simpan' }))
   await screen.findByText('Hasil belum terkonfirmasi')
-  expect(screen.queryByRole('dialog')).toBeNull()
-  fireEvent.click(screen.getByRole('button', { name: 'Periksa hasil' }))
-  await screen.findByText(/Hasil belum diketahui/)
-  expect(localStorage.length).toBe(1); expect(state.command).toHaveBeenCalledOnce()
+  expect(await screen.findByText(/Data katalog berubah/)).toBeTruthy()
+  const dialog = screen.getByRole('dialog')
+  expect(name.value).toBe('Attempt'); expect(name.disabled).toBe(true)
+  const check = within(dialog).getByRole('button', { name: 'Periksa hasil' })
+  const abandon = within(dialog).getByRole('button', { name: 'Batalkan permintaan tersimpan' })
+  expect(screen.getAllByRole('button', { name: 'Periksa hasil', hidden: true })).toHaveLength(1)
+  await waitFor(() => expect(document.activeElement).toBe(check))
+  expect((check as HTMLButtonElement).disabled).toBe(false)
+  fireEvent.keyDown(check, { key: 'Tab', shiftKey: true }); expect(document.activeElement).toBe(abandon)
+  fireEvent.keyDown(abandon, { key: 'Tab' }); expect(document.activeElement).toBe(check)
+  for (const label of ['Simpan', 'Batal']) {
+    const button = within(dialog).getByRole('button', { name: label }) as HTMLButtonElement
+    expect(button.disabled).toBe(true); fireEvent.click(button)
+  }
+  fireEvent.keyDown(dialog, { key: 'Escape' }); expect(screen.getByRole('dialog')).toBe(dialog)
+  fireEvent.click(check); await screen.findByText(/Hasil belum diketahui/)
+  expect(localStorage.length).toBe(1); expect(state.command).toHaveBeenCalledOnce(); expect(name.value).toBe('Attempt')
+  fireEvent.click(abandon); fireEvent.click(within(dialog).getByRole('button', { name: 'Konfirmasi pembatalan permintaan' }))
+  await waitFor(() => expect(localStorage.length).toBe(0))
+  await waitFor(() => expect(name.disabled).toBe(false))
+  expect(name.value).toBe('Attempt'); expect(screen.getByRole('dialog')).toBe(dialog)
+  expect(state.command).toHaveBeenCalledOnce()
+  // Only the user's new Save dispatches again, retaining the captured version.
+  state.conflict = false
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }))
+  await waitFor(() => expect(state.command).toHaveBeenCalledTimes(2))
+  expect(state.command.mock.calls[1][0].p_payload).toMatchObject({ expected_version: originalVersion, values: { name: 'Attempt' } })
+  expect(state.command.mock.calls[1][0].p_request_id).not.toBe(state.command.mock.calls[0][0].p_request_id)
 })
 it('acknowledges a committed edit after a later canonical product deletion', async () => {
   mount(ProductList)

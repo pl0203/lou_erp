@@ -130,7 +130,6 @@ export default function CustomerList() {
       try { await catalogue.refresh() }
       finally { mutationBusy.current = false }
     },
-    onError: () => { if (catalogue.sender?.hasUnresolved()) setShowForm(false) },
     onSuccess: () => {
       dialogCommitted.current = true
       setShowForm(false)
@@ -151,6 +150,27 @@ export default function CustomerList() {
 
   const modalOpen = showForm || !!deleteId
   const modalPending = saveMutation.isPending || deleteMutation.isPending
+  const formFrozen = modalPending || catalogue.unresolved
+  const formControls = useRef<HTMLDivElement>(null)
+  const wasUnresolved = useRef(false)
+  useEffect(() => {
+    if (showForm && !modalPending && !catalogue.busy && formOwner.current === catalogue.owner && formOwner.current?.isCurrent()
+      && (catalogue.unresolved || wasUnresolved.current)) {
+      // Frozen draft fields stay visible; recovery remains in this modal's focus trap.
+      formControls.current?.querySelector<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled)')?.focus()
+    }
+    wasUnresolved.current = catalogue.unresolved
+  }, [showForm, modalPending, catalogue.busy, catalogue.unresolved, catalogue.recoveryAvailable, catalogue.owner])
+  const confirmFormRecovery = () => {
+    catalogue.onConfirmed()
+    dialogCommitted.current = true
+    setShowForm(false); setEditingId(null); setForm(EMPTY_FORM); saveMutation.reset()
+  }
+  const abandonFormRequest = () => {
+    catalogue.onAbandoned()
+    // Keep the exact draft and original version. Never silently rebase or retry.
+    saveMutation.reset()
+  }
 
   const openEdit = (c: Customer, trigger: HTMLElement) => {
     if (!catalogue.commandsAvailable || !catalogue.authority?.customer_edit || mutationBusy.current || modalOpen || modalPending || catalogue.unresolved) return
@@ -187,7 +207,7 @@ export default function CustomerList() {
 
   const deleteTarget = customers.find(c => c.id === deleteId)
 
-  const closeForm = () => { if (!mutationBusy.current && !modalPending) { setShowForm(false); setEditingId(null); setForm(EMPTY_FORM) } }
+  const closeForm = () => { if (!mutationBusy.current && !formFrozen) { setShowForm(false); setEditingId(null); setForm(EMPTY_FORM) } }
   const openDelete = (c: Customer, trigger: HTMLElement) => {
     if (!access.capabilities.customer_delete || mutationBusy.current || modalOpen || modalPending || catalogue.unresolved) return
     dialogTrigger.current = trigger; dialogCommitted.current = false; deleteMutation.reset(); setDeleteId(c.id)
@@ -209,7 +229,7 @@ export default function CustomerList() {
         </div>
         <div className="px-4 md:px-8 py-4"><FilterBar label="Filter daftar pelanggan"><Field id="catalog-customer-search" label="Cari pelanggan" className="w-full sm:w-80">{control => <input {...control} type="text" placeholder="Cari pelanggan..." value={search} onChange={event => handleSearch(event.target.value)} />}</Field><Field id="catalog-customer-status" label="Status pelanggan">{control => <select {...control} value={status} onChange={event => setStatus(event.target.value as CatalogueStatus)}><option value="all">Semua status</option><option value="enabled">Aktif</option><option value="disabled">Nonaktif</option></select>}</Field></FilterBar></div>
         <div className="px-4 md:px-8 pb-6 space-y-4">
-          {catalogue.unresolved && !catalogue.busy && catalogue.owner && catalogue.sender && <CatalogueRecovery owner={catalogue.owner} sender={catalogue.sender} available={catalogue.recoveryAvailable} acceptCanonical={catalogue.acceptCanonical} acceptAbandoned={catalogue.acceptAbandoned} onConfirmed={catalogue.onConfirmed} onAbandoned={catalogue.onAbandoned} />}
+          {!showForm && catalogue.unresolved && !catalogue.busy && catalogue.owner && catalogue.sender && <CatalogueRecovery owner={catalogue.owner} sender={catalogue.sender} available={catalogue.recoveryAvailable} acceptCanonical={catalogue.acceptCanonical} acceptAbandoned={catalogue.acceptAbandoned} onConfirmed={catalogue.onConfirmed} onAbandoned={catalogue.onAbandoned} />}
 
           {readError && <ReadFailure onRetry={() => { void refetch() }} />}
           {!readError && !data && <Notice tone="info" title={fetchStatus === 'paused' ? 'Memuat data pelanggan tertunda. Menunggu koneksi…' : 'Memuat data pelanggan...'} />}
@@ -241,19 +261,20 @@ export default function CustomerList() {
           </>}
         </div>
       </div>
-      {showForm && <Dialog labelledBy="catalog-customer-form-title" pending={modalPending} onClose={closeForm} returnFocus={null} fallbackFocus={restoreFocus}>
+      {showForm && <Dialog labelledBy="catalog-customer-form-title" pending={formFrozen} onClose={closeForm} returnFocus={null} fallbackFocus={restoreFocus}>
         <h2 id="catalog-customer-form-title" className="ui-dialog__title">{editingId ? 'Ubah Pelanggan' : 'Pelanggan Baru'}</h2>
-        <div className="mt-4 space-y-4">
-          <fieldset disabled={modalPending}><CustomerCategorySelect value={form.customer_category} allowUnclassified={originalCustomer?.customer_category === null} onChange={value => { if (!mutationBusy.current && !modalPending) setForm(p => ({ ...p, customer_category: value })) }} /></fieldset>
-          <Field id="catalog-customer-name" label="Nama Pelanggan *">{control => <input {...control} type="text" value={form.name} disabled={modalPending} onChange={event => { if (!mutationBusy.current && !modalPending) setForm(p => ({ ...p, name: event.target.value })) }} placeholder="mis. Toko Bangunan Maju" />}</Field>
-          <Field id="catalog-customer-address" label="Alamat">{control => <input {...control} type="text" value={form.address} disabled={modalPending} onChange={event => { if (!mutationBusy.current && !modalPending) setForm(p => ({ ...p, address: event.target.value })) }} placeholder="mis. Jl. Sudirman No. 12" />}</Field>
-          <Field id="catalog-customer-city" label="Kota">{control => <input {...control} type="text" value={form.city} disabled={modalPending} onChange={event => { if (!mutationBusy.current && !modalPending) setForm(p => ({ ...p, city: event.target.value })) }} placeholder="mis. Jakarta" />}</Field>
-          <Field id="catalog-customer-phone" label="Telepon">{control => <input {...control} type="text" value={form.phone} disabled={modalPending} onChange={event => { if (!mutationBusy.current && !modalPending) setForm(p => ({ ...p, phone: event.target.value })) }} placeholder="mis. 021-5551234" />}</Field>
-          <Field id="catalog-customer-email" label="Email">{control => <input {...control} type="email" value={form.email} disabled={modalPending} onChange={event => { if (!mutationBusy.current && !modalPending) setForm(p => ({ ...p, email: event.target.value })) }} placeholder="mis. toko@example.com" />}</Field>
-          <Field id="catalog-customer-tier" label="Tier Harga" hint={<CustomerPricingHelp id="customer-pricing-help" />}>{control => <select {...control} value={form.pricing_tier} disabled={modalPending} onChange={event => { if (!mutationBusy.current && !modalPending) setForm(p => ({ ...p, pricing_tier: event.target.value })) }}>{Object.entries(TIER_LABELS).map(([tier, label]) => <option key={tier} value={tier}>{label}</option>)}</select>}</Field>
+        <div ref={formControls} className="mt-4 space-y-4">
+          <fieldset disabled={formFrozen}><CustomerCategorySelect value={form.customer_category} allowUnclassified={originalCustomer?.customer_category === null} onChange={value => { if (!mutationBusy.current && !formFrozen) setForm(p => ({ ...p, customer_category: value })) }} /></fieldset>
+          <Field id="catalog-customer-name" label="Nama Pelanggan *">{control => <input {...control} type="text" value={form.name} disabled={formFrozen} onChange={event => { if (!mutationBusy.current && !formFrozen) setForm(p => ({ ...p, name: event.target.value })) }} placeholder="mis. Toko Bangunan Maju" />}</Field>
+          <Field id="catalog-customer-address" label="Alamat">{control => <input {...control} type="text" value={form.address} disabled={formFrozen} onChange={event => { if (!mutationBusy.current && !formFrozen) setForm(p => ({ ...p, address: event.target.value })) }} placeholder="mis. Jl. Sudirman No. 12" />}</Field>
+          <Field id="catalog-customer-city" label="Kota">{control => <input {...control} type="text" value={form.city} disabled={formFrozen} onChange={event => { if (!mutationBusy.current && !formFrozen) setForm(p => ({ ...p, city: event.target.value })) }} placeholder="mis. Jakarta" />}</Field>
+          <Field id="catalog-customer-phone" label="Telepon">{control => <input {...control} type="text" value={form.phone} disabled={formFrozen} onChange={event => { if (!mutationBusy.current && !formFrozen) setForm(p => ({ ...p, phone: event.target.value })) }} placeholder="mis. 021-5551234" />}</Field>
+          <Field id="catalog-customer-email" label="Email">{control => <input {...control} type="email" value={form.email} disabled={formFrozen} onChange={event => { if (!mutationBusy.current && !formFrozen) setForm(p => ({ ...p, email: event.target.value })) }} placeholder="mis. toko@example.com" />}</Field>
+          <Field id="catalog-customer-tier" label="Tier Harga" hint={<CustomerPricingHelp id="customer-pricing-help" />}>{control => <select {...control} value={form.pricing_tier} disabled={formFrozen} onChange={event => { if (!mutationBusy.current && !formFrozen) setForm(p => ({ ...p, pricing_tier: event.target.value })) }}>{Object.entries(TIER_LABELS).map(([tier, label]) => <option key={tier} value={tier}>{label}</option>)}</select>}</Field>
           {readError && <ReadFailure onRetry={() => { void refetch() }} />}
           {saveMutation.isError && <Notice tone="error" title={(saveMutation.error as Error).message} />}
-          <FormActions><Button variant="quiet" disabled={modalPending} onClick={closeForm}>Batal</Button><Button pending={saveMutation.isPending} disabled={!catalogue.commandsAvailable || !catalogue.authority?.[originalCustomer ? 'customer_edit' : 'customer_create'] || modalPending || readError} onClick={handleSave}>{saveMutation.isPending ? 'Menyimpan...' : 'Simpan'}</Button></FormActions>
+          {catalogue.unresolved && !modalPending && !catalogue.busy && catalogue.owner && catalogue.sender && <CatalogueRecovery owner={catalogue.owner} sender={catalogue.sender} available={catalogue.recoveryAvailable} acceptCanonical={catalogue.acceptCanonical} acceptAbandoned={catalogue.acceptAbandoned} onConfirmed={confirmFormRecovery} onAbandoned={abandonFormRequest} />}
+          <FormActions><Button variant="quiet" disabled={formFrozen} onClick={closeForm}>Batal</Button><Button pending={saveMutation.isPending} disabled={!catalogue.commandsAvailable || !catalogue.authority?.[originalCustomer ? 'customer_edit' : 'customer_create'] || formFrozen || readError} onClick={handleSave}>{saveMutation.isPending ? 'Menyimpan...' : 'Simpan'}</Button></FormActions>
         </div>
       </Dialog>}
       {deleteId && <Dialog labelledBy="catalog-customer-delete-title" pending={modalPending} onClose={() => { if (!mutationBusy.current && !modalPending) setDeleteId(null) }} returnFocus={null} fallbackFocus={restoreFocus}>

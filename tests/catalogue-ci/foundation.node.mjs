@@ -3,6 +3,7 @@ import './co-orders.node.mjs';
 import './lifetime-admission.node.mjs';
 import './create-edit.node.mjs';
 import './create-edit-races.node.mjs';
+import './generation-two-routers.node.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -28,6 +29,7 @@ const fixtureParts = () => Object.fromEntries([
  ['lifetime','SELECT 1 AS actual_lifetime_behavior;'],
  ['createEditCandidate','SELECT 1 AS create_edit_candidate;'],
  ['createEdit','SELECT 1 AS actual_create_edit_behavior;'],
+ ['publicRouters','SELECT 1 AS public_router_dispatch_only_behavior;'],
 ]);
 test('one guarded SQL session applies exact candidate between prechange and postchange suites, then rolls back', () => {
  need(); const parts=fixtureParts(), sql=runner.buildCatalogueFoundationSession(identity, parts);
@@ -56,7 +58,7 @@ test('candidate transaction boundaries, client commands, and missing suites are 
  need();for(const candidate of ['COMMIT;','BEGIN; SELECT 1; ROLLBACK;','END;','START TRANSACTION;','PREPARE TRANSACTION \'x\';','\\i outside.sql','SELECT 1;\n\\quit','CREATE FUNCTION x() RETURNS void LANGUAGE plpgsql AS $$ BEGIN NULL; END $$; COMMIT;']) {
   assert.throws(()=>runner.buildCatalogueFoundationSession(identity,{...fixtureParts(),candidate}));
  }
- for(const key of ['before','candidate','foundation','legacy','roles','orderCandidate','orders','coOrderCandidate','coOrders','promotionOwnerGrammar','visitGrammar','lifetimeCandidate','lifetime','createEditCandidate','createEdit']) {const parts=fixtureParts();delete parts[key];assert.throws(()=>runner.buildCatalogueFoundationSession(identity,parts));}
+ for(const key of ['before','candidate','foundation','legacy','roles','orderCandidate','orders','coOrderCandidate','coOrders','promotionOwnerGrammar','visitGrammar','lifetimeCandidate','lifetime','createEditCandidate','createEdit','publicRouters']) {const parts=fixtureParts();delete parts[key];assert.throws(()=>runner.buildCatalogueFoundationSession(identity,parts));}
  // PL/pgSQL blocks and literals are not top-level transaction commands.
  assert.doesNotThrow(()=>runner.buildCatalogueFoundationSession(identity,{...fixtureParts(),candidate:"CREATE FUNCTION x() RETURNS void LANGUAGE plpgsql AS $$ BEGIN RAISE NOTICE 'COMMIT'; END $$;"}));
 });
@@ -78,7 +80,7 @@ test('status command session rejects preexisting request objects and verifies th
   assert.ok(sql.indexOf(object)<sql.indexOf('BEGIN;'));
   assert.ok(sql.lastIndexOf(object)>sql.lastIndexOf('ROLLBACK;'));
  }
- assert.equal(runner.foundationExpectedMarkers.length,10);
+ assert.equal(runner.foundationExpectedMarkers.length,11);
  assert.equal((sql.match(/^\\echo CATALOGUE_FOUNDATION_/gm)||[]).length,6);
 });
 test('status command SQL remains an exact session fragment with real authenticated RPC assertions', () => {
@@ -158,6 +160,11 @@ test('bound runner uses one behavior process and emits checksummed strictly boun
   authorization:'VERIFIED_SYNTHETIC_POLICY_ONLY',sequentialReplay:'PASSED',sequentialAbandonment:'PASSED',
   rollbackAtomicity:'PASSED',concurrentCommandReconcile:'UNRUN',committedCrossSessionRecovery:'UNRUN',hostedPolicyParity:'UNVERIFIED'});
  assert.deepEqual(report.createEditProof,{operations:['create','edit'],role:'authenticated',authorization:'VERIFIED_SYNTHETIC_POLICY_ONLY',sequentialReplay:'PASSED',sequentialRecovery:'PASSED',rollbackAtomicity:'PASSED',createsRemainUnknown:true,productionGeneration:1,trackingReady:false,concurrency:'UNRUN',hostedPolicyParity:'UNVERIFIED'});
+ assert.deepEqual(report.publicRouterProof,{scope:'PUBLIC_ROUTER_DISPATCH_ONLY',routers:['po','co','promotion','owner','schedule','visit','evidence','attest'],
+  roles:['authenticated','service_role'],dispatch:'SEQUENTIAL_SAME_SESSION_PASSED',replay:'EXACT_PUBLIC_RECEIPTS_AND_OWNER_NOOP_PASSED',
+  fixtureSubtransactionRestoration:'ROWS_CONSTRAINTS_SESSION_VERIFIED',freshNotReadyRefusals:['po','co','owner'],
+  productionGeneration:1,trackingReady:false,globalLifetimeCertification:'NOT_PROVEN',rawCompatibility:'UNPROVEN',
+  loadedLegacyRetirement:'UNPROVEN',concurrency:'UNRUN',hostedParity:'UNVERIFIED'});
  assert.deepEqual(report.files,Object.values(runner.foundationSqlPaths).map(path=>({path,sha256:sha(readFileSync(join(f.directory,path)))})));
  const out=join(f.directory,'scale-results/catalogue-foundation');assert.deepEqual(readdirSync(out).sort(),['manifest.json','results.json']);
  const bytes=readFileSync(join(out,'results.json'),'utf8');assert.deepEqual(JSON.parse(readFileSync(join(out,'manifest.json'),'utf8')).files,[{path:'results.json',sha256:sha(bytes)}]);
@@ -295,7 +302,7 @@ test('failure diagnostics map exact stdin line numbers to captured public source
  need();const parts=Object.fromEntries(Object.entries(runner.foundationSqlPaths).map(([name,path])=>[name,readFileSync(join(root,path),'utf8')]));
  const sql=runner.buildCatalogueFoundationSession(identity,parts),map=runner.foundationSessionSourceMap(sql,parts);
  assert.equal(map.sqlSha256,sha(sql));assert.equal(Object.isFrozen(map),true);
- const completed={before:0,candidate:1,foundation:2,legacy:3,roles:4,orderCandidate:5,orders:5,coOrderCandidate:6,coOrders:6,promotionOwnerGrammar:7,visitGrammar:7,lifetimeCandidate:7,lifetime:7,createEditCandidate:8,createEdit:8};
+ const completed={before:0,candidate:1,foundation:2,legacy:3,roles:4,orderCandidate:5,orders:5,coOrderCandidate:6,coOrders:6,promotionOwnerGrammar:7,visitGrammar:7,lifetimeCandidate:7,lifetime:7,createEditCandidate:8,createEdit:8,publicRouters:9};
  for(const [name,path] of Object.entries(runner.foundationSqlPaths)) {
   const range=map.ranges.find(r=>r.path===path);assert.ok(Object.isFrozen(range));
   const sourceLines=parts[name].trimEnd().split('\n');
@@ -371,7 +378,7 @@ test('PO identity regression fixture qualifies columns shadowed by its local id 
 
 test('create edit installer and behavior remain in the same rollback and exact source-map gate',()=>{
  need();
- assert.equal(runner.foundationExpectedMarkers.at(-2),'CATALOGUE_CREATE_EDIT_CORE_PASSED');
+ assert.equal(runner.foundationExpectedMarkers.at(-3),'CATALOGUE_CREATE_EDIT_CORE_PASSED');
  assert.ok(runner.foundationSqlPaths.createEditCandidate);assert.ok(runner.foundationSqlPaths.createEdit);
  const parts={...fixtureParts(),createEditCandidate:'SELECT 1 AS create_edit_candidate;',createEdit:'SELECT 1 AS actual_create_edit_behavior;'};
  const sql=runner.buildCatalogueFoundationSession(identity,parts);
@@ -388,4 +395,25 @@ test('create edit installer and behavior remain in the same rollback and exact s
 });
 test('new create edit source checks and actual sender inputs are source-bound',()=>{
  for(const path of ['src/pages/athel/CustomerList.tsx','src/pages/athel/ProductList.tsx','src/lib/catalogue/useCataloguePage.ts','src/lib/catalogue/formCommands.ts'])assert.equal(cataloguePublicSourcePaths.filter(p=>p===path).length,1,path);
+});
+
+test('public router dispatch-only fragment follows create edit inside the existing rollback and source map',()=>{
+ need();assert.equal(runner.foundationSqlPaths.publicRouters,'tests/database/catalogue/generation-two-routers.sql');
+ assert.deepEqual(runner.foundationExpectedMarkers.slice(-3),['CATALOGUE_CREATE_EDIT_CORE_PASSED','CATALOGUE_PUBLIC_ROUTER_DISPATCH_ONLY_PASSED','CATALOGUE_FOUNDATION_ROLLBACK_VERIFIED']);
+ const parts=fixtureParts(),sql=runner.buildCatalogueFoundationSession(identity,parts),marker='CATALOGUE_PUBLIC_ROUTER_DISPATCH_ONLY_PASSED';
+ assert.ok(sql.indexOf('CATALOGUE_CREATE_EDIT_CORE_PASSED')<sql.indexOf(parts.publicRouters));
+ assert.ok(sql.indexOf(parts.publicRouters)<sql.indexOf(marker));assert.ok(sql.indexOf(marker)<sql.lastIndexOf('ROLLBACK;'));
+ assert.ok(sql.slice(sql.indexOf(parts.publicRouters)+parts.publicRouters.length,sql.indexOf(marker)).includes('catalogue_foundation_session_refused'));
+ for(const path of ['tests/database/catalogue/generation-two-routers.sql','tests/catalogue-ci/generation-two-routers.node.mjs'])assert.equal(cataloguePublicSourcePaths.filter(p=>p===path).length,1,path);
+ const captureTest=readFileSync(join(root,'tests/catalogue-ci/capture.test.ts'),'utf8');
+ for(const path of ['tests/database/catalogue/generation-two-routers.sql','tests/catalogue-ci/generation-two-routers.node.mjs'])assert.equal(captureTest.split(`'${path}'`).length,2,path);
+});
+test('missing dispatch-only marker and drift in either bound router proof input cannot publish evidence',()=>{
+ for(const change of [
+  f=>f.setBehavior(()=>runner.foundationExpectedMarkers.filter(x=>x!=='CATALOGUE_PUBLIC_ROUTER_DISPATCH_ONLY_PASSED').map(x=>`${x} 412 827`).join('\n')+'\n'),
+  ...['tests/database/catalogue/generation-two-routers.sql','tests/catalogue-ci/generation-two-routers.node.mjs'].map(path=>f=>f.setAfterBehavior(()=>writeFileSync(join(f.directory,path),'// changed source\n'))),
+ ])withFixture(f=>{
+  change(f);assert.throws(()=>runner.runCatalogueFoundation({repoRoot:f.directory,env:f.env,execute:f.execute}),/^Error: CATALOGUE_FOUNDATION_REFUSED$/);
+  assert.equal(readFileSync(f.output,'utf8'),'bundle_ready=false\n');assert.equal(existsSync(join(f.directory,'scale-results/catalogue-foundation/results.json')),false);
+ });
 });

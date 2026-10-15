@@ -1,11 +1,11 @@
 import { MemoryRouter } from 'react-router-dom'
 import React from 'react'
+import { QueryClient } from '@tanstack/react-query'
 import { cleanup, render } from '@testing-library/react'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { supportingReadFixture } from './fixtures'
 const state = vi.hoisted(() => ({
   fixture: { tables: {} } as any, queries: new Map<string, any>(), role: 'executive', cataloguePages: [] as any[],
-  queryClient: { invalidateQueries: vi.fn(), cancelQueries: vi.fn(async () => {}), removeQueries: vi.fn() },
 }))
 vi.mock('../../src/components/AthelNav', () => ({ default: () => null }))
 vi.mock('../../src/components/GirardNav', () => ({ default: () => null }))
@@ -14,7 +14,15 @@ vi.mock('../../src/components/ActivePromotionsBanner', () => ({ default: () => n
 vi.mock('../../src/lib/orderTransactions', () => ({ createTransactionSender: () => Object.assign(vi.fn(), { hasUnresolved: () => false }), useTransactionSender: () => vi.fn() }))
 vi.mock('../../src/lib/useUnsavedChanges', () => ({ hasOrderItemChanges: () => false, useUnsavedChanges: () => ({ dialog: null, runWithoutPrompt: (fn: any) => fn(), confirmDiscard: (fn: any) => fn() }) }))
 vi.mock('../../src/lib/AuthContext', () => ({ useAuth: () => ({ user: { id: '00000000-0000-4000-8000-000000000002' }, profile: { id: '00000000-0000-4000-8000-000000000002', role: state.role, is_active: true }, loading: false }) }))
-vi.mock('@tanstack/react-query', () => ({ useQuery: (options: any) => { state.queries.set(JSON.stringify(options.queryKey), options); return { isLoading: true } }, useQueryClient: () => state.queryClient, useMutation: () => ({ mutate: vi.fn() }) }))
+// Capture the real query functions without auto-fetching, but retain a real cache
+// for the catalogue hook's subscription, identity cleanup, and live-state reads.
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+vi.mock('@tanstack/react-query', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@tanstack/react-query')>(),
+  useQuery: (options: any) => { state.queries.set(JSON.stringify(options.queryKey), options); return { isLoading: true } },
+  useQueryClient: () => queryClient,
+  useMutation: () => ({ mutate: vi.fn() }),
+}))
 vi.mock('../../src/lib/supabase', async () => { const { fixtureClient } = await import('./fixtures'); return { supabase: { ...fixtureClient(() => state.fixture), supabaseUrl: 'https://catalogue.test', rest: { url: 'https://catalogue.test/rest/v1', schemaName: 'public' } } } })
 import PONew from '../../src/pages/athel/PONew'
 import DailySchedule from '../../src/pages/girard/DailySchedule'
@@ -37,7 +45,7 @@ beforeEach(() => {
     return { version: 1, actor_id: '00000000-0000-4000-8000-000000000002', role: state.role, kind: args.p_kind, purpose: args.p_purpose, status: args.p_status, search: args.p_search, page: args.p_page, page_size: args.p_page_size, total_count: String(rows.length), rows: rows.slice((args.p_page - 1) * args.p_page_size, args.p_page * args.p_page_size) }
   }
 })
-afterEach(() => { cleanup(); vi.useRealTimers() })
+afterEach(() => { cleanup(); queryClient.clear(); vi.useRealTimers() })
 const query = (name: string) => {
   const matches = [...state.queries.values()].filter(options => options.queryKey[0] === name)
   expect(matches).toHaveLength(1)
