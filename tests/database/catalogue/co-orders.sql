@@ -269,21 +269,29 @@ SELECT pg_temp.foundation_raises($q$SELECT pg_temp.catalog_co_test_call(md5('co-
 RESET ROLE;
 SELECT pg_temp.foundation_assert((SELECT execution_version=1 FROM private.co_commands WHERE request_id=md5('co-legacy-public')::uuid),'legacy loaded begin default remains generation one');
 SELECT pg_temp.foundation_assert((SELECT execution_generation=1 AND NOT tracking_ready FROM private.catalog_cutover_v1),'CO tests never globally activate tracking or generation');
+-- RESET ROLE alone does not clear the JWT identity used by the user-authority
+-- trigger. Clear it only for owner fixture maintenance, then restore the actor
+-- before testing its actual current permissions. Keep the trigger fully active.
 SELECT set_config('request.jwt.claim.sub',md5('catalogue-foundation-actor-2')::uuid::text,true);
 SET LOCAL ROLE authenticated;
 SELECT pg_temp.foundation_raises($q$SELECT public.pilot_co_transaction_v1(request_id,operation,payload) FROM pg_temp.catalogue_co_results WHERE label='create'$q$,'42501','PO role cannot recover another or former CO receipt');
 RESET ROLE;
+SELECT set_config('request.jwt.claim.sub','',true);
 UPDATE public.users SET role='po_admin' WHERE id=md5('co-guard-actor')::uuid;
 SELECT set_config('request.jwt.claim.sub',md5('co-guard-actor')::uuid::text,true);
 SET LOCAL ROLE authenticated;
 SELECT pg_temp.foundation_raises($q$SELECT public.pilot_co_transaction_v1(request_id,operation,payload) FROM pg_temp.catalogue_co_results WHERE label='create'$q$,'42501','former CO current authority revoked before own receipt recovery');
 SELECT pg_temp.foundation_raises($q$SELECT public.pilot_reconcile_co_v1(md5('co-create')::uuid,false)$q$,'42501','former CO cannot reconcile own receipt');
 RESET ROLE;
+SELECT set_config('request.jwt.claim.sub','',true);
 UPDATE public.users SET role='co_admin',is_active=false WHERE id=md5('co-guard-actor')::uuid;
+SELECT set_config('request.jwt.claim.sub',md5('co-guard-actor')::uuid::text,true);
 SET LOCAL ROLE authenticated;
 SELECT pg_temp.foundation_raises($q$SELECT public.pilot_co_transaction_v1(request_id,operation,payload) FROM pg_temp.catalogue_co_results WHERE label='create'$q$,'42501','inactive CO cannot recover committed receipt');
 RESET ROLE;
+SELECT set_config('request.jwt.claim.sub','',true);
 UPDATE public.users SET is_active=true WHERE id=md5('co-guard-actor')::uuid;
+SELECT set_config('request.jwt.claim.sub',md5('co-guard-actor')::uuid::text,true);
 SET LOCAL ROLE anon;
 SELECT pg_temp.foundation_raises($q$SELECT public.pilot_co_transaction_v1(md5('co-anon')::uuid,'create_co','{}')$q$,'42501','anonymous CO entrypoint remains denied');
 RESET ROLE;

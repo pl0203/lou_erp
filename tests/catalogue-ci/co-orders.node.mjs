@@ -122,6 +122,18 @@ test('CO service role denial probe does not require an ungranted temporary asser
  assert.match(probe,/EXCEPTION WHEN insufficient_privilege THEN denied:=true;/);
  assert.match(probe,/IF NOT denied THEN RAISE EXCEPTION/);
 });
+test('CO fixture authority updates clear inherited JWT only during trusted owner maintenance',()=>{
+ const security=read('supabase/migrations/202609300001_pilot_security.sql');
+ assert.ok(security.includes('IF auth.uid() IS NULL THEN RETURN NEW; END IF;'));
+ assert.ok(security.includes("(OLD.id=auth.uid() OR public.current_user_role()<>'executive')"));
+ for(const change of ["role='po_admin'","role='co_admin',is_active=false","is_active=true"]) {
+  const sequence="RESET ROLE;\nSELECT set_config('request.jwt.claim.sub','',true);\n"
+   +`UPDATE public.users SET ${change} WHERE id=md5('co-guard-actor')::uuid;\n`
+   +"SELECT set_config('request.jwt.claim.sub',md5('co-guard-actor')::uuid::text,true);\n";
+  assert.ok(behavior.includes(sequence),`Owner fixture update must clear and restore JWT: ${change}`);
+ }
+ assert.equal(/DISABLE\s+TRIGGER|DROP\s+TRIGGER|CREATE(?: OR REPLACE)? FUNCTION private\.pilot_guard_user_update/i.test(behavior),false);
+});
 test('CO SQL and source checks are captured and rollback-gated in the existing bounded runner',()=>{
  assert.equal(foundationSqlPaths.coOrderCandidate,'supabase/catalogue/v1/new06-co-order-boundaries.sql');assert.equal(foundationSqlPaths.coOrders,'tests/database/catalogue/co-orders.sql');
  assert.ok(foundationExpectedMarkers.includes('CATALOGUE_CO_ORDERS_CORE_PASSED'));
