@@ -14,7 +14,7 @@ const sha=x=>createHash('sha256').update(x).digest('hex');
 const quote=x=>`'${x.replaceAll("'","''")}'`;
 export const targetRuntimePaths=Object.freeze({before:'tests/database/catalogue/before-foundation.sql',foundation:'supabase/catalogue/v1/01-foundation.sql',legacy:'tests/database/catalogue/legacy-columns.sql',roles:'tests/database/catalogue/roles.sql',target:'supabase/catalogue/v1/02-customer-target-tracking.sql',lifecycle:'tests/database/catalogue/customer-target-tracking.sql',authority:'tests/database/catalogue/customer-target-runtime-authority.sql',variants:'tests/database/catalogue/customer-target-runtime-variants.sql'});
 const targetSha='e4567a9cd023aba3c1bdb4b84925c6a6bad1e931bf5a199ba41c2bf5e34924ca';
-const suiteSha='0a6e5f1622b3aabd84e43e2c601720ca01ca06e58dcef70c3d9a06dc394b9bb5';
+const suiteSha='f8494408feb44862246b4572e2d6f0636ea46dd07bfa58915dac47f41ec80730';
 const include='\\ir ../../../supabase/catalogue/v1/02-customer-target-tracking.sql\n';
 export function expandTargetLifecycle(suite,candidate,authority='') {
  assert.equal(sha(suite),suiteSha,'Exact reviewed lifecycle bytes required');assert.equal(sha(candidate),targetSha,'Exact reviewed adapter bytes required');

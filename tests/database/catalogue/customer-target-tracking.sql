@@ -7,7 +7,7 @@ INSERT INTO public.customers(id,name) SELECT md5('target-fiction-'||n)::uuid,'Fi
 -- A historical target begins unknown until an actual event; no retroactive unused.
 INSERT INTO public.customer_targets(id,customer_id,year_month,set_by) VALUES(md5('target-existing')::uuid,md5('target-fiction-1')::uuid,'2099-01',md5('catalogue-foundation-actor-3')::uuid);
 \ir ../../../supabase/catalogue/v1/02-customer-target-tracking.sql
-SELECT pg_temp.foundation_assert((SELECT relacl IS NOT DISTINCT FROM b.relacl AND relrowsecurity=b.relrowsecurity AND relforcerowsecurity=b.relforcerowsecurity FROM pg_class c JOIN target_acl_before b USING(oid)),'target table ACL and RLS unchanged');
+SELECT pg_temp.foundation_assert((SELECT c.relacl IS NOT DISTINCT FROM b.relacl AND c.relrowsecurity=b.relrowsecurity AND c.relforcerowsecurity=b.relforcerowsecurity FROM pg_class c JOIN target_acl_before b USING(oid)),'target table ACL and RLS unchanged');
 SELECT pg_temp.foundation_assert(NOT EXISTS(SELECT 1 FROM target_policies_before b FULL JOIN (SELECT oid,to_jsonb(p) definition FROM pg_policy p WHERE polrelid='public.customer_targets'::regclass) a USING(oid) WHERE a.definition IS DISTINCT FROM b.definition),'target policy definitions unchanged');
 UPDATE public.customer_targets SET target_value=target_value WHERE id=md5('target-existing')::uuid;
 SELECT pg_temp.foundation_assert((SELECT lifetime_state='used' FROM private.catalog_identity_v1 WHERE kind='customer' AND id=md5('target-fiction-1')::uuid),'unchanged actual UPDATE marks historical target');

@@ -7,6 +7,13 @@ const read=p=>readFileSync(new URL('../../'+p,import.meta.url),'utf8');
 const expectedLifecyclePhases=["FOUNDATION","TARGET_SETUP","TARGET_INSTALL","TARGET_AUTHORITY","TARGET_EVENTS","TARGET_CASCADE_DROP","TARGET_CASCADE_ADD","TARGET_CASCADE_EVENTS","TARGET_AUTHENTICATED","TARGET_MISSING_IDENTITY","TARGET_ASSERTION_ONLY","TARGET_SESSION_GATE","VARIANTS_AND_ROLES","ROLLBACK","COMPLETE"];
 const identity={profile:'github-catalogue-baseline-v1',source:{clean:true,commit:'a'.repeat(40),tree:'b'.repeat(40),candidate:'c'.repeat(64)},serverAddress:'172.18.0.2',serverPort:5432,serverVersion:'170011',systemIdentifier:'123456789',runIdentity:'00000000-0000-4000-8000-000000000001',ci:{}};
 const parts=()=>Object.fromEntries(Object.entries(runner.targetRuntimePaths).map(([k,p])=>[k,read(p)]));
+test('joined target ACL assertion qualifies live columns against the saved baseline',()=>{
+ need();const p=parts();
+ const assertion="SELECT pg_temp.foundation_assert((SELECT c.relacl IS NOT DISTINCT FROM b.relacl AND c.relrowsecurity=b.relrowsecurity AND c.relforcerowsecurity=b.relforcerowsecurity FROM pg_class c JOIN target_acl_before b USING(oid)),'target table ACL and RLS unchanged');";
+ for(const sql of [p.lifecycle,runner.expandTargetLifecycle(p.lifecycle,p.target,p.authority),runner.buildTargetLifecycleSession(identity,p)]){
+  assert.deepEqual(sql.split('\n').filter(line=>line.includes('FROM pg_class c JOIN target_acl_before b USING(oid)')),[assertion]);
+ }
+});
 test('frozen lifecycle is expanded exactly once; altered savepoints, meta commands and boundaries are refused',()=>{
  need();const p=parts();const sql=runner.expandTargetLifecycle(p.lifecycle,p.target);
  assert.ok(sql.includes(p.target));assert.ok(!sql.includes('\\ir'));assert.match(sql,/SAVEPOINT target_rollback/);
