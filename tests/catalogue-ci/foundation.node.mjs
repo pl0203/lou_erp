@@ -1,5 +1,6 @@
 // Existing CI entrypoint includes the focused CO source checks.
 import './co-orders.node.mjs';
+import './lifetime-admission.node.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -19,6 +20,10 @@ const fixtureParts = () => Object.fromEntries([
  ['orders','SELECT 1 AS private_order_behavior;'],
  ['coOrderCandidate','SELECT 1 AS inactive_co_order_candidate;'],
  ['coOrders','SELECT 1 AS private_co_order_behavior;'],
+ ['promotionOwnerGrammar','SELECT 1 AS promotion_owner_grammar;'],
+ ['visitGrammar','SELECT 1 AS visit_grammar;'],
+ ['lifetimeCandidate','SELECT 1 AS inactive_lifetime_candidate;'],
+ ['lifetime','SELECT 1 AS actual_lifetime_behavior;'],
 ]);
 test('one guarded SQL session applies exact candidate between prechange and postchange suites, then rolls back', () => {
  need(); const parts=fixtureParts(), sql=runner.buildCatalogueFoundationSession(identity, parts);
@@ -32,7 +37,11 @@ test('one guarded SQL session applies exact candidate between prechange and post
  assert.ok(sql.indexOf(parts.orderCandidate) < sql.indexOf(parts.orders));
  assert.ok(sql.indexOf(parts.orders) < sql.indexOf(parts.coOrderCandidate));
  assert.ok(sql.indexOf(parts.coOrderCandidate) < sql.indexOf(parts.coOrders));
- assert.ok(sql.indexOf(parts.coOrders) < sql.lastIndexOf('ROLLBACK;'));
+ assert.ok(sql.indexOf(parts.coOrders) < sql.indexOf(parts.promotionOwnerGrammar));
+ assert.ok(sql.indexOf(parts.promotionOwnerGrammar) < sql.indexOf(parts.visitGrammar));
+ assert.ok(sql.indexOf(parts.visitGrammar) < sql.indexOf(parts.lifetimeCandidate));
+ assert.ok(sql.indexOf(parts.lifetimeCandidate) < sql.indexOf(parts.lifetime));
+ assert.ok(sql.indexOf(parts.lifetime) < sql.lastIndexOf('ROLLBACK;'));
  assert.ok(sql.lastIndexOf('ROLLBACK;') < sql.indexOf('CATALOGUE_FOUNDATION_ROLLBACK_VERIFIED'));
  assert.equal((sql.match(/^BEGIN;/gm)||[]).length,1);
  assert.equal((sql.match(/^ROLLBACK;/gm)||[]).length,1);
@@ -43,7 +52,7 @@ test('candidate transaction boundaries, client commands, and missing suites are 
  need();for(const candidate of ['COMMIT;','BEGIN; SELECT 1; ROLLBACK;','END;','START TRANSACTION;','PREPARE TRANSACTION \'x\';','\\i outside.sql','SELECT 1;\n\\quit','CREATE FUNCTION x() RETURNS void LANGUAGE plpgsql AS $$ BEGIN NULL; END $$; COMMIT;']) {
   assert.throws(()=>runner.buildCatalogueFoundationSession(identity,{...fixtureParts(),candidate}));
  }
- for(const key of ['before','candidate','foundation','legacy','roles','orderCandidate','orders','coOrderCandidate','coOrders']) {const parts=fixtureParts();delete parts[key];assert.throws(()=>runner.buildCatalogueFoundationSession(identity,parts));}
+ for(const key of ['before','candidate','foundation','legacy','roles','orderCandidate','orders','coOrderCandidate','coOrders','promotionOwnerGrammar','visitGrammar','lifetimeCandidate','lifetime']) {const parts=fixtureParts();delete parts[key];assert.throws(()=>runner.buildCatalogueFoundationSession(identity,parts));}
  // PL/pgSQL blocks and literals are not top-level transaction commands.
  assert.doesNotThrow(()=>runner.buildCatalogueFoundationSession(identity,{...fixtureParts(),candidate:"CREATE FUNCTION x() RETURNS void LANGUAGE plpgsql AS $$ BEGIN RAISE NOTICE 'COMMIT'; END $$;"}));
 });
@@ -65,7 +74,7 @@ test('status command session rejects preexisting request objects and verifies th
   assert.ok(sql.indexOf(object)<sql.indexOf('BEGIN;'));
   assert.ok(sql.lastIndexOf(object)>sql.lastIndexOf('ROLLBACK;'));
  }
- assert.equal(runner.foundationExpectedMarkers.length,8);
+ assert.equal(runner.foundationExpectedMarkers.length,9);
  assert.equal((sql.match(/^\\echo CATALOGUE_FOUNDATION_/gm)||[]).length,6);
 });
 test('status command SQL remains an exact session fragment with real authenticated RPC assertions', () => {
@@ -281,7 +290,7 @@ test('failure diagnostics map exact stdin line numbers to captured public source
  need();const parts=Object.fromEntries(Object.entries(runner.foundationSqlPaths).map(([name,path])=>[name,readFileSync(join(root,path),'utf8')]));
  const sql=runner.buildCatalogueFoundationSession(identity,parts),map=runner.foundationSessionSourceMap(sql,parts);
  assert.equal(map.sqlSha256,sha(sql));assert.equal(Object.isFrozen(map),true);
- const completed={before:0,candidate:1,foundation:2,legacy:3,roles:4,orderCandidate:5,orders:5,coOrderCandidate:6,coOrders:6};
+ const completed={before:0,candidate:1,foundation:2,legacy:3,roles:4,orderCandidate:5,orders:5,coOrderCandidate:6,coOrders:6,promotionOwnerGrammar:7,visitGrammar:7,lifetimeCandidate:7,lifetime:7};
  for(const [name,path] of Object.entries(runner.foundationSqlPaths)) {
   const range=map.ranges.find(r=>r.path===path);assert.ok(Object.isFrozen(range));
   const sourceLines=parts[name].trimEnd().split('\n');

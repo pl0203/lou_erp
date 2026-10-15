@@ -21,11 +21,15 @@ export const foundationSqlPaths=Object.freeze({
  orders:'tests/database/catalogue/orders.sql',
  coOrderCandidate:'supabase/catalogue/v1/new06-co-order-boundaries.sql',
  coOrders:'tests/database/catalogue/co-orders.sql',
+ promotionOwnerGrammar:'supabase/catalogue/v1/02-promotion-owner-extraction.sql',
+ visitGrammar:'supabase/catalogue/v1/new02-visit-reference-extraction.sql',
+ lifetimeCandidate:'supabase/catalogue/v1/new07-lifetime-admission.sql',
+ lifetime:'tests/database/catalogue/lifetime-admission.sql',
 });
 export const foundationExpectedMarkers=Object.freeze([
  'CATALOGUE_FOUNDATION_BEFORE_CAPTURED','CATALOGUE_FOUNDATION_CANDIDATE_APPLIED',
  'CATALOGUE_FOUNDATION_BEHAVIOR_PASSED','CATALOGUE_FOUNDATION_LEGACY_PASSED',
- 'CATALOGUE_FOUNDATION_ROLES_PASSED','CATALOGUE_ORDERS_CORE_PASSED','CATALOGUE_CO_ORDERS_CORE_PASSED','CATALOGUE_FOUNDATION_ROLLBACK_VERIFIED',
+ 'CATALOGUE_FOUNDATION_ROLES_PASSED','CATALOGUE_ORDERS_CORE_PASSED','CATALOGUE_CO_ORDERS_CORE_PASSED','CATALOGUE_LIFETIME_WRITERS_PASSED','CATALOGUE_FOUNDATION_ROLLBACK_VERIFIED',
 ]);
 // Erase SQL comments/quoted values before examining top-level statements. This
 // is a containment check, not a PostgreSQL grammar/behavior substitute.
@@ -51,6 +55,11 @@ const noFoundationPredicate=`pg_catalog.to_regclass('private.catalog_identity_v1
  AND pg_catalog.to_regclass('private.catalog_requests_v1') IS NULL
  AND pg_catalog.to_regclass('private.catalog_po_active_v2') IS NULL
  AND pg_catalog.to_regprocedure('private.catalog_po_transaction_core_v2(uuid,text,jsonb)') IS NULL
+ AND pg_catalog.to_regclass('private.catalog_writer_active_v2') IS NULL
+ AND pg_catalog.to_regprocedure('private.catalog_promotion_core_v2(uuid,text,jsonb,boolean)') IS NULL
+ AND pg_catalog.to_regprocedure('private.catalog_extract_visit_reference_event_v1(regclass,text,jsonb,jsonb)') IS NULL
+ AND pg_catalog.to_regprocedure('private.catalog_extract_promotion_owner_event_v1(regclass,text,jsonb,jsonb)') IS NULL
+ AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid IN('private.pilot_promotion_requests'::regclass,'private.pilot_schedule_requests'::regclass,'private.pilot_visit_requests'::regclass) AND attname IN ('execution_version') AND NOT attisdropped)
  AND pg_catalog.to_regclass('private.catalog_co_active_v2') IS NULL
  AND pg_catalog.to_regprocedure('private.catalog_co_transaction_core_v2(uuid,text,jsonb)') IS NULL
  AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid='private.co_commands'::regclass AND attname='execution_version' AND NOT attisdropped)
@@ -94,8 +103,12 @@ ${sessionGate()}${mark(4)}${parts.orderCandidate}
 ${sessionGate()}${parts.orders}
 ${sessionGate()}${mark(5)}${parts.coOrderCandidate}
 ${sessionGate()}${parts.coOrders}
-${sessionGate()}${mark(6)}ROLLBACK;
-${catalogueCiIdentityGateSql(identity)}${booleanGate(`${noFoundationPredicate}\n AND pg_catalog.pg_backend_pid()=:'catalogue_foundation_pid'::integer\n AND pg_catalog.to_regclass('pg_temp.catalogue_foundation_session_v1') IS NULL`,'catalogue_foundation_rollback_refused')}${mark(7)}\\o
+${sessionGate()}${mark(6)}${parts.promotionOwnerGrammar}
+${sessionGate()}${parts.visitGrammar}
+${sessionGate()}${parts.lifetimeCandidate}
+${sessionGate()}${parts.lifetime}
+${sessionGate()}${mark(7)}ROLLBACK;
+${catalogueCiIdentityGateSql(identity)}${booleanGate(`${noFoundationPredicate}\n AND pg_catalog.pg_backend_pid()=:'catalogue_foundation_pid'::integer\n AND pg_catalog.to_regclass('pg_temp.catalogue_foundation_session_v1') IS NULL`,'catalogue_foundation_rollback_refused')}${mark(8)}\\o
 `;
 }
 export function parseCatalogueFoundationOutput(output) {
@@ -208,6 +221,10 @@ export function runCatalogueFoundation({repoRoot=defaultRoot,env=process.env,exe
     finalComposition:'STAGE04_ORDERS_DISPATCH_AND_STAGE08_MONTHLY_PUBLICATION',
     actualEventAssertions:'DIRECT_EVENTS_IMMUTABLE_STOCK_AND_RETIRED_LINE_SNAPSHOTS_PASSED',
     globalWriterTracking:'INCOMPLETE',globalDrain:'UNPROVEN',concurrency:'UNRUN'},
+   remainingWriterProof:{privateCores:'SEQUENTIAL_SAME_SESSION_PASSED',families:['promotion','owner','schedule','visit','evidence','attest'],
+    productionAdmission:'REFUSED_FOUNDATION_NOT_READY',actualEventAssertions:'SCOPED_OLD_NEW_AND_RETAINED_VISIT_SOURCE_PASSED',
+    legacyAdmission:'TRANSACTION_HELD_DRAIN_INSTALLED',rawPublicDml:'ADMISSION_ONLY_NO_LIFETIME_CERTIFICATION',
+    directProductDelete:'PO_EXISTING_PATH_AND_TOMBSTONE_PASSED',globalWriterTracking:'INCOMPLETE',concurrency:'UNRUN'},
    commandAndReplaySuites:'SET_ENABLED_SEQUENTIAL_SAME_SESSION_PASSED',
    commandProof:{operations:['set_enabled'],role:'authenticated',authorization:'VERIFIED_SYNTHETIC_POLICY_ONLY',
     sequentialReplay:'PASSED',sequentialAbandonment:'PASSED',rollbackAtomicity:'PASSED',

@@ -13,7 +13,7 @@ const defaultRoot=resolve(dirname(fileURLToPath(import.meta.url)),'..'),sha=x=>c
 export const targetRuntimeReviewedFiles=Object.freeze([
  {
   "path": "scripts/catalogue-customer-target-runtime.mjs",
-  "sha256": "a590756ae4d8aa068a3a729af940fd3a6e3012027d26d567e34880eeefec20ed"
+  "sha256": "1a975a9a2da75774945e76a584c5829780b88cde3340502794b97942dad7313e"
  },
  {
   "path": "supabase/catalogue/v1/02-customer-target-tracking.sql",
@@ -21,7 +21,7 @@ export const targetRuntimeReviewedFiles=Object.freeze([
  },
  {
   "path": "tests/catalogue-ci/customer-target-runtime.node.mjs",
-  "sha256": "c7bb883226fbaec19cafff0c4c820f4e7ec063333c462e6c4a2ebb45eb1ce181"
+  "sha256": "5be758c0de516904f7f8818979536da47970107753aae7adedea13714c7d32e8"
  },
  {
   "path": "tests/catalogue-ci/customer-target-tracking.node.mjs",
@@ -46,9 +46,33 @@ export const targetRuntimeReviewedFiles=Object.freeze([
  {
   "path": "tests/database/catalogue/customer-target-tracking.sql",
   "sha256": "82e49e5a6da51b084a02b8632a8e16241c8dd27a81fee6985325ecab37dfe026"
+ },
+ {
+  "path": "tests/database/catalogue/lifetime-admission-races.mjs",
+  "sha256": "14288f2240ff45de31f32493f5640003ae332e1533554c39ef56a252c11abbb3"
+ },
+ {
+  "path": "supabase/catalogue/v1/04-order-boundaries.sql",
+  "sha256": "db6d2fc9383d73a631622261d5fd2206b32303dbe7a9966a490be915e454d601"
+ },
+ {
+  "path": "supabase/catalogue/v1/new06-co-order-boundaries.sql",
+  "sha256": "f3621edc77272194db16f98dc1f3174db75d28fe712afd0b024672c5270d801f"
+ },
+ {
+  "path": "supabase/catalogue/v1/02-promotion-owner-extraction.sql",
+  "sha256": "d53ad17d77fbafbf8542c29fbcd04a3b3457916d296d0f2bf28df78a1389affc"
+ },
+ {
+  "path": "supabase/catalogue/v1/new02-visit-reference-extraction.sql",
+  "sha256": "5d64d14d3ebc2d7c075d8aba2d49fafece9f970235a54620393577ff2bfec71e"
+ },
+ {
+  "path": "supabase/catalogue/v1/new07-lifetime-admission.sql",
+  "sha256": "12120f0238263572eefa23d1bf3bbc5cc90de506546f6f76ba43888ed3eef087"
  }
 ].map(Object.freeze));
-const reportPaths=Object.freeze(['tests/database/catalogue/before-foundation.sql','supabase/catalogue/v1/01-foundation.sql','tests/database/catalogue/legacy-columns.sql','tests/database/catalogue/roles.sql','supabase/catalogue/v1/02-customer-target-tracking.sql','tests/database/catalogue/customer-target-tracking.sql','tests/database/catalogue/customer-target-runtime-authority.sql','tests/database/catalogue/customer-target-runtime-variants.sql']);
+const reportPaths=Object.freeze(['tests/database/catalogue/before-foundation.sql','supabase/catalogue/v1/01-foundation.sql','tests/database/catalogue/legacy-columns.sql','tests/database/catalogue/roles.sql','supabase/catalogue/v1/02-customer-target-tracking.sql','tests/database/catalogue/customer-target-tracking.sql','tests/database/catalogue/customer-target-runtime-authority.sql','tests/database/catalogue/customer-target-runtime-variants.sql','supabase/catalogue/v1/04-order-boundaries.sql','supabase/catalogue/v1/new06-co-order-boundaries.sql','supabase/catalogue/v1/02-promotion-owner-extraction.sql','supabase/catalogue/v1/new02-visit-reference-extraction.sql','supabase/catalogue/v1/new07-lifetime-admission.sql']);
 const wrapperPaths=['scripts/catalogue-customer-target-artifact.mjs','tests/catalogue-ci/customer-target-artifact.node.mjs'];
 const directory=path=>{const stat=lstatSync(path);assert.ok(stat.isDirectory()&&!stat.isSymbolicLink());return stat;};
 const sameDirectory=(path,expected)=>{const stat=directory(path);assert.equal(stat.ino,expected.ino);assert.equal(stat.dev,expected.dev);};
@@ -64,12 +88,16 @@ export function validateTargetStatusRecovery(statusRecovery,pids){
  const expected={status:'BOUNDED_STATUS_RECOVERY_RACES_PASSED',replayBackendPid:replayPid,cases:['inflight_dispatch_and_recovery_busy','committed_fresh_session_replay','replay_after_later_status_change','abandonment_fences_delayed_dispatch','actor_request_namespace_isolation','stale_master_version_refuses','repeatable_read_terminal_safety']};
  assert.deepEqual(statusRecovery,expected);return expected;
 }
+export function validateLifetimeAdmission(report){
+ const expected={status:'BOUNDED_LIFETIME_ADMISSION_RACES_PASSED',cases:['legacy_already_admitted_po_drain','authorized_raw_service_admission_drain','legacy_unledgered_owner_actual_dml_drain'],scope:'ADMISSION_ONLY_NOT_GLOBAL_LIFETIME'};
+ assert.deepEqual(report,expected);return expected;
+}
 function validateReport(bytes,identity,files){
  assert.equal(typeof bytes,'string');assert.ok(Buffer.byteLength(bytes)<=65536);assert.ok(bytes.endsWith('\n'));
  const report=JSON.parse(bytes);assert.equal(bytes,JSON.stringify(report)+'\n');
  const lifecycle=report.lifecycle;for(const key of ['backendPid','transactionId'])assert.match(lifecycle?.[key]??'',/^[1-9][0-9]{0,19}$/);
  const pids=report.races?.backendPids;assert.ok(Array.isArray(pids));assert.equal(pids.length,3);assert.equal(new Set(pids).size,3);assert.ok(pids.every(pid=>Number.isSafeInteger(pid)&&pid>0&&pid<=2147483647));
- const expected={format:'catalogue-customer-target-runtime-v1',status:'BOUNDED_TARGET_RUNTIME_PASSED',identity,lifecycle:{backendPid:lifecycle.backendPid,transactionId:lifecycle.transactionId},races:{status:'BOUNDED_TARGET_RACES_PASSED',backendPids:pids,cases:['reversed_raw_target_statements','evidence_relation_contention'],statusRecovery:validateTargetStatusRecovery(report.races.statusRecovery,pids)},cleanup:'COMMITTED_SYNTHETIC_CHILD_DISPOSED',files,implementationAccepted:false,hostedVerified:false,trackingReady:false,broaderLockGraph:'UNPROVEN'};
+ const expected={format:'catalogue-customer-target-runtime-v1',status:'BOUNDED_TARGET_RUNTIME_PASSED',identity,lifecycle:{backendPid:lifecycle.backendPid,transactionId:lifecycle.transactionId},races:{status:'BOUNDED_TARGET_RACES_PASSED',backendPids:pids,cases:['reversed_raw_target_statements','evidence_relation_contention'],statusRecovery:validateTargetStatusRecovery(report.races.statusRecovery,pids),lifetimeAdmission:validateLifetimeAdmission(report.races.lifetimeAdmission)},cleanup:'COMMITTED_SYNTHETIC_CHILD_DISPOSED',files,implementationAccepted:false,hostedVerified:false,trackingReady:false,broaderLockGraph:'UNPROVEN'};
  assert.deepEqual(report,expected);assert.equal(bytes,JSON.stringify(expected)+'\n');return expected;
 }
 function exactFile(path,expected){

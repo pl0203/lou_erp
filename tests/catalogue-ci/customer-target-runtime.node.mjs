@@ -331,3 +331,16 @@ test('status replacement connection failure closes every owned client without cl
  assert.ok(clients.every(s=>s.closed));assert.equal(statusCommitted,true);assert.equal(busy,3);assert.ok(sourceChecks>=4);
  assert.deepEqual(runner.targetFailureDiagnostic('races',caught),{phase:'races',lifecyclePhase:'NOT_APPLICABLE',processExit:'SESSION_SQLSTATE',sqlstate:'55006'});
 });
+test('terminal setup installs full lifetime prerequisites before drain races without a new target',()=>{
+ const p=parts(),sql=runner.buildTargetRaceSetup(identity,p);
+ for(const key of ['orderCandidate','coOrderCandidate','promotionOwnerGrammar','visitGrammar','lifetimeCandidate'])assert.ok(sql.includes(p[key]),key);
+ assert.ok(sql.indexOf(p.foundation)<sql.indexOf(p.orderCandidate));assert.ok(sql.indexOf(p.coOrderCandidate)<sql.indexOf(p.lifetimeCandidate));
+ assert.ok(sql.indexOf(p.lifetimeCandidate)<sql.indexOf('COMMIT;'));
+ const runtime=read('scripts/catalogue-customer-target-runtime.mjs');
+ assert.match(runtime,/executeLifetimeAdmissionRaces\(\{a,b:replay,observer,query:ok,verify\}\)/);
+ assert.ok(runtime.indexOf('const statusRecovery=')<runtime.indexOf('const lifetimeAdmission='));
+ const race=read('tests/database/catalogue/lifetime-admission-races.mjs');
+ assert.match(race,/pg_blocking_pids/);assert.match(race,/locktype='transactionid' AND NOT granted/);assert.match(race,/catalog_cutover_v1'::regclass/);
+ assert.match(race,/public\.pilot_order_transaction/);assert.match(race,/public\.pilot_assign_store_owner_v1/);assert.match(race,/SET LOCAL ROLE service_role/);
+ assert.doesNotMatch(race,/new Session|new Client|process\.env|connect\(/);
+});
