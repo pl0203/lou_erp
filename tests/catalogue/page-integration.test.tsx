@@ -144,7 +144,8 @@ describe.each(pages)('$kind status page integration', ({ Page, kind, desktop, mo
 })
 
 it('keeps one recovery owner after a row leaves the filter and never invalidates saved PO/CO history', async () => {
-  const { client } = mount(CustomerList)
+  // These unobserved sentinels must survive normal cache GC to test invalidation.
+  const { client } = mount(CustomerList, new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } }))
   const histories = [['purchase_orders'], ['co', state.backend, state.actor, state.role, 'history']] as const
   histories.forEach(key => client.setQueryData(key, { saved: true }))
   await begin('Daftar pelanggan'); await screen.findByText('Hasil belum terkonfirmasi')
@@ -161,7 +162,9 @@ it('recovers a product attempt after unmount on the customer page without resend
   const first = mount(ProductList); await begin('Daftar barang'); await waitFor(() => expect(state.command).toHaveBeenCalledOnce())
   first.unmount(); mount(CustomerList); await screen.findByText('Hasil belum terkonfirmasi')
   await act(async () => gate.resolve())
-  fireEvent.click(screen.getByRole('button', { name: 'Periksa hasil' }))
+  const recover = screen.getByRole('button', { name: 'Periksa hasil' })
+  await waitFor(() => expect((recover as HTMLButtonElement).disabled).toBe(false))
+  fireEvent.click(recover)
   await waitFor(() => expect(screen.queryByText('Hasil belum terkonfirmasi')).toBeNull())
   expect(state.reads).toHaveBeenCalledWith(expect.objectContaining({ p_kind: 'product', p_purpose: 'all-for-history' }))
   expect(state.command).toHaveBeenCalledOnce(); expect(localStorage.length).toBe(0)
@@ -208,8 +211,20 @@ it('rejects a stale confirmation rather than rebasing onto a newer row', async (
   await waitFor(() => expect((within(region).getByRole('button', { name: 'Nonaktifkan' }) as HTMLButtonElement).disabled).toBe(false))
   fireEvent.click(within(region).getByRole('button', { name: 'Nonaktifkan' }))
   state.customers[0].catalog_version = '9007199254740994'
-  await act(async () => { await client.invalidateQueries({ queryKey: ['catalogue'] }) })
-  fireEvent.click(screen.getByRole('button', { name: 'Konfirmasi Nonaktifkan' }))
+  const gate = deferred(); state.readGate = gate.promise
+  let refresh!: Promise<void>
+  await act(async () => { refresh = client.invalidateQueries({ queryKey: ['catalogue'] }) })
+  const confirm = screen.getByRole('button', { name: 'Konfirmasi Nonaktifkan' })
+  await waitFor(() => expect((confirm as HTMLButtonElement).disabled).toBe(true))
+  state.readGate = null
+  await act(async () => { gate.resolve(); await refresh })
+  const key = catalogueKeys.read({ backend: state.backend, actorId: state.actor, role: 'co_admin' },
+    { kind: 'customer', purpose: 'catalogue', status: 'all', search: '', page: 1, page_size: 10 })
+  await waitFor(() => {
+    expect(client.getQueryData<{ page: { rows: { catalog_version: string }[] } }>(key)?.page.rows[0].catalog_version).toBe('9007199254740994')
+    expect((confirm as HTMLButtonElement).disabled).toBe(false)
+  })
+  fireEvent.click(confirm)
   await screen.findByText(/Data berubah. Batalkan/); expect(state.command).not.toHaveBeenCalled()
 })
 it('preserves product pricing disclosure while status filters change', async () => {

@@ -5,8 +5,38 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { customerBackend } from './helpers/customerBackend'
 import { CUSTOMER_CATEGORIES } from '../src/lib/customerCategory'
 const state = vi.hoisted(() => ({ backend: null as any }))
+const customerId = '11111111-1111-4111-8111-111111111111'
+vi.mock('../src/lib/AuthContext', () => ({ useAuth: () => ({ user: { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }, profile: { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role: 'executive', is_active: true }, loading: false, error: null }) }))
 vi.mock('../src/lib/procurementAccess', () => ({ useProcurementAccess: () => ({ready:true,capabilities:{customer_create:true,customer_edit:true,customer_delete:false,product_create:true,product_edit:true,product_delete:true},require:()=>{}}) }))
-vi.mock('../src/lib/supabase', () => ({ supabase: { from: (...args: any[]) => state.backend.from(...args), rpc: (...args: any[]) => state.backend.rpc(...args), auth: { getUser: () => state.backend.auth.getUser() } } }))
+vi.mock('../src/lib/supabase', () => ({ supabase: {
+  supabaseUrl: 'https://catalogue.example.invalid', rest: { url: 'https://catalogue.example.invalid/rest/v1', schemaName: 'public' },
+  from: (table: string) => {
+    const q = state.backend.from(table)
+    // Keep the shared PO fixture's foreign key aligned with this suite's UUID customer.
+    if (table === 'purchase_orders') {
+      const originalThen = q.then
+      q.then = (resolve: any, reject: any) => originalThen((result: any) => resolve({ ...result, data: result.data && { ...result.data, customer_id: '11111111-1111-4111-8111-111111111111' } }), reject)
+    }
+    return q
+  },
+  rpc: (name: string, args: any = {}) => {
+    if (!['pilot_procurement_access_v2', 'pilot_catalog_page_v1'].includes(name)) return state.backend.rpc(name, args)
+    const q: any = { abortSignal: () => q, then: (resolve: any, reject: any) => Promise.resolve().then(() => {
+      if (name === 'pilot_procurement_access_v2') return { data: { version: 2, as_of: '2026-10-15T00:00:00Z', actor_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role: 'executive',
+        customer_create: true, customer_edit: true, customer_delete: false, product_create: true, product_edit: true, product_delete: true,
+        customer_set_enabled: true, product_set_enabled: true, customer_delete_mode: 'none', product_delete_mode: 'direct' }, error: null }
+      if (args.p_kind !== 'customer') throw new Error(`Unexpected catalogue kind ${args.p_kind}`)
+      if (state.backend.state.readError) return { data: null, error: new Error('Read denied') }
+      const fields = ['id','name','address','city','phone','email','pricing_tier','customer_category','is_enabled','catalog_version']
+      const rows = state.backend.state.customers.map((row: any) => Object.fromEntries(fields.map(field => [field,
+        field === 'is_enabled' ? true : field === 'catalog_version' ? '1' : row[field]])))
+        .sort((a: any, b: any) => a.id.localeCompare(b.id))
+        .filter((row: any) => (!args.p_search || row.name.includes(args.p_search)) && (args.p_status === 'all' || row.is_enabled === (args.p_status === 'enabled')))
+      return { data: { version: 1, actor_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role: 'executive', kind: args.p_kind, purpose: args.p_purpose, status: args.p_status, search: args.p_search, page: args.p_page, page_size: args.p_page_size, total_count: String(rows.length), rows: rows.slice((args.p_page - 1) * args.p_page_size, args.p_page * args.p_page_size) }, error: null }
+    }).then(resolve, reject) }; return q
+  },
+  auth: { getUser: () => state.backend.auth.getUser() },
+} }))
 vi.mock('../src/components/AthelNav', () => ({ default: () => null }))
 vi.mock('../src/components/GirardNav', () => ({ default: () => null }))
 vi.mock('../src/components/TransactionRecovery', () => ({ default: () => null }))
@@ -18,8 +48,12 @@ import PONew from '../src/pages/athel/PONew'
 import POEdit from '../src/pages/athel/POEdit'
 const clients: QueryClient[] = []
 const stops: (() => void)[] = []
-beforeEach(() => { state.backend = customerBackend() })
-afterEach(() => { cleanup(); stops.splice(0).forEach(stop => stop()); clients.splice(0).forEach(client => client.clear()) })
+beforeEach(() => {
+  state.backend = customerBackend(); state.backend.state.customers[0].id = customerId
+  // Deterministic generated UUID keeps the existing Alpha/new-row assertions ordered.
+  vi.spyOn(crypto, 'randomUUID').mockReturnValue('22222222-2222-4222-8222-222222222222')
+})
+afterEach(() => { cleanup(); stops.splice(0).forEach(stop => stop()); clients.splice(0).forEach(client => client.clear()); vi.restoreAllMocks() })
 const kinds = ['Athel', 'Girard'] as const
 type Kind = typeof kinds[number]
 function mount(kind: Kind, po?: 'new' | 'edit') {
@@ -94,13 +128,13 @@ test('Athel: a category-only edit preserves exact legacy source fields and price
 
 type GirardMode = 'create' | 'assign-existing' | 'edit' | 'clear'
 function arrangeGirard(mode: GirardMode) {
-  if (mode === 'edit' || mode === 'clear') state.backend.state.assignments = [{ id: 'assignment', version: 1, customer_id: 'c', manager_id: 'm' }]
+  if (mode === 'edit' || mode === 'clear') state.backend.state.assignments = [{ id: 'assignment', version: 1, customer_id: customerId, manager_id: 'm' }]
 }
 function prepareGirard(mode: GirardMode, changeCustomer = true) {
   if (mode === 'create') { openNew('Girard'); choose('perorangan') }
   else if (mode === 'assign-existing') {
     fireEvent.click(page().getByRole('button', { name: 'Tugaskan yang Ada' }))
-    fireEvent.change(page().getByRole('combobox', { name: 'Pilih Pelanggan' }), { target: { value: 'c' } })
+    fireEvent.change(page().getByRole('combobox', { name: 'Pilih Pelanggan' }), { target: { value: customerId } })
   } else openEdit()
   if (changeCustomer && mode !== 'create') {
     if (mode === 'assign-existing') fireEvent.change(page().getByRole('combobox', { name: 'Frekuensi Kunjungan' }), { target: { value: '30' } })
@@ -137,7 +171,7 @@ for (const mode of ['create', 'assign-existing', 'edit', 'clear'] as const) {
     state.backend.state.assignmentResponse = response; submitGirard(mode)
     expect((await page().findByRole('alert')).textContent).toMatch(/Data pelanggan tersimpan.*belum terkonfirmasi/)
     expect(state.backend.state.writes).toHaveLength(2)
-    const id = mode === 'create' ? state.backend.state.customers.find((c: any) => c.name === 'New shop').id : 'c'
+    const id = mode === 'create' ? state.backend.state.customers.find((c: any) => c.name === 'New shop').id : customerId
     await waitFor(() => {
       for (const key of witness.keys) {
         const cached = client.getQueryData<any[]>(key)!
@@ -156,7 +190,7 @@ for (const mode of ['create', 'assign-existing', 'edit', 'clear'] as const) {
     if (mode === 'create') expect(page().getByDisplayValue('New shop')).toBeTruthy()
     else if (mode === 'assign-existing') {
       expect((page().getByRole('combobox', { name: 'Frekuensi Kunjungan' }) as HTMLSelectElement).value).toBe('30')
-      expect((page().getByRole('combobox', { name: 'Pilih Pelanggan' }) as HTMLSelectElement).value).toBe('c')
+      expect((page().getByRole('combobox', { name: 'Pilih Pelanggan' }) as HTMLSelectElement).value).toBe(customerId)
     }
     else expect((page().getByRole('combobox', { name: /Kategori Pelanggan/ }) as HTMLSelectElement).value).toBe('perorangan')
   })
@@ -187,7 +221,7 @@ for (const mode of ['assign-existing', 'edit', 'clear'] as const) {
 for (const kind of kinds) {
   test(`${kind}: background read failure retains an open category draft`, async () => {
     const client = mount(kind); await loaded(); openEdit(); choose('perorangan'); state.backend.state.readError = true
-    await act(async () => { await client.invalidateQueries({ queryKey: [kind === 'Athel' ? 'athel_customers' : 'all_customers'] }) })
+    await act(async () => { await client.invalidateQueries({ queryKey: [kind === 'Athel' ? 'catalogue' : 'all_customers'] }) })
     expect(await page().findByRole('alert')).toBeTruthy()
     expect((page().getByRole('combobox', { name: /Kategori Pelanggan/ }) as HTMLSelectElement).value).toBe('perorangan')
     expect((page().getByRole('button', { name: 'Simpan' }) as HTMLButtonElement).disabled).toBe(true)
@@ -243,7 +277,9 @@ for (const kind of kinds) {
 for (const kind of kinds) test(`${kind}: an invalid stale cached category is a visible read failure, not a render crash`, async () => {
   const client = mount(kind); await loaded()
   await act(async () => {
-    if (kind === 'Athel') client.setQueryData(['athel_customers', '', 1], { items: [{ ...state.backend.state.customers[0], customer_category: undefined }], total: 1 })
+    if (kind === 'Athel') client.setQueriesData({ queryKey: ['catalogue'], predicate: query => query.queryKey[5] === 'read' && query.queryKey[6] === 'customer' }, (cached: any) => cached && {
+      ...cached, page: { ...cached.page, rows: cached.page.rows.map((row: any) => ({ ...row, customer_category: undefined })) },
+    })
     else client.setQueryData(['all_customers'], [{ ...state.backend.state.customers[0], customer_category: 'UNKNOWN' }])
   })
   expect(await page().findByRole('alert')).toBeTruthy()
@@ -254,7 +290,7 @@ for (const kind of kinds) test(`${kind}: category-only save preserves source fie
   const client = mount(kind); await loaded(); openEdit(); choose('supermarket_sedang')
   state.backend.state.customers[0].pricing_tier = 'others'
   state.backend.state.customers[0].phone = '  unchanged  '
-  await act(async () => { await client.invalidateQueries({ queryKey: [kind === 'Athel' ? 'athel_customers' : 'all_customers'] }) })
+  await act(async () => { await client.invalidateQueries({ queryKey: [kind === 'Athel' ? 'catalogue' : 'all_customers'] }) })
   save(kind)
   await waitFor(() => expect(page().queryByRole('combobox', { name: /Kategori Pelanggan/ })).toBeNull())
   expect(state.backend.state.customers[0]).toMatchObject({ customer_category: 'supermarket_sedang', pricing_tier: 'others', phone: '  unchanged  ' })
@@ -281,14 +317,14 @@ test('Girard: one store-owner field includes active salespeople and existing upp
   expect(page().getByRole('columnheader', { name: 'Penanggung Jawab Toko' })).toBeTruthy()
   fireEvent.change(owner, { target: { value: 's' } }); save('Girard')
   await waitFor(() => expect(page().queryByRole('combobox', { name: 'Penanggung Jawab Toko' })).toBeNull())
-  expect(state.backend.state.assignments[0]).toMatchObject({ customer_id: 'c', manager_id: 's', version: 1 })
-  expect(state.backend.state.writes[0]).toMatchObject({ op: 'rpc', payload: { p_customer_id: 'c', p_owner_id: 's', p_expected_assignment_id: null, p_expected_version: null } })
+  expect(state.backend.state.assignments[0]).toMatchObject({ customer_id: customerId, manager_id: 's', version: 1 })
+  expect(state.backend.state.writes[0]).toMatchObject({ op: 'rpc', payload: { p_customer_id: customerId, p_owner_id: 's', p_expected_assignment_id: null, p_expected_version: null } })
   expect(page().getAllByText('Sales One')).toHaveLength(2)
 })
 
 test.each([['edit', 'assignment', 2], ['edit', 'replacement', 1], ['clear', 'assignment', 2], ['clear', 'replacement', 1]] as const)('Girard: %s owner retains original CAS after concurrent %s version %s', async (mode, nextId, nextVersion) => {
   arrangeGirard(mode); const client = mount('Girard'); await loaded(); prepareGirard(mode, false)
-  state.backend.state.assignments[0] = { id: nextId, customer_id: 'c', manager_id: 'head', version: nextVersion }
+  state.backend.state.assignments[0] = { id: nextId, customer_id: customerId, manager_id: 'head', version: nextVersion }
   await act(async () => { await client.invalidateQueries({ queryKey: ['assignments'] }) })
   submitGirard(mode)
   expect((await page().findByRole('alert')).textContent).toMatch(/berubah|changed/i)
@@ -299,7 +335,7 @@ test.each([['edit', 'assignment', 2], ['edit', 'replacement', 1], ['clear', 'ass
 
 test('Girard: an unassigned draft cannot overwrite a concurrent owner', async () => {
   const client = mount('Girard'); await loaded(); prepareGirard('assign-existing', false)
-  state.backend.state.assignments = [{ id: 'concurrent', customer_id: 'c', manager_id: 's', version: 1 }]
+  state.backend.state.assignments = [{ id: 'concurrent', customer_id: customerId, manager_id: 's', version: 1 }]
   await act(async () => { await client.invalidateQueries({ queryKey: ['assignments'] }) })
   submitGirard('assign-existing')
   expect((await page().findByRole('alert')).textContent).toMatch(/berubah|changed/i)
@@ -374,23 +410,23 @@ test('Girard: pre-write category validation can be corrected without the create 
 test('Girard: clearing owner retains the assignment identity and advances the unassigned version', async () => {
   arrangeGirard('clear'); mount('Girard'); await loaded(); prepareGirard('clear', false); submitGirard('clear')
   await waitFor(() => expect(page().queryByRole('combobox', { name: 'Penanggung Jawab Toko' })).toBeNull())
-  expect(state.backend.state.assignments).toEqual([{ id: 'assignment', customer_id: 'c', manager_id: null, version: 2 }])
+  expect(state.backend.state.assignments).toEqual([{ id: 'assignment', customer_id: customerId, manager_id: null, version: 2 }])
   expect(page().getByRole('button', { name: 'Tugaskan yang Ada' })).toBeTruthy()
   expect(page().getByText('Belum ditugaskan')).toBeTruthy()
 })
 
 test('Girard: assigning a previously cleared store uses its retained identity and version', async () => {
-  state.backend.state.assignments = [{ id: 'assignment', customer_id: 'c', manager_id: null, version: 2 }]
+  state.backend.state.assignments = [{ id: 'assignment', customer_id: customerId, manager_id: null, version: 2 }]
   mount('Girard'); await loaded(); prepareGirard('assign-existing', false); submitGirard('assign-existing')
   await waitFor(() => expect(page().queryByRole('combobox', { name: 'Penanggung Jawab Toko' })).toBeNull())
   expect(state.backend.state.assignments[0]).toMatchObject({ id: 'assignment', manager_id: 'm2', version: 3 })
-  expect(state.backend.state.writes[0].payload).toEqual({ p_customer_id: 'c', p_owner_id: 'm2', p_expected_assignment_id: 'assignment', p_expected_version: 2 })
+  expect(state.backend.state.writes[0].payload).toEqual({ p_customer_id: customerId, p_owner_id: 'm2', p_expected_assignment_id: 'assignment', p_expected_version: 2 })
 })
 
 for (const previouslyAssigned of [false, true]) test(`Girard: stale ${previouslyAssigned ? 'previously cleared' : 'never assigned'} form cannot overwrite an assignment then clear`, async () => {
-  if (previouslyAssigned) state.backend.state.assignments = [{ id: 'assignment', customer_id: 'c', manager_id: null, version: 2 }]
+  if (previouslyAssigned) state.backend.state.assignments = [{ id: 'assignment', customer_id: customerId, manager_id: null, version: 2 }]
   const client = mount('Girard'); await loaded(); prepareGirard('assign-existing', false)
-  state.backend.state.assignments = [{ id: 'assignment', customer_id: 'c', manager_id: null, version: previouslyAssigned ? 4 : 2 }]
+  state.backend.state.assignments = [{ id: 'assignment', customer_id: customerId, manager_id: null, version: previouslyAssigned ? 4 : 2 }]
   await act(async () => { await client.invalidateQueries({ queryKey: ['assignments'] }) })
   submitGirard('assign-existing')
   expect((await page().findByRole('alert')).textContent).toMatch(/berubah/)

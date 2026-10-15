@@ -8,9 +8,9 @@ import { hasInvalidCustomerCategories } from '../../lib/customerCategoryRows'
 import CustomerCategorySelect from '../../components/CustomerCategorySelect'
 import ReadFailure from '../../components/ReadFailure'
 import { parseCustomerCategory, formatCustomerCategory, type CustomerCategory } from '../../lib/customerCategory'
-import { confirmCustomerWrite, refreshCustomerCaches } from '../../lib/customerWrites'
+import { confirmCustomerWrite } from '../../lib/customerWrites'
 import { useEffect, useRef, useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import AthelNav from '../../components/AthelNav'
 import PaginationControls from '../../components/PaginationControls'
@@ -83,7 +83,6 @@ async function deleteCustomer(id: string) {
 }
 
 export default function CustomerList() {
-  const queryClient = useQueryClient()
   const access = useProcurementAccess()
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -121,7 +120,7 @@ export default function CustomerList() {
   const saveMutation = useMutation({
     mutationFn: () => { access.require(originalCustomer ? 'customer_edit' : 'customer_create'); return saveCustomer(form, originalCustomer) },
     onSettled: async () => {
-      try { await Promise.all([refreshCustomerCaches(queryClient), catalogue.refresh()]) }
+      try { await catalogue.refresh() }
       finally { mutationBusy.current = false }
     },
     onSuccess: () => {
@@ -137,7 +136,7 @@ export default function CustomerList() {
     onSettled: () => { mutationBusy.current = false },
     onSuccess: () => {
       dialogCommitted.current = true
-      queryClient.invalidateQueries({ queryKey: ['athel_customers'] }); void catalogue.refresh()
+      void catalogue.refresh()
       setDeleteId(null)
     },
   })

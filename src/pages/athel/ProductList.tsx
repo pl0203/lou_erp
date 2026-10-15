@@ -5,7 +5,7 @@ import { CatalogueRecovery } from '../../components/catalogue/CatalogueRecovery'
 import { useProcurementAccess } from '../../lib/procurementAccess'
 import { parseCatalogPrice, formatCatalogPrice } from '../../lib/catalogPricing'
 import { useEffect, useRef, useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import AthelNav from '../../components/AthelNav'
 import PaginationControls from '../../components/PaginationControls'
@@ -79,7 +79,6 @@ const TIER_LABELS: Record<string, string> = {
 }
 
 export default function ProductList() {
-  const queryClient = useQueryClient()
   const access = useProcurementAccess()
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -118,7 +117,7 @@ export default function ProductList() {
     onSettled: () => { mutationBusy.current = false },
     onSuccess: () => {
       dialogCommitted.current = true
-      queryClient.invalidateQueries({ queryKey: ['products'] }); void catalogue.refresh()
+      void catalogue.refresh()
       setShowForm(false)
       setEditingId(null)
       setForm(EMPTY_FORM)
@@ -130,7 +129,7 @@ export default function ProductList() {
     onSettled: () => { mutationBusy.current = false },
     onSuccess: () => {
       dialogCommitted.current = true
-      queryClient.invalidateQueries({ queryKey: ['products'] }); void catalogue.refresh()
+      void catalogue.refresh()
       setDeleteId(null)
     },
   })

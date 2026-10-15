@@ -2,10 +2,21 @@ import React from 'react'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, expect, test, vi } from 'vitest'
-const state = vi.hoisted(() => ({ write: vi.fn(), product: { id: 'p', name: 'Unset product', sku: 'TEST', size: null, unit_price: 17, harga_pokok: null, luar_kota: null, dalam_kota: null, depo_bangunan: 0 } }))
+const state = vi.hoisted(() => ({ write: vi.fn(), product: { id: '11111111-1111-4111-8111-111111111111', is_enabled: true, catalog_version: '1', name: 'Unset product', sku: 'TEST', size: null, unit_price: 17, harga_pokok: null, luar_kota: null, dalam_kota: null, depo_bangunan: 0 } }))
 vi.mock('../src/lib/procurementAccess', () => ({ useProcurementAccess: () => ({ready:true,capabilities:{customer_create:true,customer_edit:true,customer_delete:false,product_create:true,product_edit:true,product_delete:true},require:()=>{}}) }))
+vi.mock('../src/lib/AuthContext', () => ({ useAuth: () => ({ user: { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }, profile: { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role: 'executive', is_active: true }, loading: false, error: null }) }))
 vi.mock('../src/components/AthelNav', () => ({ default: () => null }))
-vi.mock('../src/lib/supabase', () => ({ supabase: { from: () => {
+vi.mock('../src/lib/supabase', () => ({ supabase: {
+ supabaseUrl: 'https://catalogue.example.invalid', rest: { url: 'https://catalogue.example.invalid/rest/v1', schemaName: 'public' },
+ rpc: (name: string, args: any = {}) => {
+  const q: any = { abortSignal: () => q, then: (resolve: any, reject: any) => Promise.resolve().then(() => {
+   if (name === 'pilot_procurement_access_v2') return { data: { version: 2, as_of: '2026-10-15T00:00:00Z', actor_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role: 'executive',
+    customer_create: true, customer_edit: true, customer_delete: false, product_create: true, product_edit: true, product_delete: true,
+    customer_set_enabled: true, product_set_enabled: true, customer_delete_mode: 'none', product_delete_mode: 'direct' }, error: null }
+   if (name !== 'pilot_catalog_page_v1' || args.p_kind !== 'product') throw new Error(`Unexpected catalogue RPC ${name}`)
+   return { data: { version: 1, actor_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role: 'executive', kind: args.p_kind, purpose: args.p_purpose, status: args.p_status, search: args.p_search, page: args.p_page, page_size: args.p_page_size, total_count: '1', rows: [{ ...state.product }] }, error: null }
+  }).then(resolve, reject) }; return q
+ }, from: () => {
  const q: any = { then: (resolve: any) => Promise.resolve({ data: [state.product], count: 1, error: null }).then(resolve) }
  q.select = q.order = q.range = q.eq = () => q
  q.update = q.insert = (payload: any) => { state.write(payload); return q }
