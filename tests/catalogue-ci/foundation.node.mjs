@@ -273,3 +273,13 @@ test('inactive PO core is bound into the existing rollback session without activ
  assert.ok(!suite.includes('DROP CONSTRAINT catalog_foundation'));
  for(const label of ['private core explicitly writes generation two','production generation two remains unavailable','exact replay ignores later disabled targets','fabricated persisted identity refused','disabled customer caps each persisted line','trusted conversion refuses disabled product','manual history preserves zero price','post-stage07 executive review remains required'])assert.ok(suite.includes(label),label);
 });
+
+test('PO identity regression fixture qualifies columns shadowed by its local id variable',()=>{
+ const sql=readFileSync(resolve(root,'tests/database/catalogue/orders.sql'),'utf8');
+ const block=sql.match(/DO \$\$ DECLARE payload jsonb; id uuid; BEGIN([\s\S]*?)END \$\$;/)?.[1];
+ assert.ok(block,'Actual foreign/removed-ID probe block must remain present');
+ assert.match(block,/SELECT p\.updated_at FROM public\.purchase_orders p WHERE p\.id=\(c\.result->>'po_id'\)::uuid/);
+ assert.doesNotMatch(block,/FROM public\.purchase_orders WHERE id=/);
+ assert.match(block,/FOREACH id IN ARRAY ARRAY\[md5\('manual-line'\)::uuid,md5\('removed-line'\)::uuid\]/);
+ assert.ok(block.includes("'22023','foreign and removed persisted line identities refused'"));
+});

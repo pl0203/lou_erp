@@ -57,7 +57,7 @@ RESET ROLE;
 UPDATE public.customers SET is_enabled=true WHERE id=md5('orders-customer')::uuid;
 SET LOCAL ROLE authenticated;
 DO $$ DECLARE payload jsonb; BEGIN
- SELECT c.payload||jsonb_build_object('expected_updated_at',(SELECT updated_at FROM public.purchase_orders WHERE id=(c.result->>'po_id')::uuid)) INTO payload FROM pg_temp.catalogue_po_results c WHERE label='edit';
+ SELECT c.payload||jsonb_build_object('expected_updated_at',(SELECT p.updated_at FROM public.purchase_orders p WHERE p.id=(c.result->>'po_id')::uuid)) INTO payload FROM pg_temp.catalogue_po_results c WHERE label='edit';
  PERFORM pg_temp.foundation_raises(format('SELECT pg_temp.catalog_po_test_call(%L::uuid,%L,%L::jsonb)',md5('product-own-cap')::uuid,'edit_po',jsonb_set(payload,'{items,0,quantity}','5')),'23514','disabled product retains its own cap with enabled customer');
 END $$;
 RESET ROLE;
@@ -110,7 +110,7 @@ INSERT INTO public.po_line_items(id,purchase_order_id,product_id,product_name,sk
 DELETE FROM public.po_line_items WHERE id=md5('removed-line')::uuid;
 SET LOCAL ROLE authenticated;
 DO $$ DECLARE payload jsonb; id uuid; BEGIN
- SELECT c.payload||jsonb_build_object('expected_updated_at',(SELECT updated_at FROM public.purchase_orders WHERE id=(c.result->>'po_id')::uuid)) INTO payload FROM pg_temp.catalogue_po_results c WHERE label='edit';
+ SELECT c.payload||jsonb_build_object('expected_updated_at',(SELECT p.updated_at FROM public.purchase_orders p WHERE p.id=(c.result->>'po_id')::uuid)) INTO payload FROM pg_temp.catalogue_po_results c WHERE label='edit';
  FOREACH id IN ARRAY ARRAY[md5('manual-line')::uuid,md5('removed-line')::uuid] LOOP
   PERFORM pg_temp.foundation_raises(format('SELECT pg_temp.catalog_po_test_call(%L::uuid,%L,%L::jsonb)',md5('invalid-identity-'||id)::uuid,'edit_po',jsonb_set(payload,'{items,0,id}',to_jsonb(id))),'22023','foreign and removed persisted line identities refused');
  END LOOP;

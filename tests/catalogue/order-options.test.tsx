@@ -69,8 +69,10 @@ test('actor A to B to A cannot accept the retired first A response', async () =>
 test('changed backend endpoint fails closed until a new mount binds the actual endpoint', async () => {
  const first=mount();await waitFor(()=>expect(first.result.current.data).toHaveLength(1))
  state.url='https://replacement.test'
- await act(async()=>{await first.result.current.refetch()})
- expect(first.result.current.isError).toBe(true)
+ const calls=state.rpc.mock.calls.length
+ await act(async()=>{const result=await first.result.current.refetch();expect(result.isError).toBe(true);expect(result.error).toBeTruthy()})
+ await waitFor(()=>expect(first.result.current.isError).toBe(true))
+ expect(state.rpc).toHaveBeenCalledTimes(calls)
  first.unmount();const next=mount();await waitFor(()=>expect(next.result.current.data).toHaveLength(1))
  expect(clients[1].getQueryCache().getAll().some(query=>query.queryKey[1]===state.url)).toBe(true)
 })

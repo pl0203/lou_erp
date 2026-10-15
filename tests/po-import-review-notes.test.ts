@@ -19,11 +19,12 @@ for (const [name, make, expectedRows, context] of [
     expect(notes).toContain('Mata uang sumber: tidak tercantum'); expect(notes).toContain('tanpa konversi')
     expect(notes).toContain('Satuan sumber barang 1 (halaman 1)')
     const customers = [{ id: 'c', name: parsed.buyer.value!, pricing_tier: 'luar_kota' }]
-    const decision: ReviewDecision = { customerId: 'c', poNumber: parsed.poNumber.value!, orderDate: parsed.orderDate.value || '2028-04-11', expiry: '', notes, idrConfirmed: true, acknowledgedIssueIds: [], rows: Object.fromEntries(parsed.rows.map(row => [row.id, { productId: null, manual: true, sku: row.sku.value || '', name: row.name.value!, quantity: row.quantity.value!, unitPrice: row.unitPrice.value, unitConfirmed: true }])) }
-    decision.acknowledgedIssueIds = preparePOFormDraft(parsed, decision, customers, []).issues.filter(issue => isFinancialReviewIssue(issue) || issue.code === 'missing-price').map(issue => issue.id)
-    const result = preparePOFormDraft(parsed, decision, customers, [])
+    const products = parsed.rows.map((row,index) => ({id:`product-${index}`,sku:row.sku.value || `ERP-${index}`,name:row.name.value!,size:null,harga_pokok:null,luar_kota:row.unitPrice.value === null ? null : Number(row.unitPrice.value),dalam_kota:null,depo_bangunan:null}))
+    const decision: ReviewDecision = { customerId: 'c', poNumber: parsed.poNumber.value!, orderDate: parsed.orderDate.value || '2028-04-11', expiry: '', notes, idrConfirmed: true, acknowledgedIssueIds: [], rows: Object.fromEntries(parsed.rows.map((row,index) => [row.id, { productId: products[index].id, manual: false, sku: products[index].sku, name: products[index].name, quantity: row.quantity.value!, unitPrice: row.unitPrice.value, unitConfirmed: true }])) }
+    decision.acknowledgedIssueIds = preparePOFormDraft(parsed, decision, customers, products).issues.filter(issue => isFinancialReviewIssue(issue) || issue.code === 'missing-price').map(issue => issue.id)
+    const result = preparePOFormDraft(parsed, decision, customers, products)
     expect(result.draft).not.toBeNull(); expect(result.draft!.notes).toBe(notes); expect(result.draft!.expectedDelivery).toBe('')
     expect(result.draft!.lineItems.map(row => row.unit_price)).toEqual(parsed.rows.map(row => row.unitPrice.value === null ? Number.NaN : Number(row.unitPrice.value)))
-    decision.notes = ''; expect(preparePOFormDraft(parsed, decision, customers, []).draft!.notes).toBe('')
+    decision.notes = ''; expect(preparePOFormDraft(parsed, decision, customers, products).draft!.notes).toBe('')
   })
 }
