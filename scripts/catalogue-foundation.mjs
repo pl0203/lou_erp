@@ -19,11 +19,13 @@ export const foundationSqlPaths=Object.freeze({
  roles:'tests/database/catalogue/roles.sql',
  orderCandidate:'supabase/catalogue/v1/04-order-boundaries.sql',
  orders:'tests/database/catalogue/orders.sql',
+ coOrderCandidate:'supabase/catalogue/v1/new06-co-order-boundaries.sql',
+ coOrders:'tests/database/catalogue/co-orders.sql',
 });
 export const foundationExpectedMarkers=Object.freeze([
  'CATALOGUE_FOUNDATION_BEFORE_CAPTURED','CATALOGUE_FOUNDATION_CANDIDATE_APPLIED',
  'CATALOGUE_FOUNDATION_BEHAVIOR_PASSED','CATALOGUE_FOUNDATION_LEGACY_PASSED',
- 'CATALOGUE_FOUNDATION_ROLES_PASSED','CATALOGUE_ORDERS_CORE_PASSED','CATALOGUE_FOUNDATION_ROLLBACK_VERIFIED',
+ 'CATALOGUE_FOUNDATION_ROLES_PASSED','CATALOGUE_ORDERS_CORE_PASSED','CATALOGUE_CO_ORDERS_CORE_PASSED','CATALOGUE_FOUNDATION_ROLLBACK_VERIFIED',
 ]);
 // Erase SQL comments/quoted values before examining top-level statements. This
 // is a containment check, not a PostgreSQL grammar/behavior substitute.
@@ -49,6 +51,10 @@ const noFoundationPredicate=`pg_catalog.to_regclass('private.catalog_identity_v1
  AND pg_catalog.to_regclass('private.catalog_requests_v1') IS NULL
  AND pg_catalog.to_regclass('private.catalog_po_active_v2') IS NULL
  AND pg_catalog.to_regprocedure('private.catalog_po_transaction_core_v2(uuid,text,jsonb)') IS NULL
+ AND pg_catalog.to_regclass('private.catalog_co_active_v2') IS NULL
+ AND pg_catalog.to_regprocedure('private.catalog_co_transaction_core_v2(uuid,text,jsonb)') IS NULL
+ AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid='private.co_commands'::regclass AND attname='execution_version' AND NOT attisdropped)
+ AND (SELECT md5(prosrc) FROM pg_catalog.pg_proc WHERE oid='public.pilot_co_transaction_v1(uuid,text,jsonb)'::regprocedure)='253ac5728e67fa26e1736bca30ccc4b0'
  AND (SELECT md5(prosrc) FROM pg_catalog.pg_proc WHERE oid='public.pilot_order_transaction(uuid,text,jsonb)'::regprocedure)='0b1e19441a499ae9c864b2d21aef28ba'
  AND pg_catalog.to_regprocedure('private.catalog_request_terminal_v1()') IS NULL
  AND pg_catalog.to_regprocedure('private.catalog_authorize_v1(text,uuid)') IS NULL
@@ -86,8 +92,10 @@ ${sessionGate()}${mark(2)}${parts.legacy}
 ${sessionGate()}${mark(3)}${parts.roles}
 ${sessionGate()}${mark(4)}${parts.orderCandidate}
 ${sessionGate()}${parts.orders}
-${sessionGate()}${mark(5)}ROLLBACK;
-${catalogueCiIdentityGateSql(identity)}${booleanGate(`${noFoundationPredicate}\n AND pg_catalog.pg_backend_pid()=:'catalogue_foundation_pid'::integer\n AND pg_catalog.to_regclass('pg_temp.catalogue_foundation_session_v1') IS NULL`,'catalogue_foundation_rollback_refused')}${mark(6)}\\o
+${sessionGate()}${mark(5)}${parts.coOrderCandidate}
+${sessionGate()}${parts.coOrders}
+${sessionGate()}${mark(6)}ROLLBACK;
+${catalogueCiIdentityGateSql(identity)}${booleanGate(`${noFoundationPredicate}\n AND pg_catalog.pg_backend_pid()=:'catalogue_foundation_pid'::integer\n AND pg_catalog.to_regclass('pg_temp.catalogue_foundation_session_v1') IS NULL`,'catalogue_foundation_rollback_refused')}${mark(7)}\\o
 `;
 }
 export function parseCatalogueFoundationOutput(output) {
@@ -164,6 +172,10 @@ export function runCatalogueFoundation({repoRoot=defaultRoot,env=process.env,exe
    targetParity:'SYNTHETIC_SAME_SESSION_ONLY',broaderLockGraph:'UNPROVEN',referenceTracking:'NOT_IMPLEMENTED',
    orderProof:{privateCore:'SEQUENTIAL_SAME_SESSION_PASSED',productionAdmission:'REFUSED_FOUNDATION_NOT_READY',
     actualEventAssertions:'DIRECT_EVENTS_AND_CORE_PARENT_CHAIN_PASSED',globalWriterTracking:'INCOMPLETE',globalDrain:'UNPROVEN',concurrency:'UNRUN'},
+   coOrderProof:{privateCore:'SEQUENTIAL_SAME_SESSION_PASSED',productionAdmission:'REFUSED_FOUNDATION_NOT_READY',
+    finalComposition:'STAGE04_ORDERS_DISPATCH_AND_STAGE08_MONTHLY_PUBLICATION',
+    actualEventAssertions:'DIRECT_EVENTS_IMMUTABLE_STOCK_AND_RETIRED_LINE_SNAPSHOTS_PASSED',
+    globalWriterTracking:'INCOMPLETE',globalDrain:'UNPROVEN',concurrency:'UNRUN'},
    commandAndReplaySuites:'SET_ENABLED_SEQUENTIAL_SAME_SESSION_PASSED',
    commandProof:{operations:['set_enabled'],role:'authenticated',authorization:'VERIFIED_SYNTHETIC_POLICY_ONLY',
     sequentialReplay:'PASSED',sequentialAbandonment:'PASSED',rollbackAtomicity:'PASSED',

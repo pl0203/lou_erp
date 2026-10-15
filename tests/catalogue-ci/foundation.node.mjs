@@ -1,3 +1,5 @@
+// Existing CI entrypoint includes the focused CO source checks.
+import './co-orders.node.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -15,6 +17,8 @@ const fixtureParts = () => Object.fromEntries([
  ['roles','SELECT pg_temp.foundation_assert(true, \'roles\');'],
  ['orderCandidate','SELECT 1 AS inactive_order_candidate;'],
  ['orders','SELECT 1 AS private_order_behavior;'],
+ ['coOrderCandidate','SELECT 1 AS inactive_co_order_candidate;'],
+ ['coOrders','SELECT 1 AS private_co_order_behavior;'],
 ]);
 test('one guarded SQL session applies exact candidate between prechange and postchange suites, then rolls back', () => {
  need(); const parts=fixtureParts(), sql=runner.buildCatalogueFoundationSession(identity, parts);
@@ -26,7 +30,9 @@ test('one guarded SQL session applies exact candidate between prechange and post
  assert.ok(sql.indexOf(parts.legacy) < sql.indexOf(parts.roles));
  assert.ok(sql.indexOf(parts.roles) < sql.indexOf(parts.orderCandidate));
  assert.ok(sql.indexOf(parts.orderCandidate) < sql.indexOf(parts.orders));
- assert.ok(sql.indexOf(parts.orders) < sql.lastIndexOf('ROLLBACK;'));
+ assert.ok(sql.indexOf(parts.orders) < sql.indexOf(parts.coOrderCandidate));
+ assert.ok(sql.indexOf(parts.coOrderCandidate) < sql.indexOf(parts.coOrders));
+ assert.ok(sql.indexOf(parts.coOrders) < sql.lastIndexOf('ROLLBACK;'));
  assert.ok(sql.lastIndexOf('ROLLBACK;') < sql.indexOf('CATALOGUE_FOUNDATION_ROLLBACK_VERIFIED'));
  assert.equal((sql.match(/^BEGIN;/gm)||[]).length,1);
  assert.equal((sql.match(/^ROLLBACK;/gm)||[]).length,1);
@@ -37,7 +43,7 @@ test('candidate transaction boundaries, client commands, and missing suites are 
  need();for(const candidate of ['COMMIT;','BEGIN; SELECT 1; ROLLBACK;','END;','START TRANSACTION;','PREPARE TRANSACTION \'x\';','\\i outside.sql','SELECT 1;\n\\quit','CREATE FUNCTION x() RETURNS void LANGUAGE plpgsql AS $$ BEGIN NULL; END $$; COMMIT;']) {
   assert.throws(()=>runner.buildCatalogueFoundationSession(identity,{...fixtureParts(),candidate}));
  }
- for(const key of ['before','candidate','foundation','legacy','roles','orderCandidate','orders']) {const parts=fixtureParts();delete parts[key];assert.throws(()=>runner.buildCatalogueFoundationSession(identity,parts));}
+ for(const key of ['before','candidate','foundation','legacy','roles','orderCandidate','orders','coOrderCandidate','coOrders']) {const parts=fixtureParts();delete parts[key];assert.throws(()=>runner.buildCatalogueFoundationSession(identity,parts));}
  // PL/pgSQL blocks and literals are not top-level transaction commands.
  assert.doesNotThrow(()=>runner.buildCatalogueFoundationSession(identity,{...fixtureParts(),candidate:"CREATE FUNCTION x() RETURNS void LANGUAGE plpgsql AS $$ BEGIN RAISE NOTICE 'COMMIT'; END $$;"}));
 });
@@ -59,7 +65,7 @@ test('status command session rejects preexisting request objects and verifies th
   assert.ok(sql.indexOf(object)<sql.indexOf('BEGIN;'));
   assert.ok(sql.lastIndexOf(object)>sql.lastIndexOf('ROLLBACK;'));
  }
- assert.equal(runner.foundationExpectedMarkers.length,7);
+ assert.equal(runner.foundationExpectedMarkers.length,8);
  assert.equal((sql.match(/^\\echo CATALOGUE_FOUNDATION_/gm)||[]).length,6);
 });
 test('status command SQL remains an exact session fragment with real authenticated RPC assertions', () => {
