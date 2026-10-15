@@ -1,7 +1,7 @@
 import React from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
-import { mount, mountRoutes, state, ids } from '../co/ui-harness';
+import { mount, mountRoutes, state, ids, product, addProduct, change } from '../co/ui-harness';
 import COOrders from '../../src/pages/athel/co/COOrders';
 import COForm from '../../src/pages/athel/co/COForm';
 import CODetail from '../../src/pages/athel/co/CODetail';
@@ -60,7 +60,8 @@ test('edit header and lines are read-only when fresh edit_co capability is absen
     expect(state.commands).toHaveLength(0);
 });
 
-test('edit fields and line refs retain historical identity, exact value, and manual help', async () => {
+test('edit fields retain historical manual identity and exact price while new choices use the catalogue', async () => {
+    state.products = [product(2)];
     mount(<COForm mode="edit"/>);
     const name = await screen.findByDisplayValue('Item 1');
     const qty = screen.getByLabelText('Qty Item 1');
@@ -70,11 +71,23 @@ test('edit fields and line refs retain historical identity, exact value, and man
     expect(qty.id).toBe(`co-line-${state.lines[0].id}-quantity`);
     expect((screen.getByLabelText('Harga satuan Item 1') as HTMLInputElement).value).toBe('10.00');
     expect(screen.getByLabelText('Harga satuan Item 1').matches(':disabled')).toBe(true);
-    const manual = screen.getByRole('button', { name: 'Tambah barang manual' });
-    sharedAction(manual);
-    expect(document.getElementById(manual.getAttribute('aria-describedby')!)?.textContent).toMatch(/pelanggan yang sama/);
-    fireEvent.click(manual);
-    await waitFor(() => expect(document.activeElement?.getAttribute('aria-label')).toBe('Nama produk barang baru'));
+    expect(state.lines[0].product_id).toBeNull();
+    expect(name.matches(':disabled')).toBe(true);
+    expect(screen.getByText(/Barang manual lama tetap tersimpan dengan identitas dan harga asli/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Tambah barang manual' })).toBeNull();
+    change('Qty Item 1', '3');
+    const search = await addProduct('SKU-2');
+    await screen.findByDisplayValue('Product 2');
+    await waitFor(() => expect(document.activeElement).toBe(search));
+    const newQuantity = screen.getByLabelText('Qty Product 2') as HTMLInputElement;
+    expect(newQuantity.labels?.[0].htmlFor).toBe(newQuantity.id);
+    expect(screen.getByLabelText('Nama produk Product 2').matches(':disabled')).toBe(true);
+    expect(screen.getByLabelText('SKU Product 2').matches(':disabled')).toBe(true);
+    change('Harga satuan Product 2', '12.50');
+    expect((screen.getByLabelText('Harga satuan Product 2') as HTMLInputElement).value).toBe('12.50');
+    sharedAction(screen.getByRole('button', { name: 'Hapus Product 2' }));
+    expect((qty as HTMLInputElement).value).toBe('3');
+    expect(state.commands).toHaveLength(0);
 });
 
 test.each(['create', 'edit'] as const)('%s Back and Cancel are real destination links with native modified activation and one dirty blocker', async mode => {

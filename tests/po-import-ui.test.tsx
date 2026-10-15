@@ -7,9 +7,10 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import type { LocalDocument, ParsedPO, ReviewDecision } from '../src/lib/poImport/contracts'
 
 const state = vi.hoisted(() => ({ send: vi.fn(), read: vi.fn(), parse: vi.fn(), prepare: vi.fn(), navigate: vi.fn(),
- customers: [] as any[], products: [] as any[], fetching: false, error: false, actor: 'u', role: 'po_admin', profileActive: true, realMatches: false }))
+ customers: [] as any[], products: [] as any[], fetching: false, error: false, actor: 'u', role: 'po_admin', profileActive: true, realMatches: false, unavailableOptions: new Set<string>() }))
 vi.mock('../src/lib/catalogue/useCatalogueOrderOptions', () => ({ useCatalogueOrderOptions: (kind: string, purpose: string) => ({
  data: (kind === 'customer' ? state.customers : state.products).map(row => ({ ...row, is_enabled: row.is_enabled ?? true })).filter(row => purpose === 'all-for-history' || row.is_enabled),
+ getCurrentData: () => state.fetching || state.error || state.unavailableOptions.has(kind) || !state.actor || !state.profileActive || !['po_admin', 'executive'].includes(state.role) ? undefined : (kind === 'customer' ? state.customers : state.products).map(row => ({ ...row, is_enabled: row.is_enabled ?? true })).filter(row => purpose === 'all-for-history' || row.is_enabled),
  isFetching: state.fetching, isError: state.error, refetch: vi.fn(),
 }) }))
 vi.mock('../src/lib/supabase', () => ({ supabase: {} }))
@@ -31,7 +32,7 @@ function parsed(price: string | null = '125'): ParsedPO {
 function localDocument(): LocalDocument { return { pages: [], previews: [new Blob(['synthetic'], { type: 'image/png' })], dispose: vi.fn() } }
 const clients: QueryClient[] = []
 beforeEach(() => {
- state.send.mockReset().mockResolvedValue({ id: 'saved' }); state.navigate.mockReset(); state.fetching = false; state.error = false; state.actor = 'u'; state.role = 'po_admin'; state.profileActive = true; state.realMatches = false
+ state.send.mockReset().mockResolvedValue({ id: 'saved' }); state.navigate.mockReset(); state.fetching = false; state.error = false; state.actor = 'u'; state.role = 'po_admin'; state.profileActive = true; state.realMatches = false; state.unavailableOptions.clear()
  state.customers = [{ id: 'c', name: 'Synthetic buyer', pricing_tier: 'luar_kota' }, { id: 'd', name: 'Other buyer', pricing_tier: 'dalam_kota' }]
  state.products = [{ id: 'p', sku: 'SYN-1', name: 'Synthetic product', size: 'pcs', unit_price: 999, harga_pokok: 20, luar_kota: 30, dalam_kota: 40, depo_bangunan: null }]
  state.read.mockReset().mockResolvedValue(localDocument()); state.parse.mockReset().mockReturnValue(parsed())
@@ -470,5 +471,21 @@ test('mobile import active-tab tint and border follow keyboard and click selecti
  fireEvent.keyDown(documentTab, { key: 'End' }); expectSelected(reviewTab, documentTab); expect(document.activeElement).toBe(reviewTab)
  fireEvent.click(documentTab); expectSelected(documentTab, reviewTab)
  fireEvent.click(reviewTab); expectSelected(reviewTab, documentTab)
+ expect(state.send).not.toHaveBeenCalled()
+})
+
+
+test.each(['customer', 'product', 'disabled-product', 'renamed-product', 'changed-price', 'changed-tier'])('pending Apply checks live %s before the observer rerenders', async change => {
+ mount(); forceRerender('Keep this draft'); await review(); confirmReview(); apply()
+ if (change === 'disabled-product') state.products = [{ ...state.products[0], is_enabled: false }]
+ else if (change === 'renamed-product') state.products = [{ ...state.products[0], name: 'New canonical identity' }]
+ else if (change === 'changed-price') state.products = [{ ...state.products[0], luar_kota: 31 }]
+ else if (change === 'changed-tier') state.customers = [{ ...state.customers[0], pricing_tier: 'dalam_kota' }, state.customers[1]]
+ else state.unavailableOptions.add(change)
+ // The pending confirmation still owns the previous rendered options.
+ fireEvent.click(screen.getByRole('button', { name: 'Buang perubahan' }))
+ expect((screen.getByPlaceholderText('mis. PO-2024-001') as HTMLInputElement).value).toBe('Keep this draft')
+ expect(screen.queryByLabelText('Harga satuan')).toBeNull()
+ expect(screen.queryByText('Hasil sudah diterapkan. Periksa formulir lalu gunakan Simpan PO jika benar.')).toBeNull()
  expect(state.send).not.toHaveBeenCalled()
 })

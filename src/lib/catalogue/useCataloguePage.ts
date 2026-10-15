@@ -15,6 +15,7 @@ import type { CatalogueOwner } from '../../components/catalogue/CatalogueRecover
 
 const unavailableBackend: CatalogueBackend = {
   backend: 'unavailable',
+  assertCurrent: () => { throw new Error('Backend katalog belum tersedia.') },
   rpc: async () => { throw new Error('Backend katalog belum tersedia.') },
   withExclusiveLock: async () => { throw new Error('Kunci katalog belum tersedia.') },
 }
@@ -94,13 +95,16 @@ export function useCataloguePage<K extends CatalogueKind>(options: { kind: K; se
   const acceptCanonical = async (raw: CatalogueReceipt) => {
     if (!identity || !backend || !operation?.owner.isCurrent()) return false
     const receipt = parseCatalogueReceipt(raw)
-    if (receipt.actor_id !== identity.actorId || receipt.operation !== 'set_enabled' || !receipt.before || !receipt.after) return false
+    if (receipt.actor_id !== identity.actorId || !['create', 'edit', 'set_enabled'].includes(receipt.operation) || !receipt.after) return false
     const current = operation.owner.isCurrent
     // The receipt may belong to the other page or a row outside this filter/page.
     const rows = await fetchCatalogueOptions(receipt.kind, 'all-for-history', { identity, transport: backend, isCurrent: current })
     const row = rows.find(item => item.id === receipt.id)
-    if (!current() || !row || BigInt(row.catalog_version) < BigInt(receipt.after.catalog_version)
-      || row.catalog_version === receipt.after.catalog_version && row.is_enabled !== receipt.after.is_enabled) return false
+    // A validated terminal receipt proves the write even if this identity was
+    // subsequently deleted. The complete authorized history read establishes
+    // canonical absence; it never proves success for an unknown request.
+    if (!current() || row && (BigInt(row.catalog_version) < BigInt(receipt.after.catalog_version)
+      || row.catalog_version === receipt.after.catalog_version && row.is_enabled !== receipt.after.is_enabled)) return false
     await invalidateCatalogueProjections(client, identity, receipt.kind)
     if (!current()) return false
     if (receipt.kind === options.kind) await query.refetch({ throwOnError: true })

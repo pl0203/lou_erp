@@ -145,10 +145,39 @@ export default function POEdit() {
   const historicalLineIds = new Set((existingLines ?? []).filter(line => line.has_delivery_history).map(line => line.id))
   const deliveredByLine = Object.fromEntries((existingLines ?? []).map(line => [line.id, line.delivered_quantity]))
   const hasDeliveryHistory = lineState?.po_has_delivery_history ?? false
-  const { data: customers, isError: customersError, isFetching: customersFetching, refetch: refetchCustomers } = useCatalogueOrderOptions('customer', 'all-for-history')
-  const { data: products, isError: productsError, isFetching: productsFetching, refetch: refetchProducts } = useCatalogueOrderOptions('product', 'all-for-history')
+  const customerHistory = useCatalogueOrderOptions('customer', 'all-for-history')
+  const productHistory = useCatalogueOrderOptions('product', 'all-for-history')
+  const { data: customers, isError: customersError, isFetching: customersFetching, refetch: refetchCustomers } = customerHistory
+  const { data: products, isError: productsError, isFetching: productsFetching, refetch: refetchProducts } = productHistory
   const customerOptions = useCatalogueOrderOptions('customer', 'enabled-for-order')
   const productOptions = useCatalogueOrderOptions('product', 'enabled-for-order')
+
+  const readCurrentCatalogue = () => {
+    const customers = customerHistory.getCurrentData(), products = productHistory.getCurrentData()
+    const enabledCustomers = customerOptions.getCurrentData(), enabledProducts = productOptions.getCurrentData()
+    if (!customers || !products || !enabledCustomers || !enabledProducts) throw new Error('Pilihan katalog belum siap. Tunggu pemuatan atau coba lagi.')
+    return { customers, products, enabledCustomers, enabledProducts }
+  }
+  const assertCatalogueDraft = (draft: { customer_id: string; lineItems: LineItemRow[] }) => {
+    const catalogue = readCurrentCatalogue()
+    const customer = catalogue.customers.find(row => row.id === draft.customer_id)
+    if (!customer || !customer.is_enabled && draft.customer_id !== po?.customer_id || customer.is_enabled && !catalogue.enabledCustomers.some(row => row.id === customer.id && row.is_enabled)) throw new Error('Pilih pelanggan aktif terlebih dahulu.')
+    for (const item of draft.lineItems.filter(line => !line._deleted)) {
+      const saved = existingLines?.find(line => line.id === item.id)
+      const product = catalogue.products.find(row => row.id === item.product_id)
+      if (!saved) {
+        const enabled = catalogue.enabledProducts.find(row => row.id === item.product_id && row.is_enabled)
+        if (item.id || !customer.is_enabled || !product?.is_enabled || !enabled || enabled.sku !== item.sku || enabled.name !== item.product_name || product.sku !== item.sku || product.name !== item.product_name) throw new Error('Barang baru harus dipilih dari katalog aktif untuk pelanggan aktif.')
+      } else if ((saved.product_id ?? null) !== item.product_id || (saved.sku ?? '') !== item.sku || saved.product_name !== item.product_name) {
+        throw new Error('Identitas barang tersimpan tidak boleh diubah; pilih barang pengganti dari katalog aktif.')
+      }
+      if (saved && (!customer.is_enabled || item.product_id && !product?.is_enabled) && item.quantity > saved.quantity) throw new Error('Jumlah barang untuk katalog nonaktif tidak boleh melebihi jumlah tersimpan pada baris ini.')
+    }
+    return { ...catalogue, customer }
+  }
+  type Submission = Parameters<typeof saveEdits>[1] & { catalogueAdmission: string }
+  // Keep the originating owner and editor across the stock-warning draft clone.
+  const catalogueAdmission = useRef<{ key: string; editor: typeof editor; assert: typeof assertCatalogueDraft } | null>(null)
 
   useEffect(() => {
     if (readReady && po && lineState && existingLines && !initialized) {
@@ -174,9 +203,12 @@ export default function POEdit() {
   const mutation = useMutation({
     retry: false,
     onMutate: () => activePO.current,
-    mutationFn: (draft: Parameters<typeof saveEdits>[1]) => {
+    mutationFn: (draft: Submission) => {
+      const admission = catalogueAdmission.current
+      if (!admission || admission.key !== draft.catalogueAdmission || admission.editor !== activePO.current) throw new Error('Pilihan katalog berubah. Periksa kembali formulir.')
+      admission.assert(draft)
       if (!readReady || !initialized || !lineState || lineState.po_updated_at !== initialVersion) throw new Error('Data PO berubah atau belum lengkap. Muat ulang sebelum menyimpan.')
-      if (lineItems.some(line => !line._deleted && line.quantity < (deliveredByLine[line.id ?? ''] ?? 0))) throw new Error('Jumlah tidak boleh kurang dari jumlah terkirim aktif.')
+      if (draft.lineItems.some(line => !line._deleted && line.quantity < (deliveredByLine[line.id ?? ''] ?? 0))) throw new Error('Jumlah tidak boleh kurang dari jumlah terkirim aktif.')
       return saveEdits(id!, draft, sendTransaction)
     },
     onSuccess: (_result, _draft, submittedEditor) => {
@@ -188,8 +220,9 @@ export default function POEdit() {
     },
   })
 
-  const stockSubmission = usePromoStockSubmission((draft: Parameters<typeof saveEdits>[1]) => mutation.mutateAsync(draft))
+  const stockSubmission = usePromoStockSubmission((draft: Submission) => mutation.mutateAsync(draft))
   const formLocked = mutation.isPending
+  const submissionStarting = useRef(false)
 
   useEffect(() => {
     refreshSequence.current++; setRefreshingPO(false); mutation.reset()
@@ -241,7 +274,13 @@ export default function POEdit() {
     if (input) { input.focus(); input.select(); input.scrollIntoView?.({ block: 'nearest' }) }
     else pendingFocus.current = { key, field: 'quantity' }
   }
-  const addProduct = (product: Product) => {
+  const addProduct = (selected: Product) => {
+    let product: Product, currentTier: typeof pricingTier
+    try {
+      const catalogue = assertCatalogueDraft({ customer_id: customerId, lineItems: [{ id: null, product_id: selected.id, product_name: selected.name, sku: selected.sku, quantity: 1, unit_price: Number.NaN }] })
+      product = catalogue.enabledProducts.find(row => row.id === selected.id)!
+      currentTier = catalogue.customer.pricing_tier
+    } catch (error) { setEntryNotice((error as Error).message); return }
     const sku = product.sku.trim().toLocaleLowerCase()
     const existing = lineItems.find(line => !line._deleted && (sku && line.sku.trim().toLocaleLowerCase() === sku))
     if (existing) {
@@ -250,7 +289,7 @@ export default function POEdit() {
       return
     }
     setEntryNotice(''); setEntryError(null)
-    setLineItems(prev => [...prev, { id: null, product_id: product.id, _key: crypto.randomUUID(), product_name: product.name, sku: product.sku, quantity: 1, unit_price: resolveCatalogPrice(product, pricingTier) ?? Number.NaN }])
+    setLineItems(prev => [...prev, { id: null, product_id: product.id, _key: crypto.randomUUID(), product_name: product.name, sku: product.sku, quantity: 1, unit_price: resolveCatalogPrice(product, currentTier) ?? Number.NaN }])
     productSearch.current?.focus()
   }
   const maximumQuantity = (item: LineItemRow) => {
@@ -260,16 +299,7 @@ export default function POEdit() {
   }
   const validateLine = (item: LineItemRow) => {
     try {
-      const saved = existingLines?.find(line => line.id === item.id)
-      if (!selectedCustomer || !selectedCustomer.is_enabled && customerId !== po?.customer_id) throw new Error('Pilih pelanggan aktif terlebih dahulu.')
-      if (!saved) {
-        const product = productOptions.data?.find(product => product.id === item.product_id)
-        if (!selectedCustomer.is_enabled || !product || product.sku !== item.sku || product.name !== item.product_name) throw new Error('Barang baru harus dipilih dari katalog aktif untuk pelanggan aktif.')
-      } else if ((saved.product_id ?? null) !== item.product_id || (saved.sku ?? '') !== item.sku || saved.product_name !== item.product_name) {
-        throw new Error('Identitas barang tersimpan tidak boleh diubah; pilih barang pengganti dari katalog aktif.')
-      }
-      const maximum = maximumQuantity(item)
-      if (maximum !== undefined && item.quantity > maximum) throw new Error('Jumlah barang untuk katalog nonaktif tidak boleh melebihi jumlah tersimpan pada baris ini.')
+      assertCatalogueDraft({ customer_id: customerId, lineItems: [item] })
       validateOrderLines([item])
       if (item.quantity < (deliveredByLine[item.id ?? ''] ?? 0)) throw new Error('Jumlah tidak boleh kurang dari jumlah terkirim aktif.')
     } catch (error) {
@@ -286,7 +316,7 @@ export default function POEdit() {
   const total = visibleLines.reduce((sum, l) => sum + l.quantity * l.unit_price, 0)
 
   const handleSave = () => {
-    if (mutation.isPending) return
+    if (mutation.isPending || submissionStarting.current || stockSubmission.warning) return
     if (!customerId) return alert('Pilih pelanggan terlebih dahulu.')
     if (visibleLines.length === 0) {
       alert('PO harus memiliki minimal satu barang.')
@@ -295,7 +325,10 @@ export default function POEdit() {
     }
     if (!visibleLines.every(validateLine)) return
     setEntryError(null)
-    void stockSubmission.run({ customer_id: customerId, expected_delivery_date: expectedDelivery || null, notes: notes || null, lineItems, expected_updated_at: initialVersion })
+    submissionStarting.current = true
+    const key = crypto.randomUUID()
+    catalogueAdmission.current = { key, editor, assert: assertCatalogueDraft }
+    void stockSubmission.run({ catalogueAdmission: key, customer_id: customerId, expected_delivery_date: expectedDelivery || null, notes: notes || null, lineItems, expected_updated_at: initialVersion }).finally(() => { submissionStarting.current = false })
   }
 
   const recovery = <TransactionRecovery key={id} send={sendTransaction} onCommitted={result => {
@@ -360,7 +393,10 @@ export default function POEdit() {
             <div>
               <Field id="po-customer" label="Pelanggan">{control => <POCustomerLookup {...control} customers={customerOptions.data ?? []} selectedId={customerId} selectedLabel={po.customers?.name}
                 disabled={customerOptions.isError || customerOptions.isFetching || !customerOptions.data || hasDeliveryHistory || !readReady || !customers || customersError || customersFetching || formLocked}
-                onSelect={customer => setCustomerId(customer.id)} />}</Field>
+                onSelect={customer => {
+                  const current = customerOptions.getCurrentData(), history = customerHistory.getCurrentData()
+                  if (current?.some(row => row.id === customer.id && row.is_enabled) && history?.some(row => row.id === customer.id && row.is_enabled)) setCustomerId(customer.id)
+                }} />}</Field>
               {hasDeliveryHistory && <p className="text-[13px] text-brand-secondary mt-1">Pelanggan terkunci karena PO memiliki riwayat pengiriman.</p>}
               {selectedCustomer && (
                 <p className="text-[13px] text-blue-600 mt-1">

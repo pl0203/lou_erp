@@ -5,7 +5,7 @@ import React from 'react'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 const state=vi.hoisted(()=>{const invalidate=vi.fn();return {rpc:vi.fn(),navigate:vi.fn(),invalidate,reset:vi.fn(),queryClient:{invalidateQueries:invalidate,cancelQueries:vi.fn(async()=>{})},status:'in_progress',historyError:false,history:[{voided_at:null as string|null,sj_line_items:[{po_line_item_id:'line',quantity_delivered:2}]}]}})
-vi.mock('../src/lib/catalogue/useCatalogueOrderOptions',()=>({useCatalogueOrderOptions:(kind:string)=>({data:kind==='customer'?[{id:'c',name:'Dummy customer',pricing_tier:'others',is_enabled:true}]:[],isError:false,isFetching:false,refetch:vi.fn()})}))
+vi.mock('../src/lib/catalogue/useCatalogueOrderOptions',()=>({useCatalogueOrderOptions:(kind:string)=>({data:kind==='customer'?[{id:'c',name:'Dummy customer',pricing_tier:'others',is_enabled:true}]:[],getCurrentData:()=>kind==='customer'?[{id:'c',name:'Dummy customer',pricing_tier:'others',is_enabled:true}]:[],isError:false,isFetching:false,refetch:vi.fn()})}))
 vi.mock('../src/lib/supabase',()=>({supabase:{rpc:state.rpc}}))
 vi.mock('../src/lib/AuthContext',()=>({useAuth:()=>({user:{id:'dummy'}})}))
 vi.mock('../src/components/AthelNav',()=>({default:()=>null}))

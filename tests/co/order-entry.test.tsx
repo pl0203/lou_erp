@@ -199,6 +199,7 @@ test.each(['disabled product', 'removed row'])('stale reuse choice rejects a %s'
     } else fireEvent.click(screen.getByRole('button', { name: 'Hapus Product 1' }));
     const choice = screen.queryByRole('button', { name: 'Gunakan identitas stok lama' });
     if (choice) fireEvent.click(choice);
+    if (kind === 'disabled product') await screen.findByText('Barang baru harus dipilih dari katalog aktif dengan SKU yang sesuai.');
     expect(screen.queryByDisplayValue('Historical key')).toBeNull();
     expect(screen.queryByText(/harga kesepakatan dipertahankan/)).toBeNull();
     if (kind === 'disabled product') expect(screen.getByDisplayValue('Product 1')).toBeTruthy();

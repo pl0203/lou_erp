@@ -98,8 +98,37 @@ export default function PONew() {
   const formDirty = !!customerId || !!poNumber || !!expectedDelivery || !!notes || orderDate !== initialOrderDate || itemsDirty
   const unsaved = useUnsavedChanges(formDirty || importDirty)
 
-  const { data: customers, isError: customerReadError, isFetching: customersFetching, refetch: retryCustomers } = useCatalogueOrderOptions('customer', 'enabled-for-order')
-  const { data: products, isError: productReadError, isFetching: productsFetching, refetch: retryProducts } = useCatalogueOrderOptions('product', 'enabled-for-order')
+  const customerOptions = useCatalogueOrderOptions('customer', 'enabled-for-order')
+  const productOptions = useCatalogueOrderOptions('product', 'enabled-for-order')
+  const { data: customers, isError: customerReadError, isFetching: customersFetching, refetch: retryCustomers } = customerOptions
+  const { data: products, isError: productReadError, isFetching: productsFetching, refetch: retryProducts } = productOptions
+
+  // Rendered choices are display-only. Admission reads the live owner-bound query state.
+  const readCurrentCatalogue = () => {
+    const customers = customerOptions.getCurrentData(), products = productOptions.getCurrentData()
+    if (!customers || !products) throw new Error('Pilihan katalog belum siap. Tunggu pemuatan atau coba lagi.')
+    return { customers, products }
+  }
+  const assertCatalogueDraft = (draft: { customer_id: string; lineItems: Pick<LineItem, 'product_id' | 'product_name' | 'sku'>[] }) => {
+    const catalogue = readCurrentCatalogue()
+    const customer = catalogue.customers.find(row => row.id === draft.customer_id && row.is_enabled)
+    if (!customer) throw new Error('Pilih pelanggan aktif terlebih dahulu.')
+    for (const item of draft.lineItems) {
+      const product = catalogue.products.find(row => row.id === item.product_id && row.is_enabled)
+      if (!product || product.sku !== item.sku || product.name !== item.product_name) throw new Error('Pilih ulang barang dari katalog aktif.')
+    }
+    return { ...catalogue, customer }
+  }
+  // Match the importer's review context without replacing document prices.
+  const importCatalogueKey = (currentCustomers: typeof customers, currentProducts: typeof products) => JSON.stringify([
+    currentCustomers?.map(customer => [customer.id, customer.name, customer.pricing_tier]),
+    currentProducts?.map(product => [product.id, product.name, product.sku, product.size, product.harga_pokok, product.luar_kota, product.dalam_kota, product.depo_bangunan]),
+  ])
+  const importCatalogueSnapshot = importCatalogueKey(customers, products)
+  type Submission = Parameters<typeof createPO>[0] & { catalogueAdmission: string }
+  // The stock-warning hook clones drafts. Only this opaque key is cloned; the
+  // origin-bound getters stay in memory and are never added to the RPC payload.
+  const catalogueAdmission = useRef<{ key: string; assert: typeof assertCatalogueDraft } | null>(null)
 
   const onCommitted = (po: { id: string }) => {
     queryClient.invalidateQueries()
@@ -107,12 +136,18 @@ export default function PONew() {
   }
 
   const mutation = useMutation({
-    mutationFn: (payload: Parameters<typeof createPO>[0]) => createPO(payload, sendTransaction),
+    mutationFn: (payload: Submission) => {
+      const admission = catalogueAdmission.current
+      if (!admission || admission.key !== payload.catalogueAdmission) throw new Error('Pilihan katalog berubah. Periksa kembali formulir.')
+      admission.assert(payload)
+      return createPO(payload, sendTransaction)
+    },
     onSuccess: onCommitted,
   })
 
-  const stockSubmission = usePromoStockSubmission((draft: Parameters<typeof createPO>[0]) => mutation.mutateAsync(draft))
+  const stockSubmission = usePromoStockSubmission((draft: Submission) => mutation.mutateAsync(draft))
   const formLocked = mutation.isPending
+  const submissionStarting = useRef(false)
 
   // Get selected customer's pricing tier
   const selectedCustomer = customers?.find(c => c.id === customerId)
@@ -132,7 +167,13 @@ export default function PONew() {
     if (input) { input.focus(); input.select(); input.scrollIntoView?.({ block: 'nearest' }) }
     else pendingFocus.current = { key, field: 'quantity' }
   }
-  const addProduct = (product: Product) => {
+  const addProduct = (selected: Product) => {
+    let product: Product, currentTier: typeof pricingTier
+    try {
+      const catalogue = assertCatalogueDraft({ customer_id: customerId, lineItems: [{ product_id: selected.id, product_name: selected.name, sku: selected.sku }] })
+      product = catalogue.products.find(row => row.id === selected.id)!
+      currentTier = catalogue.customer.pricing_tier
+    } catch (error) { setEntryNotice((error as Error).message); return }
     const sku = product.sku.trim().toLocaleLowerCase()
     const existing = lineItems.find(line => line.product_id === product.id || (sku && line.sku.trim().toLocaleLowerCase() === sku))
     if (existing) {
@@ -141,13 +182,12 @@ export default function PONew() {
       return
     }
     setEntryNotice(''); setEntryError(null)
-    setLineItems(prev => [...prev, { ...newLine(), product_id: product.id, product_name: product.name, sku: product.sku, quantity: 1, unit_price: resolveCatalogPrice(product, pricingTier) ?? Number.NaN }])
+    setLineItems(prev => [...prev, { ...newLine(), product_id: product.id, product_name: product.name, sku: product.sku, quantity: 1, unit_price: resolveCatalogPrice(product, currentTier) ?? Number.NaN }])
     productSearch.current?.focus()
   }
   const validateLine = (item: LineItem) => {
     try {
-      const product = products?.find(product => product.id === item.product_id)
-      if (!product || product.sku !== item.sku || product.name !== item.product_name) throw new Error('Pilih ulang barang dari katalog aktif.')
+      assertCatalogueDraft({ customer_id: customerId, lineItems: [item] })
       validateOrderLines([item])
     } catch (error) {
       setEntryError({ key: item._key!, message: (error as Error).message })
@@ -162,8 +202,8 @@ export default function PONew() {
   const total = lineItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0)
 
   const handleSubmit = () => {
-    if (mutation.isPending) return
-    if (!selectedCustomer) return alert('Pilih pelanggan aktif terlebih dahulu.')
+    if (mutation.isPending || submissionStarting.current || stockSubmission.warning) return
+    if (!customerOptions.getCurrentData()?.some(customer => customer.id === customerId && customer.is_enabled)) return alert('Pilih pelanggan aktif terlebih dahulu.')
     if (!poNumber.trim()) return alert('Masukkan nomor PO terlebih dahulu.')
     if (lineItems.length === 0) {
       alert('PO harus memiliki minimal satu barang.')
@@ -172,14 +212,18 @@ export default function PONew() {
     }
     if (!lineItems.every(validateLine)) return
     setEntryError(null)
+    submissionStarting.current = true
+    const key = crypto.randomUUID()
+    catalogueAdmission.current = { key, assert: assertCatalogueDraft }
     void stockSubmission.run({
+      catalogueAdmission: key,
       customer_id: customerId,
       po_number: poNumber,
       order_date: orderDate,
       expected_delivery_date: expectedDelivery,
       notes,
       lineItems,
-    })
+    }).finally(() => { submissionStarting.current = false })
   }
 
   return (
@@ -205,8 +249,17 @@ export default function PONew() {
           disabled={!actorKey || !customers || !products || customerReadError || productReadError || customersFetching || productsFetching || formLocked}
           hasFormEdits={formDirty} onDirtyChange={setImportDirty}
           onApply={(proposed, accept) => unsaved.confirmDiscard(() => {
+            // Check before consuming acceptance so a stale confirmation cannot
+            // discard either the ordinary draft or the document review.
+            try {
+              const current = assertCatalogueDraft({ customer_id: proposed.customerId, lineItems: proposed.lineItems })
+              if (importCatalogueKey(current.customers, current.products) !== importCatalogueSnapshot) throw new Error('Pilihan katalog berubah. Periksa kembali hasil dokumen.')
+            }
+            catch (error) { setEntryNotice((error as Error).message); return }
             const draft = accept ? accept() : proposed
             if (!draft) return
+            try { assertCatalogueDraft({ customer_id: draft.customerId, lineItems: draft.lineItems }) }
+            catch (error) { setEntryNotice((error as Error).message); return }
             setCustomerId(draft.customerId); setPoNumber(draft.poNumber); setOrderDate(draft.orderDate)
             setExpectedDelivery(draft.expectedDelivery); setNotes(draft.notes); setLineItems(draft.lineItems)
             setEntryError(null); setEntryNotice(''); setImportDirty(false)
@@ -222,6 +275,7 @@ export default function PONew() {
                   const nextCustomer = customer.id
                   if (nextCustomer === customerId) return
                   unsaved.confirmDiscard(() => {
+                    if (!customerOptions.getCurrentData()?.some(row => row.id === nextCustomer && row.is_enabled)) return
                     setCustomerId(nextCustomer)
                     setLineItems([])
                     setEntryError(null); setEntryNotice('')

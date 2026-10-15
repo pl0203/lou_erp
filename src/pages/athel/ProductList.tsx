@@ -1,7 +1,10 @@
+import { sendCatalogueForm } from '../../lib/catalogue/formCommands'
+import type { CatalogueTransactionSender } from '../../lib/catalogue/transactions'
 import { useCataloguePage } from '../../lib/catalogue/useCataloguePage'
 import type { CatalogueRow, CatalogueStatus } from '../../lib/catalogue/contracts'
 import { CatalogueStatusActions } from '../../components/catalogue/CatalogueStatusActions'
 import { CatalogueRecovery } from '../../components/catalogue/CatalogueRecovery'
+import type { CatalogueOwner } from '../../components/catalogue/CatalogueRecovery'
 import { useProcurementAccess } from '../../lib/procurementAccess'
 import { parseCatalogPrice, formatCatalogPrice } from '../../lib/catalogPricing'
 import { useEffect, useRef, useState } from 'react'
@@ -44,7 +47,7 @@ const EMPTY_FORM: ProductForm = {
 
 const PAGE_SIZE = 10
 
-async function saveProduct(form: ProductForm, editingId: string | null) {
+async function saveProduct(sender: CatalogueTransactionSender, form: ProductForm, original: Product | null) {
   const payload = {
     name: form.name.trim(),
     sku: form.sku.trim().toUpperCase(),
@@ -53,16 +56,9 @@ async function saveProduct(form: ProductForm, editingId: string | null) {
     luar_kota: parseCatalogPrice(form.luar_kota),
     dalam_kota: parseCatalogPrice(form.dalam_kota),
     depo_bangunan: parseCatalogPrice(form.depo_bangunan),
-    ...(!editingId ? { unit_price: null } : {}), // Preserve the legacy price when editing.
   }
 
-  if (editingId) {
-    const { error } = await supabase.from('products').update(payload).eq('id', editingId)
-    if (error) throw error
-  } else {
-    const { error } = await supabase.from('products').insert(payload)
-    if (error) throw error
-  }
+  return sendCatalogueForm(sender, 'product', payload, original)
 }
 
 async function deleteProduct(id: string) {
@@ -84,6 +80,7 @@ export default function ProductList() {
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [originalProduct, setOriginalProduct] = useState<Product | null>(null)
   const [form, setForm] = useState<ProductForm>(EMPTY_FORM)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -107,14 +104,27 @@ export default function ProductList() {
 
   const catalogue = useCataloguePage({ kind: 'product', search: debouncedSearch, page, pageSize: PAGE_SIZE, status })
   const { data, isError, isFetching, isPlaceholderData, fetchStatus, refetch } = catalogue
+  const formOwner = useRef<CatalogueOwner | null>(null)
+  useEffect(() => {
+    if (showForm && (formOwner.current !== catalogue.owner || !formOwner.current?.isCurrent())) {
+      setShowForm(false)
+      setEditingId(null)
+      setForm(EMPTY_FORM)
+    }
+  }, [showForm, catalogue.owner])
 
   const products = data?.items ?? []
   const totalItems = data?.total ?? 0
 
 
   const saveMutation = useMutation({
-    mutationFn: () => { access.require(editingId ? 'product_edit' : 'product_create'); return saveProduct(form, editingId) },
+    mutationFn: () => {
+      if (!catalogue.sender || formOwner.current !== catalogue.owner || !formOwner.current?.isCurrent() || !catalogue.commandsAvailable
+        || !catalogue.authority?.[originalProduct ? 'product_edit' : 'product_create']) throw new Error('Kewenangan katalog belum terkonfirmasi.')
+      return saveProduct(catalogue.sender, form, originalProduct)
+    },
     onSettled: () => { mutationBusy.current = false },
+    onError: () => { if (catalogue.sender?.hasUnresolved()) setShowForm(false) },
     onSuccess: () => {
       dialogCommitted.current = true
       void catalogue.refresh()
@@ -138,10 +148,11 @@ export default function ProductList() {
   const modalPending = saveMutation.isPending || deleteMutation.isPending
 
   const openEdit = (p: Product, trigger: HTMLElement) => {
-    if (!access.capabilities.product_edit || mutationBusy.current || modalOpen || modalPending || catalogue.unresolved) return
+    if (!catalogue.commandsAvailable || !catalogue.authority?.product_edit || mutationBusy.current || modalOpen || modalPending || catalogue.unresolved) return
     dialogTrigger.current = trigger
     dialogCommitted.current = false
     saveMutation.reset()
+    setOriginalProduct(p)
     setEditingId(p.id)
     setForm({
       name: p.name,
@@ -152,11 +163,12 @@ export default function ProductList() {
       dalam_kota: p.dalam_kota?.toString() ?? '',
       depo_bangunan: p.depo_bangunan?.toString() ?? '',
     })
+    formOwner.current = catalogue.owner
     setShowForm(true)
   }
 
   const handleSave = () => {
-    if (!access.capabilities[editingId ? 'product_edit' : 'product_create'] || mutationBusy.current || modalPending || isError || catalogue.unresolved) return
+    if (!catalogue.commandsAvailable || !catalogue.authority?.[editingId ? 'product_edit' : 'product_create'] || mutationBusy.current || modalPending || isError || catalogue.unresolved) return
     if (!form.sku.trim()) return alert('SKU wajib diisi.')
     if (!form.name.trim()) return alert('Nama barang wajib diisi.')
     mutationBusy.current = true
@@ -177,7 +189,7 @@ export default function ProductList() {
     dialogTrigger.current = trigger; dialogCommitted.current = false; deleteMutation.reset(); setDeleteId(p.id)
   }
   const rowActions = (p: Product) => <div className="flex flex-wrap justify-end gap-2">
-    {access.capabilities.product_edit && <Button variant="quiet" size="compact" disabled={modalOpen || modalPending || catalogue.unresolved} onClick={event => openEdit(p, event.currentTarget)}>Ubah</Button>}
+    {catalogue.authority?.product_edit && <Button variant="quiet" size="compact" disabled={!catalogue.commandsAvailable || modalOpen || modalPending || catalogue.unresolved} onClick={event => openEdit(p, event.currentTarget)}>Ubah</Button>}
     {access.capabilities.product_delete && <Button variant="danger-quiet" size="compact" disabled={modalOpen || modalPending || catalogue.unresolved} onClick={event => openDelete(p, event.currentTarget)}>Hapus</Button>}
     {catalogue.owner && catalogue.sender ? <CatalogueStatusActions kind="product" row={p} owner={catalogue.owner} sender={catalogue.sender} authority={catalogue.authority} commandsAvailable={catalogue.commandsAvailable} disabled={modalOpen || modalPending || catalogue.unresolved} /> : <StatusBadge tone={p.is_enabled ? 'success' : 'neutral'}>{p.is_enabled ? 'Aktif' : 'Nonaktif'}</StatusBadge>}
   </div>
@@ -187,9 +199,9 @@ export default function ProductList() {
     <MainContent>
       <div inert={modalOpen} aria-hidden={modalOpen ? true : undefined}>
         <div ref={successFocus} tabIndex={-1} className="bg-white border-b border-brand-divider px-4 md:px-8 py-5">
-          <PageHeader title="Daftar Barang" description={data ? `${totalItems} barang` : 'Jumlah barang belum tersedia'} actions={access.capabilities.product_create && <Button disabled={modalOpen || modalPending || isError || catalogue.unresolved} onClick={event => {
-            if (!access.capabilities.product_create || mutationBusy.current || modalOpen || modalPending || catalogue.unresolved) return
-            dialogTrigger.current = event.currentTarget; dialogCommitted.current = false; saveMutation.reset(); setEditingId(null); setForm(EMPTY_FORM); setShowForm(true)
+          <PageHeader title="Daftar Barang" description={data ? `${totalItems} barang` : 'Jumlah barang belum tersedia'} actions={catalogue.authority?.product_create && <Button disabled={!catalogue.commandsAvailable || modalOpen || modalPending || isError || catalogue.unresolved} onClick={event => {
+            if (!catalogue.commandsAvailable || !catalogue.authority?.product_create || mutationBusy.current || modalOpen || modalPending || catalogue.unresolved) return
+            dialogTrigger.current = event.currentTarget; dialogCommitted.current = false; saveMutation.reset(); setOriginalProduct(null); setEditingId(null); setForm(EMPTY_FORM); formOwner.current = catalogue.owner; setShowForm(true)
           }}>+ Tambah Barang</Button>} />
         </div>
         <div className="px-4 md:px-8 py-4">
@@ -248,7 +260,7 @@ export default function ProductList() {
           </fieldset>
           {isError && <Notice tone="error" title="Daftar barang belum dapat dimuat." actions={<Button variant="secondary" onClick={() => { void refetch() }}>Coba lagi</Button>} />}
           {saveMutation.isError && <Notice tone="error" title={(saveMutation.error as Error).message} />}
-          <FormActions><Button variant="quiet" disabled={modalPending} onClick={closeForm}>Batal</Button><Button pending={saveMutation.isPending} disabled={!access.capabilities[editingId ? 'product_edit' : 'product_create'] || modalPending || isError} onClick={handleSave}>{saveMutation.isPending ? 'Menyimpan...' : 'Simpan'}</Button></FormActions>
+          <FormActions><Button variant="quiet" disabled={modalPending} onClick={closeForm}>Batal</Button><Button pending={saveMutation.isPending} disabled={!catalogue.commandsAvailable || !catalogue.authority?.[editingId ? 'product_edit' : 'product_create'] || modalPending || isError} onClick={handleSave}>{saveMutation.isPending ? 'Menyimpan...' : 'Simpan'}</Button></FormActions>
         </div>
       </Dialog>}
       {deleteId && <Dialog labelledBy="catalog-product-delete-title" pending={modalPending} onClose={() => { if (!mutationBusy.current && !modalPending) setDeleteId(null) }} returnFocus={null} fallbackFocus={restoreFocus}>

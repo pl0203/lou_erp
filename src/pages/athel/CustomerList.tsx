@@ -1,14 +1,16 @@
+import { sendCatalogueForm } from '../../lib/catalogue/formCommands'
+import type { CatalogueTransactionSender } from '../../lib/catalogue/transactions'
 import { useCataloguePage } from '../../lib/catalogue/useCataloguePage'
 import type { CatalogueRow, CatalogueStatus } from '../../lib/catalogue/contracts'
 import { CatalogueStatusActions } from '../../components/catalogue/CatalogueStatusActions'
 import { CatalogueRecovery } from '../../components/catalogue/CatalogueRecovery'
+import type { CatalogueOwner } from '../../components/catalogue/CatalogueRecovery'
 import CustomerPricingHelp from '../../components/CustomerPricingHelp'
 import { useProcurementAccess } from '../../lib/procurementAccess'
 import { hasInvalidCustomerCategories } from '../../lib/customerCategoryRows'
 import CustomerCategorySelect from '../../components/CustomerCategorySelect'
 import ReadFailure from '../../components/ReadFailure'
 import { parseCustomerCategory, formatCustomerCategory, type CustomerCategory } from '../../lib/customerCategory'
-import { confirmCustomerWrite } from '../../lib/customerWrites'
 import { useEffect, useRef, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
@@ -57,7 +59,7 @@ const TIER_LABELS: Record<string, string> = {
 
 const PAGE_SIZE = 10
 
-async function saveCustomer(form: CustomerForm, original: Customer | null) {
+async function saveCustomer(sender: CatalogueTransactionSender, form: CustomerForm, original: Customer | null) {
   const category = parseCustomerCategory(form.customer_category, { allowUnclassified: original !== null })
   const payload: Record<string, unknown> = {}
   for (const key of ['name', 'address', 'city', 'phone', 'email'] as const) {
@@ -67,14 +69,7 @@ async function saveCustomer(form: CustomerForm, original: Customer | null) {
   }
   if (!original || form.pricing_tier !== original.pricing_tier) payload.pricing_tier = form.pricing_tier
   if (!original || category !== original.customer_category) payload.customer_category = category
-  if (original) {
-    // No intended changes need no write or acknowledgement.
-    if (Object.keys(payload).length === 0) return
-    await confirmCustomerWrite(() => supabase.from('customers').update(payload).eq('id', original.id).select('id'), { id: original.id })
-  } else {
-    const id = crypto.randomUUID()
-    await confirmCustomerWrite(() => supabase.from('customers').insert({ id, ...payload }).select('id'), { id })
-  }
+  return sendCatalogueForm(sender, 'customer', payload, original)
 }
 
 async function deleteCustomer(id: string) {
@@ -111,6 +106,14 @@ export default function CustomerList() {
 
   const catalogue = useCataloguePage({ kind: 'customer', search: debouncedSearch, page, pageSize: PAGE_SIZE, status })
   const { data, isFetching, isPlaceholderData, fetchStatus, isError: queryReadError, refetch } = catalogue
+  const formOwner = useRef<CatalogueOwner | null>(null)
+  useEffect(() => {
+    if (showForm && (formOwner.current !== catalogue.owner || !formOwner.current?.isCurrent())) {
+      setShowForm(false)
+      setEditingId(null)
+      setForm(EMPTY_FORM)
+    }
+  }, [showForm, catalogue.owner])
 
   const customers = data?.items ?? []
   const readError = queryReadError || hasInvalidCustomerCategories(customers)
@@ -118,11 +121,16 @@ export default function CustomerList() {
 
 
   const saveMutation = useMutation({
-    mutationFn: () => { access.require(originalCustomer ? 'customer_edit' : 'customer_create'); return saveCustomer(form, originalCustomer) },
+    mutationFn: () => {
+      if (!catalogue.sender || formOwner.current !== catalogue.owner || !formOwner.current?.isCurrent() || !catalogue.commandsAvailable
+        || !catalogue.authority?.[originalCustomer ? 'customer_edit' : 'customer_create']) throw new Error('Kewenangan katalog belum terkonfirmasi.')
+      return saveCustomer(catalogue.sender, form, originalCustomer)
+    },
     onSettled: async () => {
       try { await catalogue.refresh() }
       finally { mutationBusy.current = false }
     },
+    onError: () => { if (catalogue.sender?.hasUnresolved()) setShowForm(false) },
     onSuccess: () => {
       dialogCommitted.current = true
       setShowForm(false)
@@ -145,7 +153,7 @@ export default function CustomerList() {
   const modalPending = saveMutation.isPending || deleteMutation.isPending
 
   const openEdit = (c: Customer, trigger: HTMLElement) => {
-    if (!access.capabilities.customer_edit || mutationBusy.current || modalOpen || modalPending || catalogue.unresolved) return
+    if (!catalogue.commandsAvailable || !catalogue.authority?.customer_edit || mutationBusy.current || modalOpen || modalPending || catalogue.unresolved) return
     dialogTrigger.current = trigger
     dialogCommitted.current = false
     saveMutation.reset()
@@ -160,11 +168,12 @@ export default function CustomerList() {
       pricing_tier: c.pricing_tier ?? 'others',
       customer_category: c.customer_category,
     })
+    formOwner.current = catalogue.owner
     setShowForm(true)
   }
 
   const handleSave = () => {
-    if (!access.capabilities[originalCustomer ? 'customer_edit' : 'customer_create'] || mutationBusy.current || modalPending || readError || catalogue.unresolved) return
+    if (!catalogue.commandsAvailable || !catalogue.authority?.[originalCustomer ? 'customer_edit' : 'customer_create'] || mutationBusy.current || modalPending || readError || catalogue.unresolved) return
     if (!form.name.trim()) return alert('Nama pelanggan wajib diisi.')
     mutationBusy.current = true
     saveMutation.mutate()
@@ -184,7 +193,7 @@ export default function CustomerList() {
     dialogTrigger.current = trigger; dialogCommitted.current = false; deleteMutation.reset(); setDeleteId(c.id)
   }
   const rowActions = (c: Customer) => <div className="flex flex-wrap justify-end gap-2">
-    {access.capabilities.customer_edit && <Button variant="quiet" size="compact" disabled={modalOpen || modalPending || catalogue.unresolved} onClick={event => openEdit(c, event.currentTarget)}>Ubah</Button>}
+    {catalogue.authority?.customer_edit && <Button variant="quiet" size="compact" disabled={!catalogue.commandsAvailable || modalOpen || modalPending || catalogue.unresolved} onClick={event => openEdit(c, event.currentTarget)}>Ubah</Button>}
     {access.capabilities.customer_delete && <Button variant="danger-quiet" size="compact" disabled={modalOpen || modalPending || catalogue.unresolved} onClick={event => openDelete(c, event.currentTarget)}>Hapus</Button>}
     {catalogue.owner && catalogue.sender ? <CatalogueStatusActions kind="customer" row={c} owner={catalogue.owner} sender={catalogue.sender} authority={catalogue.authority} commandsAvailable={catalogue.commandsAvailable} disabled={modalOpen || modalPending || catalogue.unresolved} /> : <StatusBadge tone={c.is_enabled ? 'success' : 'neutral'}>{c.is_enabled ? 'Aktif' : 'Nonaktif'}</StatusBadge>}
   </div>
@@ -193,9 +202,9 @@ export default function CustomerList() {
     <MainContent>
       <div inert={modalOpen} aria-hidden={modalOpen ? true : undefined}>
         <div ref={successFocus} tabIndex={-1} className="bg-white border-b border-brand-divider px-4 md:px-8 py-5">
-          <PageHeader title="Daftar Pelanggan" description={data ? `${totalItems} pelanggan` : 'Jumlah pelanggan belum tersedia'} actions={access.capabilities.customer_create && <Button disabled={readError || modalOpen || modalPending || catalogue.unresolved} onClick={event => {
-            if (!access.capabilities.customer_create || mutationBusy.current || modalOpen || modalPending || catalogue.unresolved) return
-            dialogTrigger.current = event.currentTarget; dialogCommitted.current = false; saveMutation.reset(); setOriginalCustomer(null); setEditingId(null); setForm(EMPTY_FORM); setShowForm(true)
+          <PageHeader title="Daftar Pelanggan" description={data ? `${totalItems} pelanggan` : 'Jumlah pelanggan belum tersedia'} actions={catalogue.authority?.customer_create && <Button disabled={!catalogue.commandsAvailable || readError || modalOpen || modalPending || catalogue.unresolved} onClick={event => {
+            if (!catalogue.commandsAvailable || !catalogue.authority?.customer_create || mutationBusy.current || modalOpen || modalPending || catalogue.unresolved) return
+            dialogTrigger.current = event.currentTarget; dialogCommitted.current = false; saveMutation.reset(); setOriginalCustomer(null); setEditingId(null); setForm(EMPTY_FORM); formOwner.current = catalogue.owner; setShowForm(true)
           }}>+ Tambah Pelanggan</Button>} />
         </div>
         <div className="px-4 md:px-8 py-4"><FilterBar label="Filter daftar pelanggan"><Field id="catalog-customer-search" label="Cari pelanggan" className="w-full sm:w-80">{control => <input {...control} type="text" placeholder="Cari pelanggan..." value={search} onChange={event => handleSearch(event.target.value)} />}</Field><Field id="catalog-customer-status" label="Status pelanggan">{control => <select {...control} value={status} onChange={event => setStatus(event.target.value as CatalogueStatus)}><option value="all">Semua status</option><option value="enabled">Aktif</option><option value="disabled">Nonaktif</option></select>}</Field></FilterBar></div>
@@ -244,7 +253,7 @@ export default function CustomerList() {
           <Field id="catalog-customer-tier" label="Tier Harga" hint={<CustomerPricingHelp id="customer-pricing-help" />}>{control => <select {...control} value={form.pricing_tier} disabled={modalPending} onChange={event => { if (!mutationBusy.current && !modalPending) setForm(p => ({ ...p, pricing_tier: event.target.value })) }}>{Object.entries(TIER_LABELS).map(([tier, label]) => <option key={tier} value={tier}>{label}</option>)}</select>}</Field>
           {readError && <ReadFailure onRetry={() => { void refetch() }} />}
           {saveMutation.isError && <Notice tone="error" title={(saveMutation.error as Error).message} />}
-          <FormActions><Button variant="quiet" disabled={modalPending} onClick={closeForm}>Batal</Button><Button pending={saveMutation.isPending} disabled={!access.capabilities[originalCustomer ? 'customer_edit' : 'customer_create'] || modalPending || readError} onClick={handleSave}>{saveMutation.isPending ? 'Menyimpan...' : 'Simpan'}</Button></FormActions>
+          <FormActions><Button variant="quiet" disabled={modalPending} onClick={closeForm}>Batal</Button><Button pending={saveMutation.isPending} disabled={!catalogue.commandsAvailable || !catalogue.authority?.[originalCustomer ? 'customer_edit' : 'customer_create'] || modalPending || readError} onClick={handleSave}>{saveMutation.isPending ? 'Menyimpan...' : 'Simpan'}</Button></FormActions>
         </div>
       </Dialog>}
       {deleteId && <Dialog labelledBy="catalog-customer-delete-title" pending={modalPending} onClose={() => { if (!mutationBusy.current && !modalPending) setDeleteId(null) }} returnFocus={null} fallbackFocus={restoreFocus}>

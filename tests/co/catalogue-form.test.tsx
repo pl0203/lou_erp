@@ -50,7 +50,7 @@ test('a product disabled after selection cannot be saved or silently converted t
     state.products[0].is_enabled = false;
     await act(async () => { await client.invalidateQueries({ queryKey: ['catalogue'] }); });
     fireEvent.click(screen.getByRole('button', { name: 'Simpan CO' }));
-    await screen.findAllByText(/katalog aktif/); expect(state.commands).toHaveLength(0);
+    await screen.findAllByText('Barang baru harus dipilih dari katalog aktif dengan SKU yang sesuai.'); expect(state.commands).toHaveLength(0);
 });
 test('malformed catalogue responses never become selectable', async () => {
     state.catalogueRPC.mockResolvedValue({ data: { version: 1, actor_id: uuid(99), rows: [] }, error: null });
@@ -68,9 +68,41 @@ test('catalogue disable during an awaited stock-key lookup never admits an obsol
     state.products[0].is_enabled = false;
     await act(async () => { await client.invalidateQueries({ queryKey: ['catalogue'] }); });
     await act(async () => release(null));
-    await screen.findAllByText(/katalog aktif/);
+    await screen.findByText('Barang baru harus dipilih dari katalog aktif dengan SKU yang sesuai.');
     expect(screen.queryByDisplayValue('Product 1')).toBeNull(); expect(state.commands).toHaveLength(0);
     lookup.mockRestore();
+});
+test.each(['customer', 'product'] as const)('a newly disabled saved %s cannot reuse a stale rendered quantity ceiling', async kind => {
+    state.lines = [{ ...line(1), product_id: product(1).id }];
+    const { client } = mount(<COForm mode="edit"/>);
+    await screen.findByDisplayValue('Item 1'); change('Qty Item 1', '3');
+    // Update the already validated history envelope and click before React can
+    // render the changed maximum. The enabled-options projection is unchanged.
+    const history = client.getQueryCache().getAll().filter(query => query.queryKey[0] === 'catalogue' && query.queryKey[6] === kind && query.queryKey[7] === 'all-for-history');
+    expect(history).toHaveLength(1);
+    act(() => {
+        for (const query of history) client.setQueryData(query.queryKey, (previous: any) => ({ ...previous, rows: previous.rows.map((row: any) => ({ ...row, is_enabled: false })) }));
+        expect(screen.queryByText(/Katalog nonaktif atau tidak tersedia: jumlah maksimum/)).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: 'Simpan Perubahan' }));
+    });
+    await screen.findAllByText('Jumlah barang untuk katalog nonaktif tidak boleh melebihi jumlah tersimpan pada baris ini.');
+    expect(state.commands).toHaveLength(0);
+    expect((screen.getByLabelText('Qty Item 1') as HTMLInputElement).value).toBe('3');
+});
+test('saved product ceilings are rechecked when another new row awaits a stock-key lookup', async () => {
+    state.lines = [{ ...line(1), product_id: product(1).id }]; state.products = [product(1), product(2)];
+    const { client } = mount(<COForm mode="edit"/>);
+    await screen.findByDisplayValue('Item 1'); change('Qty Item 1', '3');
+    await addProduct('SKU-2'); await screen.findByDisplayValue('Product 2');
+    let release!: (value: any) => void;
+    const lookup = vi.spyOn(rpc, 'resolveCOStockKey').mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    fireEvent.click(screen.getByRole('button', { name: 'Simpan Perubahan' }));
+    await waitFor(() => expect(release).toBeTypeOf('function'));
+    state.products[0].is_enabled = false;
+    await act(async () => { await client.invalidateQueries({ queryKey: ['catalogue'] }); });
+    await act(async () => release(null));
+    await screen.findByText('Jumlah barang untuk katalog nonaktif tidak boleh melebihi jumlah tersimpan pada baris ini.');
+    expect(state.commands).toHaveLength(0); lookup.mockRestore();
 });
 test('catalogue authority denial clears private draft fields through the existing source boundary', async () => {
     const { client } = await create(); change('Catatan', 'Private catalogue draft');

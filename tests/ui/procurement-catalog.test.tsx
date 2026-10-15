@@ -8,6 +8,7 @@ const state = vi.hoisted(() => ({
   backend: null as any, products: [] as any[], promotions: [] as any[], dashboard: null as any,
   role: 'executive', readError: false, readGate: null as Promise<void> | null,
   writeGate: null as Promise<void> | null, writeError: false, write: vi.fn(), invoke: vi.fn(),
+  catalogueReceipts: new Map<string, any>(), catalogueAbandoned: new Set<string>(),
   unresolved: false, customerDelete: false, send: vi.fn(), reconcile: vi.fn(), acknowledge: vi.fn(),
 }))
 vi.mock('../../src/components/AthelNav', () => ({ default: () => <nav aria-label="Procurement"><a href="/athel/po">Procurement</a></nav> }))
@@ -25,6 +26,38 @@ vi.mock('../../src/lib/supabase', () => ({ supabase: {
       if (name === 'pilot_procurement_access_v2') return { data: { version: 2, as_of: '2026-10-15T00:00:00Z', actor_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role: state.role,
         customer_create: true, customer_edit: true, customer_delete: false, product_create: true, product_edit: true, product_delete: true,
         customer_set_enabled: true, product_set_enabled: true, customer_delete_mode: 'none', product_delete_mode: 'direct' }, error: null }
+      if (name === 'pilot_catalog_transaction_v1') {
+        if (state.catalogueAbandoned.has(args.p_request_id)) return { data: null, error: { message: 'Request abandoned' } }
+        const prior = state.catalogueReceipts.get(args.p_request_id)
+        if (prior) return prior.operation === args.p_operation && JSON.stringify(prior.payload) === JSON.stringify(args.p_payload)
+          ? { data: prior.receipt, error: null } : { data: null, error: { message: 'Request differs' } }
+        if (!['executive','po_admin','co_admin'].includes(state.role) || !['create','edit'].includes(args.p_operation)) return { data: null, error: { message: 'Denied' } }
+        const rows = args.p_payload.kind === 'customer' ? state.backend.state.customers : state.products
+        let row = rows.find((item: any) => item.id === args.p_payload.id)
+        state.write(args.p_operation === 'create' ? 'insert' : 'update', args.p_payload.values, args.p_payload.id ?? null)
+        if (state.writeGate) await state.writeGate
+        if (state.writeError || args.p_payload.kind === 'customer' && state.backend.state.customerResponse === 'denied') return { data: null, error: { message: 'Save failed' } }
+        if (args.p_operation === 'edit' && (!row || row.catalog_version !== args.p_payload.expected_version)) return { data: null, error: { details: 'CATALOG_VERSION_CONFLICT' } }
+        const before = args.p_operation === 'create' ? null : { catalog_version: row.catalog_version, is_enabled: row.is_enabled }
+        if (args.p_operation === 'create') {
+          row = { ...args.p_payload.values, id: crypto.randomUUID(), catalog_version: '1', is_enabled: true, ...(args.p_payload.kind === 'product' ? { unit_price: null } : {}) }
+          rows.push(row)
+        } else {
+          const changed = Object.entries(args.p_payload.values).some(([key, value]) => row[key] !== value)
+          Object.assign(row, args.p_payload.values); row.catalog_version = String(BigInt(row.catalog_version) + (changed ? 1n : 0n))
+        }
+        const receipt = { version: 1, actor_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', request_id: args.p_request_id,
+          operation: args.p_operation, kind: args.p_payload.kind, id: row.id, before,
+          after: { catalog_version: row.catalog_version, is_enabled: row.is_enabled }, committed_at: '2026-10-15T00:00:00Z' }
+        state.catalogueReceipts.set(args.p_request_id, { operation: args.p_operation, payload: args.p_payload, receipt })
+        return { data: receipt, error: null }
+      }
+      if (name === 'pilot_reconcile_catalog_v1') {
+        const prior = state.catalogueReceipts.get(args.p_request_id)
+        if (prior) return { data: { status: 'committed', receipt: prior.receipt }, error: null }
+        if (args.p_abandon) state.catalogueAbandoned.add(args.p_request_id)
+        return { data: { status: state.catalogueAbandoned.has(args.p_request_id) ? 'abandoned' : 'unknown' }, error: null }
+      }
       if (name !== 'pilot_catalog_page_v1') throw new Error(`Unexpected catalogue RPC ${name}`)
       if (state.readGate) await state.readGate
       if (state.readError || args.p_kind === 'customer' && state.backend.state.readError) return { data: null, error: new Error('Read denied') }
@@ -72,6 +105,8 @@ const product = () => ({ id, is_enabled: true, catalog_version: '1', name: 'Unse
 const promotion = () => ({ id, product_id: id, product_name: 'Tiles', sku: 'SKU', size: null, start_date: '2020-01-01', end_date: '2020-01-02', is_active: true, stock_managed: true, remaining_quantity: 3, stock_version: 1, image_path: `promotions/${actor}/${id}/22222222-2222-4222-8222-222222222222.png`, harga_pokok: null, luar_kota: 0, dalam_kota: 71, depo_bangunan: null })
 const clients: QueryClient[] = []
 beforeEach(() => {
+  Object.defineProperty(navigator, 'locks', { configurable: true, value: { request: async (name: string, _options: unknown, action: any) => action({ name, mode: 'exclusive' }) } })
+  state.catalogueReceipts.clear(); state.catalogueAbandoned.clear()
   onlineManager.setOnline(true); state.backend = customerBackend(); Object.assign(state.backend.state.customers[0], { id: '22222222-2222-4222-8222-222222222222', is_enabled: true, catalog_version: '1' }); state.products = [product()]; state.promotions = [promotion()]
   state.role = 'executive'; state.readError = false; state.readGate = null; state.writeGate = null; state.writeError = false; state.unresolved = false; state.customerDelete = false
   state.write.mockReset(); state.send.mockReset().mockResolvedValue({ id, stock_version: 2 }); state.reconcile.mockReset(); state.acknowledge.mockReset()
@@ -105,7 +140,9 @@ async function openImmediatePath(path: typeof immediatePaths[number]) {
   // Only this test fixture exposes the dormant customer-delete owner path.
   state.customerDelete = path.kind === 'customer' && path.action === 'delete'
   const view = mount(path.Page); await screen.findAllByText(path.loaded)
-  fireEvent.click(screen.getAllByRole('button', { name: path.action === 'save' ? 'Ubah' : 'Hapus' })[0])
+  const opener = screen.getAllByRole('button', { name: path.action === 'save' ? 'Ubah' : 'Hapus' })[0]
+  await waitFor(() => expect((opener as HTMLButtonElement).disabled).toBe(false))
+  fireEvent.click(opener)
   if (path.kind === 'customer' && path.action === 'save') fireEvent.change(associated('Nama Pelanggan *'), { target: { value: 'Edited shop' } })
   const dialog = screen.getByRole('dialog')
   return { ...view, dialog, target: within(dialog).getByRole('button', { name: path.action === 'save' ? 'Simpan' : 'Hapus' }) }
@@ -121,18 +158,35 @@ test.each(immediatePaths)('$kind $action immediately acquires one owner lock bef
   await act(async () => gate.resolve())
   expect(started).toBe(1); expect(retained).toBe(dialog); expect(nativeCancel.defaultPrevented).toBe(true)
 })
-test.each(immediatePaths)('$kind $action releases its owner lock after a rejected write and permits exactly one fresh retry', async path => {
+test.each(immediatePaths)('$kind $action releases its owner lock without bypassing durable recovery', async path => {
   const { client, dialog, target } = await openImmediatePath(path), gate = deferred(); state.writeGate = gate.promise
   state.writeError = true; state.backend.state.customerResponse = 'denied'
   act(() => { fireEvent.click(target); fireEvent.click(target) })
-  await act(async () => gate.resolve()); await within(dialog).findByRole('alert')
+  await act(async () => gate.resolve())
   expect(client.getMutationCache().getAll()).toHaveLength(1)
-  state.writeGate = null; state.writeError = false; state.backend.state.customerResponse = 'ok'
-  const retry = within(dialog).getByRole('button', { name: path.action === 'save' ? 'Simpan' : 'Hapus' })
-  act(() => { fireEvent.click(retry); fireEvent.click(retry) })
+  if (path.action === 'save') {
+    await screen.findByText('Hasil belum terkonfirmasi')
+    expect(screen.queryByRole('dialog')).toBeNull(); expect(localStorage.length).toBe(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Periksa hasil' })); await screen.findByText(/Hasil belum diketahui/)
+    expect(client.getMutationCache().getAll()).toHaveLength(1)
+    state.writeGate = null; state.writeError = false; state.backend.state.customerResponse = 'ok'
+    fireEvent.click(screen.getByRole('button', { name: 'Batalkan permintaan tersimpan' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Konfirmasi pembatalan permintaan' }))
+    await waitFor(() => expect(screen.queryByText('Hasil belum terkonfirmasi')).toBeNull())
+    expect(localStorage.length).toBe(0)
+    const opener = screen.getAllByRole('button', { name: 'Ubah' })[0]
+    await waitFor(() => expect((opener as HTMLButtonElement).disabled).toBe(false)); fireEvent.click(opener)
+    if (path.kind === 'customer') fireEvent.change(associated('Nama Pelanggan *'), { target: { value: 'Edited shop' } })
+    const retry = screen.getByRole('button', { name: 'Simpan' }); act(() => { fireEvent.click(retry); fireEvent.click(retry) })
+  } else {
+    await within(dialog).findByRole('alert')
+    state.writeGate = null; state.writeError = false; state.backend.state.customerResponse = 'ok'
+    const retry = within(dialog).getByRole('button', { name: 'Hapus' }); act(() => { fireEvent.click(retry); fireEvent.click(retry) })
+  }
   expect(client.getMutationCache().getAll()).toHaveLength(2)
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
 })
+
 test('catalog and dashboard SKU table data retain the required 14px size', async () => {
   const catalog = mount(ProductList); await screen.findAllByText('Unset product')
   const sku = within(screen.getByRole('region', { name: 'Daftar barang' })).getByText('TEST')
@@ -175,7 +229,7 @@ test('products expose read failure and a native retry instead of a verified empt
   state.readError = false; fireEvent.click(retry); await screen.findAllByText('Unset product')
 })
 test.each([['customer', CustomerList, '+ Tambah Pelanggan', ['Nama Pelanggan *', 'Alamat', 'Kota', 'Telepon', 'Email', 'Tier Harga']], ['product', ProductList, '+ Tambah Barang', ['SKU *', 'Ukuran', 'Nama Barang *', 'Harga Pokok (Rp)', 'Luar Kota (Rp)', 'Dalam Kota (Rp)', 'Depo Bangunan (Rp)']]] as const)('%s editor labels reach actual fields and cancellation returns to its opener', async (_kind, Page, button, labels) => {
-  mount(Page); const trigger = await screen.findByRole('button', { name: button }); trigger.focus(); fireEvent.click(trigger)
+  mount(Page); const trigger = await screen.findByRole('button', { name: button }); await waitFor(() => expect((trigger as HTMLButtonElement).disabled).toBe(false)); trigger.focus(); fireEvent.click(trigger)
   const dialog = screen.getByRole('dialog'); expect(dialog.tagName).toBe('DIALOG'); expect(dialog.classList.contains('ui-dialog')).toBe(true)
   for (const label of labels) associated(label)
   expect(dialog.contains(document.activeElement)).toBe(true); expect(trigger.closest('[inert]')).toBeTruthy()
@@ -252,7 +306,8 @@ test('customer pending save locks category and contact fields while preserving t
   const category = screen.getByRole('combobox', { name: /Kategori Pelanggan/ }) as HTMLSelectElement
   expect(category.disabled || category.closest('fieldset')?.disabled).toBe(true); expect(associated('Telepon').disabled).toBe(true)
   fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' }); expect(screen.getByRole('dialog')).toBeTruthy()
-  await act(async () => gate.resolve()); await screen.findByRole('alert'); expect(associated('Nama Pelanggan *').value).toBe('Edited shop')
+  await act(async () => gate.resolve()); await screen.findByText('Hasil belum terkonfirmasi'); expect(screen.queryByRole('dialog')).toBeNull(); expect(localStorage.length).toBe(1)
+  expect(state.write.mock.calls[0][1]).toMatchObject({ name: 'Edited shop' })
 })
 test('customer successful edit keeps focus on its stable owner destination when delayed refresh removes the old row', async () => {
   mount(CustomerList); await screen.findAllByText('Alpha shop'); const trigger = screen.getAllByRole('button', { name: 'Ubah' })[0]; trigger.focus(); fireEvent.click(trigger)

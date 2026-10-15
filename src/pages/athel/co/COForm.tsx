@@ -110,8 +110,8 @@ function COFormEditor({ mode, id, actor }: {
     live.current = { generation, customer, customerVersion, lines };
     const catalogueReady = !!customerOptions.data && !!productOptions.data && !customerOptions.isFetching && !productOptions.isFetching && !customerOptions.isError && !productOptions.isError;
     const selectedCustomer = customerRead.data?.find(row => row.id === customer);
-    const catalogueLive = useRef({ catalogueReady, customers: customerOptions.data, products: productOptions.data });
-    catalogueLive.current = { catalogueReady, customers: customerOptions.data, products: productOptions.data };
+    const catalogueLive = useRef({ customers: customerOptions.getCurrentData, products: productOptions.getCurrentData, customerHistory: customerRead.getCurrentData, productHistory: catalog.getCurrentData });
+    catalogueLive.current = { customers: customerOptions.getCurrentData, products: productOptions.getCurrentData, customerHistory: customerRead.getCurrentData, productHistory: catalog.getCurrentData };
     const ready = catalogueReady && actor.isCurrent() && !conflict && !refreshing && initialized && !!customerVersion && !header.isFetching && !complete.isFetching && !header.isError && !complete.isError && !!customerRead.data && !!catalog.data && !customerRead.isError && !catalog.isError && !customerRead.isFetching && !catalog.isFetching && !stock.isFetching && !stock.isError && (!editing || initialVersion.current === co?.co_version && initialCustomerVersion.current === co?.customer_version) && (!editing || header.data?.allowed_operations.includes('edit_co'));
     useEffect(() => {
         if (editing && !initialized && co && complete.data && !header.isFetching && !complete.isFetching && !complete.isError && actor.isCurrent()) {
@@ -137,13 +137,17 @@ function COFormEditor({ mode, id, actor }: {
         focus.current = { key: line.key, field: 'quantity' }; }
     function newProduct(productId: string | null, sku: string) {
         const current = catalogueLive.current;
-        if (!current.catalogueReady || !current.customers?.some(row => row.id === live.current.customer && row.is_enabled))
+        const customers = current.customers(), products = current.products();
+        if (!customers || !products || !customers.some(row => row.id === live.current.customer && row.is_enabled))
             throw new Error('Barang baru memerlukan pelanggan aktif dan katalog yang sudah dimuat.');
-        return requireCOCatalogueProduct(productId, sku, current.products ?? []);
+        return requireCOCatalogueProduct(productId, sku, products);
     }
-    function maximumFor(row: COLineDraft) {
+    function maximumFor(row: COLineDraft, current = false) {
         const saved = savedLines.current.find(line => line.id === row.id);
-        return saved ? coHistoricalMaximum(saved.product_id, saved.quantity, selectedCustomer?.is_enabled === true, catalog.data ?? []) : undefined;
+        const customers = current ? catalogueLive.current.customerHistory() : customerRead.data;
+        const products = current ? catalogueLive.current.productHistory() : catalog.data;
+        if (current && (!customers || !products)) throw new Error('Katalog terbaru belum tersedia. Muat ulang sebelum menyimpan.');
+        return saved ? coHistoricalMaximum(saved.product_id, saved.quantity, customers?.find(item => item.id === live.current.customer)?.is_enabled === true, products ?? []) : undefined;
     }
     async function addProduct(product: CatalogueProductRow) {
         if (!ready || pending || unresolved || busy.current)
@@ -252,7 +256,7 @@ function COFormEditor({ mode, id, actor }: {
                         const saved = savedLines.current.find(line => line.id === row.id);
                         if (!saved || row.stock_key_id !== saved.stock_key_id || row.product_id !== saved.product_id || row.sku !== saved.sku || row.product_name !== saved.product_name || row.agreed_price !== saved.agreed_price)
                             throw new Error('Identitas dan harga barang tersimpan tidak boleh diganti.');
-                        const maximum = maximumFor(row);
+                        const maximum = maximumFor(row, true);
                         if (maximum !== undefined && BigInt(quantity) > BigInt(maximum))
                             throw new Error('Jumlah barang untuk katalog nonaktif tidak boleh melebihi jumlah tersimpan pada baris ini.');
                         payloadLines.push({ id: row.id, ordered_quantity: quantity });
@@ -290,7 +294,14 @@ function COFormEditor({ mode, id, actor }: {
             if (!actor.isCurrent() || (live.current.lines !== captured.lines || live.current.generation !== captured.generation || live.current.customer !== captured.customer || live.current.customerVersion !== captured.customerVersion))
                 return;
             // A catalogue refresh may finish while a stock-key read is awaited.
-            for (const row of lines) if (!row.existing) newProduct(row.product_id, row.sku);
+            for (const row of lines) {
+                if (!row.existing) newProduct(row.product_id, row.sku);
+                else {
+                    const maximum = maximumFor(row, true);
+                    if (maximum !== undefined && BigInt(enteredQuantity(row.quantity)) > BigInt(maximum))
+                        throw new Error('Jumlah barang untuk katalog nonaktif tidak boleh melebihi jumlah tersimpan pada baris ini.');
+                }
+            }
             const receipt = await sender(editing ? 'edit_co' : 'create_co', { ...(editing ? { co_id: id, expected_co_version: initialVersion.current } : { customer_id: customer }), expected_customer_version: customerVersion, co_number: number.trim(), order_date: date, expected_delivery_date: end || null, notes: notes || null, lines: payloadLines });
             if (actor.isCurrent() && live.current.generation === g) {
                 actor.client.invalidateQueries({ queryKey: coKeys.identity(actor.identity) });

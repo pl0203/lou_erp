@@ -44,10 +44,21 @@ vi.mock('../../src/lib/supabase', () => {
           state.command(args)
           if (state.missingRpc) return { data: null, error: { code: 'PGRST202', message: 'missing' } }
           if (state.conflict) return { data: null, error: { details: 'CATALOG_VERSION_CONFLICT' } }
-          const target = (args.p_payload.kind === 'customer' ? state.customers : state.products).find(row => row.id === args.p_payload.id)!
-          const before = { catalog_version: target.catalog_version, is_enabled: target.is_enabled }
-          target.catalog_version = String(BigInt(target.catalog_version) + (target.is_enabled === args.p_payload.is_enabled ? 0n : 1n))
-          target.is_enabled = args.p_payload.is_enabled
+          const rows = args.p_payload.kind === 'customer' ? state.customers : state.products
+          let target = rows.find(row => row.id === args.p_payload.id)
+          const before = args.p_operation === 'create' ? null : { catalog_version: target.catalog_version, is_enabled: target.is_enabled }
+          if (args.p_operation === 'create') {
+            target = { ...args.p_payload.values, id: crypto.randomUUID(), catalog_version: '1', is_enabled: true,
+              ...(args.p_payload.kind === 'product' ? { unit_price: null } : {}) }
+            rows.push(target)
+          } else if (args.p_operation === 'edit') {
+            const changed = Object.entries(args.p_payload.values).some(([key, value]) => target[key] !== value)
+            Object.assign(target, args.p_payload.values)
+            target.catalog_version = String(BigInt(target.catalog_version) + (changed ? 1n : 0n))
+          } else {
+            target.catalog_version = String(BigInt(target.catalog_version) + (target.is_enabled === args.p_payload.is_enabled ? 0n : 1n))
+            target.is_enabled = args.p_payload.is_enabled
+          }
           const receipt = { version: 1, request_id: args.p_request_id, actor_id: state.actor, operation: args.p_operation,
             kind: args.p_payload.kind, id: target.id, before, after: { catalog_version: target.catalog_version, is_enabled: target.is_enabled }, committed_at: '2026-10-15T00:00:00Z' }
           state.receipts.set(args.p_request_id, receipt)
@@ -110,14 +121,14 @@ async function begin(desktop: string) {
 }
 
 describe.each(pages)('$kind status page integration', ({ Page, kind, desktop, mobile }) => {
-  it.each(['co_admin', 'po_admin', 'executive'])('offers only status commands to %s on both responsive representations', async role => {
+  it.each(['co_admin', 'po_admin', 'executive'])('offers receipt-backed catalogue commands to %s while guarded deletion remains disabled', async role => {
     state.role = role; mount(Page)
     for (const scope of [await screen.findByRole('region', { name: desktop }), screen.getByRole('list', { name: mobile })]) {
       expect(within(scope).getByText('Aktif')).toBeTruthy()
       await waitFor(() => expect((within(scope).getByRole('button', { name: 'Nonaktifkan' }) as HTMLButtonElement).disabled).toBe(false))
       expect((within(scope).getByRole('button', { name: 'Hapus bila tidak digunakan' }) as HTMLButtonElement).disabled).toBe(true)
     }
-    if (role === 'co_admin') expect(screen.queryByRole('button', { name: 'Ubah' })).toBeNull()
+    if (role === 'co_admin') expect(screen.getAllByRole('button', { name: 'Ubah' })).toHaveLength(2)
     await begin(desktop)
     await screen.findByText('Hasil belum terkonfirmasi')
     expect(state.command).toHaveBeenCalledOnce()
@@ -295,4 +306,79 @@ it('keeps terminal abandonment recoverable across unmount before canonical refre
   fireEvent.click(screen.getByRole('button', { name: 'Periksa hasil' }))
   await waitFor(() => expect(screen.queryByText('Hasil belum terkonfirmasi')).toBeNull())
   expect(localStorage.length).toBe(0); expect(state.command).toHaveBeenCalledOnce()
+})
+
+
+it.each(pages)('saves $kind edits through the durable RPC with the captured decimal version', async ({ Page, kind, desktop }) => {
+  mount(Page)
+  const region = await screen.findByRole('region', { name: desktop })
+  const edit = within(region).getByRole('button', { name: 'Ubah' })
+  await waitFor(() => expect((edit as HTMLButtonElement).disabled).toBe(false))
+  fireEvent.click(edit)
+  fireEvent.change(screen.getByLabelText(kind === 'customer' ? 'Nama Pelanggan *' : 'Nama Barang *'), { target: { value: 'Renamed by CO' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Simpan' }))
+  await screen.findByText('Hasil belum terkonfirmasi')
+  expect(state.command).toHaveBeenCalledOnce()
+  expect(state.command.mock.calls[0][0]).toMatchObject({ p_operation: 'edit', p_payload: { kind, id: uuid(1), expected_version: version, values: { name: 'Renamed by CO' } } })
+  expect(state.command.mock.calls[0][0].p_payload.values).not.toHaveProperty('unit_price')
+  expect(state.writes).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: 'Periksa hasil' }))
+  await waitFor(() => expect(screen.queryByText('Hasil belum terkonfirmasi')).toBeNull())
+  expect(localStorage.length).toBe(0)
+})
+it('creates a product through the receipt contract, never a raw insert', async () => {
+  mount(ProductList)
+  const add = await screen.findByRole('button', { name: '+ Tambah Barang' })
+  await waitFor(() => expect((add as HTMLButtonElement).disabled).toBe(false))
+  fireEvent.click(add)
+  fireEvent.change(screen.getByLabelText('Nama Barang *'), { target: { value: 'New product' } })
+  fireEvent.change(screen.getByLabelText('SKU *'), { target: { value: 'new-01' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Simpan' }))
+  await screen.findByText('Hasil belum terkonfirmasi')
+  expect(state.command).toHaveBeenCalledOnce()
+  expect(state.command.mock.calls[0][0]).toMatchObject({ p_operation: 'create', p_payload: { kind: 'product', values: { name: 'New product', sku: 'NEW-01', harga_pokok: null } } })
+  expect(state.command.mock.calls[0][0].p_payload).not.toHaveProperty('id')
+  expect(state.command.mock.calls[0][0].p_payload.values).not.toHaveProperty('unit_price')
+  fireEvent.click(screen.getByRole('button', { name: 'Periksa hasil' }))
+  await waitFor(() => expect(screen.queryByText('Hasil belum terkonfirmasi')).toBeNull())
+  expect(localStorage.length).toBe(0); expect(state.writes).not.toHaveBeenCalled()
+})
+it('keeps a refused edit recoverable outside its closed modal, without automatic retry', async () => {
+  mount(ProductList)
+  const region = await screen.findByRole('region', { name: 'Daftar barang' })
+  const edit = within(region).getByRole('button', { name: 'Ubah' })
+  await waitFor(() => expect((edit as HTMLButtonElement).disabled).toBe(false))
+  fireEvent.click(edit); state.conflict = true
+  fireEvent.change(screen.getByLabelText('Nama Barang *'), { target: { value: 'Attempt' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Simpan' }))
+  await screen.findByText('Hasil belum terkonfirmasi')
+  expect(screen.queryByRole('dialog')).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'Periksa hasil' }))
+  await screen.findByText(/Hasil belum diketahui/)
+  expect(localStorage.length).toBe(1); expect(state.command).toHaveBeenCalledOnce()
+})
+it('acknowledges a committed edit after a later canonical product deletion', async () => {
+  mount(ProductList)
+  const region = await screen.findByRole('region', { name: 'Daftar barang' })
+  const edit = within(region).getByRole('button', { name: 'Ubah' })
+  await waitFor(() => expect((edit as HTMLButtonElement).disabled).toBe(false))
+  fireEvent.click(edit); fireEvent.change(screen.getByLabelText('Nama Barang *'), { target: { value: 'Renamed' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Simpan' }))
+  await screen.findByText('Hasil belum terkonfirmasi'); state.products = []
+  fireEvent.click(screen.getByRole('button', { name: 'Periksa hasil' }))
+  await waitFor(() => expect(screen.queryByText('Hasil belum terkonfirmasi')).toBeNull())
+  expect(localStorage.length).toBe(0); expect(state.command).toHaveBeenCalledOnce()
+})
+it('retires an open form when its actor leaves and returns, rather than transferring intent', async () => {
+  const view = mount(ProductList)
+  const region = await screen.findByRole('region', { name: 'Daftar barang' })
+  const edit = within(region).getByRole('button', { name: 'Ubah' })
+  await waitFor(() => expect((edit as HTMLButtonElement).disabled).toBe(false))
+  fireEvent.click(edit); fireEvent.change(screen.getByLabelText('Nama Barang *'), { target: { value: 'Old actor intent' } })
+  state.actor = '33333333-3333-4333-8333-333333333333'
+  view.rerender(<QueryClientProvider client={view.client}><ProductList /></QueryClientProvider>)
+  state.actor = '11111111-1111-4111-8111-111111111111'
+  view.rerender(<QueryClientProvider client={view.client}><ProductList /></QueryClientProvider>)
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  expect(state.command).not.toHaveBeenCalled(); expect(localStorage.length).toBe(0)
 })

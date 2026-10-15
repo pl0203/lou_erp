@@ -1,6 +1,6 @@
 import React from 'react'
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { onlineManager, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 const state = vi.hoisted(() => ({ url:'https://catalogue.test', actor: '11111111-1111-4111-8111-111111111111', rpc: vi.fn() }))
@@ -93,4 +93,74 @@ test('StrictMode effect replay and a later remount both obtain a current complet
  const next=renderHook(()=>useCatalogueOrderOptions('product','enabled-for-order'),{wrapper})
  await waitFor(()=>expect(next.result.current.data).toHaveLength(1))
  expect(next.result.current.isError).toBe(false)
+})
+
+test('current accessor sees a completed refetch before observer notification renders', async () => {
+ const { result } = mount(); await waitFor(() => expect(result.current.data).toHaveLength(1))
+ const read = result.current.getCurrentData
+ expect(read()).toHaveLength(1)
+ state.rpc.mockImplementation(async (_name, args) => ({ ...page(args), data: { ...page(args).data, total_count: '0', rows: [] } }))
+ await act(async () => {
+  await clients[0].invalidateQueries({ queryKey: ['catalogue'] })
+  // Deliberately inspect the old callback before act flushes React's queued update.
+  expect(read()).toEqual([])
+ })
+})
+test('current accessor reads an accepted cache update synchronously before the queued observer render', async () => {
+ const { result } = mount(); await waitFor(() => expect(result.current.data).toHaveLength(1))
+ const read = result.current.getCurrentData, query = clients[0].getQueryCache().getAll()[0]
+ act(() => {
+  clients[0].setQueryData(query.queryKey, (previous: any) => ({ ...previous, rows: [] }))
+  expect(result.current.data).toHaveLength(1)
+  expect(read()).toEqual([])
+ })
+})
+test('current accessor rejects pending, cancelled and failed refreshes instead of restoring old choices', async () => {
+ const { result } = mount(); await waitFor(() => expect(result.current.data).toHaveLength(1))
+ const read = result.current.getCurrentData
+ let release!: (value: unknown) => void, args: any
+ state.rpc.mockImplementationOnce((_name, request) => { args = request; return new Promise(resolve => { release = resolve }) })
+ const refresh = result.current.refetch()
+ await waitFor(() => expect(release).toBeTypeOf('function'))
+ expect(read()).toBeUndefined()
+ await act(async () => { await clients[0].cancelQueries({ queryKey: ['catalogue'] }); await refresh })
+ expect(read()).toBeUndefined()
+ await act(async () => release(page(args)))
+ expect(read()).toBeUndefined()
+ state.rpc.mockRejectedValueOnce(new Error('Read unavailable'))
+ await act(async () => { await result.current.refetch() })
+ expect(read()).toBeUndefined()
+ state.rpc.mockImplementation(async (_name, request) => page(request))
+ await act(async () => { await result.current.refetch() })
+ expect(read()).toHaveLength(1)
+})
+test('cancelling an offline refresh before queryFn starts cannot revive the previous accepted options', async () => {
+ const { result } = mount(); await waitFor(() => expect(result.current.data).toHaveLength(1))
+ const read = result.current.getCurrentData, calls = state.rpc.mock.calls.length
+ onlineManager.setOnline(false)
+ try {
+  const refresh = result.current.refetch()
+  await waitFor(() => expect(result.current.fetchStatus).toBe('paused'))
+  expect(state.rpc).toHaveBeenCalledTimes(calls)
+  expect(read()).toBeUndefined()
+  await act(async () => { await clients[0].cancelQueries({ queryKey: ['catalogue'] }); await refresh })
+  expect(read()).toBeUndefined()
+ } finally { onlineManager.setOnline(true) }
+ await act(async () => { await result.current.refetch() })
+ expect(read()).toHaveLength(1)
+})
+test('current accessor refuses a drifted backend or retired owner even when old cache data remains', async () => {
+ const { result, rerender, unmount } = mount(); await waitFor(() => expect(result.current.data).toHaveLength(1))
+ const read = result.current.getCurrentData
+ state.url = 'https://replacement.test'; expect(read()).toBeUndefined()
+ state.url = 'https://catalogue.test'; expect(read()).toHaveLength(1)
+ const original = state.actor
+ state.actor = '33333333-3333-4333-8333-333333333333'; rerender()
+ expect(read()).toBeUndefined()
+ await waitFor(() => expect(result.current.data).toHaveLength(1))
+ state.actor = original; rerender()
+ await waitFor(() => expect(result.current.data).toHaveLength(1))
+ expect(read()).toBeUndefined()
+ expect(result.current.getCurrentData()).toHaveLength(1)
+ const next = result.current.getCurrentData; unmount(); expect(next()).toBeUndefined()
 })

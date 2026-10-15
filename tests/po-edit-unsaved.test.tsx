@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 const state = vi.hoisted(() => ({ send: vi.fn(), reconcile: vi.fn(), unresolved: false, readError: false }))
 const version = '2026-10-01T00:00:00Z'
-vi.mock('../src/lib/catalogue/useCatalogueOrderOptions',()=>({useCatalogueOrderOptions:(kind:string)=>({data:kind==='customer'?[{id:'customer',name:'Store A',pricing_tier:'others',is_enabled:true},{id:'other-customer',name:'Store B',pricing_tier:'others',is_enabled:true}]:[{id:'new-product',name:'New item',sku:'NEW',luar_kota:10,is_enabled:true}],isError:false,isFetching:false,refetch:vi.fn()})}))
+vi.mock('../src/lib/catalogue/useCatalogueOrderOptions',()=>({useCatalogueOrderOptions:(kind:string)=>({data:kind==='customer'?[{id:'customer',name:'Store A',pricing_tier:'others',is_enabled:true},{id:'other-customer',name:'Store B',pricing_tier:'others',is_enabled:true}]:[{id:'new-product',name:'New item',sku:'NEW',luar_kota:10,is_enabled:true}],getCurrentData:()=>kind==='customer'?[{id:'customer',name:'Store A',pricing_tier:'others',is_enabled:true},{id:'other-customer',name:'Store B',pricing_tier:'others',is_enabled:true}]:[{id:'new-product',name:'New item',sku:'NEW',luar_kota:10,is_enabled:true}],isError:false,isFetching:false,refetch:vi.fn()})}))
 vi.mock('../src/lib/supabase', () => ({ supabase: {
   from: (table: string) => {
     let id = 'po'

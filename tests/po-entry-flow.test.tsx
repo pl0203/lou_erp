@@ -5,9 +5,10 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
-const state = vi.hoisted(() => ({ send: vi.fn(), products: [] as any[], customers: [] as any[], lines: [] as any[], history: false, productsFetching: false, productsError: false }))
+const state = vi.hoisted(() => ({ send: vi.fn(), products: [] as any[], customers: [] as any[], lines: [] as any[], history: false, productsFetching: false, productsError: false, unavailableOptions: new Set<string>() }))
 vi.mock('../src/lib/catalogue/useCatalogueOrderOptions', () => ({ useCatalogueOrderOptions: (kind: string, purpose: string) => ({
  data: (kind === 'customer' ? state.customers : state.products).map(row => ({ ...row, is_enabled: row.is_enabled ?? true })).filter(row => purpose === 'all-for-history' || row.is_enabled),
+ getCurrentData: () => state.unavailableOptions.has(`${kind}:${purpose}`) || kind === 'product' && (state.productsFetching || state.productsError) ? undefined : (kind === 'customer' ? state.customers : state.products).map(row => ({ ...row, is_enabled: row.is_enabled ?? true })).filter(row => purpose === 'all-for-history' || row.is_enabled),
  isFetching: kind === 'product' && state.productsFetching, isError: kind === 'product' && state.productsError, refetch: vi.fn(),
 }) }))
 vi.mock('../src/lib/supabase', () => ({ supabase: {} }))
@@ -26,7 +27,7 @@ import POEdit from '../src/pages/athel/POEdit'
 const clients: QueryClient[] = []
 const product = (id: string, sku = id, name = `Product ${id}`) => ({ id, sku, name, size: '12 pcs', unit_price: 999, luar_kota: 20, dalam_kota: 30, harga_pokok: 0, depo_bangunan: null })
 beforeEach(() => {
- state.send.mockReset().mockResolvedValue({ id: 'saved' }); state.productsFetching = false; state.productsError = false; state.history = false
+ state.send.mockReset().mockResolvedValue({ id: 'saved' }); state.productsFetching = false; state.productsError = false; state.history = false; state.unavailableOptions.clear()
  state.customers = [{ id: 'c', name: 'Alpha shop', pricing_tier: 'luar_kota' }, { id: 'd', name: 'Beta shop', pricing_tier: 'dalam_kota' }]
  state.products = [product('p', 'SKU')]
  state.lines = [{ id: 'l', product_name: 'Historical', sku: 'OLD', quantity: 2, unit_price: 123.45, delivered_quantity: 0, has_delivery_history: false }]
@@ -257,3 +258,41 @@ test.each(['new', 'edit'] as const)('%s empty-list Save blocks writes and return
 
 // The real data router uses Node Request, which requires a Node-compatible signal.
 beforeEach(() => { vi.stubGlobal('AbortController', class { constructor() { return transferableAbortController() } }) })
+
+// Mutate only the live option source, then dispatch immediately: no component rerender
+// may be inserted between invalidation/refetch completion and the admission event.
+test.each(['new', 'edit'] as const)('%s rejects a stale selected product before the observer rerenders', kind => {
+ state.lines = []; mount(kind); if (kind === 'new') customer()
+ const input = search('SKU')
+ state.products = [{ ...state.products[0], is_enabled: false }]
+ fireEvent.keyDown(input, { key: 'Enter' })
+ expect(screen.queryByDisplayValue('Product p')).toBeNull()
+ expect(state.send).not.toHaveBeenCalled()
+})
+
+test.each(['new', 'edit'] as const)('%s blocks Save against live invalidated options before the observer rerenders', kind => {
+ state.lines = []; mount(kind); if (kind === 'new') customer()
+ exact(); if (kind === 'new') fireEvent.change(screen.getByPlaceholderText('mis. PO-2024-001'), { target: { value: 'CURRENT' } })
+ state.unavailableOptions.add('product:enabled-for-order')
+ fireEvent.click(screen.getByRole('button', { name: kind === 'new' ? 'Simpan PO' : 'Simpan Perubahan' }))
+ expect(screen.getByRole('alert').textContent).toMatch(/katalog/)
+ expect(state.send).not.toHaveBeenCalled()
+})
+
+test.each(['customer:all-for-history', 'product:all-for-history'])('edit rejects new selection while only %s is invalidated', key => {
+ state.lines = []; mount('edit'); const input = search('SKU')
+ state.unavailableOptions.add(key)
+ fireEvent.keyDown(input, { key: 'Enter' })
+ expect(screen.queryByDisplayValue('Product p')).toBeNull()
+ expect(state.send).not.toHaveBeenCalled()
+})
+
+test.each(['customer', 'product'])('edit enforces the fresh disabled %s per-line cap before observer rerender', kind => {
+ state.lines[0].product_id = 'p'; mount('edit')
+ fireEvent.change(screen.getByRole('spinbutton', { name: 'Qty Historical' }), { target: { value: '3' } })
+ if (kind === 'customer') state.customers = state.customers.map(row => ({ ...row, is_enabled: row.id !== 'c' }))
+ else state.products = state.products.map(row => ({ ...row, is_enabled: false }))
+ fireEvent.click(screen.getByRole('button', { name: 'Simpan Perubahan' }))
+ expect(screen.getByRole('alert').textContent).toMatch(/nonaktif/)
+ expect(state.send).not.toHaveBeenCalled()
+})

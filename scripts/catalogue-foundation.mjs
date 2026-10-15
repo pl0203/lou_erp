@@ -25,11 +25,13 @@ export const foundationSqlPaths=Object.freeze({
  visitGrammar:'supabase/catalogue/v1/new02-visit-reference-extraction.sql',
  lifetimeCandidate:'supabase/catalogue/v1/new07-lifetime-admission.sql',
  lifetime:'tests/database/catalogue/lifetime-admission.sql',
+ createEditCandidate:'supabase/catalogue/v1/new08-catalogue-create-edit.sql',
+ createEdit:'tests/database/catalogue/create-edit.sql',
 });
 export const foundationExpectedMarkers=Object.freeze([
  'CATALOGUE_FOUNDATION_BEFORE_CAPTURED','CATALOGUE_FOUNDATION_CANDIDATE_APPLIED',
  'CATALOGUE_FOUNDATION_BEHAVIOR_PASSED','CATALOGUE_FOUNDATION_LEGACY_PASSED',
- 'CATALOGUE_FOUNDATION_ROLES_PASSED','CATALOGUE_ORDERS_CORE_PASSED','CATALOGUE_CO_ORDERS_CORE_PASSED','CATALOGUE_LIFETIME_WRITERS_PASSED','CATALOGUE_FOUNDATION_ROLLBACK_VERIFIED',
+ 'CATALOGUE_FOUNDATION_ROLES_PASSED','CATALOGUE_ORDERS_CORE_PASSED','CATALOGUE_CO_ORDERS_CORE_PASSED','CATALOGUE_LIFETIME_WRITERS_PASSED','CATALOGUE_CREATE_EDIT_CORE_PASSED','CATALOGUE_FOUNDATION_ROLLBACK_VERIFIED',
 ]);
 // Erase SQL comments/quoted values before examining top-level statements. This
 // is a containment check, not a PostgreSQL grammar/behavior substitute.
@@ -65,6 +67,9 @@ const noFoundationPredicate=`pg_catalog.to_regclass('private.catalog_identity_v1
  AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_attribute WHERE attrelid='private.co_commands'::regclass AND attname='execution_version' AND NOT attisdropped)
  AND (SELECT md5(prosrc) FROM pg_catalog.pg_proc WHERE oid='public.pilot_co_transaction_v1(uuid,text,jsonb)'::regprocedure)='253ac5728e67fa26e1736bca30ccc4b0'
  AND (SELECT md5(prosrc) FROM pg_catalog.pg_proc WHERE oid='public.pilot_order_transaction(uuid,text,jsonb)'::regprocedure)='0b1e19441a499ae9c864b2d21aef28ba'
+ AND pg_catalog.to_regclass('private.catalog_write_policy_contract_v1') IS NULL
+ AND pg_catalog.to_regprocedure('private.catalog_status_transaction_v1(uuid,text,jsonb)') IS NULL
+ AND pg_catalog.to_regprocedure('private.catalog_status_reconcile_v1(uuid,boolean)') IS NULL
  AND pg_catalog.to_regprocedure('private.catalog_request_terminal_v1()') IS NULL
  AND pg_catalog.to_regprocedure('private.catalog_authorize_v1(text,uuid)') IS NULL
  AND pg_catalog.to_regprocedure('public.pilot_catalog_transaction_v1(uuid,text,jsonb)') IS NULL
@@ -107,8 +112,10 @@ ${sessionGate()}${mark(6)}${parts.promotionOwnerGrammar}
 ${sessionGate()}${parts.visitGrammar}
 ${sessionGate()}${parts.lifetimeCandidate}
 ${sessionGate()}${parts.lifetime}
-${sessionGate()}${mark(7)}ROLLBACK;
-${catalogueCiIdentityGateSql(identity)}${booleanGate(`${noFoundationPredicate}\n AND pg_catalog.pg_backend_pid()=:'catalogue_foundation_pid'::integer\n AND pg_catalog.to_regclass('pg_temp.catalogue_foundation_session_v1') IS NULL`,'catalogue_foundation_rollback_refused')}${mark(8)}\\o
+${sessionGate()}${mark(7)}${parts.createEditCandidate}
+${sessionGate()}${parts.createEdit}
+${sessionGate()}${mark(8)}ROLLBACK;
+${catalogueCiIdentityGateSql(identity)}${booleanGate(`${noFoundationPredicate}\n AND pg_catalog.pg_backend_pid()=:'catalogue_foundation_pid'::integer\n AND pg_catalog.to_regclass('pg_temp.catalogue_foundation_session_v1') IS NULL`,'catalogue_foundation_rollback_refused')}${mark(9)}\\o
 `;
 }
 export function parseCatalogueFoundationOutput(output) {
@@ -225,6 +232,9 @@ export function runCatalogueFoundation({repoRoot=defaultRoot,env=process.env,exe
     productionAdmission:'REFUSED_FOUNDATION_NOT_READY',actualEventAssertions:'SCOPED_OLD_NEW_AND_RETAINED_VISIT_SOURCE_PASSED',
     legacyAdmission:'TRANSACTION_HELD_DRAIN_INSTALLED',rawPublicDml:'ADMISSION_ONLY_NO_LIFETIME_CERTIFICATION',
     directProductDelete:'PO_EXISTING_PATH_AND_TOMBSTONE_PASSED',globalWriterTracking:'INCOMPLETE',concurrency:'UNRUN'},
+   createEditProof:{operations:['create','edit'],role:'authenticated',authorization:'VERIFIED_SYNTHETIC_POLICY_ONLY',
+    sequentialReplay:'PASSED',sequentialRecovery:'PASSED',rollbackAtomicity:'PASSED',
+    createsRemainUnknown:true,productionGeneration:1,trackingReady:false,concurrency:'UNRUN',hostedPolicyParity:'UNVERIFIED'},
    commandAndReplaySuites:'SET_ENABLED_SEQUENTIAL_SAME_SESSION_PASSED',
    commandProof:{operations:['set_enabled'],role:'authenticated',authorization:'VERIFIED_SYNTHETIC_POLICY_ONLY',
     sequentialReplay:'PASSED',sequentialAbandonment:'PASSED',rollbackAtomicity:'PASSED',

@@ -344,3 +344,11 @@ test('terminal setup installs full lifetime prerequisites before drain races wit
  assert.match(race,/public\.pilot_order_transaction/);assert.match(race,/public\.pilot_assign_store_owner_v1/);assert.match(race,/SET LOCAL ROLE service_role/);
  assert.doesNotMatch(race,/new Session|new Client|process\.env|connect\(/);
 });
+test('terminal create edit races share checked clients and install new08 only after lifetime',()=>{
+ const p=parts();assert.equal(runner.targetRuntimePaths.createEditCandidate,'supabase/catalogue/v1/new08-catalogue-create-edit.sql');
+ const sql=runner.buildTargetRaceSetup(identity,p);assert.ok(sql.indexOf(p.lifetimeCandidate)<sql.indexOf(p.createEditCandidate));assert.ok(sql.indexOf(p.createEditCandidate)<sql.indexOf('COMMIT;'));
+ const runtime=read('scripts/catalogue-customer-target-runtime.mjs');
+ assert.match(runtime,/executeCatalogueCreateEditRaces\(\{a,b:replay,observer,query:ok,expectState:expected,verify\}\)/);
+ assert.ok(runtime.indexOf('const lifetimeAdmission=')<runtime.indexOf('const createEdit='));
+ assert.match(runtime,/statusRecovery,lifetimeAdmission,createEdit/);
+});

@@ -5,6 +5,7 @@ import { catalogueEnum, invalidCatalogue, parseCatalogueText } from './validatio
 
 type RpcName = CatalogueReadRpcName | CatalogueRpcName
 export interface CatalogueBackend extends CatalogueTransport, CatalogueReadTransport {
+  assertCurrent(): void
   rpc(name: RpcName, args: Record<string, unknown>, signal?: AbortSignal): Promise<{ data: unknown; error: unknown }>
 }
 /** Bind to a supplied real client. This module never reads environment variables or creates a second client. */
@@ -23,6 +24,7 @@ export function createCatalogueBackend(client: SupabaseClient): CatalogueBackend
   }
   return Object.freeze({
     backend,
+    assertCurrent: current,
     async rpc(name: RpcName, args: Record<string, unknown>, signal?: AbortSignal) {
       current(); signal?.throwIfAborted()
       catalogueEnum(['pilot_catalog_page_v1', 'pilot_procurement_access_v2', 'pilot_catalog_transaction_v1', 'pilot_reconcile_catalog_v1'] as const, name)

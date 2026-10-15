@@ -45,3 +45,24 @@ test('native request cannot report success before the complete action settles', 
  request.mockImplementation(async () => undefined as any)
  await expect(backend.withExclusiveLock('not-granted', action)).rejects.toThrow(); expect(action).toHaveBeenCalledTimes(1)
 })
+
+test('read-only current assertion preserves exact client receiver, method and endpoint binding', () => {
+ const client = actualClient(), backend = createCatalogueBackend(client), assertCurrent = backend.assertCurrent
+ expect(assertCurrent).not.toThrow()
+ const originalMethod = client.rpc
+ ;(client as any).rpc = vi.fn()
+ expect(assertCurrent).toThrow(/backend client changed/)
+ ;(client as any).rpc = originalMethod
+ expect(assertCurrent).not.toThrow()
+ ;(client as any).rest = { ...(client as any).rest }
+ expect(assertCurrent).toThrow(/backend client changed/)
+})
+test('a retired backend assertion rejects the replacement endpoint even when a new backend can bind it', () => {
+ const client = actualClient(), original = createCatalogueBackend(client)
+ ;(client as any).supabaseUrl = 'https://replacement.example.invalid'
+ ;(client as any).rest.url = 'https://replacement.example.invalid/rest/v1'
+ const replacement = createCatalogueBackend(client)
+ expect(replacement.assertCurrent).not.toThrow()
+ expect(original.assertCurrent).toThrow(/backend client changed/)
+ expect(replacement.backend).toBe('https://replacement.example.invalid')
+})

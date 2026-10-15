@@ -10,10 +10,11 @@ import {foundationTopLevelSql} from './catalogue-foundation.mjs';
 import {catalogueCiConnection,catalogueCiIdentityGateSql,catalogueObservationSql,verifyCatalogueCiObservation} from './catalogue-ci-profile.mjs';
 import {PsqlSession} from '../tests/database/catalogue-failfast/session.mjs';
 import {executeLifetimeAdmissionRaces} from '../tests/database/catalogue/lifetime-admission-races.mjs';
+import {executeCatalogueCreateEditRaces} from '../tests/database/catalogue/create-edit-races.mjs';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const sha=x=>createHash('sha256').update(x).digest('hex');
 const quote=x=>`'${x.replaceAll("'","''")}'`;
-export const targetRuntimePaths=Object.freeze({before:'tests/database/catalogue/before-foundation.sql',foundation:'supabase/catalogue/v1/01-foundation.sql',legacy:'tests/database/catalogue/legacy-columns.sql',roles:'tests/database/catalogue/roles.sql',target:'supabase/catalogue/v1/02-customer-target-tracking.sql',lifecycle:'tests/database/catalogue/customer-target-tracking.sql',authority:'tests/database/catalogue/customer-target-runtime-authority.sql',variants:'tests/database/catalogue/customer-target-runtime-variants.sql',orderCandidate:'supabase/catalogue/v1/04-order-boundaries.sql',coOrderCandidate:'supabase/catalogue/v1/new06-co-order-boundaries.sql',promotionOwnerGrammar:'supabase/catalogue/v1/02-promotion-owner-extraction.sql',visitGrammar:'supabase/catalogue/v1/new02-visit-reference-extraction.sql',lifetimeCandidate:'supabase/catalogue/v1/new07-lifetime-admission.sql'});
+export const targetRuntimePaths=Object.freeze({before:'tests/database/catalogue/before-foundation.sql',foundation:'supabase/catalogue/v1/01-foundation.sql',legacy:'tests/database/catalogue/legacy-columns.sql',roles:'tests/database/catalogue/roles.sql',target:'supabase/catalogue/v1/02-customer-target-tracking.sql',lifecycle:'tests/database/catalogue/customer-target-tracking.sql',authority:'tests/database/catalogue/customer-target-runtime-authority.sql',variants:'tests/database/catalogue/customer-target-runtime-variants.sql',orderCandidate:'supabase/catalogue/v1/04-order-boundaries.sql',coOrderCandidate:'supabase/catalogue/v1/new06-co-order-boundaries.sql',promotionOwnerGrammar:'supabase/catalogue/v1/02-promotion-owner-extraction.sql',visitGrammar:'supabase/catalogue/v1/new02-visit-reference-extraction.sql',lifetimeCandidate:'supabase/catalogue/v1/new07-lifetime-admission.sql',createEditCandidate:'supabase/catalogue/v1/new08-catalogue-create-edit.sql'});
 const targetSha='e4567a9cd023aba3c1bdb4b84925c6a6bad1e931bf5a199ba41c2bf5e34924ca';
 const suiteSha='82e49e5a6da51b084a02b8632a8e16241c8dd27a81fee6985325ecab37dfe026';
 const include='\\ir ../../../supabase/catalogue/v1/02-customer-target-tracking.sql\n';
@@ -319,7 +320,8 @@ export async function executeTargetRaces({identity,connection,checkSource,Sessio
   assert.deepEqual(await snapshot(),afterSnapshotWinner);await state(4,false,2,false,5);await verify();
   const statusRecovery={status:'BOUNDED_STATUS_RECOVERY_RACES_PASSED',replayBackendPid:replayPid,cases:statusRecoveryCases};
   const lifetimeAdmission=await executeLifetimeAdmissionRaces({a,b:replay,observer,query:ok,verify});
-  return {status:'BOUNDED_TARGET_RACES_PASSED',backendPids:pids,cases:['reversed_raw_target_statements','evidence_relation_contention'],statusRecovery,lifetimeAdmission};
+  const createEdit=await executeCatalogueCreateEditRaces({a,b:replay,observer,query:ok,expectState:expected,verify});
+  return {status:'BOUNDED_TARGET_RACES_PASSED',backendPids:pids,cases:['reversed_raw_target_statements','evidence_relation_contention'],statusRecovery,lifetimeAdmission,createEdit};
  }finally{await Promise.allSettled(sessions.map(s=>s.close()));}
 }
 export function buildTargetRaceSetup(identity,parts){
@@ -331,7 +333,7 @@ SET LOCAL statement_timeout='30s'; SET LOCAL lock_timeout='3s'; SET LOCAL search
 INSERT INTO auth.users(id) VALUES(${actor}),(${uuid(statusActorB)});
 INSERT INTO public.users(id,full_name,email,role,is_active) VALUES(${actor},'Fictional race executive','target-race@example.invalid','executive'::public.user_role,true),(${uuid(statusActorB)},'Fictional status race executive','status-race@example.invalid','executive'::public.user_role,true);
 ${parts.foundation}\n${parts.target}
-${parts.orderCandidate}\n${parts.coOrderCandidate}\n${parts.promotionOwnerGrammar}\n${parts.visitGrammar}\n${parts.lifetimeCandidate}
+${parts.orderCandidate}\n${parts.coOrderCandidate}\n${parts.promotionOwnerGrammar}\n${parts.visitGrammar}\n${parts.lifetimeCandidate}\n${parts.createEditCandidate}
 INSERT INTO public.products(id,name,sku) VALUES('10000000-0000-4000-8000-000000000091','Fictional drain product','LIFETIME-DRAIN');
 INSERT INTO public.customers(id,name) VALUES(${uuid(customerA)},'Fictional race A'),(${uuid(customerB)},'Fictional race B'),(${uuid(statusCustomerA)},'Fictional status race A'),(${uuid(statusCustomerB)},'Fictional status race B');
 COMMIT;\n`;

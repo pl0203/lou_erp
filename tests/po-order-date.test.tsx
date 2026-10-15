@@ -7,7 +7,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 const mocks = vi.hoisted(() => ({ rpc: vi.fn(), navigate: vi.fn() }))
-vi.mock('../src/lib/catalogue/useCatalogueOrderOptions',()=>({useCatalogueOrderOptions:(kind:string)=>({data:kind==='customer'?[{id:'dummy-customer',name:'Dummy customer',pricing_tier:'luar_kota',is_enabled:true}]:[{id:'dummy-product',name:'Dummy product',sku:'DUMMY',luar_kota:10,is_enabled:true}],isError:false,isFetching:false,refetch:vi.fn()})}))
+vi.mock('../src/lib/catalogue/useCatalogueOrderOptions',()=>({useCatalogueOrderOptions:(kind:string)=>({data:kind==='customer'?[{id:'dummy-customer',name:'Dummy customer',pricing_tier:'luar_kota',is_enabled:true}]:[{id:'dummy-product',name:'Dummy product',sku:'DUMMY',luar_kota:10,is_enabled:true}],getCurrentData:()=>kind==='customer'?[{id:'dummy-customer',name:'Dummy customer',pricing_tier:'luar_kota',is_enabled:true}]:[{id:'dummy-product',name:'Dummy product',sku:'DUMMY',luar_kota:10,is_enabled:true}],isError:false,isFetching:false,refetch:vi.fn()})}))
 vi.mock('../src/lib/supabase', () => ({ supabase: {
   rpc: mocks.rpc,
   from: (table: string) => {
