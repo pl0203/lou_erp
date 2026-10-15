@@ -1,0 +1,194 @@
+name: Disposable combined read acceptance
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [fix/pilot-database]
+    paths:
+      - .github/workflows/combined-read-acceptance.yml
+      - scripts/test-combined-read-races-ci.mjs
+      - scripts/test-helper-races-ci.mjs
+      - scripts/run-disposable-psql.mjs
+      - tests/database/experiments/can-read-po-*.sql
+      - tests/database/experiments/daily-preaggregation*.sql
+      - tests/database/scalable-pooled-reads.sql
+      - tests/database/scalability-ground-truth.sql
+      - tests/scalability/can-read-po-experiment.mjs
+      - tests/scalability/build-combined-read-acceptance.mjs
+      - tests/scalability/*acceptance*.test.ts
+permissions:
+  contents: read
+jobs:
+  candidate-pooled:
+    if: ${{ github.event.pull_request.base.ref == 'fix/pilot-database' && github.event.pull_request.head.ref == 'fix/pilot-scale-sql' && github.event.pull_request.head.repo.full_name == github.repository }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rows: 6000
+            job_minutes: 20
+          - rows: 30000
+            job_minutes: 45
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ matrix.job_minutes }}
+    defaults:
+      run:
+        shell: bash
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic-ci-only
+          POSTGRES_DB: pilot_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d pilot_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: synthetic-ci-only
+      PGDATABASE: pilot_test
+      SCALE_ROWS: ${{ matrix.rows }}
+      SCALE_PERMIT: disposable-pilot-ci
+      PGHOSTADDR: ''
+      PGSERVICE: ''
+      PGSERVICEFILE: /dev/null
+      PGOPTIONS: ''
+      PGPASSFILE: /dev/null
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install official PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Assemble unchanged full suites around the reviewed candidate
+        run: |
+          node tests/scalability/build-combined-read-acceptance.mjs --rows "$SCALE_ROWS"
+          git rev-parse HEAD > scale-results/combined-read-acceptance/commit.txt
+      - name: Load only the synthetic contract and deployable migration inventory
+        run: |
+          node scripts/run-disposable-psql.mjs --file tests/database/fixture.sql
+          for file in supabase/migrations/*.sql; do
+            if [[ "$file" == supabase/migrations/202610010001_scalable_order_reads.sql ]]; then
+              node scripts/run-disposable-psql.mjs --file tests/database/hosted-read-policy-fixture.sql
+            fi
+            node scripts/run-disposable-psql.mjs --file "$file"
+          done
+      - name: Verify direct helper and installed policy matrix before large data
+        run: |
+          for name in truth policy mixed-controls; do
+            file="scale-results/combined-read-acceptance/$name.sql"
+            node scripts/run-disposable-psql.mjs --file "$file" 2>&1 | tee "${file%.sql}.log"
+            grep -Eq '^[[:space:]]*HELPER_EXPERIMENT_RESTORED[[:space:]]*\|' "${file%.sql}.log"
+          done
+          grep -Eq '^[[:space:]]*HELPER_DIRECT_TRUTH_VERIFIED[[:space:]]*\|' scale-results/combined-read-acceptance/truth.log
+          grep -Eq '^[[:space:]]*FINAL_READ_POLICY_MATRIX_VERIFIED[[:space:]]*' scale-results/combined-read-acceptance/policy.log
+          for control in constant_false constant_true missing_caller_null requires_parent; do
+            grep -Fq "HELPER_NEGATIVE_CONTROL_REJECTED $control" scale-results/combined-read-acceptance/truth.log
+          done
+          for control in helper_only daily_only; do
+            grep -Eq "^[[:space:]]*COMBINED_MIXED_BODY_REJECTED $control[[:space:]]*$" scale-results/combined-read-acceptance/mixed-controls.log
+          done
+      - name: Complete daily literal role parity before large data
+        run: |
+          node scripts/run-disposable-psql.mjs --file scale-results/combined-read-acceptance/daily-parity.sql 2>&1 | tee scale-results/combined-read-acceptance/daily-parity.log
+          test "$(grep -Ec '^[[:space:]]*DAILY_PARITY_CASE_VERIFIED ' scale-results/combined-read-acceptance/daily-parity.log)" -eq 226
+          grep -Eq '^[[:space:]]*DAILY_PREAGGREGATION_PARITY_VERIFIED[[:space:]]*$' scale-results/combined-read-acceptance/daily-parity.log
+          for control in drop_line_cohort count_empty; do
+            grep -Eq "^[[:space:]]*DAILY_NEGATIVE_CONTROL_REJECTED $control[[:space:]]*$" scale-results/combined-read-acceptance/daily-parity.log
+          done
+          grep -Eq '^[[:space:]]*HELPER_EXPERIMENT_RESTORED[[:space:]]*\|[[:space:]]*daily-parity[[:space:]]*$' scale-results/combined-read-acceptance/daily-parity.log
+      - name: Load only the fixed fictional size for this job
+        run: |
+          node tests/scalability/generate-fixtures.mjs --rows "$SCALE_ROWS" --emit-sql --target local-ci --permit disposable-pilot-ci > scale-results/combined-read-acceptance/fixture.sql
+          node scripts/run-disposable-psql.mjs --file scale-results/combined-read-acceptance/fixture.sql 2>&1 | tee scale-results/combined-read-acceptance/load.log
+          grep -Eq '^[[:space:]]*SYNTHETIC_SCALE_FIXTURE_LOADED[[:space:]]*\|' scale-results/combined-read-acceptance/load.log
+      - name: Candidate exact all-role ground truth and restored metadata
+        run: |
+          node scripts/run-disposable-psql.mjs --file scale-results/combined-read-acceptance/ground-truth.sql 2>&1 | tee scale-results/combined-read-acceptance/ground-truth.log
+          grep -Eq '^[[:space:]]*SCALABILITY_ROLE_GROUND_TRUTH_VERIFIED[[:space:]]*\|' scale-results/combined-read-acceptance/ground-truth.log
+          grep -Eq '^[[:space:]]*HELPER_EXPERIMENT_RESTORED[[:space:]]*\|' scale-results/combined-read-acceptance/ground-truth.log
+      - name: Candidate unchanged 242 successes and 33 denials in one connection
+        run: |
+          node scripts/run-disposable-psql.mjs --file scale-results/combined-read-acceptance/pooled-reads.sql 2>&1 | tee scale-results/combined-read-acceptance/pooled-reads.log
+          grep -Eq '^[[:space:]]*SCALABLE_POOLED_READS_VERIFIED[[:space:]]*' scale-results/combined-read-acceptance/pooled-reads.log
+          grep -Eq '^[[:space:]]*HELPER_EXPERIMENT_RESTORED[[:space:]]*\|' scale-results/combined-read-acceptance/pooled-reads.log
+          test "$(grep -Ec '^[[:space:]]*POOLED_RPC_VERIFIED actor=' scale-results/combined-read-acceptance/pooled-reads.log)" -eq 242
+          test "$(grep -Ec '^[[:space:]]*POOLED_DENIED_VERIFIED ' scale-results/combined-read-acceptance/pooled-reads.log)" -eq 33
+      - name: Preserve candidate acceptance evidence including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: combined-read-acceptance-${{ matrix.rows }}-${{ github.run_id }}
+          path: scale-results/combined-read-acceptance
+          retention-days: 7
+  candidate-races:
+    if: ${{ github.event.pull_request.base.ref == 'fix/pilot-database' && github.event.pull_request.head.ref == 'fix/pilot-scale-sql' && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    # A separate job/service keeps the original pilot_test connection guard and
+    # makes the committed trial invisible to both scale jobs and every hosted DB.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic-ci-only
+          POSTGRES_DB: pilot_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d pilot_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: synthetic-ci-only
+      PGDATABASE: pilot_test
+      SCALE_ROWS: '6000'
+      SCALE_PERMIT: disposable-pilot-ci
+      PGHOSTADDR: ''
+      PGSERVICE: ''
+      PGSERVICEFILE: /dev/null
+      PGOPTIONS: ''
+      PGPASSFILE: /dev/null
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install official PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Load fresh fictional race contract only
+        run: |
+          node scripts/run-disposable-psql.mjs --file tests/database/fixture.sql
+          for file in supabase/migrations/*.sql; do
+            if [[ "$file" == supabase/migrations/202610010001_scalable_order_reads.sql ]]; then
+              node scripts/run-disposable-psql.mjs --file tests/database/hosted-read-policy-fixture.sql
+            fi
+            node scripts/run-disposable-psql.mjs --file "$file"
+          done
+      - name: Guarded candidate SQL suites all 12 races and exact original restoration
+        run: |
+          mkdir -p scale-results
+          node scripts/test-combined-read-races-ci.mjs 2>&1 | tee scale-results/combined-read-races-run.log
+          grep -Eq '^HELPER_RACE_INSTALL_VERIFIED$' scale-results/combined-read-races-run.log
+          grep -Eq '^HELPER_CANDIDATE_SQL_SUITES_VERIFIED$' scale-results/combined-read-races-run.log
+          test "$(grep -Ec '^HELPER_COMPAT_SUITE_PASSED ' scale-results/combined-read-races-run.log)" -eq 15
+          grep -Eq '^PASS all twelve normal-session concurrency scenarios$' scale-results/combined-read-races-run.log
+          grep -Eq '^HELPER_RACE_RESTORATION_VERIFIED$' scale-results/combined-read-races-run.log
+          grep -Eq '^HELPER_CANDIDATE_RACE_ACCEPTANCE_VERIFIED$' scale-results/combined-read-races-run.log
+          grep -Eq '^COMBINED_READ_CANDIDATE_RACE_ACCEPTANCE_VERIFIED$' scale-results/combined-read-races-run.log
+      - name: Preserve isolated race evidence including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: combined-read-candidate-races-${{ github.run_id }}
+          path: scale-results/combined-read-races*
+          retention-days: 7

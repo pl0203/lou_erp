@@ -1,0 +1,132 @@
+name: Disposable daily preaggregation trial
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [fix/pilot-database]
+    paths:
+      - .github/workflows/daily-preaggregation.yml
+      - tests/database/experiments/can-read-po-*.sql
+      - tests/database/experiments/daily-preaggregation*.sql
+      - tests/scalability/can-read-po-experiment.*
+      - tests/scalability/build-daily-preaggregation.*
+      - tests/scalability/daily-preaggregation*
+permissions:
+  contents: read
+jobs:
+  fixed-daily-preaggregation:
+    if: ${{ github.event.pull_request.base.ref == 'fix/pilot-database' && github.event.pull_request.head.ref == 'fix/pilot-scale-sql' && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic-ci-only
+          POSTGRES_DB: pilot_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d pilot_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: synthetic-ci-only
+      PGDATABASE: pilot_test
+      SCALE_ROWS: '30000'
+      SCALE_PERMIT: disposable-pilot-ci
+      PGHOSTADDR: ''
+      PGSERVICE: ''
+      PGSERVICEFILE: /dev/null
+      PGOPTIONS: ''
+      PGPASSFILE: /dev/null
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install official PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Assemble fixed experimental packets
+        run: |
+          node tests/scalability/build-daily-preaggregation.mjs
+          git rev-parse HEAD > scale-results/daily-preaggregation/commit.txt
+      - name: Load only the guarded synthetic contract and deployed migration inventory
+        run: |
+          node scripts/run-disposable-psql.mjs --file tests/database/fixture.sql
+          for file in supabase/migrations/*.sql; do
+            if [[ "$file" == supabase/migrations/202610010001_scalable_order_reads.sql ]]; then
+              node scripts/run-disposable-psql.mjs --file tests/database/hosted-read-policy-fixture.sql
+            fi
+            node scripts/run-disposable-psql.mjs --file "$file"
+          done
+      - name: Independent helper truth table and negative controls
+        run: |
+          node scripts/run-disposable-psql.mjs --file scale-results/daily-preaggregation/truth.sql 2>&1 | tee scale-results/daily-preaggregation/truth.log
+          grep -Eq '^[[:space:]]*HELPER_DIRECT_TRUTH_VERIFIED[[:space:]]*\|' scale-results/daily-preaggregation/truth.log
+          grep -Eq '^[[:space:]]*HELPER_EXPERIMENT_RESTORED[[:space:]]*\|' scale-results/daily-preaggregation/truth.log
+          for control in constant_false constant_true missing_caller_null requires_parent; do
+            grep -Fq "HELPER_NEGATIVE_CONTROL_REJECTED $control" scale-results/daily-preaggregation/truth.log
+          done
+      - name: Unchanged installed620 policy write and state oracle under each helper
+        run: |
+          for variant in baseline candidate; do
+            file="scale-results/daily-preaggregation/policy-$variant.sql"
+            node scripts/run-disposable-psql.mjs --file "$file" 2>&1 | tee "${file%.sql}.log"
+            grep -Eq '^[[:space:]]*FINAL_READ_POLICY_MATRIX_VERIFIED[[:space:]]*' "${file%.sql}.log"
+            grep -Eq '^[[:space:]]*FINAL_READ_POLICY_ROLLBACK_VERIFIED[[:space:]]*' "${file%.sql}.log"
+            grep -Eq '^[[:space:]]*HELPER_EXPERIMENT_RESTORED[[:space:]]*\|' "${file%.sql}.log"
+          done
+      - name: Exact small daily role date page oracle and discriminating negatives
+        run: |
+          node scripts/run-disposable-psql.mjs --file scale-results/daily-preaggregation/parity.sql 2>&1 | tee scale-results/daily-preaggregation/parity.log
+          test "$(grep -Ec '^[[:space:]]*DAILY_PARITY_CASE_VERIFIED ' scale-results/daily-preaggregation/parity.log)" -eq 226
+          grep -Eq '^[[:space:]]*DAILY_PREAGGREGATION_PARITY_VERIFIED[[:space:]]*$' scale-results/daily-preaggregation/parity.log
+          for control in drop_line_cohort count_empty; do
+            grep -Eq "^[[:space:]]*DAILY_NEGATIVE_CONTROL_REJECTED $control[[:space:]]*$" scale-results/daily-preaggregation/parity.log
+          done
+          grep -Eq '^[[:space:]]*HELPER_EXPERIMENT_RESTORED[[:space:]]*\|[[:space:]]*daily-parity[[:space:]]*$' scale-results/daily-preaggregation/parity.log
+      - name: Load the reviewed fixed30k fixture
+        run: |
+          node tests/scalability/generate-fixtures.mjs --rows 30000 --emit-sql --target local-ci --permit disposable-pilot-ci > scale-results/daily-preaggregation/fixture.sql
+          node scripts/run-disposable-psql.mjs --file scale-results/daily-preaggregation/fixture.sql 2>&1 | tee scale-results/daily-preaggregation/load.log
+          grep -Eq '^[[:space:]]*SYNTHETIC_SCALE_FIXTURE_LOADED[[:space:]]*\|' scale-results/daily-preaggregation/load.log
+      - name: Balanced original candidate daily calls and separately instrumented plans
+        run: |
+          failed=0
+          for phase in warmup pair plan; do
+            variants=(baseline candidate)
+            if [[ "$phase" == pair ]]; then variants=(baseline candidate candidate baseline); fi
+            i=0
+            for variant in "${variants[@]}"; do
+              for role in manager admin; do
+                actor=2
+                if [[ "$role" == admin ]]; then actor=6; fi
+                name="$phase-$(printf '%02d' "$i")-$role-$variant"
+                i=$((i+1))
+                file="scale-results/daily-preaggregation/$name.sql"
+                if [[ ! -f "$file" ]]; then echo "Missing required packet $name"; failed=1; continue; fi
+                node scripts/run-disposable-psql.mjs --file "$file" 2>&1 | tee "${file%.sql}.log" || failed=1
+                grep -Eq "^[[:space:]]*POOLED_RPC_VERIFIED actor=$actor rpc=daily narrow=f[[:space:]]*$" "${file%.sql}.log" || failed=1
+                if [[ "$phase" == plan ]]; then
+                  grep -Eq "^[[:space:]]*DAILY_PREAGG_PLAN $name[[:space:]]*$" "${file%.sql}.log" || failed=1
+                  grep -Eq '^[[:space:]]*Execution Time: [0-9.]+ ms[[:space:]]*$' "${file%.sql}.log" || failed=1
+                fi
+                grep -Eq "^[[:space:]]*HELPER_EXPERIMENT_RESTORED[[:space:]]*\|[[:space:]]*$name[[:space:]]*$" "${file%.sql}.log" || failed=1
+              done
+            done
+          done
+          exit "$failed"
+      - name: Require all fixed observations before reporting paired screening medians
+        run: node tests/scalability/build-daily-preaggregation.mjs results
+      - name: Preserve synthetic evidence including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-preaggregation-${{ github.run_id }}
+          path: scale-results/daily-preaggregation
+          retention-days: 7

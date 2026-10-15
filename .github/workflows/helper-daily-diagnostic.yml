@@ -1,0 +1,114 @@
+name: Disposable daily query diagnosis
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [fix/pilot-database]
+    paths:
+      - .github/workflows/helper-daily-diagnostic.yml
+      - tests/database/experiments/can-read-po-*.sql
+      - tests/scalability/can-read-po-experiment.*
+      - tests/scalability/build-helper-daily-diagnostic.*
+      - tests/scalability/helper-daily-diagnostic.*
+permissions:
+  contents: read
+jobs:
+  fixed-daily-diagnostic:
+    if: ${{ github.event.pull_request.base.ref == 'fix/pilot-database' && github.event.pull_request.head.ref == 'fix/pilot-scale-sql' && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic-ci-only
+          POSTGRES_DB: pilot_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d pilot_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: synthetic-ci-only
+      PGDATABASE: pilot_test
+      SCALE_ROWS: '30000'
+      SCALE_PERMIT: disposable-pilot-ci
+      PGHOSTADDR: ''
+      PGSERVICE: ''
+      PGSERVICEFILE: /dev/null
+      PGOPTIONS: ''
+      PGPASSFILE: /dev/null
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install official PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Assemble fixed experimental packets
+        run: |
+          node tests/scalability/build-helper-daily-diagnostic.mjs
+          git rev-parse HEAD > scale-results/helper-daily-diagnostic/commit.txt
+      - name: Load only the guarded synthetic contract and deployed migration inventory
+        run: |
+          node scripts/run-disposable-psql.mjs --file tests/database/fixture.sql
+          for file in supabase/migrations/*.sql; do
+            if [[ "$file" == supabase/migrations/202610010001_scalable_order_reads.sql ]]; then
+              node scripts/run-disposable-psql.mjs --file tests/database/hosted-read-policy-fixture.sql
+            fi
+            node scripts/run-disposable-psql.mjs --file "$file"
+          done
+      - name: Independent helper truth table and negative controls
+        run: |
+          node scripts/run-disposable-psql.mjs --file scale-results/helper-daily-diagnostic/truth.sql 2>&1 | tee scale-results/helper-daily-diagnostic/truth.log
+          grep -Eq '^[[:space:]]*HELPER_DIRECT_TRUTH_VERIFIED[[:space:]]*\|' scale-results/helper-daily-diagnostic/truth.log
+          grep -Eq '^[[:space:]]*HELPER_EXPERIMENT_RESTORED[[:space:]]*\|' scale-results/helper-daily-diagnostic/truth.log
+          for control in constant_false constant_true missing_caller_null requires_parent; do
+            grep -Fq "HELPER_NEGATIVE_CONTROL_REJECTED $control" scale-results/helper-daily-diagnostic/truth.log
+          done
+      - name: Unchanged installed620 policy write and state oracle under each helper
+        run: |
+          for variant in baseline candidate; do
+            file="scale-results/helper-daily-diagnostic/policy-$variant.sql"
+            node scripts/run-disposable-psql.mjs --file "$file" 2>&1 | tee "${file%.sql}.log"
+            grep -Eq '^[[:space:]]*FINAL_READ_POLICY_MATRIX_VERIFIED[[:space:]]*' "${file%.sql}.log"
+            grep -Eq '^[[:space:]]*FINAL_READ_POLICY_ROLLBACK_VERIFIED[[:space:]]*' "${file%.sql}.log"
+            grep -Eq '^[[:space:]]*HELPER_EXPERIMENT_RESTORED[[:space:]]*\|' "${file%.sql}.log"
+          done
+      - name: Load the reviewed fixed30k fixture
+        run: |
+          node tests/scalability/generate-fixtures.mjs --rows 30000 --emit-sql --target local-ci --permit disposable-pilot-ci > scale-results/helper-daily-diagnostic/fixture.sql
+          node scripts/run-disposable-psql.mjs --file scale-results/helper-daily-diagnostic/fixture.sql 2>&1 | tee scale-results/helper-daily-diagnostic/load.log
+          grep -Eq '^[[:space:]]*SYNTHETIC_SCALE_FIXTURE_LOADED[[:space:]]*\|' scale-results/helper-daily-diagnostic/load.log
+      - name: Exact custom generic and instrumented daily plans with complete oracle
+        run: |
+          failed=0
+          for role in manager admin; do
+            actor=2
+            if [[ "$role" == admin ]]; then actor=6; fi
+            for mode in force_custom_plan force_generic_plan auto; do
+              name="daily-$role-$mode"
+              file="scale-results/helper-daily-diagnostic/$name.sql"
+              if [[ ! -f "$file" ]]; then echo "Missing required packet $name"; failed=1; continue; fi
+              node scripts/run-disposable-psql.mjs --file "$file" 2>&1 | tee "${file%.sql}.log" || failed=1
+              grep -Eq "^[[:space:]]*POOLED_RPC_VERIFIED actor=$actor rpc=daily narrow=f[[:space:]]*$" "${file%.sql}.log" || failed=1
+              grep -Eq "^[[:space:]]*DAILY_COST_PLAN $name[[:space:]]*$" "${file%.sql}.log" || failed=1
+              if [[ "$mode" == auto ]]; then
+                grep -Eq "^[[:space:]]*DAILY_INSTRUMENTED_INNER_PLAN $name[[:space:]]*$" "${file%.sql}.log" || failed=1
+              fi
+              grep -Eq "^[[:space:]]*HELPER_EXPERIMENT_RESTORED[[:space:]]*\|[[:space:]]*$name[[:space:]]*$" "${file%.sql}.log" || failed=1
+            done
+          done
+          exit "$failed"
+      - name: Preserve synthetic evidence including failures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: helper-daily-diagnostic-${{ github.run_id }}
+          path: scale-results/helper-daily-diagnostic
+          retention-days: 7

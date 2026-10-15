@@ -4,6 +4,29 @@
 
 **Production is not approved.** Follow [the populated-staging packet](scalability-staging-packet.md), [verification record](scalability-verification.md), and [rollback boundary](scalability-rollback.md) for the additive read migrations. Staging already contains users and business records. Do not run an empty-project bootstrap, synthetic fixture, reset, or cleanup against that project.
 
+### CLI migration-history release gate
+
+A read-only staging catalog check on 1 October 2026 confirmed that
+`supabase_migrations.schema_migrations` is absent. The approved SQL Editor
+packets and their independent schema/data receipts establish the applied
+changes separately; an absent history table does **not** mean the schema is
+absent. The conditional history-row query was correctly skipped.
+
+Do not run a blind `supabase db push`, repair history, or replay the SQL Editor
+packets. Supabase [tracks CLI migration versions separately from schema state](https://supabase.com/docs/guides/deployment/database-migrations),
+and its [migration list compares only timestamps](https://supabase.com/docs/reference/cli/supabase-migration-list). Existing CREATE statements and
+prior-body guards in later replacements are not safe replay instructions.
+
+Before a future production release, independently reconcile all local migration
+versions and exact file hashes with the approved apply receipts and current
+catalog. Investigate missing/extra versions and partial states. A stored SQL-array
+digest is not the same representation as a migration file hash. Prepare and test
+any required baseline/history reconciliation using the exact CLI version in a
+disposable environment, then obtain approval for the specific history or schema
+changes. No migration-history repair is authorized by the current staging work.
+The folder contains additive changes over a separately verified baseline, not a
+standalone empty-database bootstrap.
+
 The exact ordered scalability allowlist is 202610010001, 002, 004, 007, 008, 009, with full names/hashes in the staging packet. It adds 11 public invoker RPCs/four private guards, conditionally adds one nonunique lookup index, changes nine proven-equivalent policy predicates and replaces three newly added read-function bodies. Existing transaction functions, authorization helpers, triggers, business data and table/column grants remain unchanged. Rejected 005/006 experiments are outside deployable migrations.
 
 Current code `2158b792` / tree `3fb406ec` passed 494 app tests, normal real-role security/SQL suites and 12 races in run 36877297581. Final 30k run 36877297640 passed exact seven-role totals and all 242 pooled successes/33 denials with rollback. Future-scale latency remains unaccepted: observed customer stats reached 22.942 s. Actual hosted JWT/API/UI and separate production approval are still required. See the current verification record for precise limits.
