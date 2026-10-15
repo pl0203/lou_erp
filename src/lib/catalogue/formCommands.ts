@@ -1,4 +1,4 @@
-import type { CatalogueKind, CatalogueOperationPayloads, CatalogueReceipt, CatalogueRow } from './contracts'
+import type { CatalogueKind, CatalogueReceipt, CatalogueRow } from './contracts'
 import type { CatalogueTransactionSender } from './transactions'
 import { parseCataloguePayload } from './validation'
 
@@ -12,8 +12,8 @@ export async function sendCatalogueForm<K extends CatalogueKind>(
 ): Promise<CatalogueReceipt | null> {
   if (original && !Object.keys(values).length) return null
   if (original) {
-    const payload = parseCataloguePayload('edit', { kind, id: original.id, expected_version: original.catalog_version, values } as CatalogueOperationPayloads['edit'])
+    const payload = parseCataloguePayload('edit', { kind, id: original.id, expected_version: original.catalog_version, values })
     return sender('edit', payload)
   }
-  return sender('create', parseCataloguePayload('create', { kind, values } as CatalogueOperationPayloads['create']))
+  return sender('create', parseCataloguePayload('create', { kind, values }))
 }

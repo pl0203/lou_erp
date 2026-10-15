@@ -16,8 +16,8 @@ export function coPlannedAmount(lines: readonly {
     total += minorUnits(coLineAmount(line.quantity, line.unit_price));
 } return formatCOMinorUnits(total); }
 /** Existing catalog numeric values are checked before their decimal representation is used. No tier fallback. */
-export function resolveCOCatalogPrice(prices: Record<string, unknown> | null | undefined, tier: string | null | undefined): Money | null { if (!tier || !PRICE_TIERS.includes(tier as typeof PRICE_TIERS[number]))
-    return null; const v = prices?.[tier]; if (v == null)
+export function resolveCOCatalogPrice(prices: Partial<Record<typeof PRICE_TIERS[number], unknown>> | null | undefined, tier: string | null | undefined): Money | null { const priceTier = PRICE_TIERS.find(candidate => candidate === tier); if (!priceTier)
+    return null; const v = prices?.[priceTier]; if (v == null)
     return null; if (typeof v === 'number') {
     if (!Number.isFinite(v))
         invalid('catalog price');
