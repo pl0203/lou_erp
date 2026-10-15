@@ -121,7 +121,7 @@ function fixture() {
   assert.equal(command,'psql');calls.push({args,options});
   assert.equal(options.env.GIT_NO_LAZY_FETCH,'1');assert.equal(options.env.PGDATABASE,'pilot_catalogue_test');assert.equal(options.env.HOME,undefined);
   assert.ok(options.input.includes('SELECT 1/0 AS catalogue_identity_refused;'));
-  assert.deepEqual(args,['-X','--no-password','-qAt','-v','ON_ERROR_STOP=1','-v','VERBOSITY=verbose']);
+  assert.deepEqual(args,['-X','--no-password','-qAt','-v','ON_ERROR_STOP=1','-v','VERBOSITY=verbose','-f','-']);
   if(options.input.includes('CATALOGUE_FIXTURE_OBSERVATION')) {
    const observed={database:'pilot_catalogue_test',operator:'postgres',database_owner:'postgres',system_identifier:boundIdentity.systemIdentifier,server_version_num:boundIdentity.serverVersion,server_address:boundIdentity.serverAddress,server_port:5432,marker:{kind:'r',owner:'postgres',rows:[{singleton:true,purpose:'disposable-catalogue-ci-v1',identity:boundIdentity}]}};
    if(observedChange)observedChange(observed,calls.length);return JSON.stringify(observed);
@@ -276,6 +276,48 @@ test('failure diagnostics do not mistake timeout spawn or mixed ERROR output for
   const expected=change.stdout?{phase:'session',completedMarkerIndex:null,sqlstate:'P0001'}:{phase:'session',completedMarkerIndex:null,sqlstate:null};
   assert.deepEqual(runner.foundationFailureDiagnostic('session',error),expected);
  }
+});
+test('failure diagnostics map exact stdin line numbers to captured public source bytes only',()=>{
+ need();const parts=Object.fromEntries(Object.entries(runner.foundationSqlPaths).map(([name,path])=>[name,readFileSync(join(root,path),'utf8')]));
+ const sql=runner.buildCatalogueFoundationSession(identity,parts),map=runner.foundationSessionSourceMap(sql,parts);
+ assert.equal(map.sqlSha256,sha(sql));assert.equal(Object.isFrozen(map),true);
+ const completed={before:0,candidate:1,foundation:2,legacy:3,roles:4,orderCandidate:5,orders:5,coOrderCandidate:6,coOrders:6};
+ for(const [name,path] of Object.entries(runner.foundationSqlPaths)) {
+  const range=map.ranges.find(r=>r.path===path);assert.ok(Object.isFrozen(range));
+  const sourceLines=parts[name].trimEnd().split('\n');
+  assert.equal(sql.split('\n')[range.firstLine-1],sourceLines[0]);
+  assert.equal(sql.split('\n')[range.lastLine-1],sourceLines.at(-1));
+  for(const inputLine of [range.firstLine,range.lastLine]) {
+   const error={status:3,signal:null,code:'EPIPE',stdout:runner.foundationExpectedMarkers.slice(0,completed[name]).map(x=>`${x} 412 827\n`).join(''),stderr:`psql:<stdin>:${inputLine}: ERROR:  42501: PRIVATE_CANARY\nDETAIL: SECRET_CANARY\n`};
+   const diagnostic=runner.foundationFailureDiagnostic('session',error,map);
+   assert.deepEqual(diagnostic,{phase:'session',completedMarkerIndex:completed[name]-1,sqlstate:'42501',source:{path,sha256:sha(parts[name]),line:inputLine-range.firstLine+1}});
+   assert.equal(JSON.stringify(diagnostic).includes('CANARY'),false);
+  }
+ }
+ assert.throws(()=>runner.foundationSessionSourceMap(sql+'\r',parts));
+ assert.throws(()=>runner.foundationSessionSourceMap(sql+parts.coOrders,parts));
+ assert.throws(()=>runner.foundationSessionSourceMap(sql,{...parts,coOrders:'SELECT missing_source;'}));
+});
+test('failure diagnostics reject mixed origins unsafe line numbers forged maps and marker contradictions',()=>{
+ need();const parts=fixtureParts(),sql=runner.buildCatalogueFoundationSession(identity,parts),map=runner.foundationSessionSourceMap(sql,parts);
+ const range=map.ranges.find(r=>r.path===runner.foundationSqlPaths.coOrders),n=range.firstLine;
+ const stdout=runner.foundationExpectedMarkers.slice(0,6).map(x=>`${x} 412 827\n`).join('');
+ const error={status:3,signal:null,stdout,stderr:`psql:<stdin>:${n}: ERROR:  P0001: PRIVATE_CANARY\n`};
+ const empty={phase:'session',completedMarkerIndex:null,sqlstate:null};
+ for(const stderr of [
+  `psql:/private/file:${n}: ERROR:  P0001: PRIVATE_CANARY\n`,
+  `prefix psql:<stdin>:${n}: ERROR:  P0001: PRIVATE_CANARY\n`,
+  ...['0','-1','01','1.5','99999999',String(map.lineCount+1)].map(line=>`psql:<stdin>:${line}: ERROR:  P0001: PRIVATE_CANARY\n`),
+  error.stderr+'ERROR:  42501: SECRET_CANARY\n',error.stderr+error.stderr,error.stderr.trimEnd()+' ERROR: 42501: SECRET_CANARY\n',
+  error.stderr.trimEnd(),error.stderr+'x'.repeat(512*1024)+'\n',
+ ])assert.deepEqual(runner.foundationFailureDiagnostic('session',{...error,stderr},map),empty);
+ for(const unbound of [undefined,{...map},Object.freeze({...map}),{...map,ranges:[]}])
+  assert.deepEqual(runner.foundationFailureDiagnostic('session',error,unbound),empty);
+ for(const badOutput of ['',stdout+runner.foundationExpectedMarkers[6]+' 412 827\n',stdout+'PRIVATE_CANARY\n',stdout.trimEnd(),'x'.repeat(4097)]) {
+  const diagnostic=runner.foundationFailureDiagnostic('session',{...error,stdout:badOutput},map);
+  assert.deepEqual(diagnostic,{phase:'session',completedMarkerIndex:null,sqlstate:'P0001'});
+ }
+ assert.deepEqual(runner.foundationFailureDiagnostic('identity-preflight',error,map),{...empty,phase:'identity-preflight'});
 });
 test('failure diagnostics preserve refusal and never authorize a failure bundle',()=>withFixture(f=>{
  f.setBehavior(()=>{throw Object.assign(new Error('PRIVATE_CANARY'),{status:3,signal:null,stdout:runner.foundationExpectedMarkers[0]+' 412 827\n',stderr:'ERROR:  P0001: SECRET_CANARY\n'});});

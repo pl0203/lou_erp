@@ -11,8 +11,8 @@ test('unique exact lookup adds once, preserves search focus, and consumes IME/re
 test('complete lookup finds product 1001 and ambiguous SKU requires arrows', async () => { state.products = Array.from({ length: 1001 }, (_, i) => product(i + 1)); await create(); await addProduct('SKU-1001'); await screen.findByDisplayValue('Product 1001'); expect(state.commands).toHaveLength(0); });
 test('duplicate normalized SKU focuses quantity and retains manual price', async () => { await create(); await addProduct(); const qty = await screen.findByLabelText('Qty Product 1'); change('Qty Product 1', '7'); change('Harga satuan Product 1', '40.25'); await addProduct(' sku-1 '); await waitFor(() => expect(document.activeElement).toBe(qty)); expect((qty as HTMLInputElement).value).toBe('7'); expect((screen.getByLabelText('Harga satuan Product 1') as HTMLInputElement).value).toBe('40.25'); });
 test('missing price blocks and explicit zero saves exact decimal text', async () => { state.products[0].luar_kota = null; await create(); await addProduct(); await screen.findByDisplayValue('Product 1'); fireEvent.click(screen.getByRole('button', { name: 'Simpan CO' })); await screen.findAllByText(/Harga wajib diisi/); expect(state.commands).toHaveLength(0); change('Harga satuan Product 1', '0.00'); fireEvent.click(screen.getByRole('button', { name: 'Simpan CO' })); await waitFor(() => expect(state.commands).toHaveLength(1)); expect(state.commands[0].payload.lines[0].unit_price).toBe('0.00'); });
-test('manual SKU supports unknown identity and exact large planned amount', async () => { await create(); fireEvent.click(screen.getByRole('button', { name: 'Tambah barang manual' })); change('Nama produk barang baru', 'Manual'); change('SKU Manual', 'UNKNOWN'); change('Qty Manual', '2147483647'); change('Harga satuan Manual', '999999999999.99'); expect(await screen.findAllByText(/2\.147\.483\.646\.999\.978\.525\.163,53/)).toHaveLength(2); fireEvent.click(screen.getByRole('button', { name: 'Simpan CO' })); await waitFor(() => expect(state.commands).toHaveLength(1)); expect(state.commands[0].payload.lines[0].product_id).toBeNull(); });
-test('existing stock identity requires explicit reuse and preserves historic identity', async () => { state.keys = [{ id: uuid(10001), normalized_sku: 'sku-1', display_sku: 'SKU-1', product_name: 'Historical key', product_id: null }]; await create(); await addProduct(); await screen.findByText(/SKU sudah memiliki identitas stok/); expect(screen.queryByDisplayValue('Product 1')).toBeNull(); fireEvent.click(screen.getByRole('button', { name: 'Gunakan identitas stok lama' })); await screen.findByDisplayValue('Historical key'); fireEvent.click(screen.getByRole('button', { name: 'Simpan CO' })); await waitFor(() => expect(state.commands).toHaveLength(1)); expect(state.commands[0].payload.lines[0].stock_key_id).toBe(uuid(10001)); expect(state.commands[0].payload.lines[0].product_id).toBeNull(); });
+test('canonical catalogue selection preserves exact large agreed planned amount', async () => { await create(); await addProduct(); await screen.findByDisplayValue('Product 1'); change('Qty Product 1', '2147483647'); change('Harga satuan Product 1', '999999999999.99'); expect(await screen.findAllByText(/2\.147\.483\.646\.999\.978\.525\.163,53/)).toHaveLength(2); fireEvent.click(screen.getByRole('button', { name: 'Simpan CO' })); await waitFor(() => expect(state.commands).toHaveLength(1)); expect(state.commands[0].payload.lines[0].product_id).toBe(product().id); });
+test('existing stock identity requires explicit reuse and preserves historic identity', async () => { state.keys = [{ id: uuid(10001), normalized_sku: 'sku-1', display_sku: 'SKU-1', product_name: 'Historical key', product_id: product().id }]; await create(); await addProduct(); await screen.findByText(/SKU sudah memiliki identitas stok/); expect(screen.queryByDisplayValue('Product 1')).toBeNull(); fireEvent.click(screen.getByRole('button', { name: 'Gunakan identitas stok lama' })); await screen.findByDisplayValue('Historical key'); fireEvent.click(screen.getByRole('button', { name: 'Simpan CO' })); await waitFor(() => expect(state.commands).toHaveLength(1)); expect(state.commands[0].payload.lines[0].stock_key_id).toBe(uuid(10001)); expect(state.commands[0].payload.lines[0].product_id).toBe(product().id); });
 test('edit preserves all 601 identities while only quantities are editable', async () => {
     state.lines = Array.from({ length: 601 }, (_, i) => line(i + 1));
     mount(<COForm mode="edit"/>);
@@ -68,15 +68,15 @@ test('save focuses the first invalid quantity after revealing its off-page line'
 });
 test('save focuses a missing agreed price when the new row is on another page', async () => {
     state.lines = Array.from({ length: 100 }, (_, i) => line(i + 1));
+    state.products = [{ ...product(101), luar_kota: null }];
     mount(<COForm mode="edit"/>);
     await screen.findByDisplayValue('Item 1');
-    fireEvent.click(screen.getByRole('button', { name: 'Tambah barang manual' }));
-    change('Nama produk barang baru', 'Manual');
-    change('SKU Manual', 'UNKNOWN');
+    await addProduct('SKU-101');
+    await screen.findByDisplayValue('Product 101');
     fireEvent.click(screen.getByRole('button', { name: 'Sebelumnya' }));
     fireEvent.click(screen.getByRole('button', { name: 'Simpan Perubahan' }));
     await screen.findAllByText(/Harga wajib diisi/);
-    expect(document.activeElement).toBe(screen.getByLabelText('Harga satuan Manual'));
+    expect(document.activeElement).toBe(screen.getByLabelText('Harga satuan Product 101'));
     expect(state.commands).toHaveLength(0);
 });
 
@@ -110,7 +110,7 @@ function expectRefreshFrozen() {
     for (const label of ['Nomor CO', 'Tanggal CO', 'Tanggal akhir CO', 'Catatan', 'Qty Item 1', 'Cari SKU atau nama barang']) {
         expect(screen.getByLabelText(label).matches(':disabled'), label).toBe(true);
     }
-    for (const label of ['Tambah barang manual', 'Hapus Item 1', 'Simpan Perubahan']) {
+    for (const label of ['Hapus Item 1', 'Simpan Perubahan']) {
         expect(screen.getByRole('button', { name: label }).matches(':disabled'), label).toBe(true);
     }
 }
@@ -159,27 +159,27 @@ test('late accepted refresh cannot initialize a replacement document generation'
     expect(router.state.location.pathname).toBe(`/athel/co/${nextId}/edit`);
 });
 
-async function manualCollision() {
-    state.keys = [{ id: uuid(10001), normalized_sku: 'sku-1', display_sku: 'SKU-1', product_name: 'Historical key', product_id: null }];
+async function catalogueCollision() {
     const view = mount(<COForm mode="create"/>, '/athel/co/new');
     await chooseCustomer();
     change('Nomor CO', 'CO-NEW');
-    fireEvent.click(screen.getByRole('button', { name: 'Tambah barang manual' }));
-    change('Nama produk barang baru', 'Manual');
-    change('SKU Manual', 'SKU-1');
-    change('Harga satuan Manual', '10.00');
+    await addProduct();
+    await screen.findByDisplayValue('Product 1');
+    change('Harga satuan Product 1', '10.00');
+    // The same-product key appears after selection, so save requests explicit reuse on this stable row.
+    state.keys = [{ id: uuid(10001), normalized_sku: 'sku-1', display_sku: 'SKU-1', product_name: 'Historical key', product_id: product().id }];
     fireEvent.click(screen.getByRole('button', { name: 'Simpan CO' }));
     await screen.findByText(/SKU sudah memiliki identitas stok/);
-    await waitFor(() => expect(screen.getByLabelText('Qty Manual').matches(':disabled')).toBe(false));
+    await waitFor(() => expect(screen.getByLabelText('Qty Product 1').matches(':disabled')).toBe(false));
     return view;
 }
 // Regression: accepting identity must not restore the discovery-time quantity or price snapshot.
 test.each([['quantity', '7', '10.00'], ['price', '1', '40.25'], ['both', '7', '40.25']])('stock-key reuse preserves intervening %s edits and the stable row', async (_kind, quantity, price) => {
-    await manualCollision();
-    const qty = screen.getByLabelText('Qty Manual');
+    await catalogueCollision();
+    const qty = screen.getByLabelText('Qty Product 1');
     const row = qty.closest('[data-co-line]');
-    change('Qty Manual', quantity);
-    change('Harga satuan Manual', price);
+    change('Qty Product 1', quantity);
+    change('Harga satuan Product 1', price);
     fireEvent.click(screen.getByRole('button', { name: 'Gunakan identitas stok lama' }));
     const reusedQty = await screen.findByLabelText('Qty Historical key');
     expect((reusedQty as HTMLInputElement).value).toBe(quantity);
@@ -188,65 +188,67 @@ test.each([['quantity', '7', '10.00'], ['price', '1', '40.25'], ['both', '7', '4
     expect(reusedQty.closest('[data-co-line]')).toBe(row);
     fireEvent.click(screen.getByRole('button', { name: 'Simpan CO' }));
     await waitFor(() => expect(state.commands).toHaveLength(1));
-    expect(state.commands[0].payload.lines[0]).toMatchObject({ id: row?.getAttribute('data-co-line'), ordered_quantity: Number(quantity), unit_price: price, stock_key_id: uuid(10001), product_id: null });
+    expect(state.commands[0].payload.lines[0]).toMatchObject({ id: row?.getAttribute('data-co-line'), ordered_quantity: Number(quantity), unit_price: price, stock_key_id: uuid(10001), product_id: product().id });
 });
 
-test.each(['changed SKU', 'removed row'])('stale reuse choice rejects a %s', async kind => {
-    await manualCollision();
-    if (kind === 'changed SKU') change('SKU Manual', 'OTHER-SKU');
-    else fireEvent.click(screen.getByRole('button', { name: 'Hapus Manual' }));
+test.each(['disabled product', 'removed row'])('stale reuse choice rejects a %s', async kind => {
+    const { client } = await catalogueCollision();
+    if (kind === 'disabled product') {
+        state.products[0].is_enabled = false;
+        await act(async () => { await client.invalidateQueries({ queryKey: ['catalogue'] }); });
+    } else fireEvent.click(screen.getByRole('button', { name: 'Hapus Product 1' }));
     const choice = screen.queryByRole('button', { name: 'Gunakan identitas stok lama' });
     if (choice) fireEvent.click(choice);
     expect(screen.queryByDisplayValue('Historical key')).toBeNull();
     expect(screen.queryByText(/harga kesepakatan dipertahankan/)).toBeNull();
-    if (kind === 'changed SKU') expect(screen.getByDisplayValue('OTHER-SKU')).toBeTruthy();
+    if (kind === 'disabled product') expect(screen.getByDisplayValue('Product 1')).toBeTruthy();
     else expect(screen.getByText(/Belum ada barang/)).toBeTruthy();
     expect(state.commands).toHaveLength(0);
 });
 
-test('changing customer discards the old stock identity choice and manual row', async () => {
+test('changing customer discards the old stock identity choice and selected row', async () => {
     state.customers.push({ id: uuid(800), name: 'Store B', pricing_tier: 'luar_kota' });
-    await manualCollision();
+    await catalogueCollision();
     const customer = screen.getByRole('combobox', { name: 'Pelanggan' });
     fireEvent.change(customer, { target: { value: 'Store B' } });
     fireEvent.click(await screen.findByRole('option', { name: /Store B/ }));
     fireEvent.click(await screen.findByRole('button', { name: 'Buang perubahan' }));
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Gunakan identitas stok lama' })).toBeNull());
-    expect(screen.queryByDisplayValue('Manual')).toBeNull();
+    expect(screen.queryByDisplayValue('Product 1')).toBeNull();
     expect((customer as HTMLInputElement).value).toBe('Store B');
 });
 
 test.each(['pending', 'unresolved', 'not ready'] as const)('reuse is frozen when the editor is %s', async kind => {
-    const { client } = await manualCollision();
+    const { client } = await catalogueCollision();
     let release: (() => void) | undefined;
     if (kind === 'pending') {
         vi.spyOn(rpc, 'resolveCOStockKey').mockImplementationOnce(() => new Promise(resolve => { release = () => resolve(null); }));
         state.products.push(product(2));
-        await act(async () => { await client.invalidateQueries({ queryKey: coKeys.read({ actorId: ids.actor, role: 'co_admin' }, 'catalog', {}) }); });
+        await act(async () => { await client.invalidateQueries({ queryKey: ['catalogue'] }); });
         await addProduct('SKU-2');
         await waitFor(() => expect(release).toBeTypeOf('function'));
     } else {
         if (kind === 'unresolved') state.unresolved = true;
         else state.failCatalog = true;
-        await act(async () => { await client.invalidateQueries({ queryKey: coKeys.read({ actorId: ids.actor, role: 'co_admin' }, 'catalog', {}) }); });
+        await act(async () => { await client.invalidateQueries({ queryKey: ['catalogue'] }); });
     }
     const choice = screen.getByRole('button', { name: 'Gunakan identitas stok lama' });
     await waitFor(() => expect(choice.matches(':disabled')).toBe(true));
     fireEvent.click(choice);
     expect(screen.queryByDisplayValue('Historical key')).toBeNull();
-    expect(screen.getByDisplayValue('Manual')).toBeTruthy();
+    expect(screen.getByDisplayValue('Product 1')).toBeTruthy();
     if (release) await act(async () => release!());
     expect(state.commands).toHaveLength(0);
 });
 
 test('reuse rejects a stock identity checked against an older customer version', async () => {
-    const { client } = await manualCollision();
+    const { client } = await catalogueCollision();
     vi.spyOn(rpc, 'fetchCOCustomerStock').mockResolvedValue({ customer_version: '2', rows: state.keys, total: '1' } as any);
     await act(async () => { await client.invalidateQueries({ queryKey: coKeys.identity({ actorId: ids.actor, role: 'co_admin' }), predicate: query => query.queryKey[4] === 'customer-binding' }); });
     await waitFor(() => expect(client.isFetching()).toBe(0));
     fireEvent.click(screen.getByRole('button', { name: 'Gunakan identitas stok lama' }));
     expect(screen.queryByDisplayValue('Historical key')).toBeNull();
-    expect(screen.getByDisplayValue('Manual')).toBeTruthy();
+    expect(screen.getByDisplayValue('Product 1')).toBeTruthy();
     expect(state.commands).toHaveLength(0);
 });
 
@@ -258,7 +260,7 @@ test('accepted refresh freezes conflicting recovery controls until its read comp
     fireEvent.click(await screen.findByRole('button', { name: 'Buang perubahan' }));
     await waitFor(() => expect(release).toBeTypeOf('function'));
     state.unresolved = true;
-    await act(async () => { await client.invalidateQueries({ queryKey: coKeys.read({ actorId: ids.actor, role: 'co_admin' }, 'catalog', {}) }); });
+    await act(async () => { await client.invalidateQueries({ queryKey: ['catalogue'] }); });
     const recovery = await screen.findByRole('button', { name: 'Pulihkan hasil penyimpanan' });
     expect(recovery.matches(':disabled')).toBe(true);
     fireEvent.click(recovery);
@@ -266,3 +268,4 @@ test('accepted refresh freezes conflicting recovery controls until its read comp
     await act(async () => release(state.lines));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Pulihkan hasil penyimpanan' }).matches(':disabled')).toBe(false));
 });
+

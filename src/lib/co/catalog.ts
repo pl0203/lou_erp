@@ -40,6 +40,7 @@ export type COCatalogOption = {
 } & Record<typeof PRICE_TIERS[number], Money | null>;
 function current(options: COReadOptions) { options.signal?.throwIfAborted(); if (options.isCurrent && !options.isCurrent())
     invalid('catalog identity'); }
-/** Existing RLS-authorized master reads only; no CO private tables or master writes. */
+/** Historical stock/report lookup only; retain disabled identities. COForm uses useCatalogueOrderOptions for new demand. */
 export async function fetchCOCustomers(options: COReadOptions = {}): Promise<COCustomerOption[]> { current(options); const rows = await readCompleteQuery<COCustomerOption>((offset, limit) => supabase.from('customers').select('id,name,pricing_tier', { count: 'exact' }).order('id').range(offset, offset + limit - 1), r => r.id, options.signal); current(options); return rows.map(r => ({ id: parseUUID(r.id), name: parseText(r.name), pricing_tier: oneOf([...PRICE_TIERS, 'others'])(r.pricing_tier) })).sort((a, b) => a.name.localeCompare(b.name)); }
 export async function fetchCOCatalog(options: COReadOptions = {}): Promise<COCatalogOption[]> { current(options); const rows = await readCompleteQuery<Record<string, any>>((offset, limit) => supabase.from('products').select('id,name,sku,size,harga_pokok,luar_kota,dalam_kota,depo_bangunan', { count: 'exact' }).order('id').range(offset, offset + limit - 1), r => r.id, options.signal); current(options); return rows.map(r => ({ id: parseUUID(r.id), name: parseText(r.name), sku: parseText(r.sku), size: nullable(parseText)(r.size), ...Object.fromEntries(PRICE_TIERS.map(tier => [tier, resolveCOCatalogPrice(r, tier)])) } as COCatalogOption)).sort((a, b) => a.name.localeCompare(b.name)); }
+

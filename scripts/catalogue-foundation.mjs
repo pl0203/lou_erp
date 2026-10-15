@@ -110,9 +110,30 @@ export function parseCatalogueFoundationOutput(output) {
  }
  return {backendPid,transactionId};
 }
+const sourceMaps=new WeakSet();
+// Only exact captured fragments in the exact generated stdin can supply a
+// public source location. No filename, SQL text or context comes from stderr.
+export function foundationSessionSourceMap(sql,parts) {
+ assert.equal(typeof sql,'string');assert.ok(!sql.includes('\r'));
+ assert.deepEqual(Object.keys(parts).sort(),Object.keys(foundationSqlPaths).sort());
+ const lineAt=index=>sql.slice(0,index).split('\n').length;
+ const ranges=Object.entries(foundationSqlPaths).map(([name,path])=>{
+  const part=parts[name];assert.equal(typeof part,'string');assert.ok(part.trim());
+  const start=sql.indexOf(part);assert.ok(start>=0);assert.equal(sql.indexOf(part,start+1),-1);
+  return Object.freeze({path,sha256:sha(part),firstLine:lineAt(start),lastLine:lineAt(start+part.trimEnd().length)});
+ });
+ const markerLines=foundationExpectedMarkers.map(marker=>{
+  const text=`\\echo ${marker} :catalogue_foundation_pid :catalogue_foundation_xid\n`;
+  const start=sql.indexOf(text);assert.ok(start>=0);assert.equal(sql.indexOf(text,start+1),-1);return lineAt(start);
+ });
+ for(let i=1;i<ranges.length;i++)assert.ok(ranges[i-1].lastLine<ranges[i].firstLine);
+ for(let i=1;i<markerLines.length;i++)assert.ok(markerLines[i-1]<markerLines[i]);
+ const map=Object.freeze({sqlSha256:sha(sql),lineCount:sql.split('\n').length-(sql.endsWith('\n')?1:0),ranges:Object.freeze(ranges),markerLines:Object.freeze(markerLines)});
+ sourceMaps.add(map);return map;
+}
 const failurePhases=Object.freeze(['initialization','binding','containment','workspace','source-preflight','identity-preflight','session','source-postflight','identity-postflight','publication']);
 // Diagnostics never classify acceptance or reproduce SQL, rows or exception text.
-export function foundationFailureDiagnostic(phase,error) {
+export function foundationFailureDiagnostic(phase,error,sourceMap) {
  const safePhase=failurePhases.includes(phase)?phase:'unknown';
  const result={phase:safePhase,completedMarkerIndex:null,sqlstate:null};
  if(!['identity-preflight','session','identity-postflight'].includes(safePhase)
@@ -120,16 +141,17 @@ export function foundationFailureDiagnostic(phase,error) {
    // Node then reports EPIPE as well as the completed exit status and streams.
    // This is diagnostic-only: every other spawn/timeout/buffer error is refused.
    || !error || error.status!==3 || error.signal!==null || ![undefined,'EPIPE'].includes(error.code)
-   || typeof error.stderr!=='string')return Object.freeze(result);
- const errors=error.stderr.split('\n').filter(line=>line.startsWith('ERROR:'));
- if(errors.length!==1)return Object.freeze(result);
- const state=errors[0].match(/^ERROR:\s+([A-Z0-9]{5}):/);
+   || typeof error.stderr!=='string'||!error.stderr.endsWith('\n')||Buffer.byteLength(error.stderr)>512*1024)return Object.freeze(result);
+ const errors=error.stderr.split('\n').filter(line=>line.includes('ERROR:'));
+ if(errors.length!==1||(error.stderr.match(/ERROR:/g)??[]).length!==1)return Object.freeze(result);
+ const state=errors[0].match(/^(?:ERROR:\s+([A-Z0-9]{5}):|psql:<stdin>:([1-9][0-9]{0,6}): ERROR:\s+([A-Z0-9]{5}):)/);
  if(!state)return Object.freeze(result);
- result.sqlstate=state[1];
+ const inputLine=state[2]===undefined?null:Number(state[2]);
+ if(inputLine!==null&&(safePhase!=='session'||!sourceMaps.has(sourceMap)||inputLine>sourceMap.lineCount))return Object.freeze(result);
+ result.sqlstate=state[1]??state[3];
  if(safePhase!=='session'||typeof error.stdout!=='string')return Object.freeze(result);
- if(error.stdout===''){result.completedMarkerIndex=-1;return Object.freeze(result);}
- if(!error.stdout.endsWith('\n'))return Object.freeze(result);
- const lines=error.stdout.slice(0,-1).split('\n');
+ if(Buffer.byteLength(error.stdout)>4096||!error.stdout.endsWith('\n')&&error.stdout!=='')return Object.freeze(result);
+ const lines=error.stdout===''?[]:error.stdout.slice(0,-1).split('\n');
  if(lines.length>foundationExpectedMarkers.length)return Object.freeze(result);
  let pid,xid;
  for(let index=0;index<lines.length;index++){
@@ -138,10 +160,16 @@ export function foundationFailureDiagnostic(phase,error) {
   if(index===0){pid=match[2];xid=match[3];}
   if(match[2]!==pid||match[3]!==xid)return Object.freeze(result);
  }
+ if(inputLine!==null) {
+  const previous=sourceMap.markerLines[lines.length-1]??0,next=sourceMap.markerLines[lines.length]??sourceMap.lineCount+1;
+  if(inputLine<=previous||inputLine>=next)return Object.freeze(result);
+  const range=sourceMap.ranges.find(range=>inputLine>=range.firstLine&&inputLine<=range.lastLine);
+  if(range)result.source=Object.freeze({path:range.path,sha256:range.sha256,line:inputLine-range.firstLine+1});
+ }
  result.completedMarkerIndex=lines.length-1;return Object.freeze(result);
 }
 export function runCatalogueFoundation({repoRoot=defaultRoot,env=process.env,execute=execFileSync}={}) {
- let descriptor,phase='initialization';
+ let descriptor,sourceMap,phase='initialization';
  try {
   assert.equal(typeof env.GITHUB_OUTPUT,'string');
   descriptor=openSync(env.GITHUB_OUTPUT,constants.O_WRONLY|constants.O_APPEND|constants.O_NOFOLLOW);
@@ -153,12 +181,13 @@ export function runCatalogueFoundation({repoRoot=defaultRoot,env=process.env,exe
   const bytes=Object.fromEntries(Object.entries(foundationSqlPaths).map(([name,path])=>[name,catalogueCaptureSourceBytes(repoRoot,path)]));
   const parts=Object.fromEntries(Object.entries(bytes).map(([name,body])=>[name,body.toString('utf8')]));
   const sql=buildCatalogueFoundationSession(identity,parts);
+  sourceMap=foundationSessionSourceMap(sql,parts);
   phase='workspace';
   const parent=resolve(repoRoot,'scale-results');directory(parent);
   const output=resolve(parent,'catalogue-foundation'),pending=resolve(parent,'catalogue-foundation-pending');
   mkdirSync(output);const reserved=directory(output);mkdirSync(pending);directory(pending);
   const checkSource=()=>assert.deepEqual(catalogueFailfastBinding(repoRoot,env,execute),binding);
-  const run=input=>execute('psql',['-X','--no-password','-qAt','-v','ON_ERROR_STOP=1','-v','VERBOSITY=verbose'],{
+  const run=input=>execute('psql',['-X','--no-password','-qAt','-v','ON_ERROR_STOP=1','-v','VERBOSITY=verbose','-f','-'],{
    cwd:repoRoot,env:connection,input,encoding:'utf8',timeout:180000,maxBuffer:512*1024,shell:false,stdio:['pipe','pipe','pipe']});
   const verify=()=>verifyCatalogueCiObservation(JSON.parse(run(catalogueCiIdentityGateSql(identity)+catalogueObservationSql('pilot_catalogue_test'))),identity,'pilot_catalogue_test');
   phase='source-preflight';checkSource();phase='identity-preflight';verify();
@@ -189,7 +218,7 @@ export function runCatalogueFoundation({repoRoot=defaultRoot,env=process.env,exe
   writeFileSync(resolve(pending,'results.json'),result,{flag:'wx'});
   writeFileSync(resolve(pending,'manifest.json'),JSON.stringify({format:'catalogue-foundation-manifest-v1',status:report.status,files:[{path:'results.json',sha256:sha(result)}]})+'\n',{flag:'wx'});
   checkSource();renameSync(pending,output);writeFileSync(descriptor,'bundle_ready=true\n');return report;
- } catch(error) {const refused=new Error('CATALOGUE_FOUNDATION_REFUSED');refused.diagnostic=foundationFailureDiagnostic(phase,error);throw refused;}
+ } catch(error) {const refused=new Error('CATALOGUE_FOUNDATION_REFUSED');refused.diagnostic=foundationFailureDiagnostic(phase,error,sourceMap);throw refused;}
  finally {if(descriptor!==undefined)closeSync(descriptor);}
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href) {

@@ -288,7 +288,14 @@ SET LOCAL ROLE anon;
 SELECT pg_temp.foundation_raises($q$SELECT public.pilot_co_transaction_v1(md5('co-anon')::uuid,'create_co','{}')$q$,'42501','anonymous CO entrypoint remains denied');
 RESET ROLE;
 SET LOCAL ROLE service_role;
-SELECT pg_temp.foundation_raises($q$SELECT public.pilot_co_transaction_v1(md5('co-service')::uuid,'create_co','{}')$q$,'42501','service role cannot gain public CO authority');
+-- Direct invoker probe: service_role has no grant on pg_temp.foundation_raises.
+-- Do not mistake denial entering that test helper for denial by the real RPC.
+DO $$ DECLARE denied boolean:=false; BEGIN
+ IF current_user<>'service_role' THEN RAISE EXCEPTION 'Actual service role required'; END IF;
+ BEGIN PERFORM public.pilot_co_transaction_v1(md5('co-service')::uuid,'create_co','{}');
+ EXCEPTION WHEN insufficient_privilege THEN denied:=true; END;
+ IF NOT denied THEN RAISE EXCEPTION 'service role cannot gain public CO authority'; END IF;
+END $$;
 RESET ROLE;
 
 -- A real saved draft can outlive its subsequently removed unposted line.

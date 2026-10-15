@@ -112,6 +112,16 @@ test('CO positive actor fixture is independent of earlier role revocation probes
  assert.ok(behavior.includes("UPDATE public.users SET is_active=true WHERE id=md5('co-guard-actor')::uuid;"));
  assert.ok(behavior.includes("set_config('request.jwt.claim.sub',md5('catalogue-foundation-actor-2')"));
 });
+test('CO service role denial probe does not require an ungranted temporary assertion helper',()=>{
+ const probe=behavior.split('SET LOCAL ROLE service_role;')[1]?.split('RESET ROLE;')[0];
+ assert.ok(probe);
+ assert.equal(/\b(?:SELECT|PERFORM)\s+pg_temp\./.test(probe),false,'Service role must test the RPC itself, not fail entering the assertion helper');
+ assert.match(probe,/DO \$\$ DECLARE denied boolean:=false;/);
+ assert.match(probe,/current_user<>'service_role'/);
+ assert.match(probe,/PERFORM public\.pilot_co_transaction_v1/);
+ assert.match(probe,/EXCEPTION WHEN insufficient_privilege THEN denied:=true;/);
+ assert.match(probe,/IF NOT denied THEN RAISE EXCEPTION/);
+});
 test('CO SQL and source checks are captured and rollback-gated in the existing bounded runner',()=>{
  assert.equal(foundationSqlPaths.coOrderCandidate,'supabase/catalogue/v1/new06-co-order-boundaries.sql');assert.equal(foundationSqlPaths.coOrders,'tests/database/catalogue/co-orders.sql');
  assert.ok(foundationExpectedMarkers.includes('CATALOGUE_CO_ORDERS_CORE_PASSED'));
