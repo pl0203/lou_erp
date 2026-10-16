@@ -16,11 +16,15 @@ const workflowFiles = ['.github/workflows/pilot-safety.yml', 'tests/co/ci-workfl
 const report = { version: 1, status: 'failed', assertions: [], screenshots: [], networkViolations: [], source: [], harness: [] }
 let temporary, browser, server, socket, cdp, fatal, activeSession, ownsOutput = false, proofComplete = false
 const pending = new Map(), sessions = new Map(), eventTasks = new Set()
+// CDP's browser/tab defaults plus Chromium's internal WebUI, never application workers.
+// https://github.com/ChromeDevTools/devtools-protocol/blob/master/pdl/domains/Target.pdl
+// https://chromium.googlesource.com/chromium/src/+/a24f112f7dcefa1402ba08df5f325679679e44fc%5E%21/
+const targetFilter = [{ type: 'browser', exclude: true }, { type: 'tab', exclude: true }, { type: 'browser_ui', exclude: true }, {}]
 let sequence = 0
 const safeEnv = home => ({ PATH: process.env.PATH, HOME: home, TMPDIR: home, LANG: 'C.UTF-8', LC_ALL: 'C.UTF-8', NODE_ENV: 'production' })
 const gitEnv = { PATH: process.env.PATH, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_TERMINAL_PROMPT: '0', GIT_NO_LAZY_FETCH: '1' }
 const git = args => execFileSync('git', args, { cwd: root, env: gitEnv, encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'pipe'] }).trim()
-function check() { if (fatal) throw Error(fatal); assert.deepEqual(report.networkViolations, [], 'Browser requested an unapproved network destination') }
+function check() { if (fatal) throw Error(fatal); assert.deepEqual(report.networkViolations, [], 'Browser target or request isolation guard refused') }
 async function waitFor(action, label, timeout = 15000) {
   const end = Date.now() + timeout
   while (Date.now() < end) { check(); if (await action()) return; await new Promise(resolve => setTimeout(resolve, 50)) }
@@ -162,9 +166,9 @@ try {
   const chromeInfo = await lstat(chrome)
   assert.ok(chromeInfo.isFile() && !chromeInfo.isSymbolicLink() && (chromeInfo.mode & 0o111), 'Installed Chrome launcher must be regular and executable')
   assert.ok(chrome.startsWith('/opt/google/chrome/'), 'Only the official preinstalled Chrome path is accepted')
-  report.browser = { executable: chrome, version: execFileSync(chrome, ['--version'], { env: safeEnv(home), encoding: 'utf8', timeout: 10000 }).trim(), sandbox: 'default enabled', driver: 'Node built-in WebSocket / Chrome DevTools Protocol' }
+  report.browser = { executable: chrome, version: execFileSync(chrome, ['--version'], { env: safeEnv(home), encoding: 'utf8', timeout: 10000 }).trim(), sandbox: 'default enabled', driver: 'Node built-in WebSocket / Chrome DevTools Protocol', targetFilter }
   assert.match(report.browser.version, /(?:Google Chrome|Chromium) \d+\./)
-  browser = spawn(chrome, ['--headless=new', '--remote-debugging-address=127.0.0.1', '--remote-debugging-port=0', `--user-data-dir=${join(temporary, 'profile')}`, '--no-first-run', '--no-default-browser-check', '--disable-background-networking', 'about:blank'], { env: safeEnv(home), stdio: ['ignore', 'ignore', 'pipe'] })
+  browser = spawn(chrome, ['--headless=new', '--remote-debugging-address=127.0.0.1', '--remote-debugging-port=0', `--user-data-dir=${join(temporary, 'profile')}`, '--no-first-run', '--no-default-browser-check', '--disable-background-networking', '--disable-extensions', '--disable-component-extensions-with-background-pages', '--disable-default-apps', 'about:blank'], { env: safeEnv(home), stdio: ['ignore', 'ignore', 'pipe'] })
   let websocketUrl, launchError
   browser.once('error', error => { launchError = error.message })
   browser.once('exit', code => { if (!websocketUrl) launchError = `Chrome exited ${code} before DevTools readiness` })
@@ -188,7 +192,7 @@ try {
         if (targetInfo.type !== 'page') { report.networkViolations.push({ kind: 'unexpected-target', type: targetInfo.type }); await cdp('Target.closeTarget', { targetId: targetInfo.targetId }); return }
         await cdp('Network.enable', {}, sessionId); await cdp('Log.enable', {}, sessionId)
         await cdp('Fetch.enable', { patterns: [{ urlPattern: '*' }] }, sessionId)
-        await cdp('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true }, sessionId)
+        await cdp('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true, filter: targetFilter }, sessionId)
         await cdp('Runtime.runIfWaitingForDebugger', {}, sessionId)
         sessions.set(targetInfo.targetId, sessionId)
       }
@@ -203,7 +207,7 @@ try {
     })().catch(error => { fatal ??= error.message })
     eventTasks.add(task); void task.finally(() => eventTasks.delete(task))
   })
-  await cdp('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true })
+  await cdp('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true, filter: targetFilter })
   async function tab(width = 1280, height = 900) {
     const { targetId } = await cdp('Target.createTarget', { url: 'about:blank' })
     await waitFor(() => sessions.has(targetId), 'guarded page target attached')
