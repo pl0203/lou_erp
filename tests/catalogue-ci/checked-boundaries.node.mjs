@@ -117,7 +117,7 @@ test('checked fixture maps only finite helper assertion failures to fixed diagno
   expected:helper==='raises'?statement.match(/,\s*'([A-Z0-9]{5})',\s*'[^']+'\);$/)[1]:null,
  }));
  const mapping=[...fixture.matchAll(/\('(assert|raises)','([^']+)',(NULL|'[A-Z0-9]{5}'),'([A-Z0-9]{5})'\)/g)].map(([,helper,label,expected,code])=>({helper,label,expected:expected==='NULL'?null:expected.slice(1,-1),code}));
- assert.equal(calls.length,34,'finite existing checked-boundary helper assertions');
+ assert.equal(calls.length,35,'finite checked-boundary helper assertions including the two-child precondition');
  assert.deepEqual(mapping,calls.map((call,i)=>({...call,code:'PBC'+String(i+1).padStart(2,'0')})),'every unchanged assertion maps once');
  assert.equal(new Set(mapping.map(entry=>entry.code)).size,mapping.length);
  const patterns=[...fixture.matchAll(/diagnostic_frame ~ '([^']+)' THEN diagnostic_helper:='(assert|raises)'/g)];
@@ -212,4 +212,51 @@ test('checked fixture classifies only finite invariant first frames within four 
  }
  assert.equal(codes.size,48,'four stages and twelve invariant signatures have unique fixed codes');
  assert.equal(classify('23514','2','PL/pgSQL function private.catalog_unknown_v1() line 5 at RAISE'),'23514');
+});
+test('native cascade retains exact pending child acknowledgements across root AFTER timing',()=>{
+ assert.match(sql,/root_flushed boolean NOT NULL DEFAULT false/);
+ assert.match(sql,/pending_promotions uuid\[\] NOT NULL DEFAULT '\{\}'/);
+ assert.match(body('private.catalog_business_family_v2'),/catalog_product_delete_scope_v2[^\n]+AND NOT root_flushed/);
+ const allowed=body('private.catalog_business_row_allowed_v2');
+ assert.match(allowed,/r\.product_id=\(p_old->>'product_id'\)::uuid AND NOT s\.root_flushed/);
+ const fence=body('private.catalog_business_write_fence_v2');
+ const registration=fence.slice(fence.indexOf("IF TG_RELID='public.promotions'::regclass"));
+ assert.ok(registration.length<fence.length,'registration follows exact row authorization');
+ assert.match(registration,/SET pending_promotions=array_append\(r\.pending_promotions,\(old_row->>'id'\)::uuid\)/);
+ for(const predicate of ['r.scope_id=s.scope_id','NOT s.root_flushed',"r.product_id=(old_row->>'product_id')::uuid","NOT (old_row->>'id')::uuid=ANY(r.pending_promotions)"]){assert.ok(registration.includes(predicate),predicate);}
+ assert.match(registration,/IF NOT FOUND THEN[\s\S]*?ERRCODE='23514'/);
+ assert.doesNotMatch(registration,/catalog_identity_v1|lifetime_state/);
+ const end=body('private.catalog_product_delete_end_v2');
+ assert.match(end,/scope_id=scope ORDER BY product_id LOOP/);
+ assert.ok(end.indexOf('FOR UPDATE NOWAIT')<end.indexOf('SET root_flushed=true'));
+ assert.ok(end.indexOf('END LOOP;')<end.indexOf('SET root_flushed=true'));
+ assert.match(end,/IF NOT EXISTS\([\s\S]*?scope_id=scope AND cardinality\(pending_promotions\)>0\) THEN\s+DELETE FROM private\.catalog_product_delete_rows_v2/);
+ const child=body('private.catalog_product_delete_promotion_v2');
+ assert.doesNotMatch(child,/catalog_business_row_allowed_v2|catalog_business_family_v2|LOCK TABLE|FOR UPDATE|pg_(?:try_)?advisory/);
+ assert.match(child,/SELECT scope_id,root_flushed INTO scope,flushed/);
+ assert.match(child,/SET pending_promotions=array_remove\(r\.pending_promotions,OLD\.id\),promotion_use=true/);
+ assert.match(child,/r\.scope_id=scope AND r\.product_id=OLD\.product_id AND OLD\.id=ANY\(r\.pending_promotions\)/);
+ assert.match(child,/RETURNING r\.\* INTO row_event;\s+IF NOT FOUND THEN[\s\S]*?ERRCODE='23514'/);
+ assert.ok(child.indexOf('promotion_use=true')<child.indexOf('IF flushed THEN'),'earlier child records actual use before the root locks and flushes');
+ const late=child.slice(child.indexOf('IF flushed THEN'));
+ assert.match(late,/UPDATE private\.catalog_identity_v1 SET lifetime_state='used'/);
+ assert.match(late,/id=row_event\.product_id AND last_version=row_event\.catalog_version AND deleted_at IS NOT NULL/);
+ assert.match(late,/IF NOT FOUND THEN[\s\S]*?ERRCODE='23514'/);
+ assert.match(late,/IF NOT EXISTS\([\s\S]*?scope_id=scope AND cardinality\(pending_promotions\)>0\) THEN\s+DELETE FROM private\.catalog_product_delete_rows_v2/);
+ assert.doesNotMatch(late,/SET (?:last_version|deleted_at)/);
+ assert.equal((sql.match(/SET root_flushed=true/g)||[]).length,1,'only the sorted root flush attests held identity locks');
+ for(const name of ['private.catalog_product_delete_empty_v2','private.catalog_product_delete_assert_v2'])assert.doesNotMatch(body(name),/\b(?:INSERT|UPDATE|DELETE FROM|LOCK TABLE)\b|pg_(?:try_)?advisory/);
+ const graph=body('private.catalog_assert_checked_graph_v2');
+ for(const name of ['private.catalog_product_delete_begin_v2','private.catalog_product_delete_row_v2','private.catalog_product_delete_end_v2','private.catalog_business_write_fence_v2','private.catalog_product_delete_promotion_v2']){
+  const hash=createHash('sha256').update(body(name)).digest('hex');assert.ok(graph.includes("('"+name+"()','"+hash+"')"),name+' body remains exactly pinned');
+ }
+});
+test('actual native cascade fixture seeds two children and proves their joint acknowledgement cleanup',()=>{
+ const fixture=readFileSync(new URL('../../tests/database/catalogue/checked-boundaries.sql',import.meta.url),'utf8');
+ assert.match(fixture,/md5\('checked-boundary-promo-cascade-second'\)::uuid,md5\('checked-boundary-cascade'\)::uuid/);
+ const before=fixture.slice(0,fixture.indexOf("diagnostic_stage:='2';"));
+ assert.match(before,/count\(\*\)=2 FROM public\.promotions WHERE product_id=md5\('checked-boundary-cascade'\)::uuid/);
+ const after=fixture.slice(fixture.indexOf("diagnostic_stage:='2';"),fixture.indexOf("diagnostic_stage:='3';"));
+ assert.match(after,/id IN\(md5\('checked-boundary-promo-cascade'\)::uuid,md5\('checked-boundary-promo-cascade-second'\)::uuid\)/);
+ for(const token of ["lifetime_state='used' AND deleted_at IS NOT NULL",'NOT EXISTS(SELECT 1 FROM private.catalog_product_delete_scope_v2)','NOT EXISTS(SELECT 1 FROM private.catalog_product_delete_rows_v2)'])assert.ok(after.includes(token),token);
 });

@@ -24,7 +24,8 @@ BEGIN
   INSERT INTO public.products(id,name,sku) VALUES(md5('checked-boundary-blocked')::uuid,'Fictional referenced product','CHECKED-BOUNDARY-BLOCKED'),(md5('checked-boundary-cascade')::uuid,'Fictional cascade product','CHECKED-BOUNDARY-CASCADE');
   INSERT INTO public.promotions(id,product_id,start_date,end_date,created_by) VALUES
    (md5('checked-boundary-promo-blocked')::uuid,md5('checked-boundary-blocked')::uuid,current_date,current_date,md5('checked-boundary-exec')::uuid),
-   (md5('checked-boundary-promo-cascade')::uuid,md5('checked-boundary-cascade')::uuid,current_date,current_date,md5('checked-boundary-exec')::uuid);
+   (md5('checked-boundary-promo-cascade')::uuid,md5('checked-boundary-cascade')::uuid,current_date,current_date,md5('checked-boundary-exec')::uuid),
+   (md5('checked-boundary-promo-cascade-second')::uuid,md5('checked-boundary-cascade')::uuid,current_date,current_date,md5('checked-boundary-exec')::uuid);
   PERFORM set_config('request.jwt.claim.sub',md5('checked-boundary-exec')::uuid::text,true);
   SET LOCAL ROLE authenticated;
   PERFORM pg_temp.foundation_assert(public.pilot_customer_target_write_access_v1()=jsonb_build_object('version',1,'actor_id',md5('checked-boundary-exec')::uuid,'mode','legacy'),'target capability preserves legacy mode');
@@ -92,12 +93,15 @@ BEGIN
   ALTER TABLE public.promotions DROP CONSTRAINT promotions_product_id_fkey;
   ALTER TABLE public.promotions ADD CONSTRAINT catalogue_fictional_promotion_product_cascade_v2 FOREIGN KEY(product_id) REFERENCES public.products(id) ON DELETE CASCADE;
   SET LOCAL ROLE authenticated;
+  PERFORM pg_temp.foundation_assert((SELECT count(*)=2 FROM public.promotions WHERE product_id=md5('checked-boundary-cascade')::uuid),'native cascade starts with two actual promotion rows');
   diagnostic_stage:='2';
   DELETE FROM public.products WHERE id=md5('checked-boundary-cascade')::uuid;
   diagnostic_stage:='0';
   RESET ROLE;
-  PERFORM pg_temp.foundation_assert(NOT EXISTS(SELECT 1 FROM public.promotions WHERE id=md5('checked-boundary-promo-cascade')::uuid)
-   AND (SELECT lifetime_state='used' AND deleted_at IS NOT NULL FROM private.catalog_identity_v1 WHERE kind='product' AND id=md5('checked-boundary-cascade')::uuid),'actual promotion cascade marks only its deleted product before tombstone');
+  PERFORM pg_temp.foundation_assert(NOT EXISTS(SELECT 1 FROM public.promotions WHERE id IN(md5('checked-boundary-promo-cascade')::uuid,md5('checked-boundary-promo-cascade-second')::uuid))
+   AND (SELECT lifetime_state='used' AND deleted_at IS NOT NULL FROM private.catalog_identity_v1 WHERE kind='product' AND id=md5('checked-boundary-cascade')::uuid)
+   AND NOT EXISTS(SELECT 1 FROM private.catalog_product_delete_scope_v2)
+   AND NOT EXISTS(SELECT 1 FROM private.catalog_product_delete_rows_v2),'actual promotion cascade marks only its deleted product before tombstone');
   PERFORM pg_temp.foundation_assert((SELECT lifetime_state='unknown' AND deleted_at IS NULL FROM private.catalog_identity_v1 WHERE kind='product' AND id=md5('checked-boundary-blocked')::uuid),'failed baseline delete and unrelated cascade do not falsely mark other product');
   diagnostic_stage:='3';
   SET CONSTRAINTS ALL IMMEDIATE;
@@ -162,13 +166,14 @@ EXCEPTION WHEN SQLSTATE 'P0001' THEN
   ('raises','generation two business truncate fails before clearing','42501','PBC25'),
   ('assert','target never leaves pending request',NULL,'PBC26'),
   ('assert','exact scopes are empty after completed commands',NULL,'PBC27'),
-  ('assert','actual promotion cascade marks only its deleted product before tombstone',NULL,'PBC28'),
-  ('assert','failed baseline delete and unrelated cascade do not falsely mark other product',NULL,'PBC29'),
-  ('raises','wider SET NULL native topology refused before mutation','55000','PBC30'),
-  ('assert','unsupported topology leaves no partial tombstone',NULL,'PBC31'),
-  ('assert','checked boundaries reached exact rollback sentinel',NULL,'PBC32'),
-  ('assert','checked boundaries restore exact inactive cutover constraints',NULL,'PBC33'),
-  ('assert','checked boundary actors and ledger rows rollback',NULL,'PBC34')
+  ('assert','native cascade starts with two actual promotion rows',NULL,'PBC28'),
+  ('assert','actual promotion cascade marks only its deleted product before tombstone',NULL,'PBC29'),
+  ('assert','failed baseline delete and unrelated cascade do not falsely mark other product',NULL,'PBC30'),
+  ('raises','wider SET NULL native topology refused before mutation','55000','PBC31'),
+  ('assert','unsupported topology leaves no partial tombstone',NULL,'PBC32'),
+  ('assert','checked boundaries reached exact rollback sentinel',NULL,'PBC33'),
+  ('assert','checked boundaries restore exact inactive cutover constraints',NULL,'PBC34'),
+  ('assert','checked boundary actors and ledger rows rollback',NULL,'PBC35')
  ) d(helper,label,expected_state,code)
  WHERE d.helper=diagnostic_helper AND (
   (d.helper='assert' AND diagnostic_message='Foundation assertion failed: '||d.label)

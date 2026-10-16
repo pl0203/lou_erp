@@ -168,12 +168,14 @@ END $$;
 -- fictional promotion-only CASCADE profile. No FK is changed by this source.
 CREATE TABLE private.catalog_product_delete_scope_v2 (
  backend_pid integer NOT NULL,transaction_id bigint NOT NULL,scope_id uuid NOT NULL,
+ root_flushed boolean NOT NULL DEFAULT false,
  PRIMARY KEY(backend_pid,transaction_id)
 );
 CREATE TABLE private.catalog_product_delete_rows_v2 (
  backend_pid integer NOT NULL,transaction_id bigint NOT NULL,scope_id uuid NOT NULL,
  product_id uuid NOT NULL,catalog_version bigint NOT NULL,old_row jsonb NOT NULL,
  promotion_use boolean NOT NULL DEFAULT false,
+ pending_promotions uuid[] NOT NULL DEFAULT '{}',
  PRIMARY KEY(backend_pid,transaction_id,product_id)
 );
 ALTER TABLE private.catalog_product_delete_scope_v2 ENABLE ROW LEVEL SECURITY;
@@ -221,7 +223,7 @@ BEGIN
  PERFORM private.catalog_product_delete_topology_v2();
  PERFORM private.catalog_assert_checked_graph_v2();
  PERFORM private.catalog_assert_history_contract_v1();
- INSERT INTO private.catalog_product_delete_scope_v2 VALUES(pg_backend_pid(),txid_current(),gen_random_uuid());
+ INSERT INTO private.catalog_product_delete_scope_v2(backend_pid,transaction_id,scope_id) VALUES(pg_backend_pid(),txid_current(),gen_random_uuid());
  RETURN NULL;
 END $$;
 CREATE FUNCTION private.catalog_product_delete_row_v2() RETURNS trigger
@@ -230,7 +232,7 @@ DECLARE scope uuid;
 BEGIN
  IF TG_RELID<>'public.products'::regclass OR TG_OP<>'DELETE' OR TG_LEVEL<>'ROW' OR TG_WHEN<>'BEFORE' THEN RAISE EXCEPTION 'Unexpected product row' USING ERRCODE='23514'; END IF;
  IF (SELECT execution_generation FROM private.catalog_cutover_v1 WHERE singleton)=1 THEN RETURN OLD; END IF;
- SELECT scope_id INTO scope FROM private.catalog_product_delete_scope_v2 WHERE backend_pid=pg_backend_pid() AND transaction_id=txid_current();
+ SELECT scope_id INTO scope FROM private.catalog_product_delete_scope_v2 WHERE backend_pid=pg_backend_pid() AND transaction_id=txid_current() AND NOT root_flushed;
  IF scope IS NULL THEN RAISE EXCEPTION 'Product root context missing' USING ERRCODE='23514',DETAIL='CATALOG_TRACKING_INCOMPLETE'; END IF;
  INSERT INTO private.catalog_product_delete_rows_v2(backend_pid,transaction_id,scope_id,product_id,catalog_version,old_row)
  VALUES(pg_backend_pid(),txid_current(),scope,OLD.id,OLD.catalog_version,to_jsonb(OLD));
@@ -253,7 +255,7 @@ DECLARE row_event record; prior private.catalog_identity_v1%ROWTYPE; scope uuid;
 BEGIN
  IF TG_RELID<>'public.products'::regclass OR TG_OP<>'DELETE' OR TG_LEVEL<>'STATEMENT' OR TG_WHEN<>'AFTER' THEN RAISE EXCEPTION 'Unexpected product root flush' USING ERRCODE='23514'; END IF;
  IF (SELECT execution_generation FROM private.catalog_cutover_v1 WHERE singleton)=1 THEN RETURN NULL; END IF;
- SELECT scope_id INTO scope FROM private.catalog_product_delete_scope_v2 WHERE backend_pid=pg_backend_pid() AND transaction_id=txid_current();
+ SELECT scope_id INTO scope FROM private.catalog_product_delete_scope_v2 WHERE backend_pid=pg_backend_pid() AND transaction_id=txid_current() AND NOT root_flushed;
  IF scope IS NULL THEN RAISE EXCEPTION 'Product root context missing' USING ERRCODE='23514',DETAIL='CATALOG_TRACKING_INCOMPLETE'; END IF;
  LOCK TABLE private.catalog_identity_v1 IN ROW EXCLUSIVE MODE NOWAIT;
  FOR row_event IN SELECT * FROM private.catalog_product_delete_rows_v2 WHERE backend_pid=pg_backend_pid() AND transaction_id=txid_current() AND scope_id=scope ORDER BY product_id LOOP
@@ -265,8 +267,16 @@ BEGIN
   UPDATE private.catalog_identity_v1 SET lifetime_state=CASE WHEN row_event.promotion_use THEN 'used' ELSE prior.lifetime_state END,
    deleted_at=coalesce(prior.deleted_at,statement_timestamp()) WHERE kind='product' AND id=row_event.product_id;
  END LOOP;
- DELETE FROM private.catalog_product_delete_rows_v2 WHERE backend_pid=pg_backend_pid() AND transaction_id=txid_current();
- DELETE FROM private.catalog_product_delete_scope_v2 WHERE backend_pid=pg_backend_pid() AND transaction_id=txid_current();
+ -- FK cascades can queue child AFTER events for a later pass than this root
+ -- AFTER STATEMENT. Keep their exact acknowledgements and the already-held
+ -- sorted identity locks; only actual child AFTER events may mark their use.
+ UPDATE private.catalog_product_delete_scope_v2 SET root_flushed=true
+ WHERE backend_pid=pg_backend_pid() AND transaction_id=txid_current() AND scope_id=scope;
+ IF NOT EXISTS(SELECT 1 FROM private.catalog_product_delete_rows_v2
+  WHERE backend_pid=pg_backend_pid() AND transaction_id=txid_current() AND scope_id=scope AND cardinality(pending_promotions)>0) THEN
+  DELETE FROM private.catalog_product_delete_rows_v2 WHERE backend_pid=pg_backend_pid() AND transaction_id=txid_current() AND scope_id=scope;
+  DELETE FROM private.catalog_product_delete_scope_v2 WHERE backend_pid=pg_backend_pid() AND transaction_id=txid_current() AND scope_id=scope;
+ END IF;
  RETURN NULL;
 END $$;
 CREATE FUNCTION private.catalog_product_delete_empty_v2() RETURNS trigger
@@ -470,7 +480,7 @@ CREATE FUNCTION private.catalog_business_family_v2() RETURNS text
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path='' AS $$
  SELECT CASE
  WHEN EXISTS(SELECT 1 FROM private.catalog_target_active_v1 WHERE backend_pid=pg_backend_pid() AND transaction_id=txid_current()) THEN 'target'
- WHEN EXISTS(SELECT 1 FROM private.catalog_product_delete_scope_v2 WHERE backend_pid=pg_backend_pid() AND transaction_id=txid_current()) THEN 'product_delete'
+ WHEN EXISTS(SELECT 1 FROM private.catalog_product_delete_scope_v2 WHERE backend_pid=pg_backend_pid() AND transaction_id=txid_current() AND NOT root_flushed) THEN 'product_delete'
  ELSE (SELECT family FROM private.catalog_checked_scope_v2 WHERE backend_pid=pg_backend_pid() AND transaction_id=txid_current() AND prepared) END
 $$;
 CREATE FUNCTION private.catalog_business_statement_allowed_v2(p_relation regclass,p_operation text,p_family text) RETURNS boolean
@@ -514,7 +524,7 @@ BEGIN
    AND c.conname='catalogue_fictional_promotion_product_cascade_v2' AND c.contype='f' AND c.confdeltype='c') THEN RETURN false; END IF;
   RETURN EXISTS(SELECT 1 FROM private.catalog_product_delete_rows_v2 r
    JOIN private.catalog_product_delete_scope_v2 s USING(backend_pid,transaction_id,scope_id)
-   WHERE r.backend_pid=pg_backend_pid() AND r.transaction_id=txid_current() AND r.product_id=(p_old->>'product_id')::uuid);
+   WHERE r.backend_pid=pg_backend_pid() AND r.transaction_id=txid_current() AND r.product_id=(p_old->>'product_id')::uuid AND NOT s.root_flushed);
  END IF;
  -- Every lookup is at the BEFORE event while the parent is still present and
  -- held by its unchanged core. No deferred lookup can lose OLD lineage.
@@ -575,6 +585,16 @@ BEGIN
  IF TG_OP<>'DELETE' THEN new_row:=to_jsonb(NEW); END IF;
  IF NOT private.catalog_business_row_allowed_v2(TG_RELID,TG_OP,old_row,new_row) THEN
   RAISE EXCEPTION 'Business row outside exact writer scope' USING ERRCODE='42501',DETAIL='CATALOG_GENERATION_RETIRED'; END IF;
+ IF TG_RELID='public.promotions'::regclass AND TG_OP='DELETE' AND private.catalog_business_family_v2()='product_delete' THEN
+  -- Register actual BEFORE lineage only, never lifetime use. A skipped AFTER
+  -- leaves this exact ID pending and the deferred empty-scope check refuses it.
+  UPDATE private.catalog_product_delete_rows_v2 r SET pending_promotions=array_append(r.pending_promotions,(old_row->>'id')::uuid)
+  FROM private.catalog_product_delete_scope_v2 s
+  WHERE r.backend_pid=s.backend_pid AND r.transaction_id=s.transaction_id AND r.scope_id=s.scope_id
+   AND r.backend_pid=pg_backend_pid() AND r.transaction_id=txid_current() AND NOT s.root_flushed
+   AND r.product_id=(old_row->>'product_id')::uuid AND NOT (old_row->>'id')::uuid=ANY(r.pending_promotions);
+  IF NOT FOUND THEN RAISE EXCEPTION 'Unbound native promotion registration' USING ERRCODE='23514',DETAIL='CATALOG_TRACKING_INCOMPLETE'; END IF;
+ END IF;
  IF TG_OP='DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
 END $$;
 CREATE FUNCTION private.catalog_business_truncate_fence_v2() RETURNS trigger
@@ -610,13 +630,32 @@ DO $business_fences$ DECLARE relation text; BEGIN
 END $business_fences$;
 CREATE FUNCTION private.catalog_product_delete_promotion_v2() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
+DECLARE scope uuid; flushed boolean; row_event private.catalog_product_delete_rows_v2%ROWTYPE;
 BEGIN
  IF (SELECT execution_generation FROM private.catalog_cutover_v1 WHERE singleton)=1 THEN RETURN NULL; END IF;
- IF NOT private.catalog_business_row_allowed_v2(TG_RELID,TG_OP,to_jsonb(OLD),NULL) THEN
+ IF TG_RELID<>'public.promotions'::regclass OR TG_OP<>'DELETE' OR TG_LEVEL<>'ROW' OR TG_WHEN<>'AFTER' THEN
+  RAISE EXCEPTION 'Unexpected native promotion acknowledgement' USING ERRCODE='23514'; END IF;
+ SELECT scope_id,root_flushed INTO scope,flushed FROM private.catalog_product_delete_scope_v2
+ WHERE backend_pid=pg_backend_pid() AND transaction_id=txid_current();
+ UPDATE private.catalog_product_delete_rows_v2 r SET pending_promotions=array_remove(r.pending_promotions,OLD.id),promotion_use=true
+ WHERE r.backend_pid=pg_backend_pid() AND r.transaction_id=txid_current()
+  AND r.scope_id=scope AND r.product_id=OLD.product_id AND OLD.id=ANY(r.pending_promotions)
+ RETURNING r.* INTO row_event;
+ IF NOT FOUND THEN
   RAISE EXCEPTION 'Unbound actual promotion deletion' USING ERRCODE='23514',DETAIL='CATALOG_TRACKING_INCOMPLETE'; END IF;
- -- Only the persisted AFTER row event is business use, never a discarded BEFORE.
- UPDATE private.catalog_product_delete_rows_v2 SET promotion_use=true
- WHERE backend_pid=pg_backend_pid() AND transaction_id=txid_current() AND product_id=OLD.product_id;
+ -- An early child leaves actual use for the root's sorted flush. A late child
+ -- uses only the identity lock already acquired before root_flushed was set.
+ -- No child or deferred trigger acquires a new evidence/advisory lock order.
+ IF flushed THEN
+  UPDATE private.catalog_identity_v1 SET lifetime_state='used'
+  WHERE kind='product' AND id=row_event.product_id AND last_version=row_event.catalog_version AND deleted_at IS NOT NULL;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Native child identity not flushed' USING ERRCODE='23514',DETAIL='CATALOG_TRACKING_INCOMPLETE'; END IF;
+  IF NOT EXISTS(SELECT 1 FROM private.catalog_product_delete_rows_v2
+   WHERE backend_pid=pg_backend_pid() AND transaction_id=txid_current() AND scope_id=scope AND cardinality(pending_promotions)>0) THEN
+   DELETE FROM private.catalog_product_delete_rows_v2 WHERE backend_pid=pg_backend_pid() AND transaction_id=txid_current() AND scope_id=scope;
+   DELETE FROM private.catalog_product_delete_scope_v2 WHERE backend_pid=pg_backend_pid() AND transaction_id=txid_current() AND scope_id=scope;
+  END IF;
+ END IF;
  RETURN NULL;
 END $$;
 CREATE TRIGGER catalog_product_delete_promotion_v2 AFTER DELETE ON public.promotions
@@ -939,7 +978,7 @@ BEGIN
  FOR entry IN SELECT * FROM (VALUES
  ('private.catalog_attest_execution_fence_v2()','ab19328e4a1d81f0142ce40b3ab6f5efd62d8897c34b9c73b8ac6b97227dd3c2'),
  ('private.catalog_business_truncate_fence_v2()','1640d75ee6dd81da28bda93020d1d07486248871d2c2f81a02d6c3a1552394fe'),
- ('private.catalog_business_write_fence_v2()','98ccc8ed66d1c6b974ec74784b616f564c7a6564b77f5c396967c07323decc73'),
+ ('private.catalog_business_write_fence_v2()','c2fa22d90828f8388ee9517623bb9ae89debf2dc2298cc4e3627e33fa4eb4c8a'),
  ('private.catalog_checked_context_v2()','34cb8467390bc71cc1ed8d3089dc4bc9dfc22feb00809b27f9ac2990614712b6'),
  ('private.catalog_checked_early_event_v2()','8a288a8a89db699391622293cd1da1a1f9bb1ea01b12556cd7054e46d9f40496'),
  ('private.catalog_co_assert_event_v2()','a2d61bee8cec2fd1f2802ee392f69dbfcdf85dfb8b8ce9d2852da4e45ab3481c'),
@@ -954,10 +993,10 @@ BEGIN
  ('private.catalog_po_assert_event_v2()','724655ca8092b32cef374fb2f0088a2e539c6539c3ec5b29091c4721ace9eb9b'),
  ('private.catalog_po_context_empty_v2()','8d31f1d41fb1f30afb2dd337658d7d73f0863eb8fdfcf93c16c2646cb24dfdc1'),
  ('private.catalog_product_delete_assert_v2()','116dda016e9adfdbe08d2332125ee34ec79cbf80c653062edabdbe3c0da2d89d'),
- ('private.catalog_product_delete_begin_v2()','6d6b05422849380e6b737162245059aea11e52769f65e2de63da86ea7601c7bc'),
- ('private.catalog_product_delete_end_v2()','a5d3a70a215f58773d108ecebd9a901cecace00f24c67b8c69ad73e928b6cecf'),
- ('private.catalog_product_delete_promotion_v2()','81a882e01620d400efb21f508dddab3d77c22a36c6770e3e68b86ee1bb4dcb79'),
- ('private.catalog_product_delete_row_v2()','712833da8252dc3f4af9c929f8929b4e9901fe68987e88531334c9bb9b814441'),
+ ('private.catalog_product_delete_begin_v2()','cf5e3cbb79afeaf9a9ee3fd5742a03a92e889f7a0e981b519bdfcb48c1b3ac82'),
+ ('private.catalog_product_delete_end_v2()','e8757a761637ef4757658d456505e304156822871fe4574e8128c81845f65de0'),
+ ('private.catalog_product_delete_promotion_v2()','88cd89e6d52d7ca7e67ff6039fb003b832118abc81a94b3296cedb8b05fa2ffd'),
+ ('private.catalog_product_delete_row_v2()','4fe3cc13c7de6c6fec9f119b509b9597a7fbe7691cfc53fc5e588b63aa1d1b20'),
  ('private.catalog_raw_drain_v2()','7f782e299e101dee161789090e9ccef6b1c9576da9afe535e48f15ee7da2836f'),
  ('private.catalog_writer_assert_event_v2()','09eb4ff9d37ffc4707c68e5ecef859d4d2cabc7f5317dda20e69777032acd773'),
  ('private.catalog_writer_context_empty_v2()','59c809da35c84c3c654ec6042c4cc6268d82ccea2a3766fafb839cd0401dfa70'),

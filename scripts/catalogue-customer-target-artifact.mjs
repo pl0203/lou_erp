@@ -109,7 +109,7 @@ export const targetRuntimeReviewedFiles=Object.freeze([
  },
  {
   "path": "supabase/catalogue/v1/new09-checked-boundaries.sql",
-  "sha256": "549fe757776630e84562f733751983abb82df536985a665cb4610210b889ce03"
+  "sha256": "da0db29502cf04f26c4b44f82dc1dd72f108c8e8114634ad316b3f0b053b8227"
  },
  {
   "path": "supabase/catalogue/v1/new10-guarded-delete.sql",
@@ -121,7 +121,7 @@ export const targetRuntimeReviewedFiles=Object.freeze([
  },
  {
   "path": "tests/database/catalogue/checked-boundaries.sql",
-  "sha256": "fa629fbbcd40acff860614a9437c0b213eb7b41702165c262604372637035506"
+  "sha256": "82cff2a9a56d59ada60e41c50b802e201e138b703ca434432966c4199c9d44a7"
  },
  {
   "path": "tests/database/catalogue/guarded-delete.sql",
@@ -137,7 +137,7 @@ export const targetRuntimeReviewedFiles=Object.freeze([
  },
  {
   "path": "tests/catalogue-ci/checked-boundaries.node.mjs",
-  "sha256": "be97a533bf9add87ae87ab80eed4c546ce328c9e5defa909bcf30bc9857105ab"
+  "sha256": "f7984adaf4d2f8a68511928257392f0eccf0386d73a9c32bad25b5f51fa65c96"
  },
  {
   "path": "tests/catalogue-ci/guarded-delete.node.mjs",
