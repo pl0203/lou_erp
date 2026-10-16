@@ -153,7 +153,7 @@ export const targetRuntimeReviewedFiles=Object.freeze([
  },
  {
   "path": "tests/catalogue-ci/guarded-delete-history.node.mjs",
-  "sha256": "64598dcade15a01a5e68d898c59a8090f4d1751fd730f63f85af42eb614bd487"
+  "sha256": "28c7c24b0900dd484413f7e2839973933f736ac133cac0a3b73a8af55867c6b6"
  },
  {
   "path": "tests/database/catalogue/native-product-delete-races.mjs",

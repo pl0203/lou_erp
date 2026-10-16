@@ -1,10 +1,21 @@
 // Static containment/source proof only. Runtime SQL must be composed into the fictional owner harness.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 const root=path.resolve(import.meta.dirname,'../..');
-const fragment=()=>fs.readFileSync(path.join(root,'evidence/checked-write-plan/guarded-delete-history.fragment.sql'),'utf8');
+const fragment=()=>{
+ const installed=fs.readFileSync(path.join(root,'supabase/catalogue/v1/new10-guarded-delete.sql'),'utf8');
+ const begin='-- BEGIN frozen trusted history collector.\n';
+ const end='-- END frozen trusted history collector.';
+ assert.equal(installed.split(begin).length,2,'exactly one trusted history opening boundary');
+ assert.equal(installed.split(end).length,2,'exactly one trusted history closing boundary');
+ const start=installed.indexOf(begin)+begin.length;
+ const stop=installed.indexOf(end);
+ assert.ok(stop>start,'trusted history boundaries must be ordered');
+ return installed.slice(start,stop);
+};
 test('trusted no-links checker has an owner-private target-only interface',()=>{
  const s=fragment();
  assert.match(s,/CREATE(?: OR REPLACE)? FUNCTION private\.catalog_assert_no_links_v1\(p_kind text,p_id uuid\) RETURNS void/);
@@ -99,7 +110,15 @@ test('lineage FK actions follow the final reviewed fixture overrides, not the mi
  }
 });
 
-test('installed new10 carries the exact separately reviewed history fragment',()=>{
- const installed=fs.readFileSync(path.join(root,'supabase/catalogue/v1/new10-guarded-delete.sql'),'utf8');
- assert.ok(installed.includes(fragment()),'embedded history must match the reviewed artifact byte for byte');
+test('published new10 carries the exact bounded trusted history function span',()=>{
+ assert.equal(createHash('sha256').update(fragment()).digest('hex'),
+  '4098ebb297a6c8ec92800ff2c012b2a2b11020a19a1382a3454001fe32e7cb8d',
+  'bounded history span must retain the independently reviewed SQL bytes, including its separator newline');
+});
+
+test('published history checks have no local-only artifact dependency',()=>{
+ const source=fs.readFileSync(new URL(import.meta.url),'utf8');
+ for(const prefix of [['evidence',''],['','tmp',''],['','workspace','']]){
+  assert.ok(!source.includes(prefix.join('/')),'source checks must use published repository inputs only');
+ }
 });
