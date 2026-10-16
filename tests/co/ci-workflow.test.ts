@@ -23,7 +23,13 @@ test('adds CO after all 32 original gates without changing their service, source
   const targetTerminal=actual.slice(targetTerminalStart,targetTerminalStart+1387);
   expect(createHash('sha256').update(targetTerminal).digest('hex')).toBe('2de4d693426ab98fafe38fc1aba630c7c7aa3294955e997d857a08a9b86e1b41');
   expect(actual.split(targetSource)).toHaveLength(2);expect(actual.split(targetTerminal)).toHaveLength(2);
-  const normalized = actual.replace(scheduling, '').replace(helperSourceLine + addedSuites + '\n', helperSourceLine + '\n').replace(targetSource,'').replace(targetTerminal,'');
+  // Pin only the new native browser region, then preserve every historical byte pin.
+  const browserStart = actual.indexOf('      - name: Native synthetic catalogue browser QA');
+  const browserRegion = actual.slice(browserStart, browserStart + 640);
+  expect(createHash('sha256').update(browserRegion).digest('hex')).toBe('52835f2c64d1d3f84e534c2738b4a246013d32ece348007d14c7e814e7a3aaa5');
+  expect(actual.split(browserRegion)).toHaveLength(2);
+  expect(actual).toContain('      - run: npm run build\n' + browserRegion + '      - name: Install official PostgreSQL client');
+  const normalized = actual.replace(scheduling, '').replace(helperSourceLine + addedSuites + '\n', helperSourceLine + '\n').replace(targetSource,'').replace(targetTerminal,'').replace(browserRegion,'');
   const decoderStart = normalized.indexOf('      - name: Bind independent read decoder source');
   const catalogueStart = normalized.indexOf('  # Independent of synthetic-safety:');
   const decoder = normalized.slice(decoderStart, catalogueStart);

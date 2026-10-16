@@ -62,6 +62,19 @@ jobs:
       - run: npm test -- --maxWorkers=1
       - run: npm run typecheck
       - run: npm run build
+      - name: Native synthetic catalogue browser QA
+        id: catalogue-browser
+        env:
+          CATALOGUE_BROWSER_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: node tests/catalogue-browser/run.mjs
+      - name: Preserve native synthetic browser evidence
+        if: ${{ always() && steps.catalogue-browser.outputs.artifact_ready == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalogue-native-browser-${{ github.run_id }}-${{ github.run_attempt }}
+          path: scale-results/catalogue-browser
+          if-no-files-found: error
+          retention-days: 7
       - name: Install official PostgreSQL client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
       - name: Load only synthetic test contract and candidate migrations
