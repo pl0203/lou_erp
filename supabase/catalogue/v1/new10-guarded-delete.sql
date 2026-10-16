@@ -539,7 +539,7 @@ BEGIN
       visit_rows:=visit_rows||jsonb_build_array(jsonb_build_object('source',CASE key WHEN 'request' THEN 'public.visit_requests' ELSE 'public.sales_schedules' END,'row',item));
      END LOOP;
     ELSE
-     visit_rows:=visit_rows||jsonb_build_array(jsonb_build_object('source',CASE WHEN r->>'operation' IN('propose_visit','amend_visit','reject_request','withdraw_request') THEN 'public.visit_requests' WHEN r->>'operation'='edit_visit_note' THEN 'public.outlet_visits' ELSE 'public.sales_schedules' END,'row',value));
+     visit_rows:=visit_rows||jsonb_build_array(jsonb_build_object('source',CASE WHEN r->>'operation' IN('propose_visit','reject_request','withdraw_request') OR (r->>'operation'='amend_visit' AND side='new_value') THEN 'public.visit_requests' WHEN r->>'operation'='edit_visit_note' THEN 'public.outlet_visits' ELSE 'public.sales_schedules' END,'row',value));
     END IF;
    END LOOP;
   ELSIF source='public.po_audit_log' AND r->>'field_changed' IN('po_items_revised','sj_lines_revised') THEN

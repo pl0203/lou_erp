@@ -172,7 +172,11 @@ ${sessionGate()}${mark(1)}${parts.foundation}
 ${sessionGate()}${mark(2)}${parts.legacy}
 ${sessionGate()}${mark(3)}${parts.roles}
 ${sessionGate()}${mark(4)}${parts.orderCandidate}
-${sessionGate()}${parts.orders}
+${sessionGate()}SAVEPOINT catalogue_po_behavior_fixture;
+${parts.orders}
+${sessionGate()}SET CONSTRAINTS ALL IMMEDIATE;
+ROLLBACK TO SAVEPOINT catalogue_po_behavior_fixture;
+RELEASE SAVEPOINT catalogue_po_behavior_fixture;
 ${sessionGate()}${mark(5)}${parts.coOrderCandidate}
 ${sessionGate()}SAVEPOINT catalogue_co_behavior_fixture;
 ${parts.coOrders}

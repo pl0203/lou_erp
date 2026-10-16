@@ -28,6 +28,43 @@ test('history collections include both audit sides and reviewed bounded extracto
  for(const n of ['catalog_por_extract_event_v1','catalog_extract_promotion_owner_event_v1','catalog_resolve_promotion_edges_v1','catalog_extract_visit_reference_event_v1','catalog_resolve_nonco_frozen_v1','catalog_extract_co_command_event_v1','catalog_extract_co_draft_event_v1','catalog_resolve_retired_co_line_v1'])assert.ok(s.includes(n),n);
  for(const n of ['po_items_revised','old_value','new_value','pilot_order_requests','pilot_store_owner_audit_v1','pilot_promotion_requests','pilot_visit_workflow_audit','co_audit_events','co_report_evidence','co_stock_keys','source_context','sources_snapshot'])assert.ok(s.includes(n),n);
 });
+test('retained workflow sources follow each actual operation and OLD NEW side',()=>{
+ const s=fragment();
+ const branch=s.slice(s.indexOf("ELSIF source='private.pilot_visit_workflow_audit' THEN"),s.indexOf("ELSIF source='public.po_audit_log' AND"));
+ assert.match(branch,/FOREACH side IN ARRAY ARRAY\['old_value','new_value'\]/);
+ assert.match(branch,/value:=r->side;IF value='null'::jsonb THEN CONTINUE; END IF;/);
+ const expression=branch.match(/'source',CASE WHEN ([^\n]+?) END,'row',value/);
+ assert.ok(expression,'the actual non-approval source classification is audited');
+ const clauses=[...('WHEN '+expression[1]).matchAll(/WHEN (.*?) THEN '([^']+)'/g)];
+ const fallback=expression[1].match(/ELSE '([^']+)'$/)?.[1];
+ assert.equal(clauses.length,2);assert.equal(fallback,'public.sales_schedules');
+ // Decode only the finite source predicate forms, not arbitrary SQL or a copied expected switch.
+ const matches=(condition,operation,side)=>condition.split(' OR ').some(term=>{
+  let m=term.match(/^r->>'operation' IN\((('[a-z_]+'[,]?)+)\)$/);
+  if(m)return [...m[1].matchAll(/'([^']+)'/g)].some(x=>x[1]===operation);
+  m=term.match(/^\(r->>'operation'='([a-z_]+)' AND side='(old_value|new_value)'\)$/);
+  if(m)return m[1]===operation&&m[2]===side;
+  m=term.match(/^r->>'operation'='([a-z_]+)'$/);
+  assert.ok(m,'unknown workflow source predicate must receive explicit review');return m[1]===operation;
+ });
+ const observed=(operation,side)=>clauses.find(c=>matches(c[1],operation,side))?.[2]??fallback;
+ const expected={propose_visit:[null,'public.visit_requests'],amend_visit:['public.sales_schedules','public.visit_requests'],
+  create_schedule:[null,'public.sales_schedules'],edit_schedule:['public.sales_schedules','public.sales_schedules'],
+  delete_schedule:['public.sales_schedules',null],reject_request:['public.visit_requests','public.visit_requests'],
+  withdraw_request:['public.visit_requests','public.visit_requests'],edit_visit_note:['public.outlet_visits','public.outlet_visits']};
+ for(const [operation,sides] of Object.entries(expected))for(const [index,side] of ['old_value','new_value'].entries()){
+  if(sides[index]!==null)assert.equal(observed(operation,side),sides[index],operation+' '+side);
+ }
+ assert.match(branch,/IF r->>'operation'='approve_request' THEN[\s\S]*FOREACH key IN ARRAY ARRAY\['request','schedule'\][\s\S]*CASE key WHEN 'request' THEN 'public.visit_requests' ELSE 'public.sales_schedules' END/);
+ const producer=fs.readFileSync(path.join(root,'supabase/migrations/202610081102_demo_visit_workflow.sql'),'utf8');
+ assert.match(producer,/ELSIF p_operation IN\('amend_visit','edit_schedule','delete_schedule'\)[\s\S]*before_value:=to_jsonb\(s\)/);
+ assert.match(producer,/WHEN p_operation IN\('propose_visit','amend_visit','reject_request','withdraw_request'\) THEN to_jsonb\(r\)/);
+ const extractor=fs.readFileSync(path.join(root,'supabase/catalogue/v1/new02-visit-reference-extraction.sql'),'utf8');
+ assert.match(extractor,/kind:=CASE WHEN p_operation IN\('propose_visit','reject_request','withdraw_request'\) THEN 'visit_request'[\s\S]*ELSE 'schedule' END/);
+ assert.match(extractor,/CASE WHEN p_operation='amend_visit' THEN 'visit_request' ELSE kind END,'row',a/);
+ const lifetime=fs.readFileSync(path.join(root,'tests/database/catalogue/lifetime-admission.sql'),'utf8');
+ for(const label of ["'lifetime-amendment'","'lifetime-source-delete'",'v2 rejection marks every retained historical source and replacement customer'])assert.ok(lifetime.includes(label));
+});
 test('unknown grammar topology and producer drift are stable private refusals',()=>{
  const s=fragment();
  for(const n of ['CATALOG_DELETE_BLOCKED','CATALOG_TRACKING_INCOMPLETE','pg_constraint','pg_attribute','pg_proc','execution_version','prosrc','md5'])assert.ok(s.includes(n),n);
@@ -112,7 +149,7 @@ test('lineage FK actions follow the final reviewed fixture overrides, not the mi
 
 test('published new10 carries the exact bounded trusted history function span',()=>{
  assert.equal(createHash('sha256').update(fragment()).digest('hex'),
-  '0f1a65855c649db328021d45f1fd1d0cc87ebc3c0a86f9896d7426b4d73c812d',
+  '86f4ccc77e6cd9fefaa2d72d4cad24ce74b3709006c1f53834365f81b6ac63cc',
   'bounded history span must retain the independently reviewed SQL bytes, including its separator newline');
 });
 

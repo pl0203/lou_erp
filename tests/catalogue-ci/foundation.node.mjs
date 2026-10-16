@@ -491,3 +491,23 @@ test('CO negative history fixture is isolated after its actual deferred assertio
  for(const later of ['lifetime','createEdit','publicRouters','checkedBoundaries','guardedDelete','guardedDeleteHistory'])assert.ok(done<sql.indexOf(parts[later]),later+' cannot inherit the malformed CO fixture');
  assert.throws(()=>runner.buildCatalogueFoundationSession(identity,{...parts,coOrders:start+'\n'+parts.coOrders}),'suite cannot introduce its own transaction boundaries');
 });
+
+test('PO legacy-shape fixture is isolated after its actual deferred assertions without isolating valid lifetime history',()=>{
+ need();
+ const parts=fixtureParts(),sql=runner.buildCatalogueFoundationSession(identity,parts);
+ const start='SAVEPOINT catalogue_po_behavior_fixture;',rollback='ROLLBACK TO SAVEPOINT catalogue_po_behavior_fixture;',release='RELEASE SAVEPOINT catalogue_po_behavior_fixture;';
+ for(const boundary of [start,rollback,release])assert.equal(sql.split('\n').filter(line=>line===boundary).length,1,'one exact runner-owned PO boundary: '+boundary);
+ const begin=sql.indexOf(start),suite=sql.indexOf(parts.orders),end=suite+parts.orders.length,undo=sql.indexOf(rollback),done=sql.indexOf(release);
+ assert.ok(sql.indexOf(parts.orderCandidate)<begin && begin<suite,'installed PO core is outside the behavioral rollback');
+ assert.ok(end<undo && undo<done && done<sql.indexOf(parts.coOrderCandidate),'only the PO behavioral suite is isolated');
+ assert.match(sql.slice(end,undo),/SET CONSTRAINTS ALL IMMEDIATE;\s*$/,'execute queued assertions before rollback, never discard them silently');
+ assert.ok(sql.slice(end,undo).includes('catalogue_foundation_session_refused'),'same owner/backend/transaction checked before drain');
+ assert.equal(sql.split(parts.orders).length,2,'suite bytes and every original assertion remain included once');
+ const source=readFileSync(resolve(root,runner.foundationSqlPaths.orders),'utf8');
+ assert.match(runner.foundationTopLevelSql(source),/SET CONSTRAINTS ALL IMMEDIATE;\s*SET CONSTRAINTS ALL DEFERRED;\s*$/,'existing PO suite already drains its assertions before returning');
+ assert.ok(source.includes("'execution_version',2,'generation',2"),'generation-one extra-key compatibility remains asserted by the original fixture');
+ assert.ok(source.includes("'client generation hints cannot upgrade old body'"));
+ for(const later of ['coOrderCandidate','coOrders','lifetime','createEdit','publicRouters','checkedBoundaries','guardedDelete','guardedDeleteHistory'])assert.ok(done<sql.indexOf(parts[later]),later+' cannot inherit the PO negative-shape fixture');
+ assert.ok(sql.indexOf('RELEASE SAVEPOINT catalogue_co_behavior_fixture;')<sql.indexOf(parts.lifetime),'valid lifetime history remains outside both behavioral isolation envelopes');
+ assert.throws(()=>runner.buildCatalogueFoundationSession(identity,{...parts,orders:start+'\n'+parts.orders}),'suite cannot introduce its own transaction boundaries');
+});
