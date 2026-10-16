@@ -49,3 +49,18 @@ test('additive readiness read preserves legacy capability semantics and exposes 
  assert.doesNotMatch(sql,/CREATE OR REPLACE FUNCTION public\.pilot_procurement_access_v2/);
  assert.match(sql,/GRANT EXECUTE ON FUNCTION public\.pilot_catalog_delete_access_v1\(\) TO authenticated/);
 });
+
+test('actual service readiness denial does not depend on private fixture helper privileges',()=>{
+ const before=read('tests/database/catalogue/before-foundation.sql');
+ assert.match(before,/GRANT USAGE ON SCHEMA %I TO authenticated, anon/);
+ assert.match(before,/REVOKE ALL ON ALL FUNCTIONS IN SCHEMA %I FROM PUBLIC/);
+ assert.match(before,/GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA %I TO authenticated, anon/);
+ const sql=read('tests/database/catalogue/guarded-delete.sql');
+ const block=sql.match(/DO \$service_readiness\$([\s\S]*?)END \$service_readiness\$;/)?.[1];
+ assert.ok(block,'owner-scoped direct service probe is required because the temp helpers exclude service_role');
+ assert.match(block,/DECLARE denied boolean:=false;\s*BEGIN\s*SET LOCAL ROLE service_role;\s*IF current_user<>'service_role' THEN RAISE EXCEPTION 'Actual service role required'; END IF;\s*BEGIN\s*PERFORM public\.pilot_catalog_delete_access_v1\(\);\s*EXCEPTION WHEN insufficient_privilege THEN denied:=true;\s*END;\s*RESET ROLE;\s*PERFORM pg_temp\.foundation_assert\(denied,'service cannot read guarded readiness'\);/);
+ assert.doesNotMatch(block,/WHEN OTHERS|SECURITY DEFINER|GRANT\s/i);
+ assert.equal((sql.match(/SET LOCAL ROLE service_role;/g)||[]).length,1,'the single service probe is audited');
+ assert.doesNotMatch(sql,/SET LOCAL ROLE service_role;\s*(?:SELECT|PERFORM) pg_temp\./,'do not mistake helper access denial for the intended service denial');
+ assert.doesNotMatch(sql,/GRANT[^;]+TO service_role/i,'do not widen any production or helper grants');
+});

@@ -125,7 +125,7 @@ export const targetRuntimeReviewedFiles=Object.freeze([
  },
  {
   "path": "tests/database/catalogue/guarded-delete.sql",
-  "sha256": "e8d82a9e7da9bec21f6dc450eccb8d045f0f2c20d3193d4a53f1a9a8a629ecc5"
+  "sha256": "5ce7d7b6380d3f4e1f1456ed6a4e09fddc74bb7d34a32fa3db8840d9a3dbf69d"
  },
  {
   "path": "tests/database/catalogue/completion-races.mjs",
@@ -141,7 +141,7 @@ export const targetRuntimeReviewedFiles=Object.freeze([
  },
  {
   "path": "tests/catalogue-ci/guarded-delete.node.mjs",
-  "sha256": "2ac30750e7d6d6e80c7f15244100fc88a388e410ee86640832a55dadbdc1637c"
+  "sha256": "a9982cd7299b3f4b5c07b93b321212474b84f509d5e1d886a3fff7a32b41c9f2"
  },
  {
   "path": "tests/catalogue-ci/master-completion-hooks.node.mjs",

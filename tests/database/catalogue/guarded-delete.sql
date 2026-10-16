@@ -126,9 +126,18 @@ DROP TRIGGER zzz_guarded_fail_after_birth ON public.products;
 SELECT pg_temp.foundation_assert(NOT EXISTS(SELECT 1 FROM private.catalog_requests_v1 WHERE request_id=md5('guarded-failed-birth')::uuid)
  AND NOT EXISTS(SELECT 1 FROM public.products WHERE sku='FICTIONAL-FAILED-BIRTH') AND NOT EXISTS(SELECT 1 FROM private.catalog_create_scope_v1),'failed birth leaves no data or scope');
 -- The readiness read has no service shortcut and never leaks private gate data.
-SET LOCAL ROLE service_role;
-SELECT pg_temp.foundation_raises('SELECT public.pilot_catalog_delete_access_v1()','42501','service cannot read guarded readiness');
-RESET ROLE;
+DO $service_readiness$
+DECLARE denied boolean:=false;
+BEGIN
+ SET LOCAL ROLE service_role;
+ IF current_user<>'service_role' THEN RAISE EXCEPTION 'Actual service role required'; END IF;
+ BEGIN
+  PERFORM public.pilot_catalog_delete_access_v1();
+ EXCEPTION WHEN insufficient_privilege THEN denied:=true;
+ END;
+ RESET ROLE;
+ PERFORM pg_temp.foundation_assert(denied,'service cannot read guarded readiness');
+END $service_readiness$;
 UPDATE private.catalog_cutover_v1 SET tracking_ready=false WHERE singleton;
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub',md5('guarded-delete-fictional-co')::uuid::text,true);
