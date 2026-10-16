@@ -13,7 +13,7 @@ const defaultRoot=resolve(dirname(fileURLToPath(import.meta.url)),'..'),sha=x=>c
 export const targetRuntimeReviewedFiles=Object.freeze([
  {
   "path": "scripts/catalogue-customer-target-runtime.mjs",
-  "sha256": "1d28dabc76e47abd1d594ac7492c62a7b3a44e0018c33688ae76019d858d7d0e"
+  "sha256": "04f52a08311402c2910b704922b420314dab8cbbfaf847bb4c5ca2683cc6bc23"
  },
  {
   "path": "supabase/catalogue/v1/02-customer-target-tracking.sql",
@@ -21,7 +21,7 @@ export const targetRuntimeReviewedFiles=Object.freeze([
  },
  {
   "path": "tests/catalogue-ci/customer-target-runtime.node.mjs",
-  "sha256": "79ad1ab96120cbf5977683beccde99aa675cfea40b64099d519dc1ba482160b3"
+  "sha256": "7a43ca6a57a1eff6cffb7e4bc963e524ef28a54cd5c3b228190b87abc3312b57"
  },
  {
   "path": "tests/catalogue-ci/customer-target-tracking.node.mjs",
@@ -82,9 +82,13 @@ export const targetRuntimeReviewedFiles=Object.freeze([
  {
   "path": "tests/catalogue-ci/create-edit-races.node.mjs",
   "sha256": "e16ec511ce06efb71d390b5b516f5bb4e4416db8434c7ca8c09fea2f99298daa"
+ },
+ {
+  "path": "tests/database/catalogue/raw-caller-compatibility.sql",
+  "sha256": "26a4e970ff53d595f36fecfd270c414473a64992c2c603aa0d7d9da2a73ae0b1"
  }
 ].map(Object.freeze));
-const reportPaths=Object.freeze(['tests/database/catalogue/before-foundation.sql','supabase/catalogue/v1/01-foundation.sql','tests/database/catalogue/legacy-columns.sql','tests/database/catalogue/roles.sql','supabase/catalogue/v1/02-customer-target-tracking.sql','tests/database/catalogue/customer-target-tracking.sql','tests/database/catalogue/customer-target-runtime-authority.sql','tests/database/catalogue/customer-target-runtime-variants.sql','supabase/catalogue/v1/04-order-boundaries.sql','supabase/catalogue/v1/new06-co-order-boundaries.sql','supabase/catalogue/v1/02-promotion-owner-extraction.sql','supabase/catalogue/v1/new02-visit-reference-extraction.sql','supabase/catalogue/v1/new07-lifetime-admission.sql','supabase/catalogue/v1/new08-catalogue-create-edit.sql']);
+const reportPaths=Object.freeze(['tests/database/catalogue/before-foundation.sql','supabase/catalogue/v1/01-foundation.sql','tests/database/catalogue/legacy-columns.sql','tests/database/catalogue/roles.sql','supabase/catalogue/v1/02-customer-target-tracking.sql','tests/database/catalogue/customer-target-tracking.sql','tests/database/catalogue/customer-target-runtime-authority.sql','tests/database/catalogue/customer-target-runtime-variants.sql','supabase/catalogue/v1/04-order-boundaries.sql','supabase/catalogue/v1/new06-co-order-boundaries.sql','supabase/catalogue/v1/02-promotion-owner-extraction.sql','supabase/catalogue/v1/new02-visit-reference-extraction.sql','supabase/catalogue/v1/new07-lifetime-admission.sql','supabase/catalogue/v1/new08-catalogue-create-edit.sql','tests/database/catalogue/raw-caller-compatibility.sql']);
 const wrapperPaths=['scripts/catalogue-customer-target-artifact.mjs','tests/catalogue-ci/customer-target-artifact.node.mjs'];
 const directory=path=>{const stat=lstatSync(path);assert.ok(stat.isDirectory()&&!stat.isSymbolicLink());return stat;};
 const sameDirectory=(path,expected)=>{const stat=directory(path);assert.equal(stat.ino,expected.ino);assert.equal(stat.dev,expected.dev);};
@@ -113,7 +117,7 @@ function validateReport(bytes,identity,files){
  const report=JSON.parse(bytes);assert.equal(bytes,JSON.stringify(report)+'\n');
  const lifecycle=report.lifecycle;for(const key of ['backendPid','transactionId'])assert.match(lifecycle?.[key]??'',/^[1-9][0-9]{0,19}$/);
  const pids=report.races?.backendPids;assert.ok(Array.isArray(pids));assert.equal(pids.length,3);assert.equal(new Set(pids).size,3);assert.ok(pids.every(pid=>Number.isSafeInteger(pid)&&pid>0&&pid<=2147483647));
- const expected={format:'catalogue-customer-target-runtime-v1',status:'BOUNDED_TARGET_RUNTIME_PASSED',identity,lifecycle:{backendPid:lifecycle.backendPid,transactionId:lifecycle.transactionId},races:{status:'BOUNDED_TARGET_RACES_PASSED',backendPids:pids,cases:['reversed_raw_target_statements','evidence_relation_contention'],statusRecovery:validateTargetStatusRecovery(report.races.statusRecovery,pids),lifetimeAdmission:validateLifetimeAdmission(report.races.lifetimeAdmission),createEdit:validateCatalogueCreateEditRaces(report.races.createEdit,pids,report.races.statusRecovery.replayBackendPid)},cleanup:'COMMITTED_SYNTHETIC_CHILD_DISPOSED',files,implementationAccepted:false,hostedVerified:false,trackingReady:false,broaderLockGraph:'UNPROVEN'};
+ const expected={format:'catalogue-customer-target-runtime-v1',status:'BOUNDED_TARGET_RUNTIME_PASSED',identity,lifecycle:{backendPid:lifecycle.backendPid,transactionId:lifecycle.transactionId},rawCompatibility:{scope:'LEGACY_RAW_COMPATIBILITY_ONLY',executionGeneration:1,trackingReady:false,roles:['authenticated','service_role'],syntheticVisitRequestGrant:'ROLLBACK_VERIFIED',targetOldNewTracking:'PASSED',rawOrderVisitLifetime:'INCOMPLETE',businessTruncate:'ALLOWED_WITHOUT_ROW_EVIDENCE',masterTruncate:'REFUSED',globalActivation:'BLOCKED',hostedParity:'UNVERIFIED'},races:{status:'BOUNDED_TARGET_RACES_PASSED',backendPids:pids,cases:['reversed_raw_target_statements','evidence_relation_contention'],statusRecovery:validateTargetStatusRecovery(report.races.statusRecovery,pids),lifetimeAdmission:validateLifetimeAdmission(report.races.lifetimeAdmission),createEdit:validateCatalogueCreateEditRaces(report.races.createEdit,pids,report.races.statusRecovery.replayBackendPid)},cleanup:'COMMITTED_SYNTHETIC_CHILD_DISPOSED',files,implementationAccepted:false,hostedVerified:false,trackingReady:false,broaderLockGraph:'UNPROVEN'};
  assert.deepEqual(report,expected);assert.equal(bytes,JSON.stringify(expected)+'\n');return expected;
 }
 function exactFile(path,expected){
@@ -124,7 +128,7 @@ function exactFile(path,expected){
 // These finite validators must stay local. Importing the runtime here would
 // evaluate it before the source-binding and reviewed-byte prelaunch checks.
 const targetFailurePhases=Object.freeze(['initialization','binding','source-preflight','identity-preflight','lifecycle','lifecycle-parse','source-post-lifecycle','identity-post-lifecycle','race-setup','race-setup-parse','source-pre-races','identity-pre-races','races','source-post-races','identity-post-races','disposal','source-post-disposal']);
-const lifecycleFailurePhases=Object.freeze(["FOUNDATION","TARGET_SETUP","TARGET_INSTALL","TARGET_AUTHORITY","TARGET_EVENTS","TARGET_CASCADE_DROP","TARGET_CASCADE_ADD","TARGET_CASCADE_EVENTS","TARGET_AUTHENTICATED","TARGET_MISSING_IDENTITY","TARGET_ASSERTION_ONLY","TARGET_SESSION_GATE","VARIANTS_AND_ROLES","ROLLBACK","COMPLETE"]);
+const lifecycleFailurePhases=Object.freeze(["FOUNDATION","TARGET_SETUP","TARGET_INSTALL","TARGET_AUTHORITY","TARGET_EVENTS","TARGET_CASCADE_DROP","TARGET_CASCADE_ADD","TARGET_CASCADE_EVENTS","TARGET_AUTHENTICATED","TARGET_MISSING_IDENTITY","TARGET_ASSERTION_ONLY","TARGET_SESSION_GATE","VARIANTS_AND_ROLES","RAW_COMPATIBILITY","ROLLBACK","COMPLETE"]);
 const targetProcessKinds=Object.freeze(['NOT_APPLICABLE','UNKNOWN','EXIT_0','EXIT_1','EXIT_2','SCRIPT_ERROR','OTHER_NONZERO','SIGNAL','TIMEOUT','BUFFER_LIMIT','SPAWN_FAILURE','SESSION_SQLSTATE']);
 const targetSyncFailurePhases=Object.freeze(['identity-preflight','lifecycle','identity-post-lifecycle','race-setup','identity-pre-races','identity-post-races','disposal']);
 function targetProcessExit(error){

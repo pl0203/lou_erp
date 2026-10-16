@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 let runner;try{runner=await import('../../scripts/catalogue-customer-target-runtime.mjs');}catch{}
 const need=()=>assert.ok(runner,'Guarded raw target runtime harness missing');
 const read=p=>readFileSync(new URL('../../'+p,import.meta.url),'utf8');
-const expectedLifecyclePhases=["FOUNDATION","TARGET_SETUP","TARGET_INSTALL","TARGET_AUTHORITY","TARGET_EVENTS","TARGET_CASCADE_DROP","TARGET_CASCADE_ADD","TARGET_CASCADE_EVENTS","TARGET_AUTHENTICATED","TARGET_MISSING_IDENTITY","TARGET_ASSERTION_ONLY","TARGET_SESSION_GATE","VARIANTS_AND_ROLES","ROLLBACK","COMPLETE"];
+const expectedLifecyclePhases=["FOUNDATION","TARGET_SETUP","TARGET_INSTALL","TARGET_AUTHORITY","TARGET_EVENTS","TARGET_CASCADE_DROP","TARGET_CASCADE_ADD","TARGET_CASCADE_EVENTS","TARGET_AUTHENTICATED","TARGET_MISSING_IDENTITY","TARGET_ASSERTION_ONLY","TARGET_SESSION_GATE","VARIANTS_AND_ROLES","RAW_COMPATIBILITY","ROLLBACK","COMPLETE"];
 const identity={profile:'github-catalogue-baseline-v1',source:{clean:true,commit:'a'.repeat(40),tree:'b'.repeat(40),candidate:'c'.repeat(64)},serverAddress:'172.18.0.2',serverPort:5432,serverVersion:'170011',systemIdentifier:'123456789',runIdentity:'00000000-0000-4000-8000-000000000001',ci:{}};
 const parts=()=>Object.fromEntries(Object.entries(runner.targetRuntimePaths).map(([k,p])=>[k,read(p)]));
 test('joined target ACL assertion qualifies live columns against the saved baseline',()=>{
@@ -213,10 +213,10 @@ test('diagnostic phase process and SQLSTATE combinations match the producer matr
 
 test('fixed target milestones are unique exact insertions without changing reviewed SQL bytes or order',()=>{
  need();const p=parts(),plain=runner.expandTargetLifecycle(p.lifecycle,p.target,p.authority),sql=runner.instrumentTargetLifecycle(p.lifecycle,p.target,p.authority);
- const expected=["CATALOGUE_TARGET_FOUNDATION_PASSED","CATALOGUE_TARGET_SETUP_PASSED","CATALOGUE_TARGET_INSTALL_PASSED","CATALOGUE_TARGET_AUTHORITY_PASSED","CATALOGUE_TARGET_EVENTS_PASSED","CATALOGUE_TARGET_CASCADE_DROP_PASSED","CATALOGUE_TARGET_CASCADE_ADD_PASSED","CATALOGUE_TARGET_CASCADE_PASSED","CATALOGUE_TARGET_AUTHENTICATED_PASSED","CATALOGUE_TARGET_MISSING_IDENTITY_PASSED","CATALOGUE_TARGET_ASSERTION_ONLY_PASSED","CATALOGUE_TARGET_LIFECYCLE_PASSED","CATALOGUE_TARGET_VARIANTS_PASSED","CATALOGUE_TARGET_ROLLBACK_VERIFIED"];
+ const expected=["CATALOGUE_TARGET_FOUNDATION_PASSED","CATALOGUE_TARGET_SETUP_PASSED","CATALOGUE_TARGET_INSTALL_PASSED","CATALOGUE_TARGET_AUTHORITY_PASSED","CATALOGUE_TARGET_EVENTS_PASSED","CATALOGUE_TARGET_CASCADE_DROP_PASSED","CATALOGUE_TARGET_CASCADE_ADD_PASSED","CATALOGUE_TARGET_CASCADE_PASSED","CATALOGUE_TARGET_AUTHENTICATED_PASSED","CATALOGUE_TARGET_MISSING_IDENTITY_PASSED","CATALOGUE_TARGET_ASSERTION_ONLY_PASSED","CATALOGUE_TARGET_LIFECYCLE_PASSED","CATALOGUE_TARGET_VARIANTS_PASSED","CATALOGUE_RAW_CALLER_COMPATIBILITY_PASSED","CATALOGUE_TARGET_ROLLBACK_VERIFIED"];
  assert.deepEqual(runner.targetMarkers,expected);
  let restored=sql,last=-1;
- for(const marker of expected.slice(1,-3)){
+ for(const marker of expected.slice(1,11)){
   const line='\\echo '+marker+' :target_pid :target_xid\n';
   assert.equal(sql.split(line).length,2);assert.ok(sql.indexOf(line)>last);last=sql.indexOf(line);restored=restored.replace(line,'');
  }
@@ -351,4 +351,30 @@ test('terminal create edit races share checked clients and install new08 only af
  assert.match(runtime,/executeCatalogueCreateEditRaces\(\{a,b:replay,observer,query:ok,expectState:expected,verify\}\)/);
  assert.ok(runtime.indexOf('const lifetimeAdmission=')<runtime.indexOf('const createEdit='));
  assert.match(runtime,/statusRecovery,lifetimeAdmission,createEdit/);
+});
+
+test('raw caller compatibility is an exact rollback-only generation-one observation, not activation proof',()=>{
+ need();const p=parts(),sql=runner.buildTargetLifecycleSession(identity,p);
+ assert.equal(runner.targetRuntimePaths.rawCompatibility,'tests/database/catalogue/raw-caller-compatibility.sql');
+ for(const key of ['orderCandidate','coOrderCandidate','promotionOwnerGrammar','visitGrammar','lifetimeCandidate','createEditCandidate','rawCompatibility'])assert.equal(sql.split(p[key]).length,2,key);
+ assert.ok(sql.indexOf(p.roles)<sql.indexOf(p.rawCompatibility));
+ assert.ok(sql.indexOf(p.lifetimeCandidate)<sql.indexOf(p.rawCompatibility));
+ assert.ok(sql.indexOf(p.rawCompatibility)<sql.indexOf('CATALOGUE_RAW_CALLER_COMPATIBILITY_PASSED'));
+ assert.ok(sql.indexOf('CATALOGUE_RAW_CALLER_COMPATIBILITY_PASSED')<sql.indexOf('ROLLBACK;'));
+ assert.ok(!runner.buildTargetRaceSetup(identity,p).includes(p.rawCompatibility),'compatibility mutations never enter committed race setup');
+ for(const label of ['authenticated raw master writes','authenticated customer target upsert','service target reparent OLD and NEW','raw Girard OLD and NEW remain unknown','raw PO OLD and NEW remain unknown','raw visit OLD and NEW remain unknown','business TRUNCATE is not lifetime certification','direct product delete retains tombstone','original product FK restriction survives'])assert.ok(p.rawCompatibility.includes(label),label);
+ assert.deepEqual(p.rawCompatibility.split('\n').filter(line=>/^GRANT\b/.test(line)),['GRANT SELECT,INSERT,UPDATE,DELETE,TRUNCATE ON public.visit_requests TO service_role;']);
+ assert.doesNotMatch(p.rawCompatibility,/\b(?:REVOKE|ALTER TABLE|DISABLE TRIGGER|CREATE(?: OR REPLACE)? FUNCTION)\b/);
+ assert.match(sql.slice(sql.indexOf('ROLLBACK;')),/NOT has_table_privilege\('service_role','public.visit_requests','SELECT,INSERT,UPDATE,DELETE,TRUNCATE'\)/);
+ assert.doesNotMatch(p.rawCompatibility,/UPDATE private\.catalog_(?:cutover|identity)_v1|catalog_writer_enter_v2|catalog_po_active_v2\(/);
+});
+
+
+test('raw target reparent must mark NEW before delete and null-JWT PO failure must identify the exact audit field',()=>{
+ need();const sql=parts().rawCompatibility;
+ assert.ok(sql.indexOf('are marked by UPDATE before DELETE')<sql.indexOf("DELETE FROM public.customer_targets WHERE id=md5('raw-compat-target')::uuid"));
+ assert.ok(sql.includes('actual service target UPDATE reaches NEW customer and explicit setter'));
+ assert.match(sql,/GET STACKED DIAGNOSTICS failed_schema=SCHEMA_NAME,failed_table=TABLE_NAME,failed_column=COLUMN_NAME/);
+ assert.match(sql,/ROW\('public'::text,'po_audit_log'::text,'changed_by'::text\) THEN RAISE/);
+ assert.ok(sql.includes('this does not certify salesperson write'));
 });
