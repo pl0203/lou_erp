@@ -162,6 +162,54 @@ test('truncate fixture executes pending constraints before testing the unchanged
  assert.ok(before.includes("replay:=public.pilot_customer_target_upsert_v1(md5('checked-target-null')"),'successful target writes precede the probe');
  // PostgreSQL checks pending AFTER events before invoking BEFORE TRUNCATE.
  // Execute those assertions, then restore deferred mode; never accept 55006.
- assert.match(before,/SET CONSTRAINTS ALL IMMEDIATE;\s+SET CONSTRAINTS ALL DEFERRED;\s*$/);
+ assert.match(before,/SET CONSTRAINTS ALL IMMEDIATE;\s+(?:diagnostic_stage:='0';\s+)?SET CONSTRAINTS ALL DEFERRED;\s*$/);
  assert.doesNotMatch(loop[0],/55006|DISABLE|session_replication_role/);
+});
+test('checked fixture classifies only finite invariant first frames within four exact stages',()=>{
+ const fixture=readFileSync(new URL('../../tests/database/catalogue/checked-boundaries.sql',import.meta.url),'utf8');
+ const handler=fixture.split("WHEN SQLSTATE '23514' THEN")[1];
+ assert.ok(handler,'bounded invariant diagnostic handler exists');
+ const signatures=[
+  'catalog_customer_targets_assert_v1()','catalog_target_no_pending_v1()',
+  'catalog_product_delete_empty_v2()','catalog_product_delete_assert_v2()',
+  'catalog_product_delete_promotion_v2()','catalog_product_delete_begin_v2()',
+  'catalog_product_delete_row_v2()','catalog_product_delete_defer_v2(jsonb)',
+  'catalog_product_delete_end_v2()','catalog_master_after_v1()',
+  'catalog_identity_guard_v1()','catalog_history_require_v1(boolean)',
+ ];
+ const mapping=[...handler.matchAll(/\('([^']+)','([0-9]{2})'\)/g)].map(([,pattern,code])=>({pattern,code}));
+ assert.deepEqual(mapping,signatures.map((signature,i)=>({
+  pattern:'private[.]'+signature.replace('(','[(]').replace(')','[)]'),code:String(i+1).padStart(2,'0'),
+ })),'exact finite function signatures, including argument types');
+ const stages=[...fixture.matchAll(/diagnostic_stage:='([1-4])';([\s\S]*?)diagnostic_stage:='0';/g)].map(([,stage,statement])=>({stage,statement:statement.trim()}));
+ assert.deepEqual(stages,[
+  {stage:'1',statement:'SET CONSTRAINTS ALL IMMEDIATE;'},
+  {stage:'2',statement:"DELETE FROM public.products WHERE id=md5('checked-boundary-cascade')::uuid;"},
+  {stage:'3',statement:'SET CONSTRAINTS ALL IMMEDIATE;'},
+  {stage:'4',statement:'SET CONSTRAINTS ALL IMMEDIATE;'},
+ ]);
+ assert.equal((fixture.match(/diagnostic_stage:='[1-4]'/g)||[]).length,4,'no broad or stale stage attribution');
+ assert.match(handler,/IF diagnostic_stage IS NULL OR diagnostic_stage NOT IN\('1','2','3','4'\) THEN RAISE; END IF;/);
+ assert.match(handler,/diagnostic_frame:=split_part\(diagnostic_context,E'\\n',1\)/);
+ assert.match(handler,/SELECT 'PD'\|\|diagnostic_stage\|\|d\.code INTO diagnostic_code/);
+ assert.match(handler,/diagnostic_frame ~ \('\^PL\/pgSQL function '\|\|d\.pattern\|\|' line \[0-9\]\+ at RAISE\$'\)/);
+ assert.match(handler,/IF diagnostic_code IS NULL THEN RAISE; END IF;/);
+ assert.match(handler,/RAISE EXCEPTION 'Checked boundary fixture invariant failed' USING ERRCODE=diagnostic_code;/);
+ assert.doesNotMatch(handler,/MESSAGE_TEXT|RAISE[^;]*(?:diagnostic_context|diagnostic_frame|diagnostic_stage)/);
+ const classify=(state,stage,context)=>{
+  if(state!=='23514'||!['1','2','3','4'].includes(stage))return state;
+  const frame=context.split('\n')[0];
+  const entry=mapping.find(({pattern})=>new RegExp('^PL/pgSQL function '+pattern+' line [0-9]+ at RAISE$').test(frame));
+  return entry?'PD'+stage+entry.code:state;
+ };
+ const codes=new Set();
+ for(const stage of ['1','2','3','4'])for(const [i,signature] of signatures.entries()){
+  const frame='PL/pgSQL function private.'+signature+' line 5 at RAISE',code='PD'+stage+String(i+1).padStart(2,'0');
+  assert.equal(classify('23514',stage,frame),code);codes.add(code);
+  for(const state of ['P0001','42501','55006'])assert.equal(classify(state,stage,frame),state);
+  for(const unknownStage of [null,'','0','5'])assert.equal(classify('23514',unknownStage,frame),'23514');
+  for(const unknownFrame of [frame.replace('private.','public.'),frame.replace(' at RAISE',' at SQL statement'),'unknown first frame\n'+frame,frame+' unbounded suffix'])assert.equal(classify('23514',stage,unknownFrame),'23514');
+ }
+ assert.equal(codes.size,48,'four stages and twelve invariant signatures have unique fixed codes');
+ assert.equal(classify('23514','2','PL/pgSQL function private.catalog_unknown_v1() line 5 at RAISE'),'23514');
 });

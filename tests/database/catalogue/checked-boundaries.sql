@@ -6,6 +6,7 @@ DO $checked_boundaries$
 DECLARE saved_claim text:=current_setting('request.jwt.claim.sub',true); receipt jsonb; replay jsonb;
  first_tombstone timestamptz; recreated_customer_tombstone timestamptz; complete boolean:=false; detail text; before_constraints jsonb; after_constraints jsonb; relation text;
  diagnostic_message text; diagnostic_context text; diagnostic_frame text; diagnostic_helper text; diagnostic_code text;
+ diagnostic_stage text:='0';
 BEGIN
  PERFORM pg_temp.foundation_assert(current_database()='pilot_catalogue_test' AND session_user='postgres' AND current_user='postgres','checked boundary fictional owner required');
  PERFORM pg_temp.foundation_assert((SELECT execution_generation=1 AND NOT tracking_ready FROM private.catalog_cutover_v1 WHERE singleton),'checked boundaries start inactive');
@@ -78,7 +79,9 @@ BEGIN
   END;
   RESET ROLE;
   PERFORM pg_temp.foundation_assert(detail='CATALOG_GENERATION_RETIRED','actual raw service target cannot escape generation two');
+  diagnostic_stage:='1';
   SET CONSTRAINTS ALL IMMEDIATE;
+  diagnostic_stage:='0';
   SET CONSTRAINTS ALL DEFERRED;
   FOREACH relation IN ARRAY ARRAY['public.customer_targets','public.purchase_orders','public.promotions','public.visit_requests','public.customer_manager_assignments'] LOOP
    PERFORM pg_temp.foundation_raises(format('TRUNCATE %s CASCADE',relation),'42501','generation two business truncate fails before clearing');
@@ -89,12 +92,16 @@ BEGIN
   ALTER TABLE public.promotions DROP CONSTRAINT promotions_product_id_fkey;
   ALTER TABLE public.promotions ADD CONSTRAINT catalogue_fictional_promotion_product_cascade_v2 FOREIGN KEY(product_id) REFERENCES public.products(id) ON DELETE CASCADE;
   SET LOCAL ROLE authenticated;
+  diagnostic_stage:='2';
   DELETE FROM public.products WHERE id=md5('checked-boundary-cascade')::uuid;
+  diagnostic_stage:='0';
   RESET ROLE;
   PERFORM pg_temp.foundation_assert(NOT EXISTS(SELECT 1 FROM public.promotions WHERE id=md5('checked-boundary-promo-cascade')::uuid)
    AND (SELECT lifetime_state='used' AND deleted_at IS NOT NULL FROM private.catalog_identity_v1 WHERE kind='product' AND id=md5('checked-boundary-cascade')::uuid),'actual promotion cascade marks only its deleted product before tombstone');
   PERFORM pg_temp.foundation_assert((SELECT lifetime_state='unknown' AND deleted_at IS NULL FROM private.catalog_identity_v1 WHERE kind='product' AND id=md5('checked-boundary-blocked')::uuid),'failed baseline delete and unrelated cascade do not falsely mark other product');
+  diagnostic_stage:='3';
   SET CONSTRAINTS ALL IMMEDIATE;
+  diagnostic_stage:='0';
   SET CONSTRAINTS ALL DEFERRED;
   ALTER TABLE public.promotions DROP CONSTRAINT catalogue_fictional_promotion_product_cascade_v2;
   ALTER TABLE public.promotions ADD CONSTRAINT catalogue_fictional_promotion_product_cascade_v2 FOREIGN KEY(product_id) REFERENCES public.products(id) ON DELETE SET NULL;
@@ -102,7 +109,9 @@ BEGIN
   PERFORM pg_temp.foundation_raises($q$DELETE FROM public.products WHERE id=md5('checked-boundary-blocked')::uuid$q$,'55000','wider SET NULL native topology refused before mutation');
   RESET ROLE;
   PERFORM pg_temp.foundation_assert((SELECT deleted_at IS NULL FROM private.catalog_identity_v1 WHERE kind='product' AND id=md5('checked-boundary-blocked')::uuid),'unsupported topology leaves no partial tombstone');
+  diagnostic_stage:='4';
   SET CONSTRAINTS ALL IMMEDIATE;
+  diagnostic_stage:='0';
   RAISE EXCEPTION 'checked-boundary-fixture-rollback' USING ERRCODE='PZB01';
  EXCEPTION WHEN SQLSTATE 'PZB01' THEN
   GET STACKED DIAGNOSTICS detail=MESSAGE_TEXT;
@@ -168,5 +177,29 @@ EXCEPTION WHEN SQLSTATE 'P0001' THEN
     AND diagnostic_message=d.label||': expected '||d.expected_state||', got '||right(diagnostic_message,5)))));
  IF diagnostic_code IS NULL THEN RAISE; END IF;
  RAISE EXCEPTION 'Checked boundary fixture assertion failed' USING ERRCODE=diagnostic_code;
+WHEN SQLSTATE '23514' THEN
+ -- Fixed stage: 1 pre-TRUNCATE drain, 2 actual synthetic CASCADE DELETE,
+ -- 3 post-CASCADE drain, 4 final drain. Every other statement stays unmapped.
+ -- Classify only the first exact known invariant RAISE frame; never emit it.
+ IF diagnostic_stage IS NULL OR diagnostic_stage NOT IN('1','2','3','4') THEN RAISE; END IF;
+ GET STACKED DIAGNOSTICS diagnostic_context=PG_EXCEPTION_CONTEXT;
+ diagnostic_frame:=split_part(diagnostic_context,E'\n',1);
+ SELECT 'PD'||diagnostic_stage||d.code INTO diagnostic_code FROM (VALUES
+  ('private[.]catalog_customer_targets_assert_v1[(][)]','01'),
+  ('private[.]catalog_target_no_pending_v1[(][)]','02'),
+  ('private[.]catalog_product_delete_empty_v2[(][)]','03'),
+  ('private[.]catalog_product_delete_assert_v2[(][)]','04'),
+  ('private[.]catalog_product_delete_promotion_v2[(][)]','05'),
+  ('private[.]catalog_product_delete_begin_v2[(][)]','06'),
+  ('private[.]catalog_product_delete_row_v2[(][)]','07'),
+  ('private[.]catalog_product_delete_defer_v2[(]jsonb[)]','08'),
+  ('private[.]catalog_product_delete_end_v2[(][)]','09'),
+  ('private[.]catalog_master_after_v1[(][)]','10'),
+  ('private[.]catalog_identity_guard_v1[(][)]','11'),
+  ('private[.]catalog_history_require_v1[(]boolean[)]','12')
+ ) d(pattern,code)
+ WHERE diagnostic_frame ~ ('^PL/pgSQL function '||d.pattern||' line [0-9]+ at RAISE$');
+ IF diagnostic_code IS NULL THEN RAISE; END IF;
+ RAISE EXCEPTION 'Checked boundary fixture invariant failed' USING ERRCODE=diagnostic_code;
 END $checked_boundaries$;
 SET CONSTRAINTS ALL DEFERRED;

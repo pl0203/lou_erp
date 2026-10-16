@@ -121,7 +121,7 @@ export const targetRuntimeReviewedFiles=Object.freeze([
  },
  {
   "path": "tests/database/catalogue/checked-boundaries.sql",
-  "sha256": "262d3327bd18f0a9bdca2a76cb0999f8ba8a4aba93df056e3e29866e6e1ec4e8"
+  "sha256": "fa629fbbcd40acff860614a9437c0b213eb7b41702165c262604372637035506"
  },
  {
   "path": "tests/database/catalogue/guarded-delete.sql",
@@ -137,7 +137,7 @@ export const targetRuntimeReviewedFiles=Object.freeze([
  },
  {
   "path": "tests/catalogue-ci/checked-boundaries.node.mjs",
-  "sha256": "cce5c4197dfc7835668f82dbd72f87c2b79dd1c21630e430463a9f2ca3b33c44"
+  "sha256": "be97a533bf9add87ae87ab80eed4c546ce328c9e5defa909bcf30bc9857105ab"
  },
  {
   "path": "tests/catalogue-ci/guarded-delete.node.mjs",
