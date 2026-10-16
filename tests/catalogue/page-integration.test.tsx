@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react-query'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // These tests exercise the real backend adapter, authority hook and durable sender.
@@ -8,8 +8,8 @@ const state = vi.hoisted(() => ({
   actor: '11111111-1111-4111-8111-111111111111', role: 'co_admin', backend: 'https://catalogue.example.invalid',
   customers: [] as any[], products: [] as any[], receipts: new Map<string, any>(), abandoned: new Set<string>(),
   command: vi.fn(), writes: vi.fn(), reads: vi.fn(), authority: vi.fn(),
-  missingRpc: false, conflict: false, deny: false, commandGate: null as Promise<void> | null,
-  readGate: null as Promise<void> | null, count: null as string | null, client: null as any,
+  missingRpc: false, conflict: false, deny: false, ready: true, commandGate: null as Promise<void> | null,
+  readGate: null as Promise<void> | null, readinessGate: null as Promise<void> | null, count: null as string | null, client: null as any,
 }))
 vi.mock('../../src/components/AthelNav', () => ({ default: () => null }))
 vi.mock('../../src/lib/AuthContext', () => ({ useAuth: () => ({ user: { id: state.actor }, profile: { id: state.actor, role: state.role, is_active: true }, loading: false, error: null }) }))
@@ -30,6 +30,10 @@ vi.mock('../../src/lib/supabase', () => {
             product_create: granted, product_edit: granted, product_delete: granted,
             customer_set_enabled: granted, product_set_enabled: granted,
             customer_delete_mode: granted && co ? 'guarded' : 'none', product_delete_mode: granted ? co ? 'guarded' : 'direct' : 'none' }, error: null }
+        }
+        if (name === 'pilot_catalog_delete_access_v1') {
+          if (state.readinessGate) await state.readinessGate
+          return { data: { version: 1, actor_id: state.actor, customer_delete: granted && co && state.ready, product_delete: granted && co && state.ready }, error: null }
         }
         if (name === 'pilot_catalog_page_v1') {
           state.reads(args)
@@ -55,12 +59,14 @@ vi.mock('../../src/lib/supabase', () => {
             const changed = Object.entries(args.p_payload.values).some(([key, value]) => target[key] !== value)
             Object.assign(target, args.p_payload.values)
             target.catalog_version = String(BigInt(target.catalog_version) + (changed ? 1n : 0n))
+          } else if (args.p_operation === 'delete_unused') {
+            rows.splice(rows.indexOf(target), 1)
           } else {
             target.catalog_version = String(BigInt(target.catalog_version) + (target.is_enabled === args.p_payload.is_enabled ? 0n : 1n))
             target.is_enabled = args.p_payload.is_enabled
           }
           const receipt = { version: 1, request_id: args.p_request_id, actor_id: state.actor, operation: args.p_operation,
-            kind: args.p_payload.kind, id: target.id, before, after: { catalog_version: target.catalog_version, is_enabled: target.is_enabled }, committed_at: '2026-10-15T00:00:00Z' }
+            kind: args.p_payload.kind, id: target.id, before, after: args.p_operation === 'delete_unused' ? null : { catalog_version: target.catalog_version, is_enabled: target.is_enabled }, committed_at: '2026-10-15T00:00:00Z' }
           state.receipts.set(args.p_request_id, receipt)
           if (state.commandGate) await state.commandGate
           return { data: receipt, error: null }
@@ -101,11 +107,11 @@ function mount(Page: React.ComponentType, client = new QueryClient({ defaultOpti
 beforeEach(() => {
   state.actor = '11111111-1111-4111-8111-111111111111'; state.role = 'co_admin'; state.customers = [customer(1)]; state.products = [product(1)]
   state.receipts.clear(); state.abandoned.clear(); state.command.mockClear(); state.writes.mockClear(); state.reads.mockClear(); state.authority.mockClear()
-  state.missingRpc = false; state.conflict = false; state.deny = false; state.commandGate = null; state.readGate = null; state.count = null; state.client = null
+  state.ready = true; state.missingRpc = false; state.conflict = false; state.deny = false; state.commandGate = null; state.readGate = null; state.readinessGate = null; state.count = null; state.client = null
   localStorage.clear()
   Object.defineProperty(navigator, 'locks', { configurable: true, value: { request: async (name: string, _options: unknown, action: any) => action({ name, mode: 'exclusive' }) } })
 })
-afterEach(() => { cleanup(); clients.splice(0).forEach(client => client.clear()); localStorage.clear(); vi.restoreAllMocks() })
+afterEach(() => { cleanup(); clients.splice(0).forEach(client => client.clear()); localStorage.clear(); vi.restoreAllMocks(); onlineManager.setOnline(true) })
 
 const pages = [
   { Page: CustomerList, kind: 'customer', desktop: 'Daftar pelanggan', mobile: 'Daftar pelanggan seluler', name: 'Customer 1' },
@@ -121,12 +127,12 @@ async function begin(desktop: string) {
 }
 
 describe.each(pages)('$kind status page integration', ({ Page, kind, desktop, mobile }) => {
-  it.each(['co_admin', 'po_admin', 'executive'])('offers receipt-backed catalogue commands to %s while guarded deletion remains disabled', async role => {
+  it.each(['co_admin', 'po_admin', 'executive'])('offers guarded deletion only for the current CO delete mode (%s)', async role => {
     state.role = role; mount(Page)
     for (const scope of [await screen.findByRole('region', { name: desktop }), screen.getByRole('list', { name: mobile })]) {
       expect(within(scope).getByText('Aktif')).toBeTruthy()
       await waitFor(() => expect((within(scope).getByRole('button', { name: 'Nonaktifkan' }) as HTMLButtonElement).disabled).toBe(false))
-      expect((within(scope).getByRole('button', { name: 'Hapus bila tidak digunakan' }) as HTMLButtonElement).disabled).toBe(true)
+      await waitFor(() => expect((within(scope).getByRole('button', { name: 'Hapus bila tidak digunakan' }) as HTMLButtonElement).disabled).toBe(role !== 'co_admin'))
     }
     if (role === 'co_admin') expect(screen.getAllByRole('button', { name: 'Ubah' })).toHaveLength(2)
     await begin(desktop)
@@ -407,4 +413,88 @@ it('retires an open form when its actor leaves and returns, rather than transfer
   view.rerender(<QueryClientProvider client={view.client}><ProductList /></QueryClientProvider>)
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
   expect(state.command).not.toHaveBeenCalled(); expect(localStorage.length).toBe(0)
+})
+
+it.each(pages)('recovers $kind guarded deletion from its receipt, not from target absence', async ({ Page, kind, desktop }) => {
+  mount(Page)
+  const region = await screen.findByRole('region', { name: desktop })
+  const button = within(region).getByRole('button', { name: 'Hapus bila tidak digunakan' })
+  await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false))
+  expect(within(region).queryByRole('button', { name: 'Hapus', exact: true })).toBeNull()
+  fireEvent.click(button); fireEvent.click(screen.getByRole('button', { name: 'Konfirmasi Hapus' }))
+  await screen.findByText('Hasil belum terkonfirmasi')
+  expect(state.command.mock.calls[0][0]).toMatchObject({ p_operation: 'delete_unused', p_payload: { kind, id: uuid(1), expected_version: version } })
+  fireEvent.click(screen.getByRole('button', { name: 'Periksa hasil' }))
+  await waitFor(() => expect(screen.queryByText('Hasil belum terkonfirmasi')).toBeNull())
+  expect(localStorage.length).toBe(0); expect(state.writes).not.toHaveBeenCalled()
+})
+it('keeps unknown guarded deletion unresolved even when the customer disappears', async () => {
+  state.missingRpc = true; mount(CustomerList)
+  const region = await screen.findByRole('region', { name: 'Daftar pelanggan' })
+  const button = within(region).getByRole('button', { name: 'Hapus bila tidak digunakan' })
+  await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false))
+  fireEvent.click(button); fireEvent.click(screen.getByRole('button', { name: 'Konfirmasi Hapus' }))
+  await screen.findByText('Hasil belum terkonfirmasi'); state.customers = []
+  fireEvent.click(screen.getByRole('button', { name: 'Periksa hasil' }))
+  await screen.findByText(/Hasil belum diketahui/)
+  expect(localStorage.length).toBe(1); expect(state.command).toHaveBeenCalledOnce()
+})
+
+it('unready guarded deletion never hides catalogue edits or expands native direct deletion', async () => {
+  state.ready = false; mount(CustomerList)
+  const region = await screen.findByRole('region', { name: 'Daftar pelanggan' })
+  await waitFor(() => expect((within(region).getByRole('button', { name: 'Nonaktifkan' }) as HTMLButtonElement).disabled).toBe(false))
+  expect((within(region).getByRole('button', { name: 'Hapus bila tidak digunakan' }) as HTMLButtonElement).disabled).toBe(true)
+  expect(within(region).queryByRole('button', { name: 'Hapus', exact: true })).toBeNull()
+})
+it.each(['po_admin', 'executive'])('keeps %s native product deletion independent of guarded readiness', async role => {
+  state.ready = false; state.role = role; mount(ProductList)
+  const region = await screen.findByRole('region', { name: 'Daftar barang' })
+  await waitFor(() => expect(within(region).getByRole('button', { name: 'Hapus', exact: true })).toBeTruthy())
+  expect((within(region).getByRole('button', { name: 'Hapus bila tidak digunakan' }) as HTMLButtonElement).disabled).toBe(true)
+})
+
+it('cancelled readiness refresh cannot revive a previously allowed cached result', async () => {
+  let controller!: ReturnType<typeof useCataloguePage<'customer'>>
+  function Probe() { controller = useCataloguePage({ kind: 'customer', search: '', page: 1, pageSize: 10, status: 'all' }); return null }
+  const view = mount(Probe)
+  await waitFor(() => expect(controller.guardedDeleteAvailable).toBe(true))
+  const key = [...catalogueKeys.authority({ backend: state.backend, actorId: state.actor, role: 'co_admin' }), 'guarded-delete-readiness']
+  const gate = deferred(); state.readinessGate = gate.promise
+  let refresh!: Promise<void>
+  act(() => { refresh = view.client.refetchQueries({ queryKey: key, exact: true }) })
+  await waitFor(() => expect(controller.guardedDeleteAvailable).toBe(false))
+  await act(async () => { await view.client.cancelQueries({ queryKey: key, exact: true }) })
+  expect(view.client.getQueryData(key)).toBeTruthy()
+  expect(controller.guardedDeleteAvailable).toBe(false)
+  await act(async () => { gate.resolve(); await refresh })
+  expect(controller.guardedDeleteAvailable).toBe(false)
+})
+
+it('offline readiness refetch then cancellation cannot revive previously accepted delete permission', async () => {
+  let controller!: ReturnType<typeof useCataloguePage<'customer'>>
+  function Probe() { controller = useCataloguePage({ kind: 'customer', search: '', page: 1, pageSize: 10, status: 'all' }); return null }
+  const view = mount(Probe)
+  await waitFor(() => expect(controller.guardedDeleteAvailable).toBe(true))
+  const key = [...catalogueKeys.authority({ backend: state.backend, actorId: state.actor, role: 'co_admin' }), 'guarded-delete-readiness']
+  const previouslyAccepted = view.client.getQueryData(key)
+  const gate = deferred(); state.readinessGate = gate.promise
+  act(() => { onlineManager.setOnline(false) })
+  let refresh!: Promise<void>
+  act(() => { refresh = view.client.refetchQueries({ queryKey: key, exact: true }) })
+  await waitFor(() => expect(controller.guardedDeleteAvailable).toBe(false))
+  await act(async () => { await view.client.cancelQueries({ queryKey: key, exact: true }) })
+  // TanStack may restore idle plus the previous cached object. That is not a
+  // fresh readiness observation and must not restore deletion permission.
+  expect(view.client.getQueryState(key)?.fetchStatus).toBe('idle')
+  expect(view.client.getQueryData(key)).toBe(previouslyAccepted)
+  expect(controller.guardedDeleteAvailable).toBe(false)
+  await act(async () => { gate.resolve(); await refresh })
+  expect(controller.guardedDeleteAvailable).toBe(false)
+  state.readinessGate = null
+  // Browser online status is advisory. Only an actual new successful read,
+  // rather than query cancellation/cache reversion, restores readiness.
+  await act(async () => { await view.client.refetchQueries({ queryKey: key, exact: true }) })
+  await waitFor(() => expect(controller.guardedDeleteAvailable).toBe(true))
+  expect(view.client.getQueryData(key)).not.toBe(previouslyAccepted)
 })

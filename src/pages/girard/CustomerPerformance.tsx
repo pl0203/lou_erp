@@ -1,3 +1,5 @@
+import { useLayoutEffect, useRef } from 'react'
+import { useCustomerTargetSave } from '../../lib/catalogue/useCustomerTargetSave'
 import { Button } from '../../components/ui/Button'
 import { useTargetDraftSession } from '../../components/sales/useTargetDraftSession'
 import { InlineTargetEditor } from '../../components/sales/InlineTargetEditor'
@@ -21,9 +23,10 @@ async function upsertCustomerTarget(
   customerId: string,
   yearMonth: string,
   targetValue: number,
-  setBy: string
+  setBy: string,
+  client = supabase
 ) {
-  const { error } = await supabase
+  const { error } = await client
     .from('customer_targets')
     .upsert({
       customer_id: customerId,
@@ -90,17 +93,44 @@ export function CustomerActivityContent() {
     queryKey: ['customer_performance', readIdentity, { yearMonth }],
     refetchType: refreshActive ? 'active' : 'none',
   })
+  const targetSave = useCustomerTargetSave(async receipt => {
+    if (!profile || receipt.actor_id !== profile.id) return false
+    // A validated receipt proves the save. Fresh authorized reads refresh display,
+    // never infer an outcome from a missing customer or a matching target value.
+    await fetchCustomerPerformancePage(profile.id, profile.role, receipt.year_month, 1, new AbortController().signal)
+    await queryClient.invalidateQueries({ queryKey: ['customer_performance', readIdentity, { yearMonth: receipt.year_month }], refetchType: 'active' }, { throwOnError: true })
+    return true
+  })
   const targetEditors = useTargetDraftSession({
-    scope: editorScope, canEdit: canEditTargets, isPending, isError, records: pageData?.items,
+    scope: editorScope, canEdit: canEditTargets, isPending, isError, records: pageData?.items, unresolved: targetSave.unresolved,
     write: async (customerId, targetValue) => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('Tidak terautentikasi')
-      await upsertCustomerTarget(customerId, yearMonth, targetValue, user.id)
+      await targetSave.write({ customerId, yearMonth, targetValue }, async input => {
+        const source = supabase
+        const { data: { user } } = await source.auth.getUser()
+        if (!user || user.id !== profile?.id || !targetSave.isCurrent()) throw new Error('Tidak terautentikasi')
+        await upsertCustomerTarget(input.customerId, input.yearMonth, input.targetValue!, user.id, source)
+      })
     },
     onSaved: invalidate,
   })
 
-  if (isError) return <div role="alert" className="p-6 text-red-700">Data performa tidak tersedia. <Button size="compact" variant="secondary" onClick={() => refetch()}>Coba lagi</Button></div>
+  const recoveryFocus = useRef<HTMLDivElement>(null), contentFocus = useRef<HTMLDivElement>(null), previouslyUnresolved = useRef(false)
+  useLayoutEffect(() => {
+    if (targetSave.unresolved && !targetSave.busy && targetSave.available) recoveryFocus.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus()
+    else if (previouslyUnresolved.current && !targetSave.unresolved) contentFocus.current?.focus()
+    previouslyUnresolved.current = targetSave.unresolved
+  }, [targetSave.unresolved, targetSave.busy, targetSave.available])
+  const recovery = targetSave.unresolved && !targetSave.busy && <div ref={recoveryFocus} role="status" className="rounded-lg border border-amber-300 p-4 text-sm">
+    <p>Hasil target belum terkonfirmasi. Jangan kirim ulang; pemulihan tetap tersedia di halaman dan bulan lain.</p>
+    {targetSave.message && <p>{targetSave.message}</p>}
+    <Button variant="secondary" pending={targetSave.busy} disabled={!targetSave.available || targetSave.busy} onClick={() => {
+      void targetSave.recover().then(result => {
+        if (result.status === 'committed' && result.receipt.year_month === yearMonth) targetEditors.confirmRecovered(result.receipt.customer_id)
+      }).catch(() => { /* The durable request and recovery message remain visible. */ })
+    }}>Periksa hasil target</Button>
+  </div>
+
+  if (isError) return <>{recovery}<div role="alert" className="p-6 text-red-700">Data performa tidak tersedia. <Button size="compact" variant="secondary" onClick={() => refetch()}>Coba lagi</Button></div></>
 
   const summary = pageData?.summary
   const totalSales = summary?.total_sales ?? '0'
@@ -114,7 +144,8 @@ export function CustomerActivityContent() {
   const showManagerCol = profile?.role === 'sales_head' || profile?.role === 'executive'
 
   return (
-    <div className="px-4 md:px-8 py-6 space-y-6">
+    <div ref={contentFocus} tabIndex={-1} className="px-4 md:px-8 py-6 space-y-6">
+      {recovery}
 
       {/* Header with month picker */}
       <div className="flex items-center justify-between flex-wrap gap-3">

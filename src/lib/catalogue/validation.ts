@@ -192,3 +192,10 @@ export function decodeCataloguePage<K extends CatalogueKind>(value: unknown, ide
   })
   return { version: 1, actor_id: actor, role, ...args, total_count: total, rows }
 }
+
+/** Readiness is separate from the unchanged v2 eligibility/role contract. */
+export function decodeCatalogueDeleteAccess(value: unknown, actorId: string) {
+  const row = exactCatalogueFields(value, ['version', 'actor_id', 'customer_delete', 'product_delete'])
+  if (row.version !== 1 || parseCatalogueUUID(row.actor_id) !== parseCatalogueUUID(actorId)) invalidCatalogue('guarded delete readiness owner')
+  return { version: 1 as const, actor_id: actorId, customer_delete: parseCatalogueBoolean(row.customer_delete), product_delete: parseCatalogueBoolean(row.product_delete) }
+}

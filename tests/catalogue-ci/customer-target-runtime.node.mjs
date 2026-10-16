@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 let runner;try{runner=await import('../../scripts/catalogue-customer-target-runtime.mjs');}catch{}
 const need=()=>assert.ok(runner,'Guarded raw target runtime harness missing');
 const read=p=>readFileSync(new URL('../../'+p,import.meta.url),'utf8');
-const expectedLifecyclePhases=["FOUNDATION","TARGET_SETUP","TARGET_INSTALL","TARGET_AUTHORITY","TARGET_EVENTS","TARGET_CASCADE_DROP","TARGET_CASCADE_ADD","TARGET_CASCADE_EVENTS","TARGET_AUTHENTICATED","TARGET_MISSING_IDENTITY","TARGET_ASSERTION_ONLY","TARGET_SESSION_GATE","VARIANTS_AND_ROLES","RAW_COMPATIBILITY","ROLLBACK","COMPLETE"];
+const expectedLifecyclePhases=["FOUNDATION","TARGET_SETUP","TARGET_INSTALL","TARGET_AUTHORITY","TARGET_EVENTS","TARGET_CASCADE_DROP","TARGET_CASCADE_ADD","TARGET_CASCADE_EVENTS","TARGET_AUTHENTICATED","TARGET_MISSING_IDENTITY","TARGET_ASSERTION_ONLY","TARGET_SESSION_GATE","VARIANTS_AND_ROLES","RAW_COMPATIBILITY","CHECKED_BOUNDARIES","GUARDED_DELETE","GUARDED_DELETE_HISTORY","ROLLBACK","COMPLETE"];
 const identity={profile:'github-catalogue-baseline-v1',source:{clean:true,commit:'a'.repeat(40),tree:'b'.repeat(40),candidate:'c'.repeat(64)},serverAddress:'172.18.0.2',serverPort:5432,serverVersion:'170011',systemIdentifier:'123456789',runIdentity:'00000000-0000-4000-8000-000000000001',ci:{}};
 const parts=()=>Object.fromEntries(Object.entries(runner.targetRuntimePaths).map(([k,p])=>[k,read(p)]));
 test('joined target ACL assertion qualifies live columns against the saved baseline',()=>{
@@ -213,7 +213,7 @@ test('diagnostic phase process and SQLSTATE combinations match the producer matr
 
 test('fixed target milestones are unique exact insertions without changing reviewed SQL bytes or order',()=>{
  need();const p=parts(),plain=runner.expandTargetLifecycle(p.lifecycle,p.target,p.authority),sql=runner.instrumentTargetLifecycle(p.lifecycle,p.target,p.authority);
- const expected=["CATALOGUE_TARGET_FOUNDATION_PASSED","CATALOGUE_TARGET_SETUP_PASSED","CATALOGUE_TARGET_INSTALL_PASSED","CATALOGUE_TARGET_AUTHORITY_PASSED","CATALOGUE_TARGET_EVENTS_PASSED","CATALOGUE_TARGET_CASCADE_DROP_PASSED","CATALOGUE_TARGET_CASCADE_ADD_PASSED","CATALOGUE_TARGET_CASCADE_PASSED","CATALOGUE_TARGET_AUTHENTICATED_PASSED","CATALOGUE_TARGET_MISSING_IDENTITY_PASSED","CATALOGUE_TARGET_ASSERTION_ONLY_PASSED","CATALOGUE_TARGET_LIFECYCLE_PASSED","CATALOGUE_TARGET_VARIANTS_PASSED","CATALOGUE_RAW_CALLER_COMPATIBILITY_PASSED","CATALOGUE_TARGET_ROLLBACK_VERIFIED"];
+ const expected=["CATALOGUE_TARGET_FOUNDATION_PASSED","CATALOGUE_TARGET_SETUP_PASSED","CATALOGUE_TARGET_INSTALL_PASSED","CATALOGUE_TARGET_AUTHORITY_PASSED","CATALOGUE_TARGET_EVENTS_PASSED","CATALOGUE_TARGET_CASCADE_DROP_PASSED","CATALOGUE_TARGET_CASCADE_ADD_PASSED","CATALOGUE_TARGET_CASCADE_PASSED","CATALOGUE_TARGET_AUTHENTICATED_PASSED","CATALOGUE_TARGET_MISSING_IDENTITY_PASSED","CATALOGUE_TARGET_ASSERTION_ONLY_PASSED","CATALOGUE_TARGET_LIFECYCLE_PASSED","CATALOGUE_TARGET_VARIANTS_PASSED","CATALOGUE_RAW_CALLER_COMPATIBILITY_PASSED","CATALOGUE_TARGET_CHECKED_BOUNDARIES_PASSED","CATALOGUE_TARGET_GUARDED_DELETE_PASSED","CATALOGUE_TARGET_GUARDED_DELETE_HISTORY_PASSED","CATALOGUE_TARGET_ROLLBACK_VERIFIED"];
  assert.deepEqual(runner.targetMarkers,expected);
  let restored=sql,last=-1;
  for(const marker of expected.slice(1,11)){
@@ -356,7 +356,7 @@ test('terminal create edit races share checked clients and install new08 only af
 test('raw caller compatibility is an exact rollback-only generation-one observation, not activation proof',()=>{
  need();const p=parts(),sql=runner.buildTargetLifecycleSession(identity,p);
  assert.equal(runner.targetRuntimePaths.rawCompatibility,'tests/database/catalogue/raw-caller-compatibility.sql');
- for(const key of ['orderCandidate','coOrderCandidate','promotionOwnerGrammar','visitGrammar','lifetimeCandidate','createEditCandidate','rawCompatibility'])assert.equal(sql.split(p[key]).length,2,key);
+ for(const key of ['orderCandidate','coOrderCandidate','promotionOwnerGrammar','visitGrammar','lifetimeCandidate','createEditCandidate','rawCompatibility'])assert.equal(sql.split(p[key]).length,key==='rawCompatibility'?2:3,key);
  assert.ok(sql.indexOf(p.roles)<sql.indexOf(p.rawCompatibility));
  assert.ok(sql.indexOf(p.lifetimeCandidate)<sql.indexOf(p.rawCompatibility));
  assert.ok(sql.indexOf(p.rawCompatibility)<sql.indexOf('CATALOGUE_RAW_CALLER_COMPATIBILITY_PASSED'));
@@ -378,3 +378,52 @@ test('raw target reparent must mark NEW before delete and null-JWT PO failure mu
  assert.match(sql,/ROW\('public'::text,'po_audit_log'::text,'changed_by'::text\) THEN RAISE/);
  assert.ok(sql.includes('this does not certify salesperson write'));
 });
+
+test('completion runtime compositions require all helpers before create edit and run both suites before rollback',()=>{
+ need();const p=parts(),lifecycle=runner.buildTargetLifecycleSession(identity,p),race=runner.buildTargetRaceSetup(identity,p);
+ for(const sql of [lifecycle,race]){
+  const keys=['createEditCandidate','checkedBoundariesCandidate','guardedDeleteCandidate','masterCompletionCandidate'];
+  for(const key of keys)assert.equal(sql.split(p[key]).length,sql===lifecycle&&key==='createEditCandidate'?3:2,key);
+  for(let i=1;i<keys.length;i++)assert.ok(sql.indexOf(p[keys[i-1]])<sql.indexOf(p[keys[i]]),keys[i]);
+  assert.ok(sql.indexOf(p.target)<sql.indexOf(p.checkedBoundariesCandidate));
+ }
+ for(const [key,marker]of [['checkedBoundaries','CATALOGUE_TARGET_CHECKED_BOUNDARIES_PASSED'],['guardedDelete','CATALOGUE_TARGET_GUARDED_DELETE_PASSED'],['guardedDeleteHistory','CATALOGUE_TARGET_GUARDED_DELETE_HISTORY_PASSED']]){
+  const from=lifecycle.indexOf(p[key])+p[key].length,to=lifecycle.indexOf('\\echo '+marker);
+  assert.ok(from>0&&to>from);assert.match(lifecycle.slice(from,to),/catalogue_completion_restoration_refused/);
+  assert.doesNotMatch(race,new RegExp(marker));assert.ok(!race.includes(p[key]));
+ }
+ assert.ok(lifecycle.indexOf(p.rawCompatibility)<lifecycle.indexOf(p.checkedBoundaries));
+ assert.deepEqual(runner.targetMarkers.slice(-4),['CATALOGUE_TARGET_CHECKED_BOUNDARIES_PASSED','CATALOGUE_TARGET_GUARDED_DELETE_PASSED','CATALOGUE_TARGET_GUARDED_DELETE_HISTORY_PASSED','CATALOGUE_TARGET_ROLLBACK_VERIFIED']);
+});
+
+test('legacy target topology variants are rolled back before installing checked completion on original topology',()=>{
+ need();const p=parts(),sql=runner.buildTargetLifecycleSession(identity,p);
+ const begin=sql.indexOf('SAVEPOINT target_legacy_lifecycle_fixture;'),undo=sql.indexOf('ROLLBACK TO SAVEPOINT target_legacy_lifecycle_fixture;'),release=sql.indexOf('RELEASE SAVEPOINT target_legacy_lifecycle_fixture;');
+ assert.ok(begin>=0&&begin<sql.indexOf('CATALOGUE_TARGET_SETUP_PASSED'));
+ assert.ok(undo>sql.indexOf(p.rawCompatibility)&&release>undo&&release<sql.indexOf(p.checkedBoundariesCandidate));
+ assert.equal(sql.split(p.target).length,3,'The exact adapter is tested, rolled back, then reinstalled once on original topology');
+ assert.ok(sql.lastIndexOf(p.target)>release&&sql.lastIndexOf(p.target)<sql.indexOf(p.checkedBoundariesCandidate));
+});
+test('completion races are executed after existing races rather than reported from static source inspection',()=>{
+ const source=read('scripts/catalogue-customer-target-runtime.mjs');
+ assert.match(source,/import \{executeCatalogueCompletionRaces\} from '\.\.\/tests\/database\/catalogue\/completion-races\.mjs';/);
+ const create=source.indexOf('const createEdit=await executeCatalogueCreateEditRaces('),complete=source.indexOf('const checkedCompletion=await executeCatalogueCompletionRaces('),result=source.indexOf('statusRecovery,lifetimeAdmission,createEdit,checkedCompletion');
+ assert.ok(create>=0&&complete>create&&result>complete);
+ assert.ok(source.includes('executeCatalogueCompletionRaces({a,b:replay,observer,query:ok,expectState:expected,verify})'));
+});
+
+test('target completion snapshots exact constraints outside the legacy fixture rollback',()=>{
+ need();const sql=runner.buildTargetLifecycleSession(identity,parts());
+ const snapshot=sql.indexOf('CREATE TEMP TABLE catalogue_completion_cutover_before_v1');
+ assert.ok(snapshot>=0&&snapshot<sql.indexOf('SAVEPOINT target_legacy_lifecycle_fixture;'));
+ assert.ok(sql.lastIndexOf('pg_temp.catalogue_completion_cutover_before_v1')>sql.indexOf(parts().guardedDelete));
+});
+
+ test('native multi-product race proof is executed and returned, never inferred',()=>{
+ const source=read('scripts/catalogue-customer-target-runtime.mjs');
+ assert.ok(source.includes("import {executeNativeProductDeleteRaces} from '../tests/database/catalogue/native-product-delete-races.mjs';"));
+ const before=source.indexOf('const checkedCompletion=await executeCatalogueCompletionRaces(');
+ const native=source.indexOf('const nativeProductDelete=await executeNativeProductDeleteRaces({a,b:replay,observer,query:ok,expectState:expected,verify})');
+ assert.ok(before>=0&&native>before);
+ assert.ok(source.indexOf('createEdit,checkedCompletion,nativeProductDelete')>native);
+ });

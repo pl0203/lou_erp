@@ -4,6 +4,13 @@ import './lifetime-admission.node.mjs';
 import './create-edit.node.mjs';
 import './create-edit-races.node.mjs';
 import './generation-two-routers.node.mjs';
+import './checked-boundaries.node.mjs';
+import './guarded-delete.node.mjs';
+import './guarded-delete-history.node.mjs';
+import './master-completion-hooks.node.mjs';
+import './completion-races.node.mjs';
+import './native-product-delete-races.node.mjs';
+import '../catalogue/checked-controls.source.node.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -24,12 +31,24 @@ const fixtureParts = () => Object.fromEntries([
  ['coOrderCandidate','SELECT 1 AS inactive_co_order_candidate;'],
  ['coOrders','SELECT 1 AS private_co_order_behavior;'],
  ['promotionOwnerGrammar','SELECT 1 AS promotion_owner_grammar;'],
+ ['poGrammar','SELECT 1 AS po_grammar;'],
+ ['coGrammar','SELECT 1 AS co_grammar;'],
+ ['coDraftGrammar','SELECT 1 AS co_draft_grammar;'],
+ ['retiredCoGrammar','SELECT 1 AS retired_co_grammar;'],
  ['visitGrammar','SELECT 1 AS visit_grammar;'],
+ ['noncoGrammar','SELECT 1 AS nonco_grammar;'],
  ['lifetimeCandidate','SELECT 1 AS inactive_lifetime_candidate;'],
  ['lifetime','SELECT 1 AS actual_lifetime_behavior;'],
  ['createEditCandidate','SELECT 1 AS create_edit_candidate;'],
+ ['targetTrackingCandidate','SELECT 1 AS target_tracking_candidate;'],
+ ['checkedBoundariesCandidate','SELECT 1 AS checked_boundaries_candidate;'],
+ ['guardedDeleteCandidate','SELECT 1 AS guarded_delete_candidate;'],
+ ['masterCompletionCandidate','SELECT 1 AS master_completion_candidate;'],
  ['createEdit','SELECT 1 AS actual_create_edit_behavior;'],
  ['publicRouters','SELECT 1 AS public_router_dispatch_only_behavior;'],
+ ['checkedBoundaries','SELECT 1 AS checked_boundaries_behavior;'],
+ ['guardedDelete','SAVEPOINT guarded_delete_fixture;\nSELECT 1 AS guarded_delete_behavior;\nROLLBACK TO SAVEPOINT guarded_delete_fixture;\nRELEASE SAVEPOINT guarded_delete_fixture;'],
+ ['guardedDeleteHistory','SAVEPOINT guarded_delete_history_fixture;\n'+['trusted_history_fixture','trusted_history_topology','trusted_history_removed_visit','trusted_history_retired_co'].map(name=>`SAVEPOINT ${name};\nSELECT 1 AS ${name};\nROLLBACK TO SAVEPOINT ${name};\nRELEASE SAVEPOINT ${name};`).join('\n')+'\nROLLBACK TO SAVEPOINT guarded_delete_history_fixture;\nRELEASE SAVEPOINT guarded_delete_history_fixture;'],
 ]);
 test('one guarded SQL session applies exact candidate between prechange and postchange suites, then rolls back', () => {
  need(); const parts=fixtureParts(), sql=runner.buildCatalogueFoundationSession(identity, parts);
@@ -80,7 +99,7 @@ test('status command session rejects preexisting request objects and verifies th
   assert.ok(sql.indexOf(object)<sql.indexOf('BEGIN;'));
   assert.ok(sql.lastIndexOf(object)>sql.lastIndexOf('ROLLBACK;'));
  }
- assert.equal(runner.foundationExpectedMarkers.length,11);
+ assert.equal(runner.foundationExpectedMarkers.length,14);
  assert.equal((sql.match(/^\\echo CATALOGUE_FOUNDATION_/gm)||[]).length,6);
 });
 test('status command SQL remains an exact session fragment with real authenticated RPC assertions', () => {
@@ -165,6 +184,7 @@ test('bound runner uses one behavior process and emits checksummed strictly boun
   fixtureSubtransactionRestoration:'ROWS_CONSTRAINTS_SESSION_VERIFIED',freshNotReadyRefusals:['po','co','owner'],
   productionGeneration:1,trackingReady:false,globalLifetimeCertification:'NOT_PROVEN',rawCompatibility:'UNPROVEN',
   loadedLegacyRetirement:'UNPROVEN',concurrency:'UNRUN',hostedParity:'UNVERIFIED'});
+ assert.deepEqual(report.checkedCompletionProof,{status:'BOUNDED_CHECKED_COMPLETION_SUITES_PASSED',scope:'FUTURE_GENERATION_TWO_SYNTHETIC_ONLY',suites:['checked-boundaries','guarded-delete','guarded-delete-history'],historyScanner:'GENERATION_ONE_OWNER_PRIVATE_ONLY',executionGeneration:2,trackingReady:true,fixtureRestoration:'GENERATION_ONE_TRACKING_FALSE_CONSTRAINTS_VERIFIED',productionGeneration:1,productionTrackingReady:false,concurrency:'UNRUN',hostedParity:'UNVERIFIED',implementationAccepted:false});
  assert.deepEqual(report.files,Object.values(runner.foundationSqlPaths).map(path=>({path,sha256:sha(readFileSync(join(f.directory,path)))})));
  const out=join(f.directory,'scale-results/catalogue-foundation');assert.deepEqual(readdirSync(out).sort(),['manifest.json','results.json']);
  const bytes=readFileSync(join(out,'results.json'),'utf8');assert.deepEqual(JSON.parse(readFileSync(join(out,'manifest.json'),'utf8')).files,[{path:'results.json',sha256:sha(bytes)}]);
@@ -302,7 +322,7 @@ test('failure diagnostics map exact stdin line numbers to captured public source
  need();const parts=Object.fromEntries(Object.entries(runner.foundationSqlPaths).map(([name,path])=>[name,readFileSync(join(root,path),'utf8')]));
  const sql=runner.buildCatalogueFoundationSession(identity,parts),map=runner.foundationSessionSourceMap(sql,parts);
  assert.equal(map.sqlSha256,sha(sql));assert.equal(Object.isFrozen(map),true);
- const completed={before:0,candidate:1,foundation:2,legacy:3,roles:4,orderCandidate:5,orders:5,coOrderCandidate:6,coOrders:6,promotionOwnerGrammar:7,visitGrammar:7,lifetimeCandidate:7,lifetime:7,createEditCandidate:8,createEdit:8,publicRouters:9};
+ const completed={before:0,candidate:1,foundation:2,legacy:3,roles:4,orderCandidate:5,orders:5,coOrderCandidate:6,coOrders:6,promotionOwnerGrammar:7,poGrammar:7,coGrammar:7,coDraftGrammar:7,retiredCoGrammar:7,visitGrammar:7,noncoGrammar:7,lifetimeCandidate:7,lifetime:7,createEditCandidate:8,targetTrackingCandidate:8,checkedBoundariesCandidate:8,guardedDeleteCandidate:8,masterCompletionCandidate:8,createEdit:8,publicRouters:9,checkedBoundaries:10,guardedDelete:11,guardedDeleteHistory:12};
  for(const [name,path] of Object.entries(runner.foundationSqlPaths)) {
   const range=map.ranges.find(r=>r.path===path);assert.ok(Object.isFrozen(range));
   const sourceLines=parts[name].trimEnd().split('\n');
@@ -378,7 +398,7 @@ test('PO identity regression fixture qualifies columns shadowed by its local id 
 
 test('create edit installer and behavior remain in the same rollback and exact source-map gate',()=>{
  need();
- assert.equal(runner.foundationExpectedMarkers.at(-3),'CATALOGUE_CREATE_EDIT_CORE_PASSED');
+ assert.equal(runner.foundationExpectedMarkers.at(-6),'CATALOGUE_CREATE_EDIT_CORE_PASSED');
  assert.ok(runner.foundationSqlPaths.createEditCandidate);assert.ok(runner.foundationSqlPaths.createEdit);
  const parts={...fixtureParts(),createEditCandidate:'SELECT 1 AS create_edit_candidate;',createEdit:'SELECT 1 AS actual_create_edit_behavior;'};
  const sql=runner.buildCatalogueFoundationSession(identity,parts);
@@ -399,7 +419,7 @@ test('new create edit source checks and actual sender inputs are source-bound',(
 
 test('public router dispatch-only fragment follows create edit inside the existing rollback and source map',()=>{
  need();assert.equal(runner.foundationSqlPaths.publicRouters,'tests/database/catalogue/generation-two-routers.sql');
- assert.deepEqual(runner.foundationExpectedMarkers.slice(-3),['CATALOGUE_CREATE_EDIT_CORE_PASSED','CATALOGUE_PUBLIC_ROUTER_DISPATCH_ONLY_PASSED','CATALOGUE_FOUNDATION_ROLLBACK_VERIFIED']);
+ assert.deepEqual(runner.foundationExpectedMarkers.slice(-6),['CATALOGUE_CREATE_EDIT_CORE_PASSED','CATALOGUE_PUBLIC_ROUTER_DISPATCH_ONLY_PASSED','CATALOGUE_CHECKED_BOUNDARIES_PASSED','CATALOGUE_GUARDED_DELETE_PASSED','CATALOGUE_GUARDED_DELETE_HISTORY_PASSED','CATALOGUE_FOUNDATION_ROLLBACK_VERIFIED']);
  const parts=fixtureParts(),sql=runner.buildCatalogueFoundationSession(identity,parts),marker='CATALOGUE_PUBLIC_ROUTER_DISPATCH_ONLY_PASSED';
  assert.ok(sql.indexOf('CATALOGUE_CREATE_EDIT_CORE_PASSED')<sql.indexOf(parts.publicRouters));
  assert.ok(sql.indexOf(parts.publicRouters)<sql.indexOf(marker));assert.ok(sql.indexOf(marker)<sql.lastIndexOf('ROLLBACK;'));
@@ -416,4 +436,40 @@ test('missing dispatch-only marker and drift in either bound router proof input 
   change(f);assert.throws(()=>runner.runCatalogueFoundation({repoRoot:f.directory,env:f.env,execute:f.execute}),/^Error: CATALOGUE_FOUNDATION_REFUSED$/);
   assert.equal(readFileSync(f.output,'utf8'),'bundle_ready=false\n');assert.equal(existsSync(join(f.directory,'scale-results/catalogue-foundation/results.json')),false);
  });
+});
+
+// These are assembly/containment tests, not PostgreSQL execution evidence.
+test('completion assembly installs target tracking and every completion hook before create edit behavior',()=>{
+ need();const parts=fixtureParts(),sql=runner.buildCatalogueFoundationSession(identity,parts);
+ const ordered=['createEditCandidate','targetTrackingCandidate','checkedBoundariesCandidate','guardedDeleteCandidate','masterCompletionCandidate','createEdit','publicRouters','checkedBoundaries','guardedDelete'];
+ for(let i=1;i<ordered.length;i++)assert.ok(sql.indexOf(parts[ordered[i-1]])<sql.indexOf(parts[ordered[i]]),ordered[i]);
+ for(const [name,marker]of [['checkedBoundaries','CATALOGUE_CHECKED_BOUNDARIES_PASSED'],['guardedDelete','CATALOGUE_GUARDED_DELETE_PASSED']]){
+  assert.ok(sql.includes(parts[name]));const start=sql.indexOf(parts[name])+parts[name].length,end=sql.indexOf('\\echo '+marker);
+  assert.ok(end>start);assert.match(sql.slice(start,end),/catalogue_completion_restoration_refused/);
+ }
+ const rollback=sql.lastIndexOf('ROLLBACK;');assert.ok(rollback>sql.indexOf(parts.guardedDelete));
+ assert.deepEqual(runner.foundationExpectedMarkers.slice(-4),['CATALOGUE_CHECKED_BOUNDARIES_PASSED','CATALOGUE_GUARDED_DELETE_PASSED','CATALOGUE_GUARDED_DELETE_HISTORY_PASSED','CATALOGUE_FOUNDATION_ROLLBACK_VERIFIED']);
+ for(const name of ordered){const missing={...parts};delete missing[name];assert.throws(()=>runner.buildCatalogueFoundationSession(identity,missing));}
+});
+test('completion suite permits only its exact named rollback envelope and preserves every suite byte',()=>{
+ need();const parts=fixtureParts(),valid=parts.guardedDelete;
+ for(const guardedDelete of [valid.replace('SAVEPOINT guarded_delete_fixture;','SAVEPOINT arbitrary;'),valid.replace('RELEASE SAVEPOINT guarded_delete_fixture;',''),valid+'\nCOMMIT;',valid.replace('ROLLBACK TO SAVEPOINT guarded_delete_fixture;','ROLLBACK;'),valid.replace('RELEASE SAVEPOINT guarded_delete_fixture;','RELEASE SAVEPOINT guarded_delete_fixture;\nRELEASE SAVEPOINT guarded_delete_fixture;')])assert.throws(()=>runner.buildCatalogueFoundationSession(identity,{...parts,guardedDelete}));
+ assert.ok(runner.buildCatalogueFoundationSession(identity,parts).includes(valid));
+ assert.throws(()=>runner.buildCatalogueFoundationSession(identity,{...parts,checkedBoundaries:'SAVEPOINT guarded_delete_fixture;\nSELECT 1;\nROLLBACK TO SAVEPOINT guarded_delete_fixture;\nRELEASE SAVEPOINT guarded_delete_fixture;'}));
+});
+
+test('completion restoration compares exact original constraint rows rather than only their names',()=>{
+ need();const sql=runner.buildCatalogueFoundationSession(identity,fixtureParts());
+ assert.match(sql,/CREATE TEMP TABLE catalogue_completion_cutover_before_v1 ON COMMIT DROP AS/);
+ assert.match(sql,/jsonb_agg\(to_jsonb\(c\) ORDER BY c.conname\)/);
+ assert.match(runner.catalogueCompletionRestoredPredicate,/pg_temp.catalogue_completion_cutover_before_v1/);
+ assert.ok(sql.indexOf('CREATE TEMP TABLE catalogue_completion_cutover_before_v1')<sql.indexOf('CATALOGUE_FOUNDATION_CANDIDATE_APPLIED'));
+});
+
+test('history behavior is an executed third suite with finite nested rollback containment',()=>{
+ need();const p=fixtureParts(),sql=runner.buildCatalogueFoundationSession(identity,p);
+ assert.ok(sql.indexOf(p.guardedDeleteHistory)>sql.indexOf('\\echo CATALOGUE_GUARDED_DELETE_PASSED'));
+ assert.ok(sql.indexOf('\\echo CATALOGUE_GUARDED_DELETE_HISTORY_PASSED')>sql.indexOf(p.guardedDeleteHistory));
+ assert.ok(sql.lastIndexOf('ROLLBACK;')>sql.indexOf('\\echo CATALOGUE_GUARDED_DELETE_HISTORY_PASSED'));
+ for(const change of [x=>x.replace('SAVEPOINT trusted_history_topology;','SAVEPOINT arbitrary;'),x=>x.replace('RELEASE SAVEPOINT trusted_history_retired_co;',''),x=>x.replace('RELEASE SAVEPOINT guarded_delete_history_fixture;',''),x=>x.replace('SAVEPOINT trusted_history_fixture;','DO $$ BEGIN\nSAVEPOINT trusted_history_fixture;\nEND $$;')])assert.throws(()=>runner.buildCatalogueFoundationSession(identity,{...p,guardedDeleteHistory:change(p.guardedDeleteHistory)}));
 });

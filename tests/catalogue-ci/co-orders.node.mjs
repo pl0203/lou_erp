@@ -142,6 +142,8 @@ test('CO SQL and source checks are captured and rollback-gated in the existing b
  const expected=strict.match(/expect\(runner\.cataloguePublicSourcePaths\)\.toEqual\(\[([\s\S]*?)\]\)/)?.[1];assert.ok(expected);
  assert.deepEqual([...expected.matchAll(/'([^']+)'/g)].map(x=>x[1]),cataloguePublicSourcePaths);
  const parts=Object.fromEntries(Object.keys(foundationSqlPaths).map(key=>[key,`SELECT 1 AS ${key};`]));
+ parts.guardedDelete='SAVEPOINT guarded_delete_fixture;\nSELECT 1 AS guarded_delete;\nROLLBACK TO SAVEPOINT guarded_delete_fixture;\nRELEASE SAVEPOINT guarded_delete_fixture;';
+ parts.guardedDeleteHistory='SAVEPOINT guarded_delete_history_fixture;\n'+['trusted_history_fixture','trusted_history_topology','trusted_history_removed_visit','trusted_history_retired_co'].map(name=>`SAVEPOINT ${name};\nSELECT 1 AS ${name};\nROLLBACK TO SAVEPOINT ${name};\nRELEASE SAVEPOINT ${name};`).join('\n')+'\nROLLBACK TO SAVEPOINT guarded_delete_history_fixture;\nRELEASE SAVEPOINT guarded_delete_history_fixture;';
  const identity={profile:'github-catalogue-baseline-v1',source:{clean:true,commit:'a'.repeat(40),tree:'b'.repeat(40),candidate:'c'.repeat(64)},serverAddress:'172.18.0.2',serverPort:5432,serverVersion:'170011',systemIdentifier:'123456789',runIdentity:'00000000-0000-4000-8000-000000000001',ci:{}};
  const sql=buildCatalogueFoundationSession(identity,parts);
  assert.ok(sql.indexOf(parts.orders)<sql.indexOf(parts.coOrderCandidate));assert.ok(sql.indexOf(parts.coOrderCandidate)<sql.indexOf(parts.coOrders));assert.ok(sql.indexOf(parts.coOrders)<sql.lastIndexOf('ROLLBACK;'));

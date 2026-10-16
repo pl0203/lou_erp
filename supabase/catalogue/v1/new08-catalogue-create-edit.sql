@@ -1,7 +1,8 @@
 -- Additive Task 3 create/edit vertical. Apply in the existing rollback-only harness.
 -- This proves the explicitly reviewed synthetic/public policy composition only.
--- No hosted parity, deletion readiness, unused provenance, generation cutover,
--- master ACL change, policy relaxation, or business-use marking is asserted.
+-- Composed new10/new11 supply certified birth and guarded-delete hooks. This
+-- file does not assert hosted parity, activate cutover, change master ACLs, relax
+-- policy scope, or mark catalogue-only edits as business use.
 -- SECURITY DEFINER does NOT inherit caller RLS. Effective column ACLs and the
 -- current old/proposed-row predicates are checked explicitly below. Unknown
 -- policy/helper shapes fail closed rather than being evaluated as the definer.
@@ -262,6 +263,55 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION private.catalog_validate_values_v1(text,text,jsonb) FROM PUBLIC, anon, authenticated, service_role;
 
+-- Stored request authority is checked before EVERY public dispatch branch. A
+-- status/create/edit probe cannot reveal a former CO's retained delete result.
+CREATE FUNCTION private.catalog_authorize_bound_v1(p_binding jsonb,p_columns text[]) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE actor uuid; target regclass; column_name text;
+BEGIN
+  actor := private.catalog_authorize_v1(NULL,NULL);
+  IF jsonb_typeof(p_binding) IS DISTINCT FROM 'object' OR p_binding->>'kind' IS NULL OR p_binding->>'kind' NOT IN ('customer','product') THEN
+    RAISE EXCEPTION 'Catalogue access denied' USING ERRCODE='42501', DETAIL='CATALOG_ACCESS_DENIED';
+  END IF;
+  CASE p_binding->>'operation'
+    WHEN 'create','edit' THEN
+      PERFORM private.catalog_authorize_fields_v1(p_binding->>'operation',p_binding->>'kind',p_columns);
+    WHEN 'set_enabled' THEN
+      PERFORM private.catalog_authorize_v1(p_binding->>'kind',(p_binding->>'id')::uuid);
+    WHEN 'delete_unused' THEN
+      -- This is the CO-only command grant, NOT a raw DELETE privilege or UI flag.
+      -- Base authorization holds the actual active users row in SHARE mode.
+      IF public.current_user_role() IS DISTINCT FROM 'co_admin'::public.user_role THEN
+        RAISE EXCEPTION 'Catalogue access denied' USING ERRCODE='42501', DETAIL='CATALOG_ACCESS_DENIED'; END IF;
+      PERFORM private.catalog_authorize_v1(p_binding->>'kind','00000000-0000-0000-0000-000000000000'::uuid);
+      target := CASE p_binding->>'kind' WHEN 'customer' THEN 'public.customers'::regclass ELSE 'public.products'::regclass END;
+      FOREACH column_name IN ARRAY ARRAY['id','catalog_version','is_enabled'] LOOP
+        IF NOT pg_catalog.has_column_privilege('authenticated',target,column_name,'SELECT') THEN
+          RAISE EXCEPTION 'Catalogue access denied' USING ERRCODE='42501', DETAIL='CATALOG_ACCESS_DENIED'; END IF;
+      END LOOP;
+    ELSE RAISE EXCEPTION 'Catalogue access denied' USING ERRCODE='42501', DETAIL='CATALOG_ACCESS_DENIED';
+  END CASE;
+END $$;
+REVOKE ALL ON FUNCTION private.catalog_authorize_bound_v1(jsonb,text[]) FROM PUBLIC, anon, authenticated, service_role;
+
+CREATE FUNCTION private.catalog_reauthorize_request_v1(p_request_id uuid) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
+DECLARE actor uuid; prior private.catalog_requests_v1%ROWTYPE;
+BEGIN
+  actor := private.catalog_authorize_v1(NULL,NULL);
+  IF p_request_id IS NULL THEN
+    RAISE EXCEPTION 'Invalid catalogue request' USING ERRCODE='22023', DETAIL='CATALOG_INVALID_INPUT'; END IF;
+  IF NOT pg_catalog.pg_try_advisory_xact_lock(pg_catalog.hashtextextended(
+      'catalog_request_v1:'||actor::text||':'||p_request_id::text,1801427914)) THEN
+    RAISE EXCEPTION 'Catalogue request is busy' USING ERRCODE='55P03', DETAIL='CATALOG_REQUEST_BUSY'; END IF;
+  LOCK TABLE private.catalog_requests_v1 IN ROW EXCLUSIVE MODE NOWAIT;
+  SELECT * INTO prior FROM private.catalog_requests_v1 WHERE actor_id=actor AND request_id=p_request_id;
+  IF FOUND AND prior.binding IS NOT NULL THEN
+    PERFORM private.catalog_authorize_bound_v1(prior.binding,prior.write_columns);
+  END IF;
+END $$;
+REVOKE ALL ON FUNCTION private.catalog_reauthorize_request_v1(uuid) FROM PUBLIC, anon, authenticated, service_role;
+
 CREATE FUNCTION public.pilot_catalog_transaction_v1(p_request_id uuid,p_operation text,p_payload jsonb) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 DECLARE actor uuid; target_kind text; target_id uuid; expected_version bigint; fields text[]; writes text[];
@@ -269,6 +319,10 @@ DECLARE actor uuid; target_kind text; target_id uuid; expected_version bigint; f
   old_row jsonb; proposed_row jsonb; actual_row jsonb; assignments text; affected integer;
   customer public.customers%ROWTYPE; product public.products%ROWTYPE;
 BEGIN
+  PERFORM private.catalog_reauthorize_request_v1(p_request_id);
+  IF p_operation='delete_unused' THEN
+    RETURN private.catalog_delete_unused_v1(p_request_id,p_payload);
+  END IF;
   IF p_operation='set_enabled' THEN
     RETURN private.catalog_status_transaction_v1(p_request_id,p_operation,p_payload);
   END IF;
@@ -297,14 +351,14 @@ BEGIN
   SELECT * INTO prior FROM private.catalog_requests_v1 WHERE actor_id=actor AND request_id=p_request_id;
   IF FOUND THEN
     IF prior.status='abandoned' THEN
-      IF prior.binding IS NOT NULL THEN PERFORM private.catalog_authorize_fields_v1(prior.binding->>'operation',prior.binding->>'kind',prior.write_columns); END IF;
+      IF prior.binding IS NOT NULL THEN PERFORM private.catalog_authorize_bound_v1(prior.binding,prior.write_columns); END IF;
       RAISE EXCEPTION 'Catalogue request was abandoned' USING ERRCODE='22023', DETAIL='CATALOG_REQUEST_ABANDONED';
     END IF;
     IF prior.binding IS DISTINCT FROM request_binding OR prior.fingerprint IS DISTINCT FROM digest
       OR prior.write_columns IS DISTINCT FROM writes THEN
       RAISE EXCEPTION 'Catalogue request binding differs' USING ERRCODE='22023', DETAIL='CATALOG_REQUEST_CONFLICT';
     END IF;
-    PERFORM private.catalog_authorize_fields_v1(prior.binding->>'operation',prior.binding->>'kind',prior.write_columns);
+    PERFORM private.catalog_authorize_bound_v1(prior.binding,prior.write_columns);
     IF prior.status<>'committed' THEN RAISE EXCEPTION 'Catalogue request is pending' USING ERRCODE='55P03', DETAIL='CATALOG_REQUEST_BUSY'; END IF;
     -- Exact committed recovery is target-independent: NO mutable row read,
     -- policy evaluation, master/evidence lock or history rewrite before return.
@@ -328,6 +382,9 @@ BEGIN
   ELSE target_id := gen_random_uuid(); END IF;
   INSERT INTO private.catalog_requests_v1(actor_id,request_id,status,binding,fingerprint,write_columns)
     VALUES(actor,p_request_id,'pending',request_binding,digest,writes);
+  -- Shared generation admission precedes every final master lock. Generation one
+  -- remains unchanged; only the later exact create scope can certify unused.
+  PERFORM private.catalog_writer_drain_v2();
   -- Final-mode table/target locks precede identity evidence. NOWAIT also refuses
   -- concurrent policy DDL, and the held table lock prevents policy-shape changes.
   -- Effective field grants are checked again at this fresh execution boundary.
@@ -346,6 +403,7 @@ BEGIN
   ELSE proposed_row := (p_payload->'values') || jsonb_build_object('id',target_id); END IF;
   PERFORM private.catalog_assert_write_row_v1(target_kind, proposed_row);
   IF p_operation = 'create' THEN
+    PERFORM private.catalog_create_scope_enter_v1(p_request_id,target_kind,target_id);
     IF target_kind='customer' THEN
       customer := jsonb_populate_record(NULL::public.customers,proposed_row);
       INSERT INTO public.customers(id,name,address,city,phone,email,pricing_tier,customer_category)
@@ -359,6 +417,7 @@ BEGIN
         RETURNING to_jsonb(products) INTO actual_row;
     END IF;
     GET DIAGNOSTICS affected=ROW_COUNT;
+    PERFORM private.catalog_create_scope_leave_v1();
     IF affected<>1 OR actual_row IS NULL OR actual_row->>'catalog_version'<>'1' OR actual_row->'is_enabled'<>'true'::jsonb THEN
       RAISE EXCEPTION 'Catalogue create was not applied' USING ERRCODE='23514', DETAIL='CATALOG_IDENTITY_CONFLICT'; END IF;
   ELSE
@@ -402,11 +461,14 @@ BEGIN
     RAISE EXCEPTION 'Catalogue request is busy' USING ERRCODE='55P03', DETAIL='CATALOG_REQUEST_BUSY'; END IF;
   LOCK TABLE private.catalog_requests_v1 IN ROW EXCLUSIVE MODE NOWAIT;
   SELECT * INTO prior FROM private.catalog_requests_v1 WHERE actor_id=actor AND request_id=p_request_id;
-  IF NOT FOUND OR prior.binding IS NULL OR prior.binding->>'operation'='set_enabled' THEN
+  IF FOUND AND prior.binding IS NOT NULL THEN
+    PERFORM private.catalog_authorize_bound_v1(prior.binding,prior.write_columns);
+  END IF;
+  IF prior.actor_id IS NULL OR prior.binding IS NULL OR prior.binding->>'operation'='set_enabled' THEN
     -- Unknown/unbound abandonment and status behavior retain their exact body.
     RETURN private.catalog_status_reconcile_v1(p_request_id,p_abandon);
   END IF;
-  PERFORM private.catalog_authorize_fields_v1(prior.binding->>'operation',prior.binding->>'kind',prior.write_columns);
+  PERFORM private.catalog_authorize_bound_v1(prior.binding,prior.write_columns);
   IF prior.status='committed' THEN RETURN jsonb_build_object('status','committed','receipt',prior.receipt); END IF;
   IF prior.status='abandoned' THEN RETURN jsonb_build_object('status','abandoned'); END IF;
   RAISE EXCEPTION 'Catalogue request is pending' USING ERRCODE='55P03', DETAIL='CATALOG_REQUEST_BUSY';
@@ -430,6 +492,8 @@ BEGIN
       'private.catalog_authorize_fields_v1(text,text,text[])'::regprocedure,
       'private.catalog_assert_write_row_v1(text,jsonb)'::regprocedure,
       'private.catalog_validate_values_v1(text,text,jsonb)'::regprocedure,
+      'private.catalog_authorize_bound_v1(jsonb,text[])'::regprocedure,
+      'private.catalog_reauthorize_request_v1(uuid)'::regprocedure,
       'public.pilot_catalog_transaction_v1(uuid,text,jsonb)'::regprocedure,
       'public.pilot_reconcile_catalog_v1(uuid,boolean)'::regprocedure)
     AND a.grantee<>p.proowner AND NOT (p.oid IN (

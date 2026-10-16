@@ -133,8 +133,12 @@ export default function ProductList() {
     },
   })
 
+  const directDelete = catalogue.authority?.product_delete_mode === 'direct' && access.capabilities.product_delete
   const deleteMutation = useMutation({
-    mutationFn: () => { access.require('product_delete'); return deleteProduct(deleteId!) },
+    mutationFn: () => {
+      if (!directDelete || !catalogue.owner?.isCurrent()) throw new Error('Kewenangan penghapusan belum terkonfirmasi.')
+      access.require('product_delete'); return deleteProduct(deleteId!)
+    },
     onSettled: () => { mutationBusy.current = false },
     onSuccess: () => {
       dialogCommitted.current = true
@@ -196,7 +200,7 @@ export default function ProductList() {
   }
 
   const handleDelete = () => {
-    if (mutationBusy.current || modalPending || !access.capabilities.product_delete || !deleteId) return
+    if (mutationBusy.current || modalPending || !directDelete || !deleteId) return
     mutationBusy.current = true
     deleteMutation.mutate()
   }
@@ -205,13 +209,13 @@ export default function ProductList() {
 
   const closeForm = () => { if (!mutationBusy.current && !formFrozen) { setShowForm(false); setEditingId(null); setForm(EMPTY_FORM) } }
   const openDelete = (p: Product, trigger: HTMLElement) => {
-    if (!access.capabilities.product_delete || mutationBusy.current || modalOpen || modalPending || catalogue.unresolved) return
+    if (!directDelete || mutationBusy.current || modalOpen || modalPending || catalogue.unresolved) return
     dialogTrigger.current = trigger; dialogCommitted.current = false; deleteMutation.reset(); setDeleteId(p.id)
   }
   const rowActions = (p: Product) => <div className="flex flex-wrap justify-end gap-2">
     {catalogue.authority?.product_edit && <Button variant="quiet" size="compact" disabled={!catalogue.commandsAvailable || modalOpen || modalPending || catalogue.unresolved} onClick={event => openEdit(p, event.currentTarget)}>Ubah</Button>}
-    {access.capabilities.product_delete && <Button variant="danger-quiet" size="compact" disabled={modalOpen || modalPending || catalogue.unresolved} onClick={event => openDelete(p, event.currentTarget)}>Hapus</Button>}
-    {catalogue.owner && catalogue.sender ? <CatalogueStatusActions kind="product" row={p} owner={catalogue.owner} sender={catalogue.sender} authority={catalogue.authority} commandsAvailable={catalogue.commandsAvailable} disabled={modalOpen || modalPending || catalogue.unresolved} /> : <StatusBadge tone={p.is_enabled ? 'success' : 'neutral'}>{p.is_enabled ? 'Aktif' : 'Nonaktif'}</StatusBadge>}
+    {directDelete && <Button variant="danger-quiet" size="compact" disabled={modalOpen || modalPending || catalogue.unresolved} onClick={event => openDelete(p, event.currentTarget)}>Hapus</Button>}
+    {catalogue.owner && catalogue.sender ? <CatalogueStatusActions kind="product" row={p} owner={catalogue.owner} sender={catalogue.sender} authority={catalogue.authority} commandsAvailable={catalogue.commandsAvailable} guardedDeleteAvailable={catalogue.guardedDeleteAvailable} fallbackFocus={() => successFocus.current} disabled={modalOpen || modalPending || catalogue.unresolved} /> : <StatusBadge tone={p.is_enabled ? 'success' : 'neutral'}>{p.is_enabled ? 'Aktif' : 'Nonaktif'}</StatusBadge>}
   </div>
   const tiers = ['harga_pokok', 'luar_kota', 'dalam_kota', 'depo_bangunan'] as const
   return <div className="min-h-screen bg-brand-canvas">
@@ -288,7 +292,7 @@ export default function ProductList() {
         <h2 id="catalog-product-delete-title" className="ui-dialog__title">Hapus barang ini?</h2>
         <p className="ui-dialog__description">Apakah Anda yakin ingin menghapus <strong>{deleteTarget?.name}</strong>? Tindakan ini tidak dapat dibatalkan.</p>
         {deleteMutation.isError && <Notice tone="error" title={(deleteMutation.error as Error).message} className="mt-4" />}
-        <FormActions className="mt-5"><Button variant="quiet" disabled={modalPending} onClick={() => { if (!mutationBusy.current && !modalPending) setDeleteId(null) }}>Batal</Button><Button variant="danger" pending={deleteMutation.isPending} disabled={!access.capabilities.product_delete || modalPending} onClick={handleDelete}>{deleteMutation.isPending ? 'Menghapus...' : 'Hapus'}</Button></FormActions>
+        <FormActions className="mt-5"><Button variant="quiet" disabled={modalPending} onClick={() => { if (!mutationBusy.current && !modalPending) setDeleteId(null) }}>Batal</Button><Button variant="danger" pending={deleteMutation.isPending} disabled={!directDelete || modalPending} onClick={handleDelete}>{deleteMutation.isPending ? 'Menghapus...' : 'Hapus'}</Button></FormActions>
       </Dialog>}
     </MainContent>
   </div>

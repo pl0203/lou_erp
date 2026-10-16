@@ -11,9 +11,9 @@ const access: ProcurementAccessV2 = { version: 2, as_of: '2026-10-14T00:00:00Z',
 function fixture() {
   let unresolved = false
   const send = Object.assign(vi.fn(async () => { unresolved = true; throw new Error('uncertain') }), { hasUnresolved: () => unresolved, reconcile: vi.fn(), acknowledgeRecovered: vi.fn() }) as unknown as CatalogueTransactionSender
-  return { kind: 'customer' as const, row, authority: access, owner: { key: 'customer-owner-1', actorId: actor, role: 'co_admin' as const, isCurrent: () => true }, commandsAvailable: true, sender: send }
+  return { kind: 'customer' as const, row, authority: access, owner: { key: 'customer-owner-1', actorId: actor, role: 'co_admin' as const, isCurrent: () => true }, commandsAvailable: true, guardedDeleteAvailable: true, sender: send }
 }
-describe('status-only catalogue actions', () => {
+describe('guarded catalogue actions', () => {
   it('separates unavailable status and unsupported delete, without expanding legacy edit', () => {
     const p = fixture(); render(<CatalogueStatusActions {...p} commandsAvailable={false} />)
     expect(screen.getByText('Nonaktif')).toBeTruthy()
@@ -39,10 +39,24 @@ describe('status-only catalogue actions', () => {
     view.rerender(<CatalogueStatusActions {...p} authority={{ ...access, actor_id: 'other' }} />)
     expect((screen.getByRole('button', { name: 'Aktifkan' }) as HTMLButtonElement).disabled).toBe(true)
   })
-  it('never sends guarded deletion even when v2 grants it', () => {
+  it('sends guarded deletion once with exact captured version and delegates uncertainty to page recovery', async () => {
     const p = fixture(); render(<CatalogueStatusActions {...p} />)
     fireEvent.click(screen.getByRole('button', { name: 'Hapus bila tidak digunakan' }))
-    expect(p.sender).not.toHaveBeenCalled(); expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getByRole('dialog').textContent).toContain(row.catalog_version)
+    const confirm = screen.getByRole('button', { name: 'Konfirmasi Hapus' })
+    fireEvent.click(confirm); fireEvent.click(confirm)
+    await waitFor(() => expect(p.sender).toHaveBeenCalledWith('delete_unused', { kind: 'customer', id: row.id, expected_version: row.catalog_version }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(p.sender).toHaveBeenCalledOnce(); expect(p.sender.hasUnresolved()).toBe(true)
+  })
+  it('rechecks guarded authority and the exact captured row before deletion', () => {
+    const p = fixture(); const view = render(<CatalogueStatusActions {...p} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Hapus bila tidak digunakan' }))
+    view.rerender(<CatalogueStatusActions {...p} row={{ ...row, catalog_version: '9007199254740994' as DecimalVersion }} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Konfirmasi Hapus' }))
+    expect(screen.getByText(/Data berubah/)).toBeTruthy(); expect(p.sender).not.toHaveBeenCalled()
+    view.rerender(<CatalogueStatusActions {...p} authority={{ ...access, customer_delete: false, customer_delete_mode: 'none' }} />)
+    expect((screen.getByRole('button', { name: 'Konfirmasi Hapus' }) as HTMLButtonElement).disabled).toBe(true)
   })
   it('does not expose a direct product delete route through the status sender', () => {
     const p = fixture()
@@ -77,4 +91,12 @@ it('retires a confirmation when the explicit owner changes away and back', () =>
   view.rerender(<CatalogueStatusActions {...p} owner={{ ...p.owner, key: 'other' }} />)
   view.rerender(<CatalogueStatusActions {...p} />)
   expect(screen.queryByRole('dialog')).toBeNull(); expect(p.sender).not.toHaveBeenCalled()
+})
+
+it('readiness is separate from CO eligibility and fails closed', () => {
+  const p = fixture(); const view = render(<CatalogueStatusActions {...p} guardedDeleteAvailable={false} />)
+  expect((screen.getByRole('button', { name: 'Aktifkan' }) as HTMLButtonElement).disabled).toBe(false)
+  expect((screen.getByRole('button', { name: 'Hapus bila tidak digunakan' }) as HTMLButtonElement).disabled).toBe(true)
+  view.rerender(<CatalogueStatusActions {...p} guardedDeleteAvailable={undefined} />)
+  expect((screen.getByRole('button', { name: 'Hapus bila tidak digunakan' }) as HTMLButtonElement).disabled).toBe(true)
 })

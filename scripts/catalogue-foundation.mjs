@@ -22,17 +22,29 @@ export const foundationSqlPaths=Object.freeze({
  coOrderCandidate:'supabase/catalogue/v1/new06-co-order-boundaries.sql',
  coOrders:'tests/database/catalogue/co-orders.sql',
  promotionOwnerGrammar:'supabase/catalogue/v1/02-promotion-owner-extraction.sql',
+ poGrammar:'supabase/catalogue/v1/02-po-reference-extraction.sql',
+ coGrammar:'supabase/catalogue/v1/02-co-reference-extraction.sql',
+ coDraftGrammar:'supabase/catalogue/v1/02-co-draft-reference-extraction.sql',
+ retiredCoGrammar:'supabase/catalogue/v1/02-retired-co-line-resolution.sql',
  visitGrammar:'supabase/catalogue/v1/new02-visit-reference-extraction.sql',
+ noncoGrammar:'supabase/catalogue/v1/new02-nonco-lineage-resolution.sql',
  lifetimeCandidate:'supabase/catalogue/v1/new07-lifetime-admission.sql',
  lifetime:'tests/database/catalogue/lifetime-admission.sql',
  createEditCandidate:'supabase/catalogue/v1/new08-catalogue-create-edit.sql',
+ targetTrackingCandidate:'supabase/catalogue/v1/02-customer-target-tracking.sql',
+ checkedBoundariesCandidate:'supabase/catalogue/v1/new09-checked-boundaries.sql',
+ guardedDeleteCandidate:'supabase/catalogue/v1/new10-guarded-delete.sql',
+ masterCompletionCandidate:'supabase/catalogue/v1/new11-master-completion-hooks.sql',
  createEdit:'tests/database/catalogue/create-edit.sql',
  publicRouters:'tests/database/catalogue/generation-two-routers.sql',
+ checkedBoundaries:'tests/database/catalogue/checked-boundaries.sql',
+ guardedDelete:'tests/database/catalogue/guarded-delete.sql',
+ guardedDeleteHistory:'tests/database/catalogue/guarded-delete-history.sql',
 });
 export const foundationExpectedMarkers=Object.freeze([
  'CATALOGUE_FOUNDATION_BEFORE_CAPTURED','CATALOGUE_FOUNDATION_CANDIDATE_APPLIED',
  'CATALOGUE_FOUNDATION_BEHAVIOR_PASSED','CATALOGUE_FOUNDATION_LEGACY_PASSED',
- 'CATALOGUE_FOUNDATION_ROLES_PASSED','CATALOGUE_ORDERS_CORE_PASSED','CATALOGUE_CO_ORDERS_CORE_PASSED','CATALOGUE_LIFETIME_WRITERS_PASSED','CATALOGUE_CREATE_EDIT_CORE_PASSED','CATALOGUE_PUBLIC_ROUTER_DISPATCH_ONLY_PASSED','CATALOGUE_FOUNDATION_ROLLBACK_VERIFIED',
+ 'CATALOGUE_FOUNDATION_ROLES_PASSED','CATALOGUE_ORDERS_CORE_PASSED','CATALOGUE_CO_ORDERS_CORE_PASSED','CATALOGUE_LIFETIME_WRITERS_PASSED','CATALOGUE_CREATE_EDIT_CORE_PASSED','CATALOGUE_PUBLIC_ROUTER_DISPATCH_ONLY_PASSED','CATALOGUE_CHECKED_BOUNDARIES_PASSED','CATALOGUE_GUARDED_DELETE_PASSED','CATALOGUE_GUARDED_DELETE_HISTORY_PASSED','CATALOGUE_FOUNDATION_ROLLBACK_VERIFIED',
 ]);
 // Erase SQL comments/quoted values before examining top-level statements. This
 // is a containment check, not a PostgreSQL grammar/behavior substitute.
@@ -53,7 +65,60 @@ export function foundationTopLevelSql(sql) {
  for(const statement of result.split(';'))assert.ok(!/^\s*(?:BEGIN\b|START\s+TRANSACTION\b|COMMIT\b|END\b|ROLLBACK\b|ABORT\b|SAVEPOINT\b|RELEASE\b|PREPARE\s+TRANSACTION\b)/i.test(statement),'Transaction boundaries are runner-owned');
  return result;
 }
-const noFoundationPredicate=`pg_catalog.to_regclass('private.catalog_identity_v1') IS NULL
+// Only this finite, source-bound test owns a nested rollback envelope. Its
+// captured bytes are inserted unchanged; arbitrary savepoints remain refused.
+export function catalogueCompletionSuiteSql(name,sql) {
+ const scopes=name==='guardedDelete'?['guarded_delete_fixture']:name==='guardedDeleteHistory'?['guarded_delete_history_fixture','trusted_history_fixture','trusted_history_topology','trusted_history_removed_visit','trusted_history_retired_co']:null;
+ if(!scopes)return foundationTopLevelSql(sql);
+ assert.equal(typeof sql,'string');assert.ok(!sql.includes('catalogue_fixture_boundary_guard_'));
+ const lines=sql.split('\n'),positions=[];let checked=sql;
+ for(const scope of scopes){
+  let previous=-1;const order=[];
+  for(const boundary of [`SAVEPOINT ${scope};`,`ROLLBACK TO SAVEPOINT ${scope};`,`RELEASE SAVEPOINT ${scope};`]){
+   assert.equal(lines.filter(line=>line===boundary).length,1,'Exact completion rollback boundary required');
+   const position=lines.indexOf(boundary);assert.ok(position>previous,'Completion rollback boundaries must be ordered');previous=position;order.push(position);
+   checked=checked.replace(boundary,`SELECT 1 AS catalogue_fixture_boundary_guard_${positions.length};`);positions.push(position);
+  }
+  if(scope===scopes[0]){
+   assert.equal(foundationTopLevelSql(lines.slice(0,order[0]).join('\n')+'\nSELECT 1;').trim(),'SELECT 1;','Completion fixture must begin inside its rollback envelope');
+   assert.equal(foundationTopLevelSql(lines.slice(order[2]+1).join('\n')+'\nSELECT 1;').trim(),'SELECT 1;','Completion fixture must end inside its rollback envelope');
+  }else assert.ok(order[0]>positions[0]&&order[2]<positions[1],'Nested fixture must stay inside its outer rollback');
+ }
+ const topLevel=foundationTopLevelSql(checked);
+ for(let i=0;i<positions.length;i++)assert.equal(topLevel.split(`catalogue_fixture_boundary_guard_${i};`).length,2,'Every fixture boundary must be top-level SQL');
+ return topLevel;
+}
+export const catalogueCompletionAbsentPredicate=`pg_catalog.to_regclass('private.catalog_target_requests_v1') IS NULL
+ AND pg_catalog.to_regclass('private.catalog_target_active_v1') IS NULL
+ AND pg_catalog.to_regclass('private.catalog_target_policy_contract_v1') IS NULL
+ AND pg_catalog.to_regclass('private.catalog_product_delete_scope_v2') IS NULL
+ AND pg_catalog.to_regclass('private.catalog_product_delete_rows_v2') IS NULL
+ AND pg_catalog.to_regclass('private.catalog_checked_scope_v2') IS NULL
+ AND pg_catalog.to_regclass('private.catalog_create_scope_v1') IS NULL
+ AND pg_catalog.to_regprocedure('public.pilot_customer_target_upsert_v1(uuid,uuid,text,numeric)') IS NULL
+ AND pg_catalog.to_regprocedure('public.pilot_reconcile_customer_target_v1(uuid)') IS NULL
+ AND pg_catalog.to_regprocedure('public.pilot_customer_target_write_access_v1()') IS NULL
+ AND pg_catalog.to_regprocedure('private.catalog_assert_no_links_v1(text,uuid)') IS NULL
+ AND pg_catalog.to_regprocedure('private.catalog_delete_unused_v1(uuid,jsonb)') IS NULL
+ AND pg_catalog.to_regprocedure('public.pilot_catalog_delete_access_v1()') IS NULL
+ AND pg_catalog.to_regclass('pg_temp.catalogue_completion_cutover_before_v1') IS NULL`;
+export const catalogueCompletionCutoverSnapshotSql=`CREATE TEMP TABLE catalogue_completion_cutover_before_v1 ON COMMIT DROP AS
+ SELECT jsonb_agg(to_jsonb(c) ORDER BY c.conname) AS constraint_rows FROM pg_catalog.pg_constraint c
+ WHERE c.conrelid='private.catalog_cutover_v1'::regclass;`;
+// This is a post-suite restoration gate, not a production readiness check.
+export const catalogueCompletionRestoredPredicate=`(SELECT constraint_rows FROM pg_temp.catalogue_completion_cutover_before_v1)
+ IS NOT DISTINCT FROM (SELECT jsonb_agg(to_jsonb(c) ORDER BY c.conname) FROM pg_catalog.pg_constraint c WHERE c.conrelid='private.catalog_cutover_v1'::regclass)
+ AND (SELECT count(*)=1 AND bool_and(execution_generation=1 AND NOT tracking_ready) FROM private.catalog_cutover_v1)
+ AND (SELECT count(*)=2 AND bool_and(convalidated) FROM pg_catalog.pg_constraint
+ WHERE conrelid='private.catalog_cutover_v1'::regclass AND conname IN ('catalog_foundation_generation_one','catalog_foundation_not_ready'))
+ AND NOT EXISTS(SELECT 1 FROM private.catalog_checked_scope_v2)
+ AND NOT EXISTS(SELECT 1 FROM private.catalog_target_active_v1)
+ AND NOT EXISTS(SELECT 1 FROM private.catalog_product_delete_scope_v2)
+ AND NOT EXISTS(SELECT 1 FROM private.catalog_product_delete_rows_v2)
+ AND NOT EXISTS(SELECT 1 FROM private.catalog_create_scope_v1)`;
+export const catalogueCheckedCompletionProof=Object.freeze({status:'BOUNDED_CHECKED_COMPLETION_SUITES_PASSED',scope:'FUTURE_GENERATION_TWO_SYNTHETIC_ONLY',suites:Object.freeze(['checked-boundaries','guarded-delete','guarded-delete-history']),historyScanner:'GENERATION_ONE_OWNER_PRIVATE_ONLY',executionGeneration:2,trackingReady:true,fixtureRestoration:'GENERATION_ONE_TRACKING_FALSE_CONSTRAINTS_VERIFIED',productionGeneration:1,productionTrackingReady:false,concurrency:'UNRUN',hostedParity:'UNVERIFIED',implementationAccepted:false});
+const noFoundationPredicate=`${catalogueCompletionAbsentPredicate}
+ AND pg_catalog.to_regclass('private.catalog_identity_v1') IS NULL
  AND pg_catalog.to_regclass('private.catalog_cutover_v1') IS NULL
  AND pg_catalog.to_regclass('private.catalog_requests_v1') IS NULL
  AND pg_catalog.to_regclass('private.catalog_po_active_v2') IS NULL
@@ -86,7 +151,7 @@ const sessionGate=()=>booleanGate(`current_user='postgres' AND pg_catalog.pg_bac
  AND (SELECT count(*)=1 AND bool_and(backend_pid=pg_catalog.pg_backend_pid() AND transaction_id=pg_catalog.txid_current()) FROM pg_temp.catalogue_foundation_session_v1)`,'catalogue_foundation_session_refused');
 export function buildCatalogueFoundationSession(identity,parts) {
  assert.deepEqual(Object.keys(parts).sort(),Object.keys(foundationSqlPaths).sort());
- for(const sql of Object.values(parts))foundationTopLevelSql(sql);
+ for(const [name,sql]of Object.entries(parts))catalogueCompletionSuiteSql(name,sql);
  const mark=index=>`\\echo ${foundationExpectedMarkers[index]} :catalogue_foundation_pid :catalogue_foundation_xid\n`;
  return `\\set ON_ERROR_STOP on
 \\o /dev/null
@@ -102,6 +167,7 @@ CREATE TEMP TABLE catalogue_foundation_session_v1 ON COMMIT DROP AS
  SELECT pg_catalog.pg_backend_pid() AS backend_pid,pg_catalog.txid_current() AS transaction_id;
 ${parts.before}
 ${sessionGate()}${mark(0)}${parts.candidate}
+${sessionGate()}${catalogueCompletionCutoverSnapshotSql}
 ${sessionGate()}${mark(1)}${parts.foundation}
 ${sessionGate()}${mark(2)}${parts.legacy}
 ${sessionGate()}${mark(3)}${parts.roles}
@@ -110,14 +176,26 @@ ${sessionGate()}${parts.orders}
 ${sessionGate()}${mark(5)}${parts.coOrderCandidate}
 ${sessionGate()}${parts.coOrders}
 ${sessionGate()}${mark(6)}${parts.promotionOwnerGrammar}
+${sessionGate()}${parts.poGrammar}
+${sessionGate()}${parts.coGrammar}
+${sessionGate()}${parts.coDraftGrammar}
+${sessionGate()}${parts.retiredCoGrammar}
 ${sessionGate()}${parts.visitGrammar}
+${sessionGate()}${parts.noncoGrammar}
 ${sessionGate()}${parts.lifetimeCandidate}
 ${sessionGate()}${parts.lifetime}
 ${sessionGate()}${mark(7)}${parts.createEditCandidate}
+${sessionGate()}${parts.targetTrackingCandidate}
+${sessionGate()}${parts.checkedBoundariesCandidate}
+${sessionGate()}${parts.guardedDeleteCandidate}
+${sessionGate()}${parts.masterCompletionCandidate}
 ${sessionGate()}${parts.createEdit}
 ${sessionGate()}${mark(8)}${parts.publicRouters}
-${sessionGate()}${mark(9)}ROLLBACK;
-${catalogueCiIdentityGateSql(identity)}${booleanGate(`${noFoundationPredicate}\n AND pg_catalog.pg_backend_pid()=:'catalogue_foundation_pid'::integer\n AND pg_catalog.to_regclass('pg_temp.catalogue_foundation_session_v1') IS NULL`,'catalogue_foundation_rollback_refused')}${mark(10)}\\o
+${sessionGate()}${mark(9)}${booleanGate(catalogueCompletionRestoredPredicate,'catalogue_completion_restoration_refused')}${parts.checkedBoundaries}
+${sessionGate()}${booleanGate(catalogueCompletionRestoredPredicate,'catalogue_completion_restoration_refused')}${mark(10)}${parts.guardedDelete}
+${sessionGate()}${booleanGate(catalogueCompletionRestoredPredicate,'catalogue_completion_restoration_refused')}${mark(11)}${parts.guardedDeleteHistory}
+${sessionGate()}${booleanGate(catalogueCompletionRestoredPredicate,'catalogue_completion_restoration_refused')}${mark(12)}ROLLBACK;
+${catalogueCiIdentityGateSql(identity)}${booleanGate(`${noFoundationPredicate}\n AND pg_catalog.pg_backend_pid()=:'catalogue_foundation_pid'::integer\n AND pg_catalog.to_regclass('pg_temp.catalogue_foundation_session_v1') IS NULL`,'catalogue_foundation_rollback_refused')}${mark(13)}\\o
 `;
 }
 export function parseCatalogueFoundationOutput(output) {
@@ -242,6 +320,7 @@ export function runCatalogueFoundation({repoRoot=defaultRoot,env=process.env,exe
     fixtureSubtransactionRestoration:'ROWS_CONSTRAINTS_SESSION_VERIFIED',freshNotReadyRefusals:['po','co','owner'],
     productionGeneration:1,trackingReady:false,globalLifetimeCertification:'NOT_PROVEN',rawCompatibility:'UNPROVEN',
     loadedLegacyRetirement:'UNPROVEN',concurrency:'UNRUN',hostedParity:'UNVERIFIED'},
+   checkedCompletionProof:catalogueCheckedCompletionProof,
    commandAndReplaySuites:'SET_ENABLED_SEQUENTIAL_SAME_SESSION_PASSED',
    commandProof:{operations:['set_enabled'],role:'authenticated',authorization:'VERIFIED_SYNTHETIC_POLICY_ONLY',
     sequentialReplay:'PASSED',sequentialAbandonment:'PASSED',rollbackAtomicity:'PASSED',

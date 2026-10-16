@@ -10,7 +10,7 @@ import { fetchCatalogueOptions, fetchCataloguePage } from './reads'
 import { createCatalogueTransactionSender } from './transactions'
 import type { CatalogueTransactionSender } from './transactions'
 import { useCatalogueAccess } from './useCatalogueAccess'
-import { invalidCatalogue, parseCatalogueReceipt } from './validation'
+import { decodeCatalogueDeleteAccess, invalidCatalogue, parseCatalogueReceipt } from './validation'
 import type { CatalogueOwner } from '../../components/catalogue/CatalogueRecovery'
 
 const unavailableBackend: CatalogueBackend = {
@@ -45,6 +45,32 @@ export function useCataloguePage<K extends CatalogueKind>(options: { kind: K; se
   }, [client, identity, scope])
   const identityCurrent = useCallback(() => !!identity && liveScope.current === scope && scope.active, [identity, scope])
   const access = useCatalogueAccess({ identity: identity && maintainers.has(identity.role) ? identity : null, transport: backend ?? unavailableBackend })
+  const readClient = supabase
+  const readiness = useMemo(() => ({ epoch: 0, accepted: null as null | { access: ReturnType<typeof decodeCatalogueDeleteAccess>; scope: typeof scope; epoch: number } }), [scope])
+  const deleteAccess = useQuery({
+    queryKey: identity ? [...catalogueKeys.authority(identity), 'guarded-delete-readiness'] : ['catalogue', 'unavailable', 'guarded-delete-readiness'],
+    enabled: identity?.role === 'co_admin', retry: false, staleTime: 0, structuralSharing: false,
+    // Every attempt must invalidate accepted readiness, even if the browser is
+    // offline. A paused-then-cancelled query must not revive cached permission.
+    networkMode: 'always', refetchOnWindowFocus: 'always', refetchOnReconnect: 'always',
+    queryFn: async ({ signal }) => {
+      if (!identity || !backend || !identityCurrent() || identity.role !== 'co_admin') invalidCatalogue('guarded delete readiness owner')
+      const epoch = scope.epoch, request = ++readiness.epoch
+      readiness.accepted = null
+      const refuse = () => { if (readiness.epoch === request) readiness.accepted = null }
+      signal.addEventListener('abort', refuse, { once: true })
+      try {
+        backend.assertCurrent(); signal.throwIfAborted()
+        const { data, error } = await readClient.rpc('pilot_catalog_delete_access_v1', {}).abortSignal(signal)
+        backend.assertCurrent(); signal.throwIfAborted()
+        if (!identityCurrent() || scope.epoch !== epoch || readiness.epoch !== request || error) invalidCatalogue('guarded delete readiness unavailable')
+        const accepted = { access: decodeCatalogueDeleteAccess(data, identity.actorId), scope, epoch }
+        readiness.accepted = accepted
+        return accepted
+      } catch (error) { refuse(); throw error }
+      finally { signal.removeEventListener('abort', refuse) }
+    },
+  })
   const [pending, setPending] = useState<{ sender: CatalogueTransactionSender; busy: boolean; recovery: boolean } | null>(null)
   const ownerSequence = useRef(0)
   const operation = useMemo(() => {
@@ -95,7 +121,9 @@ export function useCataloguePage<K extends CatalogueKind>(options: { kind: K; se
   const acceptCanonical = async (raw: CatalogueReceipt) => {
     if (!identity || !backend || !operation?.owner.isCurrent()) return false
     const receipt = parseCatalogueReceipt(raw)
-    if (receipt.actor_id !== identity.actorId || !['create', 'edit', 'set_enabled'].includes(receipt.operation) || !receipt.after) return false
+    if (receipt.actor_id !== identity.actorId) return false
+    const deleted = receipt.operation === 'delete_unused'
+    if (deleted ? !receipt.before || receipt.after !== null : !['create', 'edit', 'set_enabled'].includes(receipt.operation) || !receipt.after) return false
     const current = operation.owner.isCurrent
     // The receipt may belong to the other page or a row outside this filter/page.
     const rows = await fetchCatalogueOptions(receipt.kind, 'all-for-history', { identity, transport: backend, isCurrent: current })
@@ -103,8 +131,13 @@ export function useCataloguePage<K extends CatalogueKind>(options: { kind: K; se
     // A validated terminal receipt proves the write even if this identity was
     // subsequently deleted. The complete authorized history read establishes
     // canonical absence; it never proves success for an unknown request.
-    if (!current() || row && (BigInt(row.catalog_version) < BigInt(receipt.after.catalog_version)
-      || row.catalog_version === receipt.after.catalog_version && row.is_enabled !== receipt.after.is_enabled)) return false
+    if (!current()) return false
+    // A valid deletion receipt, never a missing row, proves the completed action.
+    // A later recreation is canonical only at a strictly newer identity version.
+    if (deleted) {
+      if (row && BigInt(row.catalog_version) <= BigInt(receipt.before!.catalog_version)) return false
+    } else if (row && (BigInt(row.catalog_version) < BigInt(receipt.after!.catalog_version)
+      || row.catalog_version === receipt.after!.catalog_version && row.is_enabled !== receipt.after!.is_enabled)) return false
     await invalidateCatalogueProjections(client, identity, receipt.kind)
     if (!current()) return false
     if (receipt.kind === options.kind) await query.refetch({ throwOnError: true })
@@ -130,6 +163,8 @@ export function useCataloguePage<K extends CatalogueKind>(options: { kind: K; se
     owner: operation?.owner ?? null, sender: operation?.sender ?? null,
     authority: access.ready ? access.data! : null,
     commandsAvailable: locallyAvailable && !!accepted && !query.isError && !query.isFetching && !query.isPlaceholderData,
+    guardedDeleteAvailable: identity?.role === 'co_admin' && access.ready && deleteAccess.isSuccess && deleteAccess.fetchStatus === 'idle' && deleteAccess.data === readiness.accepted
+      && deleteAccess.data?.scope === scope && deleteAccess.data.epoch === scope.epoch && deleteAccess.data.access[`${options.kind}_delete`],
     recoveryAvailable: locallyAvailable && access.ready,
     busy, unresolved, acceptCanonical, acceptAbandoned, onConfirmed: settled, onAbandoned: settled, refresh,
   }

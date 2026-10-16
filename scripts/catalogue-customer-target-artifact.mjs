@@ -13,7 +13,7 @@ const defaultRoot=resolve(dirname(fileURLToPath(import.meta.url)),'..'),sha=x=>c
 export const targetRuntimeReviewedFiles=Object.freeze([
  {
   "path": "scripts/catalogue-customer-target-runtime.mjs",
-  "sha256": "04f52a08311402c2910b704922b420314dab8cbbfaf847bb4c5ca2683cc6bc23"
+  "sha256": "55fd224618f475128a0cceb7f12d8f43375965c67f30ffe28abd245a17bb974f"
  },
  {
   "path": "supabase/catalogue/v1/02-customer-target-tracking.sql",
@@ -21,7 +21,7 @@ export const targetRuntimeReviewedFiles=Object.freeze([
  },
  {
   "path": "tests/catalogue-ci/customer-target-runtime.node.mjs",
-  "sha256": "7a43ca6a57a1eff6cffb7e4bc963e524ef28a54cd5c3b228190b87abc3312b57"
+  "sha256": "1e230d7ef835fa0a60f78d2ac337faf841e35abeb0fbf796ae67cc58bb9fe14c"
  },
  {
   "path": "tests/catalogue-ci/customer-target-tracking.node.mjs",
@@ -73,7 +73,7 @@ export const targetRuntimeReviewedFiles=Object.freeze([
  },
  {
   "path": "supabase/catalogue/v1/new08-catalogue-create-edit.sql",
-  "sha256": "bc4ff46e8ee7c525a1a4f9bf2430c584cba649217518f966fc6446a77509739d"
+  "sha256": "1c583c2acb7a1660262fe4e080b75bed7c81d701d4cfe24cdd68e6ea7d40eb00"
  },
  {
   "path": "tests/database/catalogue/create-edit-races.mjs",
@@ -86,9 +86,85 @@ export const targetRuntimeReviewedFiles=Object.freeze([
  {
   "path": "tests/database/catalogue/raw-caller-compatibility.sql",
   "sha256": "26a4e970ff53d595f36fecfd270c414473a64992c2c603aa0d7d9da2a73ae0b1"
+ },
+ {
+  "path": "supabase/catalogue/v1/02-po-reference-extraction.sql",
+  "sha256": "934108fd704a12edb73e8ff35ee288fa8ec90228d80a8151ef6f755e91b6a660"
+ },
+ {
+  "path": "supabase/catalogue/v1/02-co-reference-extraction.sql",
+  "sha256": "4dd6695b14a3587e43bd76df04abfa99916bf49b33344e99660a57ab5ebc12f9"
+ },
+ {
+  "path": "supabase/catalogue/v1/02-co-draft-reference-extraction.sql",
+  "sha256": "ebdc135249aacc7c297fb88ec12640a0c5a7da3cd5cfa76c9f2adfd8050d8aa5"
+ },
+ {
+  "path": "supabase/catalogue/v1/02-retired-co-line-resolution.sql",
+  "sha256": "361e4089150bc338268926e5c48db2e76afedff024f4b684118d022990238591"
+ },
+ {
+  "path": "supabase/catalogue/v1/new02-nonco-lineage-resolution.sql",
+  "sha256": "9417cef406eaa4ea511bb50f77f3e16dba710cdebbf09d7c7c62d438c8864a4f"
+ },
+ {
+  "path": "supabase/catalogue/v1/new09-checked-boundaries.sql",
+  "sha256": "a2ce622ac5ac3a56839240acf4f8060c7b9cf51c9bee61428456572b2cbf616b"
+ },
+ {
+  "path": "supabase/catalogue/v1/new10-guarded-delete.sql",
+  "sha256": "000c8699e783f704c72cb86da58d0f60e5fe7bc5ed1e8123e05017206897e9cf"
+ },
+ {
+  "path": "supabase/catalogue/v1/new11-master-completion-hooks.sql",
+  "sha256": "2a642a0adcb935755d2d6b127ba50c517328a85f3b225de4658a751f48834e71"
+ },
+ {
+  "path": "tests/database/catalogue/checked-boundaries.sql",
+  "sha256": "3a2d7d3d5c7ae4efb6847818cc98ee90206fd071510977161aeafe5d67667dd8"
+ },
+ {
+  "path": "tests/database/catalogue/guarded-delete.sql",
+  "sha256": "e8d82a9e7da9bec21f6dc450eccb8d045f0f2c20d3193d4a53f1a9a8a629ecc5"
+ },
+ {
+  "path": "tests/database/catalogue/completion-races.mjs",
+  "sha256": "3b4b117182914dca1915837b55692f4e214249288d275a994ba672eec1d47c8d"
+ },
+ {
+  "path": "tests/catalogue-ci/completion-races.node.mjs",
+  "sha256": "a7a939b5a375bab74d26d0cd9a11fb5180a716cf03c2bfde420e286cd5ec5bb3"
+ },
+ {
+  "path": "tests/catalogue-ci/checked-boundaries.node.mjs",
+  "sha256": "24c5e117dabcc559f60644eea9ca938274e291997240ad7b4602219aa5dd0f35"
+ },
+ {
+  "path": "tests/catalogue-ci/guarded-delete.node.mjs",
+  "sha256": "2ac30750e7d6d6e80c7f15244100fc88a388e410ee86640832a55dadbdc1637c"
+ },
+ {
+  "path": "tests/catalogue-ci/master-completion-hooks.node.mjs",
+  "sha256": "d54fe6434fe9d7d5cde2e88aa8526b14565a35aadfd76f8f691ad81ccc562884"
+ },
+ {
+  "path": "tests/database/catalogue/guarded-delete-history.sql",
+  "sha256": "15a96afe964ab536a74c0ff3a232095c4390406221e6e8a8bcede0d9043cd246"
+ },
+ {
+  "path": "tests/catalogue-ci/guarded-delete-history.node.mjs",
+  "sha256": "64598dcade15a01a5e68d898c59a8090f4d1751fd730f63f85af42eb614bd487"
+ },
+ {
+  "path": "tests/database/catalogue/native-product-delete-races.mjs",
+  "sha256": "93dc7786ffb6f3e2227d79662f45c0a076c774f33de09057c10f689469af9416"
+ },
+ {
+  "path": "tests/catalogue-ci/native-product-delete-races.node.mjs",
+  "sha256": "4e8876d30cf43b642b42f1da2dec244a10a03878829e82f416e52f5ef7bd3612"
  }
 ].map(Object.freeze));
-const reportPaths=Object.freeze(['tests/database/catalogue/before-foundation.sql','supabase/catalogue/v1/01-foundation.sql','tests/database/catalogue/legacy-columns.sql','tests/database/catalogue/roles.sql','supabase/catalogue/v1/02-customer-target-tracking.sql','tests/database/catalogue/customer-target-tracking.sql','tests/database/catalogue/customer-target-runtime-authority.sql','tests/database/catalogue/customer-target-runtime-variants.sql','supabase/catalogue/v1/04-order-boundaries.sql','supabase/catalogue/v1/new06-co-order-boundaries.sql','supabase/catalogue/v1/02-promotion-owner-extraction.sql','supabase/catalogue/v1/new02-visit-reference-extraction.sql','supabase/catalogue/v1/new07-lifetime-admission.sql','supabase/catalogue/v1/new08-catalogue-create-edit.sql','tests/database/catalogue/raw-caller-compatibility.sql']);
+const reportPaths=Object.freeze(["tests/database/catalogue/before-foundation.sql", "supabase/catalogue/v1/01-foundation.sql", "tests/database/catalogue/legacy-columns.sql", "tests/database/catalogue/roles.sql", "supabase/catalogue/v1/02-customer-target-tracking.sql", "tests/database/catalogue/customer-target-tracking.sql", "tests/database/catalogue/customer-target-runtime-authority.sql", "tests/database/catalogue/customer-target-runtime-variants.sql", "supabase/catalogue/v1/04-order-boundaries.sql", "supabase/catalogue/v1/new06-co-order-boundaries.sql", "supabase/catalogue/v1/02-promotion-owner-extraction.sql", "supabase/catalogue/v1/02-po-reference-extraction.sql", "supabase/catalogue/v1/02-co-reference-extraction.sql", "supabase/catalogue/v1/02-co-draft-reference-extraction.sql", "supabase/catalogue/v1/02-retired-co-line-resolution.sql", "supabase/catalogue/v1/new02-visit-reference-extraction.sql", "supabase/catalogue/v1/new02-nonco-lineage-resolution.sql", "supabase/catalogue/v1/new07-lifetime-admission.sql", "supabase/catalogue/v1/new08-catalogue-create-edit.sql", "supabase/catalogue/v1/new09-checked-boundaries.sql", "supabase/catalogue/v1/new10-guarded-delete.sql", "supabase/catalogue/v1/new11-master-completion-hooks.sql", "tests/database/catalogue/raw-caller-compatibility.sql", "tests/database/catalogue/checked-boundaries.sql", "tests/database/catalogue/guarded-delete.sql", "tests/database/catalogue/guarded-delete-history.sql"]);
 const wrapperPaths=['scripts/catalogue-customer-target-artifact.mjs','tests/catalogue-ci/customer-target-artifact.node.mjs'];
 const directory=path=>{const stat=lstatSync(path);assert.ok(stat.isDirectory()&&!stat.isSymbolicLink());return stat;};
 const sameDirectory=(path,expected)=>{const stat=directory(path);assert.equal(stat.ino,expected.ino);assert.equal(stat.dev,expected.dev);};
@@ -112,12 +188,24 @@ export function validateCatalogueCreateEditRaces(report,pids,replayPid){
  const expected={status:'BOUNDED_CATALOGUE_CREATE_EDIT_RACES_PASSED',backendPids:[pids[0],replayPid,pids[2]],cases:['duplicate_create_exact_replay','edit_vs_reenable_both_directions','reconcile_during_blocked_fresh_create']};
  assert.deepEqual(report,expected);return expected;
 }
+export function validateCatalogueCompletionRaces(report,pids,replayPid){
+ const expected={status:'BOUNDED_CATALOGUE_COMPLETION_RACES_PASSED',backendPids:[pids[0],replayPid,pids[2]],cases:['target_duplicate_commit_replay','target_use_blocks_unused_delete','delete_commit_refuses_target_save','product_relation_busy_then_delete','delete_request_busy_replay','truncate_drain_busy_then_refused']};
+ assert.deepEqual(report,expected);return expected;
+}
+export function validateNativeProductDeleteRaces(report,pids,replayPid){
+ const expected={status:'BOUNDED_NATIVE_PRODUCT_DELETE_RACES_PASSED',backendPids:[pids[0],replayPid,pids[2]],cases:["native_no_action_po_and_executive", "native_multi_product_both_orders", "checked_po_first_native_nowait", "checked_promotion_first_native_nowait", "native_first_checked_po_wait", "native_first_checked_promotion_wait", "promotion_child_wait_root_flush", "identity_refusal_atomic_cascade_rollback", "native_committed_cascade_and_plain_provenance"]};
+ assert.deepEqual(report,expected);return expected;
+}
+export function validateCatalogueCheckedCompletion(report){
+ const expected={status:'BOUNDED_CHECKED_COMPLETION_SUITES_PASSED',scope:'FUTURE_GENERATION_TWO_SYNTHETIC_ONLY',suites:['checked-boundaries','guarded-delete','guarded-delete-history'],historyScanner:'GENERATION_ONE_OWNER_PRIVATE_ONLY',executionGeneration:2,trackingReady:true,fixtureRestoration:'GENERATION_ONE_TRACKING_FALSE_CONSTRAINTS_VERIFIED',productionGeneration:1,productionTrackingReady:false,concurrency:'UNRUN',hostedParity:'UNVERIFIED',implementationAccepted:false};
+ assert.deepEqual(report,expected);return expected;
+}
 function validateReport(bytes,identity,files){
  assert.equal(typeof bytes,'string');assert.ok(Buffer.byteLength(bytes)<=65536);assert.ok(bytes.endsWith('\n'));
  const report=JSON.parse(bytes);assert.equal(bytes,JSON.stringify(report)+'\n');
  const lifecycle=report.lifecycle;for(const key of ['backendPid','transactionId'])assert.match(lifecycle?.[key]??'',/^[1-9][0-9]{0,19}$/);
  const pids=report.races?.backendPids;assert.ok(Array.isArray(pids));assert.equal(pids.length,3);assert.equal(new Set(pids).size,3);assert.ok(pids.every(pid=>Number.isSafeInteger(pid)&&pid>0&&pid<=2147483647));
- const expected={format:'catalogue-customer-target-runtime-v1',status:'BOUNDED_TARGET_RUNTIME_PASSED',identity,lifecycle:{backendPid:lifecycle.backendPid,transactionId:lifecycle.transactionId},rawCompatibility:{scope:'LEGACY_RAW_COMPATIBILITY_ONLY',executionGeneration:1,trackingReady:false,roles:['authenticated','service_role'],syntheticVisitRequestGrant:'ROLLBACK_VERIFIED',targetOldNewTracking:'PASSED',rawOrderVisitLifetime:'INCOMPLETE',businessTruncate:'ALLOWED_WITHOUT_ROW_EVIDENCE',masterTruncate:'REFUSED',globalActivation:'BLOCKED',hostedParity:'UNVERIFIED'},races:{status:'BOUNDED_TARGET_RACES_PASSED',backendPids:pids,cases:['reversed_raw_target_statements','evidence_relation_contention'],statusRecovery:validateTargetStatusRecovery(report.races.statusRecovery,pids),lifetimeAdmission:validateLifetimeAdmission(report.races.lifetimeAdmission),createEdit:validateCatalogueCreateEditRaces(report.races.createEdit,pids,report.races.statusRecovery.replayBackendPid)},cleanup:'COMMITTED_SYNTHETIC_CHILD_DISPOSED',files,implementationAccepted:false,hostedVerified:false,trackingReady:false,broaderLockGraph:'UNPROVEN'};
+ const expected={format:'catalogue-customer-target-runtime-v1',status:'BOUNDED_TARGET_RUNTIME_PASSED',identity,lifecycle:{backendPid:lifecycle.backendPid,transactionId:lifecycle.transactionId},rawCompatibility:{scope:'LEGACY_RAW_COMPATIBILITY_ONLY',executionGeneration:1,trackingReady:false,roles:['authenticated','service_role'],syntheticVisitRequestGrant:'ROLLBACK_VERIFIED',targetOldNewTracking:'PASSED',rawOrderVisitLifetime:'INCOMPLETE',businessTruncate:'ALLOWED_WITHOUT_ROW_EVIDENCE',masterTruncate:'REFUSED',globalActivation:'BLOCKED',hostedParity:'UNVERIFIED'},checkedCompletionProof:validateCatalogueCheckedCompletion(report.checkedCompletionProof),races:{status:'BOUNDED_TARGET_RACES_PASSED',backendPids:pids,cases:['reversed_raw_target_statements','evidence_relation_contention'],statusRecovery:validateTargetStatusRecovery(report.races.statusRecovery,pids),lifetimeAdmission:validateLifetimeAdmission(report.races.lifetimeAdmission),createEdit:validateCatalogueCreateEditRaces(report.races.createEdit,pids,report.races.statusRecovery.replayBackendPid),checkedCompletion:validateCatalogueCompletionRaces(report.races.checkedCompletion,pids,report.races.statusRecovery.replayBackendPid),nativeProductDelete:validateNativeProductDeleteRaces(report.races.nativeProductDelete,pids,report.races.statusRecovery.replayBackendPid)},cleanup:'COMMITTED_SYNTHETIC_CHILD_DISPOSED',files,implementationAccepted:false,hostedVerified:false,trackingReady:false,broaderLockGraph:'UNPROVEN'};
  assert.deepEqual(report,expected);assert.equal(bytes,JSON.stringify(expected)+'\n');return expected;
 }
 function exactFile(path,expected){
@@ -128,7 +216,7 @@ function exactFile(path,expected){
 // These finite validators must stay local. Importing the runtime here would
 // evaluate it before the source-binding and reviewed-byte prelaunch checks.
 const targetFailurePhases=Object.freeze(['initialization','binding','source-preflight','identity-preflight','lifecycle','lifecycle-parse','source-post-lifecycle','identity-post-lifecycle','race-setup','race-setup-parse','source-pre-races','identity-pre-races','races','source-post-races','identity-post-races','disposal','source-post-disposal']);
-const lifecycleFailurePhases=Object.freeze(["FOUNDATION","TARGET_SETUP","TARGET_INSTALL","TARGET_AUTHORITY","TARGET_EVENTS","TARGET_CASCADE_DROP","TARGET_CASCADE_ADD","TARGET_CASCADE_EVENTS","TARGET_AUTHENTICATED","TARGET_MISSING_IDENTITY","TARGET_ASSERTION_ONLY","TARGET_SESSION_GATE","VARIANTS_AND_ROLES","RAW_COMPATIBILITY","ROLLBACK","COMPLETE"]);
+const lifecycleFailurePhases=Object.freeze(["FOUNDATION","TARGET_SETUP","TARGET_INSTALL","TARGET_AUTHORITY","TARGET_EVENTS","TARGET_CASCADE_DROP","TARGET_CASCADE_ADD","TARGET_CASCADE_EVENTS","TARGET_AUTHENTICATED","TARGET_MISSING_IDENTITY","TARGET_ASSERTION_ONLY","TARGET_SESSION_GATE","VARIANTS_AND_ROLES","RAW_COMPATIBILITY","CHECKED_BOUNDARIES","GUARDED_DELETE","GUARDED_DELETE_HISTORY","ROLLBACK","COMPLETE"]);
 const targetProcessKinds=Object.freeze(['NOT_APPLICABLE','UNKNOWN','EXIT_0','EXIT_1','EXIT_2','SCRIPT_ERROR','OTHER_NONZERO','SIGNAL','TIMEOUT','BUFFER_LIMIT','SPAWN_FAILURE','SESSION_SQLSTATE']);
 const targetSyncFailurePhases=Object.freeze(['identity-preflight','lifecycle','identity-post-lifecycle','race-setup','identity-pre-races','identity-post-races','disposal']);
 function targetProcessExit(error){

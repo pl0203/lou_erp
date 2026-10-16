@@ -6,15 +6,17 @@ import {resolve,dirname} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {catalogueFailfastBinding} from './catalogue-failfast-probe.mjs';
 import {catalogueCaptureSourceBytes} from './catalogue-capture-source.mjs';
-import {foundationTopLevelSql} from './catalogue-foundation.mjs';
+import {foundationTopLevelSql,catalogueCompletionSuiteSql,catalogueCompletionAbsentPredicate,catalogueCompletionCutoverSnapshotSql,catalogueCompletionRestoredPredicate,catalogueCheckedCompletionProof} from './catalogue-foundation.mjs';
 import {catalogueCiConnection,catalogueCiIdentityGateSql,catalogueObservationSql,verifyCatalogueCiObservation} from './catalogue-ci-profile.mjs';
 import {PsqlSession} from '../tests/database/catalogue-failfast/session.mjs';
 import {executeLifetimeAdmissionRaces} from '../tests/database/catalogue/lifetime-admission-races.mjs';
 import {executeCatalogueCreateEditRaces} from '../tests/database/catalogue/create-edit-races.mjs';
+import {executeCatalogueCompletionRaces} from '../tests/database/catalogue/completion-races.mjs';
+import {executeNativeProductDeleteRaces} from '../tests/database/catalogue/native-product-delete-races.mjs';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const sha=x=>createHash('sha256').update(x).digest('hex');
 const quote=x=>`'${x.replaceAll("'","''")}'`;
-export const targetRuntimePaths=Object.freeze({before:'tests/database/catalogue/before-foundation.sql',foundation:'supabase/catalogue/v1/01-foundation.sql',legacy:'tests/database/catalogue/legacy-columns.sql',roles:'tests/database/catalogue/roles.sql',target:'supabase/catalogue/v1/02-customer-target-tracking.sql',lifecycle:'tests/database/catalogue/customer-target-tracking.sql',authority:'tests/database/catalogue/customer-target-runtime-authority.sql',variants:'tests/database/catalogue/customer-target-runtime-variants.sql',orderCandidate:'supabase/catalogue/v1/04-order-boundaries.sql',coOrderCandidate:'supabase/catalogue/v1/new06-co-order-boundaries.sql',promotionOwnerGrammar:'supabase/catalogue/v1/02-promotion-owner-extraction.sql',visitGrammar:'supabase/catalogue/v1/new02-visit-reference-extraction.sql',lifetimeCandidate:'supabase/catalogue/v1/new07-lifetime-admission.sql',createEditCandidate:'supabase/catalogue/v1/new08-catalogue-create-edit.sql',rawCompatibility:'tests/database/catalogue/raw-caller-compatibility.sql'});
+export const targetRuntimePaths=Object.freeze({before:'tests/database/catalogue/before-foundation.sql',foundation:'supabase/catalogue/v1/01-foundation.sql',legacy:'tests/database/catalogue/legacy-columns.sql',roles:'tests/database/catalogue/roles.sql',target:'supabase/catalogue/v1/02-customer-target-tracking.sql',lifecycle:'tests/database/catalogue/customer-target-tracking.sql',authority:'tests/database/catalogue/customer-target-runtime-authority.sql',variants:'tests/database/catalogue/customer-target-runtime-variants.sql',orderCandidate:'supabase/catalogue/v1/04-order-boundaries.sql',coOrderCandidate:'supabase/catalogue/v1/new06-co-order-boundaries.sql',promotionOwnerGrammar:'supabase/catalogue/v1/02-promotion-owner-extraction.sql',poGrammar:'supabase/catalogue/v1/02-po-reference-extraction.sql',coGrammar:'supabase/catalogue/v1/02-co-reference-extraction.sql',coDraftGrammar:'supabase/catalogue/v1/02-co-draft-reference-extraction.sql',retiredCoGrammar:'supabase/catalogue/v1/02-retired-co-line-resolution.sql',visitGrammar:'supabase/catalogue/v1/new02-visit-reference-extraction.sql',noncoGrammar:'supabase/catalogue/v1/new02-nonco-lineage-resolution.sql',lifetimeCandidate:'supabase/catalogue/v1/new07-lifetime-admission.sql',createEditCandidate:'supabase/catalogue/v1/new08-catalogue-create-edit.sql',checkedBoundariesCandidate:'supabase/catalogue/v1/new09-checked-boundaries.sql',guardedDeleteCandidate:'supabase/catalogue/v1/new10-guarded-delete.sql',masterCompletionCandidate:'supabase/catalogue/v1/new11-master-completion-hooks.sql',rawCompatibility:'tests/database/catalogue/raw-caller-compatibility.sql',checkedBoundaries:'tests/database/catalogue/checked-boundaries.sql',guardedDelete:'tests/database/catalogue/guarded-delete.sql',guardedDeleteHistory:'tests/database/catalogue/guarded-delete-history.sql'});
 const targetSha='e4567a9cd023aba3c1bdb4b84925c6a6bad1e931bf5a199ba41c2bf5e34924ca';
 const suiteSha='82e49e5a6da51b084a02b8632a8e16241c8dd27a81fee6985325ecab37dfe026';
 const include='\\ir ../../../supabase/catalogue/v1/02-customer-target-tracking.sql\n';
@@ -28,7 +30,7 @@ export function expandTargetLifecycle(suite,candidate,authority='') {
  foundationTopLevelSql(checked);
  return suite.replace(include,()=>candidate+'\n'+authority+'\n');
 }
-export const targetMarkers=Object.freeze(["CATALOGUE_TARGET_FOUNDATION_PASSED","CATALOGUE_TARGET_SETUP_PASSED","CATALOGUE_TARGET_INSTALL_PASSED","CATALOGUE_TARGET_AUTHORITY_PASSED","CATALOGUE_TARGET_EVENTS_PASSED","CATALOGUE_TARGET_CASCADE_DROP_PASSED","CATALOGUE_TARGET_CASCADE_ADD_PASSED","CATALOGUE_TARGET_CASCADE_PASSED","CATALOGUE_TARGET_AUTHENTICATED_PASSED","CATALOGUE_TARGET_MISSING_IDENTITY_PASSED","CATALOGUE_TARGET_ASSERTION_ONLY_PASSED","CATALOGUE_TARGET_LIFECYCLE_PASSED","CATALOGUE_TARGET_VARIANTS_PASSED","CATALOGUE_RAW_CALLER_COMPATIBILITY_PASSED","CATALOGUE_TARGET_ROLLBACK_VERIFIED"]);
+export const targetMarkers=Object.freeze(["CATALOGUE_TARGET_FOUNDATION_PASSED","CATALOGUE_TARGET_SETUP_PASSED","CATALOGUE_TARGET_INSTALL_PASSED","CATALOGUE_TARGET_AUTHORITY_PASSED","CATALOGUE_TARGET_EVENTS_PASSED","CATALOGUE_TARGET_CASCADE_DROP_PASSED","CATALOGUE_TARGET_CASCADE_ADD_PASSED","CATALOGUE_TARGET_CASCADE_PASSED","CATALOGUE_TARGET_AUTHENTICATED_PASSED","CATALOGUE_TARGET_MISSING_IDENTITY_PASSED","CATALOGUE_TARGET_ASSERTION_ONLY_PASSED","CATALOGUE_TARGET_LIFECYCLE_PASSED","CATALOGUE_TARGET_VARIANTS_PASSED","CATALOGUE_RAW_CALLER_COMPATIBILITY_PASSED","CATALOGUE_TARGET_CHECKED_BOUNDARIES_PASSED","CATALOGUE_TARGET_GUARDED_DELETE_PASSED","CATALOGUE_TARGET_GUARDED_DELETE_HISTORY_PASSED","CATALOGUE_TARGET_ROLLBACK_VERIFIED"]);
 
 export function instrumentTargetLifecycle(suite,candidate,authority){
  // Validate all original bytes before adding only fixed diagnostic echo lines.
@@ -83,7 +85,7 @@ export function instrumentTargetLifecycle(suite,candidate,authority){
 }
 
 const targetFailurePhases=Object.freeze(['initialization','binding','source-preflight','identity-preflight','lifecycle','lifecycle-parse','source-post-lifecycle','identity-post-lifecycle','race-setup','race-setup-parse','source-pre-races','identity-pre-races','races','source-post-races','identity-post-races','disposal','source-post-disposal']);
-const lifecycleFailurePhases=Object.freeze(["FOUNDATION","TARGET_SETUP","TARGET_INSTALL","TARGET_AUTHORITY","TARGET_EVENTS","TARGET_CASCADE_DROP","TARGET_CASCADE_ADD","TARGET_CASCADE_EVENTS","TARGET_AUTHENTICATED","TARGET_MISSING_IDENTITY","TARGET_ASSERTION_ONLY","TARGET_SESSION_GATE","VARIANTS_AND_ROLES","RAW_COMPATIBILITY","ROLLBACK","COMPLETE"]);
+const lifecycleFailurePhases=Object.freeze(["FOUNDATION","TARGET_SETUP","TARGET_INSTALL","TARGET_AUTHORITY","TARGET_EVENTS","TARGET_CASCADE_DROP","TARGET_CASCADE_ADD","TARGET_CASCADE_EVENTS","TARGET_AUTHENTICATED","TARGET_MISSING_IDENTITY","TARGET_ASSERTION_ONLY","TARGET_SESSION_GATE","VARIANTS_AND_ROLES","RAW_COMPATIBILITY","CHECKED_BOUNDARIES","GUARDED_DELETE","GUARDED_DELETE_HISTORY","ROLLBACK","COMPLETE"]);
 const targetProcessKinds=Object.freeze(['NOT_APPLICABLE','UNKNOWN','EXIT_0','EXIT_1','EXIT_2','SCRIPT_ERROR','OTHER_NONZERO','SIGNAL','TIMEOUT','BUFFER_LIMIT','SPAWN_FAILURE','SESSION_SQLSTATE']);
 const targetSyncFailurePhases=Object.freeze(['identity-preflight','lifecycle','identity-post-lifecycle','race-setup','identity-pre-races','identity-post-races','disposal']);
 const targetQueryState=Symbol('validated target session SQLSTATE');
@@ -158,20 +160,27 @@ export function targetFailureDiagnostic(phase,error,parseOutput){
 }
 
 const gate=(predicate,label)=>`SELECT (${predicate}) AS target_gate\n\\gset\n\\if :target_gate\n\\else\nSELECT 1/0 AS ${label};\n\\endif\n`;
-const absent=`to_regclass('private.catalog_identity_v1') IS NULL AND to_regclass('private.catalog_cutover_v1') IS NULL AND to_regprocedure('private.catalog_customer_targets_mark_v1()') IS NULL AND to_regprocedure('private.catalog_customer_targets_assert_v1()') IS NULL AND NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='catalogue_foundation_inherited_probe') AND NOT EXISTS(SELECT 1 FROM auth.users WHERE id=md5('catalogue-foundation-actor-3')::uuid)`;
+const absent=`${catalogueCompletionAbsentPredicate} AND to_regclass('private.catalog_identity_v1') IS NULL AND to_regclass('private.catalog_cutover_v1') IS NULL AND to_regprocedure('private.catalog_customer_targets_mark_v1()') IS NULL AND to_regprocedure('private.catalog_customer_targets_assert_v1()') IS NULL AND NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='catalogue_foundation_inherited_probe') AND NOT EXISTS(SELECT 1 FROM auth.users WHERE id=md5('catalogue-foundation-actor-3')::uuid)`;
 const sessionGate=()=>gate(`current_user='postgres' AND pg_backend_pid()=:'target_pid'::integer AND txid_current()=:'target_xid'::bigint AND (SELECT count(*)=1 AND bool_and(pid=pg_backend_pid() AND xid=txid_current()) FROM pg_temp.target_runtime_session)`,'target_session_refused');
-function validateParts(parts){assert.deepEqual(Object.keys(parts).sort(),Object.keys(targetRuntimePaths).sort());for(const [name,sql]of Object.entries(parts))if(name!=='lifecycle')foundationTopLevelSql(sql);expandTargetLifecycle(parts.lifecycle,parts.target,parts.authority);}
+function validateParts(parts){assert.deepEqual(Object.keys(parts).sort(),Object.keys(targetRuntimePaths).sort());for(const [name,sql]of Object.entries(parts))if(name!=='lifecycle')catalogueCompletionSuiteSql(name,sql);expandTargetLifecycle(parts.lifecycle,parts.target,parts.authority);}
 export function buildTargetLifecycleSession(identity,parts){
  validateParts(parts);const mark=i=>`\\echo ${targetMarkers[i]} :target_pid :target_xid\n`;
+ // Preserve the historical NULL/SET NULL/raw fixture exactly, then undo it
+ // before assembling completion on the original fictional source topology.
+ const legacyCandidates=[parts.orderCandidate,parts.coOrderCandidate,parts.promotionOwnerGrammar,parts.visitGrammar,parts.lifetimeCandidate,parts.createEditCandidate].join('\n');
+ const completionCandidates=[parts.target,parts.orderCandidate,parts.coOrderCandidate,parts.promotionOwnerGrammar,parts.poGrammar,parts.coGrammar,parts.coDraftGrammar,parts.retiredCoGrammar,parts.visitGrammar,parts.noncoGrammar,parts.lifetimeCandidate,parts.createEditCandidate,parts.checkedBoundariesCandidate,parts.guardedDeleteCandidate,parts.masterCompletionCandidate].join('\n');
  return `\\set ON_ERROR_STOP on\n\\o /dev/null\n${catalogueCiIdentityGateSql(identity)}${gate(absent,'target_preexisting_refused')}BEGIN;
 SET LOCAL search_path=''; SET LOCAL standard_conforming_strings=on; SET LOCAL statement_timeout='30s'; SET LOCAL lock_timeout='3s'; SET LOCAL idle_in_transaction_session_timeout='30s';
 SELECT pg_backend_pid() AS target_pid,txid_current() AS target_xid\n\\gset
 CREATE TEMP TABLE target_runtime_session ON COMMIT DROP AS SELECT pg_backend_pid() pid,txid_current() xid;
-${parts.before}\n${parts.foundation}\n${parts.legacy}\n${sessionGate()}${mark(0)}
+${parts.before}\n${parts.foundation}\n${catalogueCompletionCutoverSnapshotSql}\n${parts.legacy}\n${sessionGate()}${mark(0)}
+SAVEPOINT target_legacy_lifecycle_fixture;
 ${instrumentTargetLifecycle(parts.lifecycle,parts.target,parts.authority)}\n${sessionGate()}${mark(11)}
 ${parts.variants}\n${parts.roles}\n${sessionGate()}${mark(12)}
-${parts.orderCandidate}\n${parts.coOrderCandidate}\n${parts.promotionOwnerGrammar}\n${parts.visitGrammar}\n${parts.lifetimeCandidate}\n${parts.createEditCandidate}\n${parts.rawCompatibility}\n${sessionGate()}${mark(13)}ROLLBACK;
-${catalogueCiIdentityGateSql(identity)}${gate(`${absent} AND pg_backend_pid()=:'target_pid'::integer AND to_regclass('pg_temp.target_runtime_session') IS NULL AND NOT has_table_privilege('service_role','public.visit_requests','SELECT,INSERT,UPDATE,DELETE,TRUNCATE')`,'target_rollback_refused')}${mark(14)}\\o\n`;
+${legacyCandidates}\n${parts.rawCompatibility}\n${sessionGate()}${mark(13)}ROLLBACK TO SAVEPOINT target_legacy_lifecycle_fixture;
+RELEASE SAVEPOINT target_legacy_lifecycle_fixture;
+${sessionGate()}${completionCandidates}\n${sessionGate()}${gate(catalogueCompletionRestoredPredicate,'catalogue_completion_restoration_refused')}${parts.checkedBoundaries}\n${sessionGate()}${gate(catalogueCompletionRestoredPredicate,'catalogue_completion_restoration_refused')}${mark(14)}${parts.guardedDelete}\n${sessionGate()}${gate(catalogueCompletionRestoredPredicate,'catalogue_completion_restoration_refused')}${mark(15)}${parts.guardedDeleteHistory}\n${sessionGate()}${gate(catalogueCompletionRestoredPredicate,'catalogue_completion_restoration_refused')}${mark(16)}ROLLBACK;
+${catalogueCiIdentityGateSql(identity)}${gate(`${absent} AND pg_backend_pid()=:'target_pid'::integer AND to_regclass('pg_temp.target_runtime_session') IS NULL AND NOT has_table_privilege('service_role','public.visit_requests','SELECT,INSERT,UPDATE,DELETE,TRUNCATE')`,'target_rollback_refused')}${mark(17)}\\o\n`;
 }
 export function parseTargetOutput(output){
  assert.equal(typeof output,'string');assert.ok(output.endsWith('\n'));const lines=output.slice(0,-1).split('\n');assert.equal(lines.length,targetMarkers.length);let pid,xid;
@@ -322,7 +331,9 @@ export async function executeTargetRaces({identity,connection,checkSource,Sessio
   const statusRecovery={status:'BOUNDED_STATUS_RECOVERY_RACES_PASSED',replayBackendPid:replayPid,cases:statusRecoveryCases};
   const lifetimeAdmission=await executeLifetimeAdmissionRaces({a,b:replay,observer,query:ok,verify});
   const createEdit=await executeCatalogueCreateEditRaces({a,b:replay,observer,query:ok,expectState:expected,verify});
-  return {status:'BOUNDED_TARGET_RACES_PASSED',backendPids:pids,cases:['reversed_raw_target_statements','evidence_relation_contention'],statusRecovery,lifetimeAdmission,createEdit};
+  const checkedCompletion=await executeCatalogueCompletionRaces({a,b:replay,observer,query:ok,expectState:expected,verify});
+  const nativeProductDelete=await executeNativeProductDeleteRaces({a,b:replay,observer,query:ok,expectState:expected,verify});
+  return {status:'BOUNDED_TARGET_RACES_PASSED',backendPids:pids,cases:['reversed_raw_target_statements','evidence_relation_contention'],statusRecovery,lifetimeAdmission,createEdit,checkedCompletion,nativeProductDelete};
  }finally{await Promise.allSettled(sessions.map(s=>s.close()));}
 }
 export function buildTargetRaceSetup(identity,parts){
@@ -334,7 +345,7 @@ SET LOCAL statement_timeout='30s'; SET LOCAL lock_timeout='3s'; SET LOCAL search
 INSERT INTO auth.users(id) VALUES(${actor}),(${uuid(statusActorB)});
 INSERT INTO public.users(id,full_name,email,role,is_active) VALUES(${actor},'Fictional race executive','target-race@example.invalid','executive'::public.user_role,true),(${uuid(statusActorB)},'Fictional status race executive','status-race@example.invalid','executive'::public.user_role,true);
 ${parts.foundation}\n${parts.target}
-${parts.orderCandidate}\n${parts.coOrderCandidate}\n${parts.promotionOwnerGrammar}\n${parts.visitGrammar}\n${parts.lifetimeCandidate}\n${parts.createEditCandidate}
+${parts.orderCandidate}\n${parts.coOrderCandidate}\n${parts.promotionOwnerGrammar}\n${parts.poGrammar}\n${parts.coGrammar}\n${parts.coDraftGrammar}\n${parts.retiredCoGrammar}\n${parts.visitGrammar}\n${parts.noncoGrammar}\n${parts.lifetimeCandidate}\n${parts.createEditCandidate}\n${parts.checkedBoundariesCandidate}\n${parts.guardedDeleteCandidate}\n${parts.masterCompletionCandidate}
 INSERT INTO public.products(id,name,sku) VALUES('10000000-0000-4000-8000-000000000091','Fictional drain product','LIFETIME-DRAIN');
 INSERT INTO public.customers(id,name) VALUES(${uuid(customerA)},'Fictional race A'),(${uuid(customerB)},'Fictional race B'),(${uuid(statusCustomerA)},'Fictional status race A'),(${uuid(statusCustomerB)},'Fictional status race B');
 COMMIT;\n`;
@@ -364,7 +375,7 @@ export async function runCatalogueCustomerTargetRuntime({repoRoot=root,env=proce
   // the child. Only the exclusive per-run CI service makes this bounded design
   // appropriate. Never use it in shared/local/hosted database infrastructure.
   phase='disposal';sync(`${catalogueCiIdentityGateSql(identity,'pilot_test')}DROP DATABASE pilot_catalogue_test;\n${gate("NOT EXISTS(SELECT 1 FROM pg_database WHERE datname='pilot_catalogue_test')",'target_disposal_refused')}`,'pilot_test');cleanup='COMMITTED_SYNTHETIC_CHILD_DISPOSED';phase='source-post-disposal';checkSource();
-  return {format:'catalogue-customer-target-runtime-v1',status:'BOUNDED_TARGET_RUNTIME_PASSED',identity,lifecycle,rawCompatibility:{scope:'LEGACY_RAW_COMPATIBILITY_ONLY',executionGeneration:1,trackingReady:false,roles:['authenticated','service_role'],syntheticVisitRequestGrant:'ROLLBACK_VERIFIED',targetOldNewTracking:'PASSED',rawOrderVisitLifetime:'INCOMPLETE',businessTruncate:'ALLOWED_WITHOUT_ROW_EVIDENCE',masterTruncate:'REFUSED',globalActivation:'BLOCKED',hostedParity:'UNVERIFIED'},races,cleanup,files:Object.entries(targetRuntimePaths).map(([k,path])=>({path,sha256:sha(bytes[k])})),implementationAccepted:false,hostedVerified:false,trackingReady:false,broaderLockGraph:'UNPROVEN'};
+  return {format:'catalogue-customer-target-runtime-v1',status:'BOUNDED_TARGET_RUNTIME_PASSED',identity,lifecycle,rawCompatibility:{scope:'LEGACY_RAW_COMPATIBILITY_ONLY',executionGeneration:1,trackingReady:false,roles:['authenticated','service_role'],syntheticVisitRequestGrant:'ROLLBACK_VERIFIED',targetOldNewTracking:'PASSED',rawOrderVisitLifetime:'INCOMPLETE',businessTruncate:'ALLOWED_WITHOUT_ROW_EVIDENCE',masterTruncate:'REFUSED',globalActivation:'BLOCKED',hostedParity:'UNVERIFIED'},checkedCompletionProof:catalogueCheckedCompletionProof,races,cleanup,files:Object.entries(targetRuntimePaths).map(([k,path])=>({path,sha256:sha(bytes[k])})),implementationAccepted:false,hostedVerified:false,trackingReady:false,broaderLockGraph:'UNPROVEN'};
  }catch(cause){
   // No blind teardown after an uncertain setup/identity result. The per-job
   // disposable CI service must be destroyed by CI; this runner claims no proof.

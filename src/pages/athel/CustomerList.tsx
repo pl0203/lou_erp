@@ -138,8 +138,12 @@ export default function CustomerList() {
     },
   })
 
+  const directDelete = catalogue.authority?.customer_delete_mode === 'direct' && access.capabilities.customer_delete
   const deleteMutation = useMutation({
-    mutationFn: () => { access.require('customer_delete'); return deleteCustomer(deleteId!) },
+    mutationFn: () => {
+      if (!directDelete || !catalogue.owner?.isCurrent()) throw new Error('Kewenangan penghapusan belum terkonfirmasi.')
+      access.require('customer_delete'); return deleteCustomer(deleteId!)
+    },
     onSettled: () => { mutationBusy.current = false },
     onSuccess: () => {
       dialogCommitted.current = true
@@ -200,7 +204,7 @@ export default function CustomerList() {
   }
 
   const handleDelete = () => {
-    if (mutationBusy.current || modalPending || !access.capabilities.customer_delete || !deleteId) return
+    if (mutationBusy.current || modalPending || !directDelete || !deleteId) return
     mutationBusy.current = true
     deleteMutation.mutate()
   }
@@ -209,13 +213,13 @@ export default function CustomerList() {
 
   const closeForm = () => { if (!mutationBusy.current && !formFrozen) { setShowForm(false); setEditingId(null); setForm(EMPTY_FORM) } }
   const openDelete = (c: Customer, trigger: HTMLElement) => {
-    if (!access.capabilities.customer_delete || mutationBusy.current || modalOpen || modalPending || catalogue.unresolved) return
+    if (!directDelete || mutationBusy.current || modalOpen || modalPending || catalogue.unresolved) return
     dialogTrigger.current = trigger; dialogCommitted.current = false; deleteMutation.reset(); setDeleteId(c.id)
   }
   const rowActions = (c: Customer) => <div className="flex flex-wrap justify-end gap-2">
     {catalogue.authority?.customer_edit && <Button variant="quiet" size="compact" disabled={!catalogue.commandsAvailable || modalOpen || modalPending || catalogue.unresolved} onClick={event => openEdit(c, event.currentTarget)}>Ubah</Button>}
-    {access.capabilities.customer_delete && <Button variant="danger-quiet" size="compact" disabled={modalOpen || modalPending || catalogue.unresolved} onClick={event => openDelete(c, event.currentTarget)}>Hapus</Button>}
-    {catalogue.owner && catalogue.sender ? <CatalogueStatusActions kind="customer" row={c} owner={catalogue.owner} sender={catalogue.sender} authority={catalogue.authority} commandsAvailable={catalogue.commandsAvailable} disabled={modalOpen || modalPending || catalogue.unresolved} /> : <StatusBadge tone={c.is_enabled ? 'success' : 'neutral'}>{c.is_enabled ? 'Aktif' : 'Nonaktif'}</StatusBadge>}
+    {directDelete && <Button variant="danger-quiet" size="compact" disabled={modalOpen || modalPending || catalogue.unresolved} onClick={event => openDelete(c, event.currentTarget)}>Hapus</Button>}
+    {catalogue.owner && catalogue.sender ? <CatalogueStatusActions kind="customer" row={c} owner={catalogue.owner} sender={catalogue.sender} authority={catalogue.authority} commandsAvailable={catalogue.commandsAvailable} guardedDeleteAvailable={catalogue.guardedDeleteAvailable} fallbackFocus={() => successFocus.current} disabled={modalOpen || modalPending || catalogue.unresolved} /> : <StatusBadge tone={c.is_enabled ? 'success' : 'neutral'}>{c.is_enabled ? 'Aktif' : 'Nonaktif'}</StatusBadge>}
   </div>
   return <div className="min-h-screen bg-brand-canvas">
     <AthelNav />
@@ -281,7 +285,7 @@ export default function CustomerList() {
         <h2 id="catalog-customer-delete-title" className="ui-dialog__title">Hapus pelanggan ini?</h2>
         <p className="ui-dialog__description">Apakah Anda yakin ingin menghapus <strong>{deleteTarget?.name}</strong>? Tindakan ini tidak dapat dibatalkan.</p>
         {deleteMutation.isError && <Notice tone="error" title={(deleteMutation.error as Error).message} className="mt-4" />}
-        <FormActions className="mt-5"><Button variant="quiet" disabled={modalPending} onClick={() => { if (!mutationBusy.current && !modalPending) setDeleteId(null) }}>Batal</Button><Button variant="danger" pending={deleteMutation.isPending} disabled={!access.capabilities.customer_delete || modalPending} onClick={handleDelete}>{deleteMutation.isPending ? 'Menghapus...' : 'Hapus'}</Button></FormActions>
+        <FormActions className="mt-5"><Button variant="quiet" disabled={modalPending} onClick={() => { if (!mutationBusy.current && !modalPending) setDeleteId(null) }}>Batal</Button><Button variant="danger" pending={deleteMutation.isPending} disabled={!directDelete || modalPending} onClick={handleDelete}>{deleteMutation.isPending ? 'Menghapus...' : 'Hapus'}</Button></FormActions>
       </Dialog>}
     </MainContent>
   </div>
