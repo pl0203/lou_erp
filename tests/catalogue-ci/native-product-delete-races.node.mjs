@@ -51,6 +51,21 @@ test('native relation refusal matches the exact schema-qualified PostgreSQL LOCK
  const candidate=readFileSync(new URL('../../supabase/catalogue/v1/new09-checked-boundaries.sql',import.meta.url),'utf8');
  assert.match(candidate,/LOCK TABLE public\.products IN EXCLUSIVE MODE NOWAIT;/);
 });
+test('native promotion seed satisfies the checked PO demand without changing optimistic versions',()=>{
+ const source=readFileSync(sourceUrl,'utf8');
+ const demand=source.match(/const poCommand=[^\n]+quantity:(\d+)/);
+ const seed=source.match(/stock_managed,remaining_quantity,stock_version,is_active,image_path\) VALUES\s*\n\s*\$\{promotions\.map[^\n]+,true,(\d+),(\d+),true,/);
+ assert.ok(demand);assert.ok(seed);
+ assert.equal(Number(seed[1]),Number(demand[1]),'each active promotion must cover the rollback-only PO quantity, not trigger a stock warning');
+ assert.equal(Number(seed[1]),1);assert.equal(Number(seed[2]),1);
+ assert.match(source,/for\(const promotion of baseline\.promotions\)\{assert\.equal\(promotion\.remaining_quantity,1\);assert\.equal\(promotion\.stock_version,1\);\}/);
+ assert.match(source,/expected_stock_version:1/);
+ assert.match(source,/for\(const family of \['po','promotion'\]\)/);
+ assert.doesNotMatch(source,/promo_stock_ack/,'do not manufacture an acknowledgment to bypass the stock warning');
+ const producer=readFileSync(new URL('../../supabase/migrations/202610081101_demo_order_promotions.sql',import.meta.url),'utf8');
+ assert.match(producer,/IF promotion\.id IS NOT NULL AND demand>promotion\.remaining_quantity THEN/);
+ assert.match(producer,/ELSIF NOT \(payload \? 'promo_stock_ack'\) AND jsonb_array_length\(shortages\)>0 THEN\s*RAISE EXCEPTION 'Promo stock requires confirmation' USING ERRCODE='PT409'/);
+});
 test('native execution rejects missing verifier or aliased sessions before SQL',async()=>{
  const {executeNativeProductDeleteRaces:run}=await load();
  await assert.rejects(run({a:{},b:{},observer:{}}));

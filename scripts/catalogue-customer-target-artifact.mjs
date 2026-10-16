@@ -157,11 +157,11 @@ export const targetRuntimeReviewedFiles=Object.freeze([
  },
  {
   "path": "tests/database/catalogue/native-product-delete-races.mjs",
-  "sha256": "7dbb92bce6789a6e206f47dba5d650c585122dc7f2b59c5692d28c2c9b358c37"
+  "sha256": "6d6a40e67e8e770524d03f3902fcd2a93b6850752b23ee43bfdfecc491696068"
  },
  {
   "path": "tests/catalogue-ci/native-product-delete-races.node.mjs",
-  "sha256": "4e4366de889755f5950a7d4692687bdd5fe50b2be6e78bf6ed2de1adaa29a84a"
+  "sha256": "8afd9181d7e71aa213674b1948950c498864132011ed32dba466709ec628f0b8"
  }
 ].map(Object.freeze));
 const reportPaths=Object.freeze(["tests/database/catalogue/before-foundation.sql", "supabase/catalogue/v1/01-foundation.sql", "tests/database/catalogue/legacy-columns.sql", "tests/database/catalogue/roles.sql", "supabase/catalogue/v1/02-customer-target-tracking.sql", "tests/database/catalogue/customer-target-tracking.sql", "tests/database/catalogue/customer-target-runtime-authority.sql", "tests/database/catalogue/customer-target-runtime-variants.sql", "supabase/catalogue/v1/04-order-boundaries.sql", "supabase/catalogue/v1/new06-co-order-boundaries.sql", "supabase/catalogue/v1/02-promotion-owner-extraction.sql", "supabase/catalogue/v1/02-po-reference-extraction.sql", "supabase/catalogue/v1/02-co-reference-extraction.sql", "supabase/catalogue/v1/02-co-draft-reference-extraction.sql", "supabase/catalogue/v1/02-retired-co-line-resolution.sql", "supabase/catalogue/v1/new02-visit-reference-extraction.sql", "supabase/catalogue/v1/new02-nonco-lineage-resolution.sql", "supabase/catalogue/v1/new07-lifetime-admission.sql", "supabase/catalogue/v1/new08-catalogue-create-edit.sql", "supabase/catalogue/v1/new09-checked-boundaries.sql", "supabase/catalogue/v1/new10-guarded-delete.sql", "supabase/catalogue/v1/new11-master-completion-hooks.sql", "tests/database/catalogue/raw-caller-compatibility.sql", "tests/database/catalogue/checked-boundaries.sql", "tests/database/catalogue/guarded-delete.sql", "tests/database/catalogue/guarded-delete-history.sql"]);

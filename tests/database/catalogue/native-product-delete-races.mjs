@@ -132,12 +132,13 @@ export async function executeNativeProductDeleteRaces({a,b,observer,query,expect
    INSERT INTO public.customers(id,name) VALUES(${uuid(customer)},'Fictional native race customer');
    INSERT INTO public.products(id,name,sku) VALUES ${[...products,plain].map(product=>`(${uuid(product)},'Fictional native race product',${quote(`NATIVE-RACE-${product}`)})`).join(',')};
    INSERT INTO public.promotions(id,product_id,start_date,end_date,created_by,stock_managed,remaining_quantity,stock_version,is_active,image_path) VALUES
-    ${promotions.map((promotion,index)=>`(${uuid(promotion)},${uuid(products[index])},current_date,current_date,${uuid(executive)},true,0,1,true,${quote(`promotions/${executive}/${promotion}/${id(301+index)}.png`)})`).join(',')};
+    ${promotions.map((promotion,index)=>`(${uuid(promotion)},${uuid(products[index])},current_date,current_date,${uuid(executive)},true,1,1,true,${quote(`promotions/${executive}/${promotion}/${id(301+index)}.png`)})`).join(',')};
    ALTER TABLE private.catalog_cutover_v1 DROP CONSTRAINT catalog_foundation_generation_one,DROP CONSTRAINT catalog_foundation_not_ready;
    UPDATE private.catalog_cutover_v1 SET execution_generation=2,tracking_ready=true WHERE singleton;
    COMMIT;`);activated=true;
   const baseline=await snapshot();
   assert.equal(baseline.products.length,3);assert.equal(baseline.promotions.length,2);assert.equal(baseline.identities.length,4);
+  for(const promotion of baseline.promotions){assert.equal(promotion.remaining_quantity,1);assert.equal(promotion.stock_version,1);}
   for(const identity of baseline.identities){assert.equal(identity.lifetime_state,'unknown');assert.equal(identity.deleted_at,null);}
   // Actual original NO ACTION, both authorized native roles. These are real
   // aborted transactions, not exceptions swallowed inside a savepoint.
