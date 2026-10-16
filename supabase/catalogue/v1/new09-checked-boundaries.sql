@@ -588,11 +588,11 @@ BEGIN
  IF TG_RELID='public.promotions'::regclass AND TG_OP='DELETE' AND private.catalog_business_family_v2()='product_delete' THEN
   -- Register actual BEFORE lineage only, never lifetime use. A skipped AFTER
   -- leaves this exact ID pending and the deferred empty-scope check refuses it.
-  UPDATE private.catalog_product_delete_rows_v2 r SET pending_promotions=array_append(r.pending_promotions,(old_row->>'id')::uuid)
+  UPDATE private.catalog_product_delete_rows_v2 r SET pending_promotions=array_append(r.pending_promotions,OLD.id)
   FROM private.catalog_product_delete_scope_v2 s
   WHERE r.backend_pid=s.backend_pid AND r.transaction_id=s.transaction_id AND r.scope_id=s.scope_id
    AND r.backend_pid=pg_backend_pid() AND r.transaction_id=txid_current() AND NOT s.root_flushed
-   AND r.product_id=(old_row->>'product_id')::uuid AND NOT (old_row->>'id')::uuid=ANY(r.pending_promotions);
+   AND r.product_id=OLD.product_id AND NOT OLD.id=ANY(r.pending_promotions);
   IF NOT FOUND THEN RAISE EXCEPTION 'Unbound native promotion registration' USING ERRCODE='23514',DETAIL='CATALOG_TRACKING_INCOMPLETE'; END IF;
  END IF;
  IF TG_OP='DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
@@ -978,7 +978,7 @@ BEGIN
  FOR entry IN SELECT * FROM (VALUES
  ('private.catalog_attest_execution_fence_v2()','ab19328e4a1d81f0142ce40b3ab6f5efd62d8897c34b9c73b8ac6b97227dd3c2'),
  ('private.catalog_business_truncate_fence_v2()','1640d75ee6dd81da28bda93020d1d07486248871d2c2f81a02d6c3a1552394fe'),
- ('private.catalog_business_write_fence_v2()','c2fa22d90828f8388ee9517623bb9ae89debf2dc2298cc4e3627e33fa4eb4c8a'),
+ ('private.catalog_business_write_fence_v2()','de8a79dd47ae82e087959c431017abfd3e67d38355f73c69c339998bea08706d'),
  ('private.catalog_checked_context_v2()','34cb8467390bc71cc1ed8d3089dc4bc9dfc22feb00809b27f9ac2990614712b6'),
  ('private.catalog_checked_early_event_v2()','8a288a8a89db699391622293cd1da1a1f9bb1ea01b12556cd7054e46d9f40496'),
  ('private.catalog_co_assert_event_v2()','a2d61bee8cec2fd1f2802ee392f69dbfcdf85dfb8b8ce9d2852da4e45ab3481c'),

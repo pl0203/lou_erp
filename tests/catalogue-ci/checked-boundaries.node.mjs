@@ -222,8 +222,8 @@ test('native cascade retains exact pending child acknowledgements across root AF
  const fence=body('private.catalog_business_write_fence_v2');
  const registration=fence.slice(fence.indexOf("IF TG_RELID='public.promotions'::regclass"));
  assert.ok(registration.length<fence.length,'registration follows exact row authorization');
- assert.match(registration,/SET pending_promotions=array_append\(r\.pending_promotions,\(old_row->>'id'\)::uuid\)/);
- for(const predicate of ['r.scope_id=s.scope_id','NOT s.root_flushed',"r.product_id=(old_row->>'product_id')::uuid","NOT (old_row->>'id')::uuid=ANY(r.pending_promotions)"]){assert.ok(registration.includes(predicate),predicate);}
+ assert.match(registration,/SET pending_promotions=array_append\(r\.pending_promotions,OLD\.id\)/);
+ for(const predicate of ['r.scope_id=s.scope_id','NOT s.root_flushed','r.product_id=OLD.product_id','NOT OLD.id=ANY(r.pending_promotions)']){assert.ok(registration.includes(predicate),predicate);}
  assert.match(registration,/IF NOT FOUND THEN[\s\S]*?ERRCODE='23514'/);
  assert.doesNotMatch(registration,/catalog_identity_v1|lifetime_state/);
  const end=body('private.catalog_product_delete_end_v2');
@@ -259,4 +259,33 @@ test('actual native cascade fixture seeds two children and proves their joint ac
  const after=fixture.slice(fixture.indexOf("diagnostic_stage:='2';"),fixture.indexOf("diagnostic_stage:='3';"));
  assert.match(after,/id IN\(md5\('checked-boundary-promo-cascade'\)::uuid,md5\('checked-boundary-promo-cascade-second'\)::uuid\)/);
  for(const token of ["lifetime_state='used' AND deleted_at IS NOT NULL",'NOT EXISTS(SELECT 1 FROM private.catalog_product_delete_scope_v2)','NOT EXISTS(SELECT 1 FROM private.catalog_product_delete_rows_v2)'])assert.ok(after.includes(token),token);
+});
+test('new native acknowledgement joined queries have no bare local and column collisions',()=>{
+ const tables=new Map([...sql.matchAll(/CREATE TABLE (private\.[a-z_0-9]+)\s*\(([\s\S]*?)\);/g)].map(([,name,definition])=>[
+  name,new Set([...definition.matchAll(/(?:^|,)\s*([a-z_0-9]+)\s+(?:uuid|integer|bigint|boolean|jsonb)\b/g)].map(match=>match[1])),
+ ]));
+ const collisions=[];let joined=0;
+ // These are the three changed SQL-writing bodies of the retained-context
+ // protocol. Enumerate every joined UPDATE, deriving locals and table columns
+ // from declarations instead of assuming a particular renamed identifier.
+ for(const name of ['private.catalog_business_write_fence_v2','private.catalog_product_delete_end_v2','private.catalog_product_delete_promotion_v2']){
+  const b=body(name),declarations=b.match(/DECLARE([\s\S]*?)\bBEGIN\b/)[1];
+  const locals=declarations.split(';').map(part=>part.trim().match(/^([a-z_0-9]+)\s+/)?.[1]).filter(Boolean);
+  for(const statement of b.split(';')){
+   const update=statement.match(/\bUPDATE\s+(private\.[a-z_0-9]+)[\s\S]*\bFROM\s+(private\.[a-z_0-9]+)[\s\S]*/)?.[0];
+   if(!update)continue;
+   joined++;
+   const exposed=[...update.matchAll(/\b(?:UPDATE|FROM|JOIN)\s+(private\.[a-z_0-9]+)/g)].map(match=>match[1]);
+   assert.ok(exposed.length>=2);
+   for(const table of exposed)assert.ok(tables.has(table),'source declares '+table);
+   const columns=new Set(exposed.flatMap(table=>[...tables.get(table)]));
+   const code=update.replace(/--[^\n]*/g,'').replace(/'(?:''|[^'])*'/g,"''");
+   for(const local of locals)if(columns.has(local)&&new RegExp('(?<![a-z_0-9.])'+local+'(?![a-z_0-9.])').test(code))collisions.push(name+': '+local);
+  }
+ }
+ assert.equal(joined,1,'finite newly introduced joined UPDATE is independently enumerated');
+ assert.deepEqual(collisions,[],'query-exposed columns cannot ambiguously shadow PL/pgSQL locals');
+ const fence=body('private.catalog_business_write_fence_v2');
+ assert.match(fence,/IF TG_RELID='public\.promotions'::regclass AND TG_OP='DELETE'[\s\S]*SET pending_promotions=array_append\(r\.pending_promotions,OLD\.id\)/);
+ assert.match(fence,/r\.product_id=OLD\.product_id AND NOT OLD\.id=ANY\(r\.pending_promotions\)/);
 });
