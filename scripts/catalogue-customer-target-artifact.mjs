@@ -129,11 +129,11 @@ export const targetRuntimeReviewedFiles=Object.freeze([
  },
  {
   "path": "tests/database/catalogue/completion-races.mjs",
-  "sha256": "3b4b117182914dca1915837b55692f4e214249288d275a994ba672eec1d47c8d"
+  "sha256": "876361b3f16a830f9d3f907865bbe56726cf0b3f5ac0819a0ae6380b79c856cd"
  },
  {
   "path": "tests/catalogue-ci/completion-races.node.mjs",
-  "sha256": "a7a939b5a375bab74d26d0cd9a11fb5180a716cf03c2bfde420e286cd5ec5bb3"
+  "sha256": "c501ea0c0016aaa27eb74bb396c3defb3464b1086d059d4ced0b2af4e5e332b8"
  },
  {
   "path": "tests/catalogue-ci/checked-boundaries.node.mjs",
@@ -157,11 +157,11 @@ export const targetRuntimeReviewedFiles=Object.freeze([
  },
  {
   "path": "tests/database/catalogue/native-product-delete-races.mjs",
-  "sha256": "93dc7786ffb6f3e2227d79662f45c0a076c774f33de09057c10f689469af9416"
+  "sha256": "7dbb92bce6789a6e206f47dba5d650c585122dc7f2b59c5692d28c2c9b358c37"
  },
  {
   "path": "tests/catalogue-ci/native-product-delete-races.node.mjs",
-  "sha256": "4e8876d30cf43b642b42f1da2dec244a10a03878829e82f416e52f5ef7bd3612"
+  "sha256": "4e4366de889755f5950a7d4692687bdd5fe50b2be6e78bf6ed2de1adaa29a84a"
  }
 ].map(Object.freeze));
 const reportPaths=Object.freeze(["tests/database/catalogue/before-foundation.sql", "supabase/catalogue/v1/01-foundation.sql", "tests/database/catalogue/legacy-columns.sql", "tests/database/catalogue/roles.sql", "supabase/catalogue/v1/02-customer-target-tracking.sql", "tests/database/catalogue/customer-target-tracking.sql", "tests/database/catalogue/customer-target-runtime-authority.sql", "tests/database/catalogue/customer-target-runtime-variants.sql", "supabase/catalogue/v1/04-order-boundaries.sql", "supabase/catalogue/v1/new06-co-order-boundaries.sql", "supabase/catalogue/v1/02-promotion-owner-extraction.sql", "supabase/catalogue/v1/02-po-reference-extraction.sql", "supabase/catalogue/v1/02-co-reference-extraction.sql", "supabase/catalogue/v1/02-co-draft-reference-extraction.sql", "supabase/catalogue/v1/02-retired-co-line-resolution.sql", "supabase/catalogue/v1/new02-visit-reference-extraction.sql", "supabase/catalogue/v1/new02-nonco-lineage-resolution.sql", "supabase/catalogue/v1/new07-lifetime-admission.sql", "supabase/catalogue/v1/new08-catalogue-create-edit.sql", "supabase/catalogue/v1/new09-checked-boundaries.sql", "supabase/catalogue/v1/new10-guarded-delete.sql", "supabase/catalogue/v1/new11-master-completion-hooks.sql", "tests/database/catalogue/raw-caller-compatibility.sql", "tests/database/catalogue/checked-boundaries.sql", "tests/database/catalogue/guarded-delete.sql", "tests/database/catalogue/guarded-delete-history.sql"]);

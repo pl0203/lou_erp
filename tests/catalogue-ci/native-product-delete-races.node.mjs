@@ -39,6 +39,18 @@ test('native refusal proofs discriminate NOWAIT and original FK from timeouts',a
  assert.match(refusal('DELETE FROM public.products WHERE false;','identity-row'),/could not obtain lock on row in relation "catalog_identity_v1"/);
  assert.throws(()=>refusal('DELETE FROM public.products;','timeout'));
 });
+test('native relation refusal matches the exact schema-qualified PostgreSQL LOCK target',async()=>{
+ // PG17 namespace.c RangeVarGetRelidExtended preserves the LOCK schema;
+ // this is not the unqualified heap tuple-lock error path.
+ const {nativeProductDeleteRefusalSql:refusal}=await load();
+ const relation=refusal('DELETE FROM public.products WHERE false;','product-relation');
+ assert.ok(relation.includes(`IF message IS DISTINCT FROM 'could not obtain lock on relation "public.products"' THEN`));
+ assert.match(relation,/EXCEPTION WHEN SQLSTATE '55P03'/);
+ assert.doesNotMatch(relation,/lock timeout|could not obtain lock on relation "products"/);
+ assert.ok(refusal('DELETE FROM public.products WHERE false;','identity-row').includes(`IF message IS DISTINCT FROM 'could not obtain lock on row in relation "catalog_identity_v1"' THEN`));
+ const candidate=readFileSync(new URL('../../supabase/catalogue/v1/new09-checked-boundaries.sql',import.meta.url),'utf8');
+ assert.match(candidate,/LOCK TABLE public\.products IN EXCLUSIVE MODE NOWAIT;/);
+});
 test('native execution rejects missing verifier or aliased sessions before SQL',async()=>{
  const {executeNativeProductDeleteRaces:run}=await load();
  await assert.rejects(run({a:{},b:{},observer:{}}));

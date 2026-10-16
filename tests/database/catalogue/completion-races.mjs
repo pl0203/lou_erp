@@ -26,7 +26,7 @@ export function completionRowWaitSql(waiter,blocker){
 }
 export function completionRefusalSql(sql,reason){
  assert.equal(typeof sql,'string');
- const expected={'customer-row':'could not obtain lock on row in relation "customers"','product-relation':'could not obtain lock on relation "products"','cutover-row':'could not obtain lock on row in relation "catalog_cutover_v1"'};
+ const expected={'customer-row':'could not obtain lock on row in relation "customers"','product-relation':'could not obtain lock on relation "public.products"','cutover-row':'could not obtain lock on row in relation "catalog_cutover_v1"'};
  assert.ok(reason==='request'||Object.hasOwn(expected,reason));
  const predicate=reason==='request'?"detail IS DISTINCT FROM 'CATALOG_REQUEST_BUSY'":`message IS DISTINCT FROM ${quote(expected[reason])}`;
  return `DO $completion_busy$ DECLARE detail text; message text; BEGIN BEGIN ${sql.replace(/^SELECT /,'PERFORM ')}

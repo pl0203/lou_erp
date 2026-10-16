@@ -31,7 +31,7 @@ export function nativeProductDeleteChildBarrierSql(waiter,blocker){
 }
 export function nativeProductDeleteRefusalSql(sql,reason){
  assert.equal(typeof sql,'string');
- const messages={'product-relation':'could not obtain lock on relation "products"','identity-row':'could not obtain lock on row in relation "catalog_identity_v1"'};
+ const messages={'product-relation':'could not obtain lock on relation "public.products"','identity-row':'could not obtain lock on row in relation "catalog_identity_v1"'};
  assert.ok(reason==='no-action'||Object.hasOwn(messages,reason));
  const state=reason==='no-action'?'23503':'55P03';
  const mismatch=reason==='no-action'?"constraint_name IS DISTINCT FROM 'promotions_product_id_fkey'":`message IS DISTINCT FROM ${quote(messages[reason])}`;

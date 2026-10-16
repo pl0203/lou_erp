@@ -12,6 +12,19 @@ test('busy proofs distinguish NOWAIT/request refusal from lock timeout',()=>{
  }
  assert.throws(()=>completionRefusalSql('SELECT 1;','timeout'));
 });
+test('completion relation refusal matches the exact schema-qualified PostgreSQL LOCK target',()=>{
+ // PG17 namespace.c RangeVarGetRelidExtended includes the explicit schema;
+ // heap tuple NOWAIT messages still use only the relation name.
+ const relation=completionRefusalSql('SELECT 1;','product-relation');
+ assert.ok(relation.includes(`IF message IS DISTINCT FROM 'could not obtain lock on relation "public.products"' THEN`));
+ assert.match(relation,/EXCEPTION WHEN SQLSTATE '55P03'/);
+ assert.doesNotMatch(relation,/lock timeout|could not obtain lock on relation "products"/);
+ assert.ok(completionRefusalSql('SELECT 1;','customer-row').includes(`IF message IS DISTINCT FROM 'could not obtain lock on row in relation "customers"' THEN`));
+ assert.ok(completionRefusalSql('SELECT 1;','cutover-row').includes(`IF message IS DISTINCT FROM 'could not obtain lock on row in relation "catalog_cutover_v1"' THEN`));
+ assert.ok(completionRefusalSql('SELECT 1;','request').includes("IF detail IS DISTINCT FROM 'CATALOG_REQUEST_BUSY' THEN"));
+ const candidate=readFileSync(new URL('../../supabase/catalogue/v1/new10-guarded-delete.sql',import.meta.url),'utf8');
+ assert.match(candidate,/LOCK TABLE public\.products IN EXCLUSIVE MODE NOWAIT;/);
+});
 test('completion barriers bind exact sessions and transaction request identity',()=>{
  const id='30000000-0000-4000-8000-000000000701';
  const sql=completionRequestBarrierSql(123,124,id);
