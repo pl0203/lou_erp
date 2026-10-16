@@ -1,6 +1,7 @@
 // Source-contract tests. PostgreSQL behavior is verified only by the fictional CI harness.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {readFileSync, existsSync} from 'node:fs';
 const path=new URL('../../supabase/catalogue/v1/new09-checked-boundaries.sql',import.meta.url);
 const sql=existsSync(path)?readFileSync(path,'utf8'):'';
@@ -85,4 +86,24 @@ test('actual service-role refusal probe never calls an ungranted temporary helpe
  const fixture=readFileSync(new URL('../../tests/database/catalogue/checked-boundaries.sql',import.meta.url),'utf8');
  const service=fixture.split('SET LOCAL ROLE service_role;')[1].split('RESET ROLE;')[0];
  assert.doesNotMatch(service,/pg_temp\./);assert.match(service,/INSERT INTO public\.customer_targets/);assert.match(service,/EXCEPTION WHEN insufficient_privilege/);assert.match(service,/PG_EXCEPTION_DETAIL/);
+});
+test('function-qualified local variables bind explicit declaration blocks',()=>{
+ const qualifiedLocals=[],unbound=[];
+ for(const [,qualified,name,args] of sql.matchAll(/CREATE FUNCTION ((?:public|private)\.([a-z_0-9]+))\(([^)]*)\)/g)){
+  const b=body(qualified),parameters=new Set(args.split(',').map(arg=>arg.trim().split(/\s+/)[0]));
+  const locals=[...b.matchAll(new RegExp('\\b'+name+'\\.([a-z_0-9]+)','g'))].map(match=>match[1]).filter(variable=>!parameters.has(variable));
+  if(!locals.length)continue;
+  qualifiedLocals.push([qualified,locals]);
+  // The implicit function-name block declares parameters and special variables,
+  // not DECLARE locals. These references need the explicit inner block label.
+  if(!new RegExp('^\\s*<<'+name+'>>\\s*DECLARE\\b').test(b))unbound.push(qualified);
+ }
+ assert.deepEqual(unbound,[],'every function-qualified local has an explicit declaration-block label');
+ assert.deepEqual(qualifiedLocals,[
+  ['public.pilot_customer_target_upsert_v1',['receipt']],
+  ['private.catalog_checked_prepare_v2',['customers','products']],
+  ['private.catalog_checked_early_event_v2',['customers','products']],
+ ]);
+ const eventHash=createHash('sha256').update(body('private.catalog_checked_early_event_v2')).digest('hex');
+ assert.ok(sql.includes("('private.catalog_checked_early_event_v2()','"+eventHash+"')"),'changed trigger body remains exactly pinned');
 });

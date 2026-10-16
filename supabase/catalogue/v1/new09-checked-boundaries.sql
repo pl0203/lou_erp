@@ -103,6 +103,7 @@ BEGIN
 END $$;
 CREATE FUNCTION public.pilot_customer_target_upsert_v1(p_request_id uuid,p_customer_id uuid,p_year_month text,p_target_value numeric) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
+<<pilot_customer_target_upsert_v1>>
 DECLARE actor uuid; fingerprint jsonb; prior private.catalog_target_requests_v1%ROWTYPE;
  existing public.customer_targets%ROWTYPE; saved public.customer_targets%ROWTYPE; target uuid; receipt jsonb; customer_version bigint;
 BEGIN
@@ -336,6 +337,7 @@ DO $scope_triggers$ DECLARE relation text; BEGIN
 END $scope_triggers$;
 CREATE FUNCTION private.catalog_checked_prepare_v2(p_customers uuid[],p_products uuid[]) RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
+<<catalog_checked_prepare_v2>>
 DECLARE scope private.catalog_checked_scope_v2%ROWTYPE; customers uuid[]; products uuid[];
 BEGIN
  SELECT coalesce(array_agg(DISTINCT x ORDER BY x),'{}') INTO customers FROM unnest(p_customers) x WHERE x IS NOT NULL;
@@ -376,6 +378,7 @@ BEGIN
 END $$;
 CREATE FUNCTION private.catalog_checked_early_event_v2() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
+<<catalog_checked_early_event_v2>>
 DECLARE scope private.catalog_checked_scope_v2%ROWTYPE; refs jsonb; customers uuid[]; products uuid[];
 BEGIN
  SELECT * INTO scope FROM private.catalog_checked_scope_v2 WHERE backend_pid=pg_backend_pid() AND transaction_id=txid_current();
@@ -938,7 +941,7 @@ BEGIN
  ('private.catalog_business_truncate_fence_v2()','1640d75ee6dd81da28bda93020d1d07486248871d2c2f81a02d6c3a1552394fe'),
  ('private.catalog_business_write_fence_v2()','98ccc8ed66d1c6b974ec74784b616f564c7a6564b77f5c396967c07323decc73'),
  ('private.catalog_checked_context_v2()','34cb8467390bc71cc1ed8d3089dc4bc9dfc22feb00809b27f9ac2990614712b6'),
- ('private.catalog_checked_early_event_v2()','0f03f6a898e202ccae491a7c29ec5e165c95040939b2e6c6dda7d8795581d302'),
+ ('private.catalog_checked_early_event_v2()','8a288a8a89db699391622293cd1da1a1f9bb1ea01b12556cd7054e46d9f40496'),
  ('private.catalog_co_assert_event_v2()','a2d61bee8cec2fd1f2802ee392f69dbfcdf85dfb8b8ce9d2852da4e45ab3481c'),
  ('private.catalog_co_context_empty_v2()','73b2a1a272062c7f8799e1cce018ca4167355812ea82f9898bf8e6c597244dd7'),
  ('private.catalog_co_execution_fence_v2()','2f0ba16ecb74a4b33bf0d50eebed52fd940ba46afd9adcef71fb5f4a63264210'),

@@ -109,7 +109,7 @@ export const targetRuntimeReviewedFiles=Object.freeze([
  },
  {
   "path": "supabase/catalogue/v1/new09-checked-boundaries.sql",
-  "sha256": "a2ce622ac5ac3a56839240acf4f8060c7b9cf51c9bee61428456572b2cbf616b"
+  "sha256": "549fe757776630e84562f733751983abb82df536985a665cb4610210b889ce03"
  },
  {
   "path": "supabase/catalogue/v1/new10-guarded-delete.sql",
@@ -137,7 +137,7 @@ export const targetRuntimeReviewedFiles=Object.freeze([
  },
  {
   "path": "tests/catalogue-ci/checked-boundaries.node.mjs",
-  "sha256": "24c5e117dabcc559f60644eea9ca938274e291997240ad7b4602219aa5dd0f35"
+  "sha256": "ab9354a37b0542b9697e89043de7f2edaf76a2aa868f8aabe86705dc45271143"
  },
  {
   "path": "tests/catalogue-ci/guarded-delete.node.mjs",
