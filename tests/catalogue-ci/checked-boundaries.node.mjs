@@ -151,3 +151,17 @@ test('checked fixture maps only finite helper assertion failures to fixed diagno
  assert.match(handler,/diagnostic_message='Foundation assertion failed: '\|\|d\.label/);
  assert.match(handler,/right\(diagnostic_message,5\) ~ '\^\[A-Z0-9\]\{5\}\$'/);
 });
+test('truncate fixture executes pending constraints before testing the unchanged generation fence',()=>{
+ const fixture=readFileSync(new URL('../../tests/database/catalogue/checked-boundaries.sql',import.meta.url),'utf8');
+ const tracking=readFileSync(new URL('../../supabase/catalogue/v1/02-customer-target-tracking.sql',import.meta.url),'utf8');
+ assert.match(tracking,/CREATE CONSTRAINT TRIGGER catalog_customer_targets_assert_v1\s+AFTER INSERT OR UPDATE OR DELETE ON public\.customer_targets\s+DEFERRABLE INITIALLY DEFERRED/);
+ const loop=fixture.match(/FOREACH relation IN ARRAY ARRAY\[([^\]]+)\] LOOP\s+PERFORM pg_temp\.foundation_raises\(format\('TRUNCATE %s CASCADE',relation\),'42501','generation two business truncate fails before clearing'\);\s+END LOOP;/);
+ assert.ok(loop,'all truncate attempts still require the exact 42501 fence refusal');
+ assert.deepEqual([...loop[1].matchAll(/'([^']+)'/g)].map(match=>match[1]),['public.customer_targets','public.purchase_orders','public.promotions','public.visit_requests','public.customer_manager_assignments']);
+ const before=fixture.slice(0,loop.index);
+ assert.ok(before.includes("replay:=public.pilot_customer_target_upsert_v1(md5('checked-target-null')"),'successful target writes precede the probe');
+ // PostgreSQL checks pending AFTER events before invoking BEFORE TRUNCATE.
+ // Execute those assertions, then restore deferred mode; never accept 55006.
+ assert.match(before,/SET CONSTRAINTS ALL IMMEDIATE;\s+SET CONSTRAINTS ALL DEFERRED;\s*$/);
+ assert.doesNotMatch(loop[0],/55006|DISABLE|session_replication_role/);
+});

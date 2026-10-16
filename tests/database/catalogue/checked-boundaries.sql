@@ -78,6 +78,8 @@ BEGIN
   END;
   RESET ROLE;
   PERFORM pg_temp.foundation_assert(detail='CATALOG_GENERATION_RETIRED','actual raw service target cannot escape generation two');
+  SET CONSTRAINTS ALL IMMEDIATE;
+  SET CONSTRAINTS ALL DEFERRED;
   FOREACH relation IN ARRAY ARRAY['public.customer_targets','public.purchase_orders','public.promotions','public.visit_requests','public.customer_manager_assignments'] LOOP
    PERFORM pg_temp.foundation_raises(format('TRUNCATE %s CASCADE',relation),'42501','generation two business truncate fails before clearing');
   END LOOP;
