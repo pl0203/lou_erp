@@ -66,6 +66,25 @@ test('native promotion seed satisfies the checked PO demand without changing opt
  assert.match(producer,/IF promotion\.id IS NOT NULL AND demand>promotion\.remaining_quantity THEN/);
  assert.match(producer,/ELSIF NOT \(payload \? 'promo_stock_ack'\) AND jsonb_array_length\(shortages\)>0 THEN\s*RAISE EXCEPTION 'Promo stock requires confirmation' USING ERRCODE='PT409'/);
 });
+test('native child barrier uses a verified owner blocker without changing real writer roles',()=>{
+ const source=readFileSync(sourceUrl,'utf8');
+ const start=source.indexOf('// Block the second requested promotion child.');
+ const end=source.indexOf('// Hold the greatest identity row.',start);
+ assert.ok(start>=0&&end>start);
+ const child=source.slice(start,end);
+ assert.match(child,/await query\(b,`BEGIN; SET LOCAL statement_timeout='12s'; SET LOCAL lock_timeout='8s'; SET LOCAL idle_in_transaction_session_timeout='30s';\s*SELECT set_config\('request\.jwt\.claim\.sub','',true\);`\);/);
+ const ownerCheck=`assert.equal(await query(b,"SELECT current_user='postgres' AND session_user='postgres' AND auth.uid() IS NULL;"),'t');`;
+ assert.ok(child.includes(ownerCheck),'synthetic blocker must verify owner and empty authentication claim');
+ assert.ok(child.indexOf(ownerCheck)<child.indexOf('SELECT id FROM public.promotions'));
+ assert.match(child,/SELECT id FROM public\.promotions WHERE id=\$\{uuid\(child\)\} FOR UPDATE;/);
+ assert.doesNotMatch(child,/await start\(b,|SET LOCAL ROLE|GRANT\b|REVOKE\b/);
+ assert.match(child,/await start\(a,executive\);const waiting=launch\(a,b,remove\(order\)\);/);
+ assert.match(child,/await observe\(nativeProductDeleteChildBarrierSql\(backendPids\[0\],backendPids\[1\]\)\);/);
+ assert.match(child,/await query\(b,'ROLLBACK;'\);const deleted=await waiting;/);
+ assert.equal((source.match(/await start\(b,family==='po'\?po:executive\);/g)||[]).length,2);
+ const producer=readFileSync(new URL('../../supabase/migrations/202610081101_demo_order_promotions.sql',import.meta.url),'utf8');
+ assert.match(producer,/REVOKE INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER ON public\.promotions FROM PUBLIC,anon,authenticated;/);
+});
 test('native execution rejects missing verifier or aliased sessions before SQL',async()=>{
  const {executeNativeProductDeleteRaces:run}=await load();
  await assert.rejects(run({a:{},b:{},observer:{}}));

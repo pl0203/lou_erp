@@ -176,7 +176,11 @@ export async function executeNativeProductDeleteRaces({a,b,observer,query,expect
    // Block the second requested promotion child. Before its cascade completes,
    // the native root must hold its final products mode and no identity evidence
    // write/advisory reservation. Nested promotion statements cannot flush it.
-   await start(b,executive);
+   // This synthetic blocker is owner-only: raw promotion UPDATE privilege is
+   // intentionally revoked, and PostgreSQL requires it for SELECT FOR UPDATE.
+   await query(b,`BEGIN; SET LOCAL statement_timeout='12s'; SET LOCAL lock_timeout='8s'; SET LOCAL idle_in_transaction_session_timeout='30s';
+    SELECT set_config('request.jwt.claim.sub','',true);`);
+   assert.equal(await query(b,"SELECT current_user='postgres' AND session_user='postgres' AND auth.uid() IS NULL;"),'t');
    const child=promotions[products.indexOf(order[1])];
    assert.equal(await query(b,`SELECT id FROM public.promotions WHERE id=${uuid(child)} FOR UPDATE;`),child);
    await start(a,executive);const waiting=launch(a,b,remove(order));
