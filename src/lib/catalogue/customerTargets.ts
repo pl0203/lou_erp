@@ -103,7 +103,7 @@ export function createCustomerTargetSender(options: CustomerTargetSenderOptions,
   if (!backend || !scope || !['sales_head', 'executive'].includes(role) || transport.backend !== backend
     || typeof transport.rpc !== 'function' || typeof transport.withExclusiveLock !== 'function') fail()
   const key = `customer-target-request:${encodeURIComponent(JSON.stringify([backend, actorId, role, 1, scope]))}`
-  let inFlight = false, usedStorage: CatalogueStorage | undefined, fallback: Pending | undefined
+  let inFlight = false, legacyInFlight = false, usedStorage: CatalogueStorage | undefined, fallback: Pending | undefined
   function current() { if (!options.isCurrent() || transport.backend !== backend) fail() }
   function storage() {
     const value = options.storage()
@@ -142,7 +142,7 @@ export function createCustomerTargetSender(options: CustomerTargetSenderOptions,
   async function admitted<T>(action: () => Promise<T>): Promise<T> {
     if (inFlight) throw new Error('Penyimpanan atau pemulihan target masih berlangsung.')
     inFlight = true
-    try { current(); return await action() } finally { inFlight = false }
+    try { current(); return await action() } finally { inFlight = false; legacyInFlight = false }
   }
   async function locked<T>(action: () => Promise<T>): Promise<T> {
     current(); const value = await transport.withExclusiveLock(key, async () => { current(); return action() })
@@ -162,7 +162,7 @@ export function createCustomerTargetSender(options: CustomerTargetSenderOptions,
     return { status: 'committed', receipt: parsed }
   }
   return {
-    hasUnresolved() { try { return inFlight || !!fallback || read() !== null } catch { return true } },
+    hasUnresolved() { try { return inFlight && !legacyInFlight || !!fallback || read() !== null } catch { return true } },
     save(input: CustomerTargetInput, legacy: (input: CustomerTargetInput) => Promise<void>): Promise<'legacy' | CustomerTargetReceipt> {
       // Snapshot before any async boundary. Editing cannot rebind an admitted click.
       const captured = { customerId: input.customerId, yearMonth: input.yearMonth, targetValue: input.targetValue }
@@ -171,7 +171,13 @@ export function createCustomerTargetSender(options: CustomerTargetSenderOptions,
         const mode = await access()
         if (read() || fallback) fail()
         if (mode === 'legacy') {
-          current(); await legacy(captured); current(); return 'legacy'
+          current(); legacyInFlight = true
+          // Verified generation one keeps its original draft/read lifecycle. Its
+          // admission fence is not a durable checked request. A completed raw
+          // write may stale only its submitted read scope after retirement; the
+          // draft owner decides whether active refresh/adoption is still allowed.
+          // No new write or checked recovery is authorized by this completion.
+          await legacy(captured); return 'legacy'
         }
         return locked(async () => {
           if (read() || fallback) fail()

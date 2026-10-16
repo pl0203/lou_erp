@@ -685,8 +685,8 @@ BEGIN
   ('private.co_monthly_sources_v1(uuid)','06bbf9a6b1e89939b11d0955e8f0a87d','["sql",false,"v",false,false,"u","jsonb",["search_path=\"\""]]'::jsonb),
   ('private.co_sources_v1(uuid)','a4a4665339222380a967c7cd6eaa709d','["sql",false,"v",false,false,"u","jsonb",["search_path=\"\""]]'::jsonb),
   ('private.co_evidence_json_v1(private.co_evidence)','8f344d71d208e5783a84be5a3b54e7be','["sql",false,"s",false,false,"u","jsonb",["search_path=\"\""]]'::jsonb),
-  ('public.log_line_item_changes()','69835d6cd02dee7091433467c438b157','["plpgsql",true,"v",false,false,"u","trigger",null]'::jsonb),
-  ('public.log_sj_changes()','3c9ff47a8b317a17afac55f99c3a8433','["plpgsql",true,"v",false,false,"u","trigger",null]'::jsonb)
+  ('public.log_line_item_changes()','69835d6cd02dee7091433467c438b157','["plpgsql",true,"v",false,false,"u","trigger",["search_path=pg_catalog, public, pg_temp"]]'::jsonb),
+  ('public.log_sj_changes()','3c9ff47a8b317a17afac55f99c3a8433','["plpgsql",true,"v",false,false,"u","trigger",["search_path=pg_catalog, public, pg_temp"]]'::jsonb)
  ) p(signature,body_md5,metadata) LOOP
   SELECT p.* INTO f FROM pg_catalog.pg_proc p WHERE p.oid=to_regprocedure(pin.signature);
   PERFORM private.catalog_history_require_v1(f.oid IS NOT NULL AND f.proowner='postgres'::regrole AND md5(f.prosrc)=pin.body_md5

@@ -24,31 +24,34 @@ vi.mock('../../src/lib/supabase', () => ({ supabase: {
   rpc: (name: string, args: any = {}) => {
     const q: any = { abortSignal: () => q, then: (resolve: any, reject: any) => (async () => {
       if (name === 'pilot_procurement_access_v2') return { data: { version: 2, as_of: '2026-10-15T00:00:00Z', actor_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role: state.role,
-        customer_create: true, customer_edit: true, customer_delete: false, product_create: true, product_edit: true, product_delete: true,
-        customer_set_enabled: true, product_set_enabled: true, customer_delete_mode: 'none', product_delete_mode: 'direct' }, error: null }
+        customer_create: true, customer_edit: true, customer_delete: state.role === 'co_admin', product_create: true, product_edit: true, product_delete: true,
+        customer_set_enabled: true, product_set_enabled: true, customer_delete_mode: state.role === 'co_admin' ? 'guarded' : 'none', product_delete_mode: state.role === 'co_admin' ? 'guarded' : 'direct' }, error: null }
+      if (name === 'pilot_catalog_delete_access_v1') return { data: { version: 1, actor_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', customer_delete: state.role === 'co_admin', product_delete: state.role === 'co_admin' }, error: null }
       if (name === 'pilot_catalog_transaction_v1') {
         if (state.catalogueAbandoned.has(args.p_request_id)) return { data: null, error: { message: 'Request abandoned' } }
         const prior = state.catalogueReceipts.get(args.p_request_id)
         if (prior) return prior.operation === args.p_operation && JSON.stringify(prior.payload) === JSON.stringify(args.p_payload)
           ? { data: prior.receipt, error: null } : { data: null, error: { message: 'Request differs' } }
-        if (!['executive','po_admin','co_admin'].includes(state.role) || !['create','edit'].includes(args.p_operation)) return { data: null, error: { message: 'Denied' } }
+        if (!['executive','po_admin','co_admin'].includes(state.role) || !['create','edit','delete_unused'].includes(args.p_operation) || args.p_operation === 'delete_unused' && state.role !== 'co_admin') return { data: null, error: { message: 'Denied' } }
         const rows = args.p_payload.kind === 'customer' ? state.backend.state.customers : state.products
         let row = rows.find((item: any) => item.id === args.p_payload.id)
-        state.write(args.p_operation === 'create' ? 'insert' : 'update', args.p_payload.values, args.p_payload.id ?? null)
+        state.write(args.p_operation === 'create' ? 'insert' : args.p_operation === 'delete_unused' ? 'delete' : 'update', args.p_payload.values, args.p_payload.id ?? null)
         if (state.writeGate) await state.writeGate
         if (state.writeError || args.p_payload.kind === 'customer' && state.backend.state.customerResponse === 'denied') return { data: null, error: { message: 'Save failed' } }
-        if (args.p_operation === 'edit' && (!row || row.catalog_version !== args.p_payload.expected_version)) return { data: null, error: { details: 'CATALOG_VERSION_CONFLICT' } }
+        if (args.p_operation !== 'create' && (!row || row.catalog_version !== args.p_payload.expected_version)) return { data: null, error: { details: 'CATALOG_VERSION_CONFLICT' } }
         const before = args.p_operation === 'create' ? null : { catalog_version: row.catalog_version, is_enabled: row.is_enabled }
         if (args.p_operation === 'create') {
           row = { ...args.p_payload.values, id: crypto.randomUUID(), catalog_version: '1', is_enabled: true, ...(args.p_payload.kind === 'product' ? { unit_price: null } : {}) }
           rows.push(row)
+        } else if (args.p_operation === 'delete_unused') {
+          rows.splice(rows.indexOf(row), 1)
         } else {
           const changed = Object.entries(args.p_payload.values).some(([key, value]) => row[key] !== value)
           Object.assign(row, args.p_payload.values); row.catalog_version = String(BigInt(row.catalog_version) + (changed ? 1n : 0n))
         }
         const receipt = { version: 1, actor_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', request_id: args.p_request_id,
           operation: args.p_operation, kind: args.p_payload.kind, id: row.id, before,
-          after: { catalog_version: row.catalog_version, is_enabled: row.is_enabled }, committed_at: '2026-10-15T00:00:00Z' }
+          after: args.p_operation === 'delete_unused' ? null : { catalog_version: row.catalog_version, is_enabled: row.is_enabled }, committed_at: '2026-10-15T00:00:00Z' }
         state.catalogueReceipts.set(args.p_request_id, { operation: args.p_operation, payload: args.p_payload, receipt })
         return { data: receipt, error: null }
       }
@@ -137,15 +140,16 @@ const immediatePaths = [
   { kind: 'customer', Page: CustomerList, loaded: 'Alpha shop', action: 'delete' },
 ] as const
 async function openImmediatePath(path: typeof immediatePaths[number]) {
-  // Only this test fixture exposes the dormant customer-delete owner path.
+  // Customer removal uses current CO guarded authority; product removal stays native.
   state.customerDelete = path.kind === 'customer' && path.action === 'delete'
+  if (state.customerDelete) state.role = 'co_admin'
   const view = mount(path.Page); await screen.findAllByText(path.loaded)
-  const opener = screen.getAllByRole('button', { name: path.action === 'save' ? 'Ubah' : 'Hapus' })[0]
+  const opener = screen.getAllByRole('button', { name: path.action === 'save' ? 'Ubah' : path.kind === 'customer' ? 'Hapus bila tidak digunakan' : 'Hapus' })[0]
   await waitFor(() => expect((opener as HTMLButtonElement).disabled).toBe(false))
   fireEvent.click(opener)
   if (path.kind === 'customer' && path.action === 'save') fireEvent.change(associated('Nama Pelanggan *'), { target: { value: 'Edited shop' } })
   const dialog = screen.getByRole('dialog')
-  return { ...view, dialog, target: within(dialog).getByRole('button', { name: path.action === 'save' ? 'Simpan' : 'Hapus' }) }
+  return { ...view, dialog, target: within(dialog).getByRole('button', { name: path.action === 'save' ? 'Simpan' : path.kind === 'customer' ? 'Konfirmasi Hapus' : 'Hapus' }) }
 }
 test.each(immediatePaths)('$kind $action immediately acquires one owner lock before notifications and blocks unsafe dismissal', async path => {
   const { client, dialog, target } = await openImmediatePath(path), gate = deferred(); state.writeGate = gate.promise
@@ -155,28 +159,39 @@ test.each(immediatePaths)('$kind $action immediately acquires one owner lock bef
     fireEvent.keyDown(dialog, { key: 'Escape' }); dialog.dispatchEvent(nativeCancel)
   })
   const started = client.getMutationCache().getAll().length, retained = screen.queryByRole('dialog')
+  const guarded = path.kind === 'customer' && path.action === 'delete'
+  if (guarded) await waitFor(() => expect(state.write).toHaveBeenCalledOnce())
   await act(async () => gate.resolve())
-  expect(started).toBe(1); expect(retained).toBe(dialog); expect(nativeCancel.defaultPrevented).toBe(true)
+  if (guarded) expect(state.write).toHaveBeenCalledOnce(); else expect(started).toBe(1)
+  expect(retained).toBe(dialog); expect(nativeCancel.defaultPrevented).toBe(true)
 })
 test.each(immediatePaths)('$kind $action releases its owner lock without bypassing durable recovery', async path => {
   const { client, dialog, target } = await openImmediatePath(path), gate = deferred(); state.writeGate = gate.promise
   state.writeError = true; state.backend.state.customerResponse = 'denied'
   act(() => { fireEvent.click(target); fireEvent.click(target) })
   await act(async () => gate.resolve())
-  expect(client.getMutationCache().getAll()).toHaveLength(1)
-  if (path.action === 'save') {
+  const guarded = path.kind === 'customer' && path.action === 'delete'
+  if (guarded) await waitFor(() => expect(state.write).toHaveBeenCalledOnce())
+  else expect(client.getMutationCache().getAll()).toHaveLength(1)
+  if (path.action === 'save' || guarded) {
     await screen.findByText('Hasil belum terkonfirmasi')
-    expect(screen.getByRole('dialog')).toBe(dialog); expect(localStorage.length).toBe(1)
+    if (guarded) await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull()); else expect(screen.getByRole('dialog')).toBe(dialog)
+    expect(localStorage.length).toBe(1)
     fireEvent.click(screen.getByRole('button', { name: 'Periksa hasil' })); await screen.findByText(/Hasil belum diketahui/)
-    expect(client.getMutationCache().getAll()).toHaveLength(1)
+    if (guarded) expect(state.write).toHaveBeenCalledOnce(); else expect(client.getMutationCache().getAll()).toHaveLength(1)
     state.writeGate = null; state.writeError = false; state.backend.state.customerResponse = 'ok'
     fireEvent.click(screen.getByRole('button', { name: 'Batalkan permintaan tersimpan' }))
     fireEvent.click(screen.getByRole('button', { name: 'Konfirmasi pembatalan permintaan' }))
     await waitFor(() => expect(screen.queryByText('Hasil belum terkonfirmasi')).toBeNull())
     expect(localStorage.length).toBe(0)
-    expect(screen.getByRole('dialog')).toBe(dialog)
-    if (path.kind === 'customer') expect(associated('Nama Pelanggan *').value).toBe('Edited shop')
-    const retry = screen.getByRole('button', { name: 'Simpan' })
+    if (guarded) {
+      const opener = screen.getAllByRole('button', { name: 'Hapus bila tidak digunakan' })[0]
+      await waitFor(() => expect((opener as HTMLButtonElement).disabled).toBe(false)); fireEvent.click(opener)
+    } else {
+      expect(screen.getByRole('dialog')).toBe(dialog)
+      if (path.kind === 'customer') expect(associated('Nama Pelanggan *').value).toBe('Edited shop')
+    }
+    const retry = screen.getByRole('button', { name: guarded ? 'Konfirmasi Hapus' : 'Simpan' })
     await waitFor(() => expect((retry as HTMLButtonElement).disabled).toBe(false))
     act(() => { fireEvent.click(retry); fireEvent.click(retry) })
   } else {
@@ -184,8 +199,16 @@ test.each(immediatePaths)('$kind $action releases its owner lock without bypassi
     state.writeGate = null; state.writeError = false; state.backend.state.customerResponse = 'ok'
     const retry = within(dialog).getByRole('button', { name: 'Hapus' }); act(() => { fireEvent.click(retry); fireEvent.click(retry) })
   }
-  expect(client.getMutationCache().getAll()).toHaveLength(2)
+  if (guarded) await waitFor(() => expect(state.write).toHaveBeenCalledTimes(2))
+  else expect(client.getMutationCache().getAll()).toHaveLength(2)
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  if (guarded) {
+    await screen.findByText('Hasil belum terkonfirmasi')
+    fireEvent.click(screen.getByRole('button', { name: 'Periksa hasil' }))
+    await waitFor(() => expect(screen.queryByText('Hasil belum terkonfirmasi')).toBeNull())
+    expect(localStorage.length).toBe(0); expect(state.write).toHaveBeenCalledTimes(2)
+    expect(state.backend.state.customers).toHaveLength(0)
+  }
 })
 
 test('catalog and dashboard SKU table data retain the required 14px size', async () => {
@@ -360,17 +383,20 @@ test('chart typography uses the approved self-hosted family and readable support
 
 
 test.each([{ Page: ProductList, loaded: 'Unset product', add: '+ Tambah Barang' }, { Page: CustomerList, loaded: 'Alpha shop', add: '+ Tambah Pelanggan' }])('catalog $loaded desktop/mobile actions retain compact hierarchy and final delete emphasis', async ({ Page, loaded, add }) => {
-  state.customerDelete = true
+  state.customerDelete = Page === CustomerList
+  if (state.customerDelete) state.role = 'co_admin'
   mount(Page); await screen.findAllByText(loaded)
   expect(screen.getByRole('button', { name: add }).classList.contains('ui-action--primary')).toBe(true)
-  for (const action of screen.getAllByRole('button', { name: /^(Ubah|Hapus)$/ })) {
+  for (const action of screen.getAllByRole('button', { name: /^(Ubah|Hapus(?: bila tidak digunakan)?)$/ })) {
     expect(action.classList.contains('ui-action--compact')).toBe(true)
-    expect(action.classList.contains(action.textContent === 'Hapus' ? 'ui-action--danger-quiet' : 'ui-action--quiet')).toBe(true)
-    expect(action.parentElement?.classList.contains('flex-wrap')).toBe(true)
+    expect(action.classList.contains(action.textContent?.startsWith('Hapus') ? 'ui-action--danger-quiet' : 'ui-action--quiet')).toBe(true)
+    if (action.textContent === 'Hapus bila tidak digunakan') expect(action.closest('.flex-wrap')).toBeTruthy()
+    else expect(action.parentElement?.classList.contains('flex-wrap')).toBe(true)
   }
-  fireEvent.click(screen.getAllByRole('button', { name: 'Hapus' })[0])
+  const remove = screen.getAllByRole('button', { name: state.customerDelete ? 'Hapus bila tidak digunakan' : 'Hapus' })[0]
+  await waitFor(() => expect((remove as HTMLButtonElement).disabled).toBe(false)); fireEvent.click(remove)
   const dialog = screen.getByRole('dialog')
-  expect(within(dialog).getByRole('button', { name: 'Hapus' }).classList.contains('ui-action--danger')).toBe(true)
+  expect(within(dialog).getByRole('button', { name: state.customerDelete ? 'Konfirmasi Hapus' : 'Hapus' }).classList.contains('ui-action--danger')).toBe(true)
   expect(within(dialog).getByRole('button', { name: 'Batal' }).classList.contains('ui-action--quiet')).toBe(true)
 })
 test('catalog price disclosure stays compact quiet and preserves expanded ownership', async () => {

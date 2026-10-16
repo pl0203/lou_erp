@@ -4,29 +4,38 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { RESPONSE_EXAMPLES } from '../scalability/response-examples'
 
-const state = vi.hoisted(() => ({ actor: 'actor', role: 'executive', readGate: null as Promise<void> | null, reads: [] as { kind: string; actor: string; role: string; month: string }[], target: '200.00' as string | null, readError: false, authGate: null as Promise<void> | null, writeGate: null as Promise<void> | null, writes: [] as any[], getUser: vi.fn(), retry: vi.fn() }))
+const state = vi.hoisted(() => ({ actor: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role: 'executive', backend: 0, readGate: null as Promise<void> | null, reads: [] as { kind: string; actor: string; role: string; month: string }[], target: '200.00' as string | null, readError: false, authGate: null as Promise<void> | null, writeGate: null as Promise<void> | null, writes: [] as any[], getUser: vi.fn(), retry: vi.fn() }))
 vi.mock('../../src/components/GirardNav', () => ({ default: () => <nav aria-label="Navigasi modul">Sales</nav> }))
 vi.mock('../../src/components/sales/SalesMetricSummary', () => ({ SalesMetricsPanel: () => <p>Metrik Sales terpisah</p> }))
-vi.mock('../../src/lib/AuthContext', () => ({ useAuth: () => ({ profile: { id: state.actor, role: state.role } }) }))
+vi.mock('../../src/lib/AuthContext', () => ({ useAuth: () => ({ user: { id: state.actor }, profile: { id: state.actor, role: state.role, is_active: true }, loading: false, error: null }) }))
 vi.mock('../../src/lib/reads/reports', () => ({
   fetchEarliestSalesPerformanceMonth: async () => '2026-09',
   fetchCustomerPerformancePage: async (actor: string, role: string, month: string) => { state.retry(); state.reads.push({ kind: 'customer', actor, role, month }); await state.readGate; if (state.readError) throw new Error('read unavailable'); return { ...RESPONSE_EXAMPLES.pilot_customer_performance_v1, items: RESPONSE_EXAMPLES.pilot_customer_performance_v1.items.map(row => ({ ...row, sales_target: state.target })) } },
   fetchSalesPerformancePage: async (actor: string, role: string, month: string) => { state.retry(); state.reads.push({ kind: 'sales', actor, role, month }); await state.readGate; if (state.readError) throw new Error('read unavailable'); return { ...RESPONSE_EXAMPLES.pilot_sales_performance_v1, items: RESPONSE_EXAMPLES.pilot_sales_performance_v1.items.map(row => ({ ...row, sales_target: state.target })) } },
 }))
-vi.mock('../../src/lib/supabase', () => ({ supabase: {
-  auth: { getUser: async () => { state.getUser(); await state.authGate; return { data: { user: { id: state.actor } } } } },
-  from: (table: string) => ({ upsert: async (payload: any, options: any) => { state.writes.push({ table, payload, options }); await state.writeGate; return { error: null } } }),
-} }))
+vi.mock('../../src/lib/supabase', () => {
+  const sources = [0, 1].map(index => ({
+    supabaseUrl: `https://legacy-target-${index}.example.invalid`, rest: { url: `https://legacy-target-${index}.example.invalid/rest/v1`, schemaName: 'public' },
+    rpc: async (name: string) => {
+      if (name !== 'pilot_customer_target_write_access_v1') throw new Error(`Unexpected target RPC ${name}`)
+      if (!['sales_head', 'executive'].includes(state.role)) return { data: null, error: { code: '42501' } }
+      return { data: { version: 1, actor_id: state.actor, mode: 'legacy' }, error: null }
+    },
+    auth: { getUser: async () => { state.getUser(); await state.authGate; return { data: { user: { id: state.actor } } } } },
+    from: (table: string) => ({ upsert: async (payload: any, options: any) => { state.writes.push({ table, payload, options }); await state.writeGate; return { error: null } } }),
+  }))
+  return { get supabase() { return sources[state.backend] } }
+})
 import GirardDashboard from '../../src/pages/girard/GirardDashboard'
 
 const clients: QueryClient[] = []
-beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-12T12:00:00Z')); state.actor = 'actor'; state.role = 'executive'; state.readGate = null; state.reads = []; state.target = '200.00'; state.readError = false; state.authGate = null; state.writeGate = null; state.writes = []; state.getUser.mockReset(); state.retry.mockReset() })
+beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-12T12:00:00Z')); state.actor = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'; state.role = 'executive'; state.backend = 0; state.readGate = null; state.reads = []; state.target = '200.00'; state.readError = false; state.authGate = null; state.writeGate = null; state.writes = []; state.getUser.mockReset(); state.retry.mockReset() })
 afterEach(() => { cleanup(); clients.splice(0).forEach(client => client.clear()); vi.useRealTimers() })
 let currentView: ReturnType<typeof render>
 const dashboard = (client: QueryClient) => <QueryClientProvider client={client}><MemoryRouter><GirardDashboard /></MemoryRouter></QueryClientProvider>
 function mount() { const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } }); clients.push(client); currentView = render(dashboard(client)); return currentView }
 const family = (kind: 'customer' | 'sales') => kind === 'customer' ? 'customer_performance' : 'performance'
-const readKey = (kind: 'customer' | 'sales', actor = 'actor', role = 'executive', month = '2026-10', page = 1) => [family(kind), `${actor}:${role}`, { yearMonth: month }, page]
+const readKey = (kind: 'customer' | 'sales', actor = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role = 'executive', month = '2026-10', page = 1) => [family(kind), `${actor}:${role}`, { yearMonth: month }, page]
 const regionName = (kind: 'customer' | 'sales') => kind === 'sales' ? 'Tabel aktivitas tim' : 'Tabel aktivitas pelanggan'
 async function panel(kind: 'customer' | 'sales') {
   mount()
@@ -80,7 +89,7 @@ for (const kind of ['customer', 'sales'] as const) {
     expect(within(region).getByRole('spinbutton')).toBe(input)
     await act(async () => auth.resolve())
     await waitFor(() => expect(state.writes).toHaveLength(1))
-    expect(state.writes[0]).toMatchObject({ table: kind === 'customer' ? 'customer_targets' : 'sales_targets', payload: { year_month: '2026-10', target_value: 321.75, set_by: 'actor' }, options: { onConflict: kind === 'customer' ? 'customer_id,year_month' : 'user_id,year_month' } })
+    expect(state.writes[0]).toMatchObject({ table: kind === 'customer' ? 'customer_targets' : 'sales_targets', payload: { year_month: '2026-10', target_value: 321.75, set_by: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }, options: { onConflict: kind === 'customer' ? 'customer_id,year_month' : 'user_id,year_month' } })
     await waitFor(() => expect(within(region).queryByRole('spinbutton')).toBeNull())
   })
 
@@ -96,7 +105,7 @@ for (const kind of ['customer', 'sales'] as const) {
   test(`${kind} a late save for the previous month stales only its original scope and leaves the connected newer draft intact`, async () => {
     const write = deferred(); state.writeGate = write.promise
     const region = await panel(kind); const client = clients.at(-1)!; const invalidation = vi.spyOn(client, 'invalidateQueries')
-    client.setQueryData(readKey(kind, 'actor', 'executive', '2026-10', 2), client.getQueryData(readKey(kind)))
+    client.setQueryData(readKey(kind, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'executive', '2026-10', 2), client.getQueryData(readKey(kind)))
     fireEvent.click(opener(region)); fireEvent.change(within(region).getByRole('spinbutton'), { target: { value: '100' } }); fireEvent.keyDown(within(region).getByRole('spinbutton'), { key: 'Enter' })
     await waitFor(() => expect(state.writes).toHaveLength(1))
     fireEvent.change(kind === 'customer' ? screen.getByLabelText('Bulan aktivitas pelanggan') : screen.getByLabelText('Bulan performa sales'), { target: { value: '2026-09' } })
@@ -107,8 +116,8 @@ for (const kind of ['customer', 'sales'] as const) {
     expect(input.isConnected).toBe(true); expect(screen.getByRole('spinbutton')).toBe(input); expect(input.value).toBe('999')
     expect(invalidation).toHaveBeenCalledWith({ queryKey: readKey(kind).slice(0, 3), refetchType: 'none' })
     expect(client.getQueryState(readKey(kind))?.isInvalidated).toBe(true)
-    expect(client.getQueryState(readKey(kind, 'actor', 'executive', '2026-10', 2))?.isInvalidated).toBe(true)
-    expect(client.getQueryState(readKey(kind, 'actor', 'executive', '2026-09'))?.isInvalidated).toBe(false)
+    expect(client.getQueryState(readKey(kind, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'executive', '2026-10', 2))?.isInvalidated).toBe(true)
+    expect(client.getQueryState(readKey(kind, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'executive', '2026-09'))?.isInvalidated).toBe(false)
     expect(state.reads).toHaveLength(readsBefore); expect(state.writes[0].payload.year_month).toBe('2026-10')
     await act(async () => read.resolve())
     expect(input.isConnected).toBe(true); expect(screen.getByRole('spinbutton')).toBe(input)
@@ -122,7 +131,7 @@ for (const kind of ['customer', 'sales'] as const) {
     const read = deferred(); state.readGate = read.promise; const readsBefore = state.reads.length; state.target = '100.00'
     await act(async () => write.resolve()); await waitFor(() => expect(state.reads).toHaveLength(readsBefore + 1))
     expect(invalidation).toHaveBeenCalledWith({ queryKey: readKey(kind).slice(0, 3), refetchType: 'active' })
-    expect(state.reads.at(-1)).toEqual({ kind, actor: 'actor', role: 'executive', month: '2026-10' })
+    expect(state.reads.at(-1)).toEqual({ kind, actor: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role: 'executive', month: '2026-10' })
     expect(screen.queryByRole('spinbutton')).toBeNull()
     await act(async () => read.resolve())
     const current = await screen.findByRole('region', { name: regionName(kind) })
@@ -151,7 +160,7 @@ for (const kind of ['customer', 'sales'] as const) {
     const region = await panel(kind); const client = clients.at(-1)!; const invalidation = vi.spyOn(client, 'invalidateQueries')
     fireEvent.click(opener(region)); const oldInput = screen.getByRole('spinbutton'); fireEvent.keyDown(oldInput, { key: 'Enter' }); await waitFor(() => expect(state.writes).toHaveLength(1))
     const identityRead = deferred(); state.readGate = identityRead.promise
-    if (change === 'actor') state.actor = 'replacement'; else state.role = 'sales_head'
+    if (change === 'actor') state.actor = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'; else state.role = 'sales_head'
     currentView.rerender(dashboard(client))
     await waitFor(() => expect(state.reads.at(-1)).toEqual({ kind, actor: state.actor, role: state.role, month: '2026-10' }))
     expect(oldInput.isConnected).toBe(false); expect(screen.queryByRole('spinbutton')).toBeNull()
@@ -164,7 +173,7 @@ for (const kind of ['customer', 'sales'] as const) {
     expect(invalidation).toHaveBeenCalledWith({ queryKey: readKey(kind).slice(0, 3), refetchType: 'none' })
     expect(client.getQueryState(readKey(kind))?.isInvalidated).toBe(true)
     expect(client.getQueryState(readKey(kind, state.actor, state.role))?.isInvalidated).toBe(false)
-    expect(state.reads).toHaveLength(readsBefore); expect(state.writes[0].payload.set_by).toBe('actor')
+    expect(state.reads).toHaveLength(readsBefore); expect(state.writes[0].payload.set_by).toBe('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
     await act(async () => read.resolve())
   })
 
@@ -172,10 +181,10 @@ for (const kind of ['customer', 'sales'] as const) {
     const write = deferred(); state.writeGate = write.promise
     const region = await panel(kind); const client = clients.at(-1)!; const invalidation = vi.spyOn(client, 'invalidateQueries')
     fireEvent.click(opener(region)); const oldInput = screen.getByRole('spinbutton'); fireEvent.keyDown(oldInput, { key: 'Enter' }); await waitFor(() => expect(state.writes).toHaveLength(1))
-    const replacementKey = readKey(kind, 'replacement')
+    const replacementKey = readKey(kind, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')
     client.setQueryDefaults(replacementKey, { staleTime: Infinity })
     client.setQueryData(replacementKey, client.getQueryData(readKey(kind)))
-    state.actor = 'replacement'; currentView.rerender(dashboard(client))
+    state.actor = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'; currentView.rerender(dashboard(client))
     expect(oldInput.isConnected).toBe(false); expect(screen.queryByRole('spinbutton')).toBeNull()
     const next = screen.getByRole('region', { name: regionName(kind) }); fireEvent.click(opener(next))
     const input = screen.getByRole('spinbutton') as HTMLInputElement; fireEvent.change(input, { target: { value: '999' } })
@@ -217,4 +226,18 @@ for (const kind of ['customer', 'sales'] as const) for (const target of [null, '
   const value = table.querySelector('tbody tr')!.children[index].firstElementChild!
   expect(value.textContent).toBe(target === null ? '—' : 'Rp 0'); expect(value.classList.contains('text-sm')).toBe(true)
   expect(within(region).queryByRole('spinbutton')).toBeNull(); expect(state.writes).toHaveLength(0)
+})
+
+test('customer completed legacy write from a retired backend only stales its original read scope', async () => {
+  const write = deferred(); state.writeGate = write.promise
+  const region = await panel('customer'), client = clients.at(-1)!, invalidation = vi.spyOn(client, 'invalidateQueries')
+  fireEvent.click(opener(region)); fireEvent.keyDown(screen.getByRole('spinbutton'), { key: 'Enter' })
+  await waitFor(() => expect(state.writes).toHaveLength(1))
+  state.backend = 1; currentView.rerender(dashboard(client))
+  const readsBefore = state.reads.length
+  await act(async () => write.resolve())
+  await waitFor(() => expect(invalidation).toHaveBeenCalled())
+  expect(invalidation).toHaveBeenCalledWith({ queryKey: readKey('customer').slice(0, 3), refetchType: 'none' })
+  expect(invalidation.mock.calls.every(([options]) => options?.refetchType === 'none')).toBe(true)
+  expect(state.reads).toHaveLength(readsBefore); expect(state.writes).toHaveLength(1)
 })

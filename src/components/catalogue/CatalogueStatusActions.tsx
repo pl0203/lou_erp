@@ -85,8 +85,8 @@ function Actions({ kind, row, owner, authority, commandsAvailable, guardedDelete
       <p>Versi: {intent.row.catalog_version}</p>
       {intent.operation === 'delete_unused' && <p>Penghapusan hanya dapat dilakukan bila data belum pernah digunakan. Tindakan ini tidak dapat dibatalkan.</p>}
       {error && <Notice tone="warning" title={error} />}
-      <Button pending={busy} disabled={!canConfirm} onClick={confirm}>Konfirmasi {label}</Button>
-      <Button variant="secondary" disabled={busy} onClick={close}>Batal</Button>
+      <Button variant={intent.operation === 'delete_unused' ? 'danger' : 'primary'} pending={busy} disabled={!canConfirm} onClick={confirm}>Konfirmasi {label}</Button>
+      <Button variant={intent.operation === 'delete_unused' ? 'quiet' : 'secondary'} disabled={busy} onClick={close}>Batal</Button>
     </Dialog>}
   </div>
 }

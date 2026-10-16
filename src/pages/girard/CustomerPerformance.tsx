@@ -111,7 +111,9 @@ export function CustomerActivityContent() {
         await upsertCustomerTarget(input.customerId, input.yearMonth, input.targetValue!, user.id, source)
       })
     },
-    onSaved: invalidate,
+    // A retired backend may complete an already-dispatched legacy write, but
+    // cannot refetch the current backend through an unchanged actor/month key.
+    onSaved: refreshActive => invalidate(refreshActive && targetSave.isCurrent()),
   })
 
   const recoveryFocus = useRef<HTMLDivElement>(null), contentFocus = useRef<HTMLDivElement>(null), previouslyUnresolved = useRef(false)

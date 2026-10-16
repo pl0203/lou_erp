@@ -112,7 +112,7 @@ test('lineage FK actions follow the final reviewed fixture overrides, not the mi
 
 test('published new10 carries the exact bounded trusted history function span',()=>{
  assert.equal(createHash('sha256').update(fragment()).digest('hex'),
-  '4098ebb297a6c8ec92800ff2c012b2a2b11020a19a1382a3454001fe32e7cb8d',
+  '0f1a65855c649db328021d45f1fd1d0cc87ebc3c0a86f9896d7426b4d73c812d',
   'bounded history span must retain the independently reviewed SQL bytes, including its separator newline');
 });
 
@@ -121,4 +121,20 @@ test('published history checks have no local-only artifact dependency',()=>{
  for(const prefix of [['evidence',''],['','tmp',''],['','workspace','']]){
   assert.ok(!source.includes(prefix.join('/')),'source checks must use published repository inputs only');
  }
+});
+
+test('producer metadata pins include final composed audit-function settings',()=>{
+ const migration=fs.readFileSync(path.join(root,'supabase/migrations/202609300002_order_transactions.sql'),'utf8');
+ const pins=new Map([...fragment().matchAll(/\('([^']+)','[a-f0-9]{32}','(\[[^']*\])'::jsonb\)/g)].map(p=>[p[1],JSON.parse(p[2])]));
+ const settings=[...migration.matchAll(/ALTER FUNCTION\s+([^;]+?\([^;]*?\))\s+SET search_path=([^;]+);/g)];
+ assert.equal(settings.length,3,'finite composed audit/recalculation settings are all considered');
+ const covered=[];
+ for(const [,signature,value] of settings){
+  if(!pins.has(signature))continue;
+  assert.match(value,/^[a-z_]+(?:,[a-z_]+)*$/,'only the authored identifier-list setting is normalized');
+  // PostgreSQL 17 flatten_set_variable_args joins identifier-list values with comma-space.
+  assert.deepEqual(pins.get(signature)[7],[`search_path=${value.split(',').join(', ')}`],`${signature} final proconfig`);
+  covered.push(signature);
+ }
+ assert.deepEqual(covered,['public.log_line_item_changes()','public.log_sj_changes()']);
 });

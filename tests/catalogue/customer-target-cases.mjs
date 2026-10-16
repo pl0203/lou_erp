@@ -23,7 +23,7 @@ function fixture() {
     return {data:receipt,error:null}
   } }
   const create = () => createCustomerTargetSender({backend:transport.backend,actorId:actor,role:'sales_head',scope:'customer-target-pages',storage:()=>storage,isCurrent:()=>current},transport)
-  return {disk,calls,raw,receipts,create,sender:create(),legacy:async value=>{raw.push(value)},mode:v=>mode=v,current:v=>current=v,lose:()=>lose=true,bad:v=>bad=v,storageFault:()=>storageFault=true,lockFault:v=>lockFault=v,missing:()=>missing=true}
+  return {disk,calls,raw,receipts,transport,create,sender:create(),legacy:async value=>{raw.push(value)},mode:v=>mode=v,current:v=>current=v,lose:()=>lose=true,bad:v=>bad=v,storageFault:()=>storageFault=true,lockFault:v=>lockFault=v,missing:()=>missing=true}
 }
 test('only exact server legacy capability permits the original raw callback', async () => {
   const r=fixture(); r.mode('legacy')
@@ -31,6 +31,55 @@ test('only exact server legacy capability permits the original raw callback', as
   for(const access of [null,{version:1,actor_id:other,mode:'legacy'},{version:1,actor_id:actor,mode:'legacy',extra:true},{version:1,actor_id:actor,mode:'unknown'}]){
     const q=fixture(); q.bad(access ?? {}); await assert.rejects(q.sender.save(input,q.legacy)); assert.equal(q.raw.length,0)
   }
+})
+test('verified legacy in-flight save keeps admission but is not a durable checked recovery', async () => {
+  const r = fixture(); r.mode('legacy')
+  let start, finish
+  const entered = new Promise(resolve => { start = resolve })
+  const held = new Promise(resolve => { finish = resolve })
+  const saving = r.sender.save(input, async value => { r.raw.push(value); start(); await held })
+  await entered
+  try {
+    assert.equal(r.sender.hasUnresolved(), false)
+    await assert.rejects(r.sender.save(input, r.legacy))
+    assert.equal(r.raw.length, 1); assert.equal(r.disk.size, 0)
+  } finally { finish(); await saving }
+})
+test('already dispatched legacy success can stale its original scope after owner retirement', async () => {
+  const r = fixture(); r.mode('legacy')
+  let start, finish
+  const entered = new Promise(resolve => { start = resolve })
+  const held = new Promise(resolve => { finish = resolve })
+  const saving = r.sender.save(input, async value => { r.raw.push(value); start(); await held })
+  await entered; r.current(false); finish()
+  assert.equal(await saving, 'legacy')
+  await assert.rejects(r.sender.save(input, r.legacy))
+  assert.equal(r.raw.length, 1); assert.equal(r.disk.size, 0)
+})
+test('retirement while capability is pending still refuses legacy dispatch', async () => {
+  const r = fixture(); r.mode('legacy')
+  let start, finish
+  const entered = new Promise(resolve => { start = resolve })
+  const held = new Promise(resolve => { finish = resolve }), rpc = r.transport.rpc
+  r.transport.rpc = async (...args) => { start(); await held; return rpc(...args) }
+  const saving = r.sender.save(input, r.legacy)
+  await entered; assert.equal(r.sender.hasUnresolved(), true); r.current(false); finish()
+  await assert.rejects(saving); assert.equal(r.raw.length, 0); assert.equal(r.disk.size, 0)
+})
+test('retirement after checked dispatch still rejects settlement and retains durable recovery', async () => {
+  const r = fixture()
+  let start, finish
+  const entered = new Promise(resolve => { start = resolve })
+  const held = new Promise(resolve => { finish = resolve }), rpc = r.transport.rpc
+  r.transport.rpc = async (name, args) => {
+    const result = await rpc(name, args)
+    if (name === 'pilot_customer_target_upsert_v1') { start(); await held }
+    return result
+  }
+  const saving = r.sender.save(input, r.legacy)
+  await entered; assert.equal(r.sender.hasUnresolved(), true); r.current(false); finish()
+  await assert.rejects(saving); assert.equal(r.raw.length, 0); assert.equal(r.disk.size, 1)
+  r.current(true); await r.create().recover(async () => true); assert.equal(r.disk.size, 0)
 })
 test('checked save persists before dispatch, verifies exact receipt and requires canonical recovery', async () => {
   const r=fixture(), result=await r.sender.save(input,r.legacy)

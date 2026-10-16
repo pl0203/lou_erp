@@ -113,7 +113,7 @@ export const targetRuntimeReviewedFiles=Object.freeze([
  },
  {
   "path": "supabase/catalogue/v1/new10-guarded-delete.sql",
-  "sha256": "000c8699e783f704c72cb86da58d0f60e5fe7bc5ed1e8123e05017206897e9cf"
+  "sha256": "46c0ffb88a515e07deed7a6d86381c53b3e971bc8ea24721b429a418bca095b2"
  },
  {
   "path": "supabase/catalogue/v1/new11-master-completion-hooks.sql",
@@ -153,7 +153,7 @@ export const targetRuntimeReviewedFiles=Object.freeze([
  },
  {
   "path": "tests/catalogue-ci/guarded-delete-history.node.mjs",
-  "sha256": "28c7c24b0900dd484413f7e2839973933f736ac133cac0a3b73a8af55867c6b6"
+  "sha256": "b597b3553d90433d5a8ff1b44078d3915b307b7d49b996bf62b47b83058dbd0f"
  },
  {
   "path": "tests/database/catalogue/native-product-delete-races.mjs",
