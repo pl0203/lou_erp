@@ -473,3 +473,21 @@ test('history behavior is an executed third suite with finite nested rollback co
  assert.ok(sql.lastIndexOf('ROLLBACK;')>sql.indexOf('\\echo CATALOGUE_GUARDED_DELETE_HISTORY_PASSED'));
  for(const change of [x=>x.replace('SAVEPOINT trusted_history_topology;','SAVEPOINT arbitrary;'),x=>x.replace('RELEASE SAVEPOINT trusted_history_retired_co;',''),x=>x.replace('RELEASE SAVEPOINT guarded_delete_history_fixture;',''),x=>x.replace('SAVEPOINT trusted_history_fixture;','DO $$ BEGIN\nSAVEPOINT trusted_history_fixture;\nEND $$;')])assert.throws(()=>runner.buildCatalogueFoundationSession(identity,{...p,guardedDeleteHistory:change(p.guardedDeleteHistory)}));
 });
+
+test('CO negative history fixture is isolated after its actual deferred assertions and before later suites',()=>{
+ need();
+ const parts=fixtureParts(),sql=runner.buildCatalogueFoundationSession(identity,parts);
+ const start='SAVEPOINT catalogue_co_behavior_fixture;',rollback='ROLLBACK TO SAVEPOINT catalogue_co_behavior_fixture;',release='RELEASE SAVEPOINT catalogue_co_behavior_fixture;';
+ for(const boundary of [start,rollback,release])assert.equal(sql.split('\n').filter(line=>line===boundary).length,1,'one exact runner-owned CO boundary: '+boundary);
+ const begin=sql.indexOf(start),suite=sql.indexOf(parts.coOrders),end=suite+parts.coOrders.length,undo=sql.indexOf(rollback),done=sql.indexOf(release);
+ assert.ok(sql.indexOf(parts.coOrderCandidate)<begin && begin<suite,'installed core is outside the behavioral rollback');
+ assert.ok(end<undo && undo<done && done<sql.indexOf(parts.promotionOwnerGrammar),'only the CO behavioral suite is isolated');
+ assert.match(sql.slice(end,undo),/SET CONSTRAINTS ALL IMMEDIATE;\s*$/,'execute queued assertions before rollback, never discard them silently');
+ assert.ok(sql.slice(end,undo).includes('catalogue_foundation_session_refused'),'same owner/backend/transaction checked before drain');
+ assert.equal(sql.split(parts.coOrders).length,2,'suite bytes and every original assertion remain included once');
+ const source=readFileSync(resolve(root,runner.foundationSqlPaths.coOrders),'utf8');
+ assert.match(runner.foundationTopLevelSql(source),/SET CONSTRAINTS ALL IMMEDIATE;\s*SET CONSTRAINTS ALL DEFERRED;\s*$/,'existing CO suite already drains its assertions before returning');
+ assert.ok(source.includes("'save_report_draft','{\"lines\":null}','{}'"),'known malformed fixture history stays in its original negative proof');
+ for(const later of ['lifetime','createEdit','publicRouters','checkedBoundaries','guardedDelete','guardedDeleteHistory'])assert.ok(done<sql.indexOf(parts[later]),later+' cannot inherit the malformed CO fixture');
+ assert.throws(()=>runner.buildCatalogueFoundationSession(identity,{...parts,coOrders:start+'\n'+parts.coOrders}),'suite cannot introduce its own transaction boundaries');
+});

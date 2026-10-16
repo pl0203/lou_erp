@@ -174,7 +174,11 @@ ${sessionGate()}${mark(3)}${parts.roles}
 ${sessionGate()}${mark(4)}${parts.orderCandidate}
 ${sessionGate()}${parts.orders}
 ${sessionGate()}${mark(5)}${parts.coOrderCandidate}
-${sessionGate()}${parts.coOrders}
+${sessionGate()}SAVEPOINT catalogue_co_behavior_fixture;
+${parts.coOrders}
+${sessionGate()}SET CONSTRAINTS ALL IMMEDIATE;
+ROLLBACK TO SAVEPOINT catalogue_co_behavior_fixture;
+RELEASE SAVEPOINT catalogue_co_behavior_fixture;
 ${sessionGate()}${mark(6)}${parts.promotionOwnerGrammar}
 ${sessionGate()}${parts.poGrammar}
 ${sessionGate()}${parts.coGrammar}
