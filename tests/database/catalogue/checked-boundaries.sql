@@ -5,6 +5,7 @@ SET CONSTRAINTS ALL DEFERRED;
 DO $checked_boundaries$
 DECLARE saved_claim text:=current_setting('request.jwt.claim.sub',true); receipt jsonb; replay jsonb;
  first_tombstone timestamptz; recreated_customer_tombstone timestamptz; complete boolean:=false; detail text; before_constraints jsonb; after_constraints jsonb; relation text;
+ diagnostic_message text; diagnostic_context text; diagnostic_frame text; diagnostic_helper text; diagnostic_code text;
 BEGIN
  PERFORM pg_temp.foundation_assert(current_database()='pilot_catalogue_test' AND session_user='postgres' AND current_user='postgres','checked boundary fictional owner required');
  PERFORM pg_temp.foundation_assert((SELECT execution_generation=1 AND NOT tracking_ready FROM private.catalog_cutover_v1 WHERE singleton),'checked boundaries start inactive');
@@ -112,5 +113,58 @@ BEGIN
  SELECT jsonb_agg(to_jsonb(c) ORDER BY conname) INTO after_constraints FROM pg_catalog.pg_constraint c WHERE conrelid='private.catalog_cutover_v1'::regclass;
  PERFORM pg_temp.foundation_assert(before_constraints=after_constraints AND (SELECT execution_generation=1 AND NOT tracking_ready FROM private.catalog_cutover_v1),'checked boundaries restore exact inactive cutover constraints');
  PERFORM pg_temp.foundation_assert(NOT EXISTS(SELECT 1 FROM public.users WHERE id=md5('checked-boundary-exec')::uuid) AND NOT EXISTS(SELECT 1 FROM private.catalog_target_requests_v1 WHERE request_id=md5('checked-target-request')::uuid),'checked boundary actors and ledger rows rollback');
+EXCEPTION WHEN SQLSTATE 'P0001' THEN
+ -- Diagnostic-only finite mapping. Inspect, but never emit, the helper context
+ -- or message. Non-helper and unmapped failures retain their original error.
+ -- PostgreSQL 17 plpgsql_exec_error_callback uses this first-frame form; the
+ -- RAISE statement type is fixed. Only these two fictional helpers qualify.
+ GET STACKED DIAGNOSTICS diagnostic_message=MESSAGE_TEXT,diagnostic_context=PG_EXCEPTION_CONTEXT;
+ diagnostic_frame:=split_part(diagnostic_context,E'\n',1);
+ IF diagnostic_frame ~ '^PL/pgSQL function (pg_temp(_[0-9]+)?[.])?foundation_assert[(]boolean,text[)] line [0-9]+ at RAISE$' THEN diagnostic_helper:='assert';
+ ELSIF diagnostic_frame ~ '^PL/pgSQL function (pg_temp(_[0-9]+)?[.])?foundation_raises[(]text,text,text[)] line [0-9]+ at RAISE$' THEN diagnostic_helper:='raises';
+ ELSE RAISE; END IF;
+ SELECT d.code INTO diagnostic_code FROM (VALUES
+  ('assert','checked boundary fictional owner required',NULL,'PBC01'),
+  ('assert','checked boundaries start inactive',NULL,'PBC02'),
+  ('assert','target capability preserves legacy mode',NULL,'PBC03'),
+  ('raises','checked target cannot activate generation one','55000','PBC04'),
+  ('assert','CATALOG_CHECKED_EXACT_TRIGGER_GRAPH_PASSED',NULL,'PBC05'),
+  ('assert','target capability returns checked only after ready generation two',NULL,'PBC06'),
+  ('assert','checked target uses present recreated customer without erasing retained tombstone',NULL,'PBC07'),
+  ('assert','target exact replay preserves immutable decimal receipt',NULL,'PBC08'),
+  ('assert','target reconciliation proves receipt not target presence',NULL,'PBC09'),
+  ('assert','checked target nullable value retained',NULL,'PBC10'),
+  ('assert','unknown is not successful target mutation',NULL,'PBC11'),
+  ('raises','zero-row target cannot return receipt','42501','PBC12'),
+  ('raises','invalid checked month refused','22023','PBC13'),
+  ('raises','nonfinite target refused','22023','PBC14'),
+  ('raises','native baseline product NO ACTION still refuses linked promotion','23503','PBC15'),
+  ('raises','target request mismatch fails','22023','PBC16'),
+  ('raises','raw authenticated target cannot escape generation two','42501','PBC17'),
+  ('raises','raw target update rejected','42501','PBC18'),
+  ('raises','raw target delete rejected','42501','PBC19'),
+  ('raises','target scope cannot be spoofed','42501','PBC20'),
+  ('assert','native unused delete retains unknown lifetime and writes tombstone',NULL,'PBC21'),
+  ('assert','native second deletion after raw UUID recreation preserves original tombstone',NULL,'PBC22'),
+  ('assert','refused target write does not falsely mark unrelated customer',NULL,'PBC23'),
+  ('assert','actual raw service target cannot escape generation two',NULL,'PBC24'),
+  ('raises','generation two business truncate fails before clearing','42501','PBC25'),
+  ('assert','target never leaves pending request',NULL,'PBC26'),
+  ('assert','exact scopes are empty after completed commands',NULL,'PBC27'),
+  ('assert','actual promotion cascade marks only its deleted product before tombstone',NULL,'PBC28'),
+  ('assert','failed baseline delete and unrelated cascade do not falsely mark other product',NULL,'PBC29'),
+  ('raises','wider SET NULL native topology refused before mutation','55000','PBC30'),
+  ('assert','unsupported topology leaves no partial tombstone',NULL,'PBC31'),
+  ('assert','checked boundaries reached exact rollback sentinel',NULL,'PBC32'),
+  ('assert','checked boundaries restore exact inactive cutover constraints',NULL,'PBC33'),
+  ('assert','checked boundary actors and ledger rows rollback',NULL,'PBC34')
+ ) d(helper,label,expected_state,code)
+ WHERE d.helper=diagnostic_helper AND (
+  (d.helper='assert' AND diagnostic_message='Foundation assertion failed: '||d.label)
+  OR (d.helper='raises' AND (diagnostic_message=d.label||': expected '||d.expected_state||', got success'
+   OR (right(diagnostic_message,5) ~ '^[A-Z0-9]{5}$'
+    AND diagnostic_message=d.label||': expected '||d.expected_state||', got '||right(diagnostic_message,5)))));
+ IF diagnostic_code IS NULL THEN RAISE; END IF;
+ RAISE EXCEPTION 'Checked boundary fixture assertion failed' USING ERRCODE=diagnostic_code;
 END $checked_boundaries$;
 SET CONSTRAINTS ALL DEFERRED;

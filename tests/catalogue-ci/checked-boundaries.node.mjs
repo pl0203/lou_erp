@@ -107,3 +107,47 @@ test('function-qualified local variables bind explicit declaration blocks',()=>{
  const eventHash=createHash('sha256').update(body('private.catalog_checked_early_event_v2')).digest('hex');
  assert.ok(sql.includes("('private.catalog_checked_early_event_v2()','"+eventHash+"')"),'changed trigger body remains exactly pinned');
 });
+test('checked fixture maps only finite helper assertion failures to fixed diagnostic codes',()=>{
+ const fixture=readFileSync(new URL('../../tests/database/catalogue/checked-boundaries.sql',import.meta.url),'utf8');
+ const helpers=readFileSync(new URL('../../tests/database/catalogue/before-foundation.sql',import.meta.url),'utf8');
+ assert.match(helpers,/RAISE EXCEPTION 'Foundation assertion failed: %', label;/);
+ assert.match(helpers,/RAISE EXCEPTION '%: expected %, got %', label, expected_state, coalesce\(actual, 'success'\);/);
+ const calls=[...fixture.matchAll(/PERFORM pg_temp\.foundation_(assert|raises)\([\s\S]*?\);/g)].map(([statement,helper])=>({
+  helper,label:statement.match(/,\s*'([^']+)'\);$/)[1],
+  expected:helper==='raises'?statement.match(/,\s*'([A-Z0-9]{5})',\s*'[^']+'\);$/)[1]:null,
+ }));
+ const mapping=[...fixture.matchAll(/\('(assert|raises)','([^']+)',(NULL|'[A-Z0-9]{5}'),'([A-Z0-9]{5})'\)/g)].map(([,helper,label,expected,code])=>({helper,label,expected:expected==='NULL'?null:expected.slice(1,-1),code}));
+ assert.equal(calls.length,34,'finite existing checked-boundary helper assertions');
+ assert.deepEqual(mapping,calls.map((call,i)=>({...call,code:'PBC'+String(i+1).padStart(2,'0')})),'every unchanged assertion maps once');
+ assert.equal(new Set(mapping.map(entry=>entry.code)).size,mapping.length);
+ const patterns=[...fixture.matchAll(/diagnostic_frame ~ '([^']+)' THEN diagnostic_helper:='(assert|raises)'/g)];
+ assert.equal(patterns.length,2,'only the two exact helper first frames are classified');
+ const classify=(state,message,context)=>{
+  if(state!=='P0001')return state;
+  const helper=patterns.find(([,pattern])=>new RegExp(pattern).test(context.split('\n')[0]))?.[2];
+  const entry=mapping.find(row=>row.helper===helper&&(helper==='assert'
+   ?message==='Foundation assertion failed: '+row.label
+   :message===row.label+': expected '+row.expected+', got success'||
+    /^[A-Z0-9]{5}$/.test(message.slice(-5))&&message===row.label+': expected '+row.expected+', got '+message.slice(-5)));
+  return entry?.code??state;
+ };
+ for(const entry of mapping){
+  const message=entry.helper==='assert'?'Foundation assertion failed: '+entry.label:entry.label+': expected '+entry.expected+', got 23514';
+  const signature=entry.helper==='assert'?'foundation_assert(boolean,text)':'foundation_raises(text,text,text)';
+  for(const prefix of ['','pg_temp.','pg_temp_17.'])assert.equal(classify('P0001',message,'PL/pgSQL function '+prefix+signature+' line 3 at RAISE'),entry.code);
+  assert.equal(classify('23514',message,'PL/pgSQL function pg_temp_17.'+signature+' line 3 at RAISE'),'23514');
+  assert.equal(classify('P0001',message,'PL/pgSQL function private.catalog_core_v2() line 3 at RAISE\nPL/pgSQL function pg_temp_17.'+signature+' line 3 at RAISE'),'P0001');
+  assert.equal(classify('P0001',message,'PL/pgSQL function public.'+signature+' line 3 at RAISE'),'P0001');
+ }
+ const raises=mapping.find(entry=>entry.helper==='raises'),frame='PL/pgSQL function pg_temp_17.foundation_raises(text,text,text) line 5 at RAISE';
+ assert.equal(classify('P0001',raises.label+': expected '+raises.expected+', got success',frame),raises.code);
+ for(const message of ['unmapped failure',raises.label+': expected 00000, got success',raises.label+': expected '+raises.expected+', got private data'])assert.equal(classify('P0001',message,frame),'P0001');
+ const handler=fixture.slice(fixture.lastIndexOf("EXCEPTION WHEN SQLSTATE 'P0001' THEN"));
+ assert.match(handler,/diagnostic_frame:=split_part\(diagnostic_context,E'\\n',1\)/);
+ assert.match(handler,/IF diagnostic_code IS NULL THEN RAISE; END IF;/);
+ assert.match(handler,/ELSE RAISE; END IF;/);
+ assert.match(handler,/RAISE EXCEPTION 'Checked boundary fixture assertion failed' USING ERRCODE=diagnostic_code;/);
+ assert.doesNotMatch(handler.replace(/--[^\n]*/g,''),/RAISE[^;]*(?:diagnostic_message|diagnostic_context|diagnostic_frame)/);
+ assert.match(handler,/diagnostic_message='Foundation assertion failed: '\|\|d\.label/);
+ assert.match(handler,/right\(diagnostic_message,5\) ~ '\^\[A-Z0-9\]\{5\}\$'/);
+});
