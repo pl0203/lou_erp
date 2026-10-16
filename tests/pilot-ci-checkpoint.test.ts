@@ -247,7 +247,13 @@ test('the composition preserves every category-staging workflow byte outside the
   const scheduling = '    needs: catalogue-baseline\n    if: ${{ always() }}\n'
   expect(workflow.split(scheduling)).toHaveLength(2)
   expect(workflow).toContain(`  synthetic-safety:\n${scheduling}    runs-on: ubuntu-latest`)
-  const historical = workflow.replace(scheduling, '').split('\n      - name: Guarded final CO composition, SQL decoders and real races\n')[0]
+  // Independently pin the sole browser addition; retain both original historical hashes.
+  const browserStart = workflow.indexOf('      - name: Native synthetic catalogue browser QA')
+  const browserRegion = workflow.slice(browserStart, browserStart + 640)
+  expect(createHash('sha256').update(browserRegion).digest('hex')).toBe('52835f2c64d1d3f84e534c2738b4a246013d32ece348007d14c7e814e7a3aaa5')
+  expect(workflow.split(browserRegion)).toHaveLength(2)
+  expect(workflow).toContain('      - run: npm run build\n' + browserRegion + '      - name: Install official PostgreSQL client')
+  const historical = workflow.replace(scheduling, '').replace(browserRegion, '').split('\n      - name: Guarded final CO composition, SQL decoders and real races\n')[0]
   expect(createHash('sha256').update(historical).digest('hex')).toBe('5c12be0b5d567c3f680bba8bf8d631924533e586c775207db54d988d44fb7d27')
   const preserved = historical
     .replace('      PGTZ: UTC\n', '')

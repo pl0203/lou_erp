@@ -299,7 +299,13 @@ test('public PG17 CI preserves foundation failure and independently gates helper
  const scheduling='    needs: catalogue-baseline\n    if: ${{ always() }}\n';
  assert.equal(workflow.split(scheduling).length,2);
  assert.ok(workflow.includes(`  synthetic-safety:\n${scheduling}    runs-on: ubuntu-latest`));
- const prefix=workflow.slice(0,split).replace(scheduling,'');
+ // Independently pin the sole browser addition before removing it from the historical prefix.
+ const browserStart=workflow.indexOf('      - name: Native synthetic catalogue browser QA');
+ const browserRegion=workflow.slice(browserStart,browserStart+640);
+ assert.equal(sha(browserRegion),'52835f2c64d1d3f84e534c2738b4a246013d32ece348007d14c7e814e7a3aaa5');
+ assert.equal(workflow.split(browserRegion).length,2);
+ assert.ok(workflow.includes('      - run: npm run build\n'+browserRegion+'      - name: Install official PostgreSQL client'));
+ const prefix=workflow.slice(0,split).replace(scheduling,'').replace(browserRegion,'');
  const decoderStart=prefix.indexOf('      - name: Bind independent read decoder source');
  const commentStart=prefix.indexOf('  # Independent of synthetic-safety:');
  assert.ok(decoderStart>0&&commentStart>decoderStart);
