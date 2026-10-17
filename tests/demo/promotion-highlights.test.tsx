@@ -3,8 +3,8 @@ import { focusManager, onlineManager, QueryClient, QueryClientProvider } from '@
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ rpc: vi.fn(), invoke: vi.fn(), raw: vi.fn(), auth: {} as any }))
-vi.mock('../../src/lib/supabase', () => ({ supabase: { rpc: mocks.rpc, functions: { invoke: mocks.invoke }, from: mocks.raw, storage: { from: mocks.raw } } }))
+const mocks = vi.hoisted(() => ({ rpc: vi.fn(), invoke: vi.fn(), raw: vi.fn(), storage: vi.fn(), visitSelect: vi.fn(), visitStatus: vi.fn(), visitRequester: vi.fn(), visitAbort: vi.fn(), auth: {} as any }))
+vi.mock('../../src/lib/supabase', () => ({ supabase: { rpc: mocks.rpc, functions: { invoke: mocks.invoke }, from: mocks.raw, storage: { from: mocks.storage } } }))
 vi.mock('../../src/lib/AuthContext', () => ({ useAuth: () => mocks.auth }))
 import ActivePromotionsBanner from '../../src/components/ActivePromotionsBanner'
 import SalesPage from '../../src/pages/girard/Promotions'
@@ -28,7 +28,17 @@ beforeEach(() => {
   items = [item()]
   mocks.rpc.mockReset().mockImplementation(() => request(Promise.resolve(reply())))
   mocks.invoke.mockReset().mockImplementation((_name, args) => Promise.resolve({ data: { promotion_id: args.body.promotion_id, signed_url: `https://example.invalid/${args.body.promotion_id}?token=private`, expires_in: 300 }, error: null }))
-  mocks.raw.mockReset().mockImplementation(() => { throw new Error('Raw access must not be used') })
+  // The full Sales page includes its navigation badge. Permit only its
+  // count-only read; promotion data must still use the bounded RPC/image API.
+  mocks.visitAbort.mockReset().mockResolvedValue({ count: 2, error: null })
+  mocks.visitRequester.mockReset().mockReturnValue({ abortSignal: mocks.visitAbort })
+  mocks.visitStatus.mockReset().mockReturnValue({ neq: mocks.visitRequester })
+  mocks.visitSelect.mockReset().mockReturnValue({ eq: mocks.visitStatus })
+  mocks.raw.mockReset().mockImplementation(table => {
+    if (table !== 'visit_requests') throw new Error('Unrelated raw access must not be used')
+    return { select: mocks.visitSelect }
+  })
+  mocks.storage.mockReset().mockImplementation(() => { throw new Error('Raw storage access must not be used') })
   localStorage.clear()
 })
 afterEach(() => { cleanup(); client.clear(); vi.useRealTimers(); focusManager.setFocused(undefined); onlineManager.setOnline(true) })
@@ -44,7 +54,19 @@ test.each(['sales_person', 'sales_manager', 'sales_head', 'executive'])('%s sees
   expect(mocks.rpc).toHaveBeenCalledWith('pilot_promotions_v1', { p_include_inactive: false })
   expect(mocks.rpc.mock.calls.every(call => call[0] === 'pilot_promotions_v1')).toBe(true)
   expect(mocks.invoke).toHaveBeenCalledWith('promotion-image-url', { body: { promotion_id: promotion } })
-  expect(mocks.raw).not.toHaveBeenCalled()
+  expect(mocks.storage).not.toHaveBeenCalled()
+  if (role === 'sales_person') {
+    expect(mocks.raw).not.toHaveBeenCalled()
+    expect(mocks.visitSelect).not.toHaveBeenCalled()
+  } else {
+    expect(mocks.raw.mock.calls).toEqual([['visit_requests']])
+    expect(mocks.visitSelect.mock.calls).toEqual([['id', { count: 'exact', head: true }]])
+    expect(mocks.visitStatus.mock.calls).toEqual([['status', 'pending']])
+    expect(mocks.visitRequester.mock.calls).toEqual([['requester_id', actor]])
+    expect(mocks.visitAbort).toHaveBeenCalledOnce()
+    expect(mocks.visitAbort.mock.calls[0][0]).toBeInstanceOf(AbortSignal)
+    expect(screen.getByRole('link', { name: 'Permintaan Kunjungan, 2 menunggu' })).toBeTruthy()
+  }
 })
 
 test('enabled exhausted stock disappears without signing or pausing the campaign', async () => {
@@ -151,3 +173,4 @@ test.each(['loading', 'inactive', 'mismatch', 'error', 'signed-out'])('unverifie
   expect(screen.queryByText('Tiles')).toBeNull(); expect(screen.queryByRole('img')).toBeNull()
   expect(mocks.rpc).toHaveBeenCalledTimes(reads); expect(mocks.invoke).toHaveBeenCalledTimes(signatures)
 })
+
