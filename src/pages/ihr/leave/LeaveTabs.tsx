@@ -5,6 +5,7 @@ import { UNSAFE_DataRouterContext, UNSAFE_LocationContext } from 'react-router-d
 import { useAuth } from '../../../lib/AuthContext'
 import { useLeaveReadAccess } from '../../../lib/leave/useLeaveReads'
 import type { LeaveContext } from '../../../lib/leave/contracts'
+import DirectorLeaveOverview from './DirectorLeaveOverview'
 import MyLeave from './MyLeave'
 import AssignedApprovalInbox from './AssignedApprovalInbox'
 import TeamLeaveCalendar from './TeamLeaveCalendar'
@@ -33,8 +34,9 @@ function Tabs({actorId,context,readState,onDirtyChange}:{actorId:string;context:
   if(calendarGrant.current.scope!==context.scopeVersion)calendarGrant.current={scope:context.scopeVersion,allowed:false}
   if(access.data)calendarGrant.current.allowed=access.data.calendarAudiences.length>0
   if(access.isError)calendarGrant.current.allowed=false
-  const calendar=context.memberKind==='employee'||context.memberKind==='manager'||approver||calendarGrant.current.allowed
-  const tabs=[...(personal?[{id:'mine',label:'Ajukan Cuti'}]:[]),...(approver?[{id:'approvals',label:'Persetujuan'}]:[]),...(calendar?[{id:'calendar',label:'Kalender'}]:[]),...(admin?[{id:'settings',label:'Pengaturan'}]:[])]
+  const oversight=context.memberKind==='director'
+  const calendar=oversight||context.memberKind==='employee'||context.memberKind==='manager'||approver||calendarGrant.current.allowed
+  const tabs=[...(personal?[{id:'mine',label:'Ajukan Cuti'}]:[]),...(approver?[{id:'approvals',label:'Persetujuan'}]:[]),...(calendar?[{id:'calendar',label:'Kalender'}]:[]),...(oversight?[{id:'overview',label:'Ringkasan Cuti'}]:[]),...(admin?[{id:'settings',label:'Pengaturan'}]:[])]
   const active=tabs.some(tab=>tab.id===selected)?selected:personal?'mine':approver?'approvals':admin?'settings':tabs[0]?.id
   // A module/home navigation is explicit even when its pathname is unchanged.
   // The router owns discard confirmation; keep an in-flight decision's owner
@@ -72,7 +74,9 @@ function Tabs({actorId,context,readState,onDirtyChange}:{actorId:string;context:
       {active==='mine'&&<MyLeave actorId={actorId} context={context} readState={readState} onDirtyChange={setDirty}/>}
       {active==='approvals'&&<AssignedApprovalInbox actorId={actorId} context={context} readState={readState} onDirtyChange={setDirty} onBusyChange={setApprovalBusy}/>}
       {active==='calendar'&&<TeamLeaveCalendar actorId={actorId} context={context} readState={readState}/>}
+      {active==='overview'&&<DirectorLeaveOverview actorId={actorId} context={context} readState={readState}/>}
       {active==='settings'&&<LeaveAdministration actorId={actorId} context={context} readState={readState} onDirtyChange={setDirty}/>}
     </div>
   </section>
 }
+
