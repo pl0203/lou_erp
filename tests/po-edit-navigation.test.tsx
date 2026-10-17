@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 
 const mocks = vi.hoisted(() => ({ rpc: vi.fn() }))
+vi.mock('../src/lib/catalogue/useCatalogueOrderOptions',()=>({useCatalogueOrderOptions:(kind:string)=>({data:kind==='customer'?[{id:'dummy-customer',name:'Dummy customer',pricing_tier:'luar_kota',is_enabled:true}]:[],getCurrentData:()=>kind==='customer'?[{id:'dummy-customer',name:'Dummy customer',pricing_tier:'luar_kota',is_enabled:true}]:[],isError:false,isFetching:false,refetch:vi.fn()})}))
 vi.mock('../src/lib/supabase', () => ({ supabase: {
   rpc: mocks.rpc,
   from: (table: string) => ({ select: (projection: string) => {

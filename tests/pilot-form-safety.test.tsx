@@ -7,18 +7,27 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cacheProbe } from './scalability/cache-probe'
 
 const state = vi.hoisted(() => ({ send: vi.fn(), reconcile: vi.fn(), unresolved: false, visit: true }))
-vi.mock('../src/lib/supabase', () => ({ supabase: {} }))
-vi.mock('../src/lib/AuthContext', () => ({ useAuth: () => ({ user: { id: 'actor' }, profile: { id: 'actor', role: 'sales_person' } }) }))
+vi.mock('../src/lib/supabase', () => ({ supabase: {
+ supabaseUrl:'https://catalogue.test',rest:{url:'https://catalogue.test/rest/v1',schemaName:'public'},
+ rpc:(_name:string,args:any)=>{const request:any={abortSignal:()=>request,then:(resolve:any,reject:any)=>Promise.resolve().then(()=>{
+   if (false) return {data:null,error:new Error('Options unavailable')}
+   const source=args.p_kind==='customer'?[{id:'cccccccc-cccc-4ccc-8ccc-cccccccccccc',name:'Customer A',pricing_tier:'luar_kota'},{id:'dddddddd-dddd-4ddd-8ddd-dddddddddddd',name:'Customer B',pricing_tier:'dalam_kota'}]:[{id:'11111111-1111-4111-8111-111111111111',name:'Barang A',sku:'SKU',luar_kota:null}]
+   const rows=source.map((row:any)=>args.p_kind==='customer'?{address:null,city:null,phone:null,email:null,customer_category:null,...row,is_enabled:true,catalog_version:'1'}:{size:null,unit_price:null,harga_pokok:null,luar_kota:null,dalam_kota:null,depo_bangunan:null,...row,is_enabled:true,catalog_version:'1'}).sort((a:any,b:any)=>a.id.localeCompare(b.id))
+   return {data:{version:1,actor_id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',role:'sales_person',kind:args.p_kind,purpose:args.p_purpose,status:args.p_status,search:args.p_search,page:args.p_page,page_size:args.p_page_size,total_count:String(rows.length),rows},error:null}
+ }).then(resolve,reject)};return request},
+} }))
+vi.mock('../src/lib/AuthContext', () => ({ useAuth: () => ({ user: { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }, profile: { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role: 'sales_person', is_active:true } }) }))
 vi.mock('../src/lib/orderTransactions', async original => ({ ...await original<any>(), useTransactionSender: () => Object.assign(state.send, {
   hasUnresolved: () => state.unresolved, reconcile: state.reconcile, acknowledgeRecovered: () => { state.unresolved = false },
 }) }))
 vi.mock('../src/components/AthelNav', () => ({ default: () => <Link to="/elsewhere">Dashboard</Link> }))
 vi.mock('../src/components/GirardNav', () => ({ default: () => <Link to="/elsewhere">Jadwal</Link> }))
-vi.mock('@tanstack/react-query', async original => ({ ...await original<any>(), useQuery: ({ queryKey }: any) => ({ data:
-  queryKey[0] === 'customers' ? [{ id: 'a', name: 'Customer A', pricing_tier: 'luar_kota' }, { id: 'b', name: 'Customer B', pricing_tier: 'dalam_kota' }]
-    : queryKey[0] === 'schedule' ? { id: 's', customers: { id: 'a', name: 'Customer A', pricing_tier: 'luar_kota' } }
-    : queryKey[0] === 'visit' ? (state.visit ? { id: 'v', sales_person_id: 'actor', note_version: 1, notes: 'Original note', checked_in_at: '2026-09-30T10:00:00Z', visit_photos: [] } : null) : [],
-}) }))
+vi.mock('@tanstack/react-query', async original => { const actual=await original<any>(); return { ...actual, useQuery: (options: any) => { const {queryKey}=options; if(queryKey[0]==='catalogue') return actual.useQuery(options); return ({ data:
+  queryKey[0] === 'customers' ? [{ id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', name: 'Customer A', pricing_tier: 'luar_kota' }, { id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', name: 'Customer B', pricing_tier: 'dalam_kota' }]
+    : queryKey[0] === 'schedule' ? { id: 's', customers: { id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', name: 'Customer A', pricing_tier: 'luar_kota' } }
+    : queryKey[0] === 'visit' ? (state.visit ? { id: 'v', sales_person_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', note_version: 1, notes: 'Original note', checked_in_at: '2026-09-30T10:00:00Z', visit_photos: [] } : null) : [],
+}) } } })
+import { hasOrderItemChanges } from '../src/lib/useUnsavedChanges'
 import PONew from '../src/pages/athel/PONew'
 import VisitPage from '../src/pages/girard/VisitPage'
 const clients: QueryClient[] = []
@@ -29,7 +38,7 @@ beforeEach(() => {
   state.send.mockReset().mockResolvedValue({ id: 'saved' }); state.reconcile.mockReset().mockResolvedValue({ state: 'committed', result: { id: 'recovered' } }); state.unresolved = false; state.visit = true
 })
 afterEach(() => { cleanup(); routers.splice(0).forEach(router => router.dispose()); clients.splice(0).forEach(client => client.clear()); vi.restoreAllMocks(); vi.unstubAllGlobals() })
-function mount(kind: 'po' | 'visit' = 'po') {
+async function mount(kind: 'po' | 'visit' = 'po') {
   const path = kind === 'po' ? '/athel/po/new' : '/girard/visit/s'
   const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } }); clients.push(client)
   const router = createMemoryRouter([
@@ -38,6 +47,7 @@ function mount(kind: 'po' | 'visit' = 'po') {
   ], { initialEntries: ['/elsewhere', path] })
   routers.push(router)
   render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>)
+  if(kind==='po') await waitFor(()=>expect((screen.getByRole('combobox',{name:'Pelanggan'}) as HTMLInputElement).disabled).toBe(false))
   return router
 }
 function selectCustomer(name: string) {
@@ -47,13 +57,12 @@ function selectCustomer(name: string) {
 function dirtyPO() {
   selectCustomer('Customer A')
   fireEvent.change(screen.getByPlaceholderText('mis. PO-2024-001'), { target: { value: 'PO-KEEP' } })
-  fireEvent.click(screen.getByRole('button', { name: '+ Tambah barang manual' }))
-  fireEvent.change(screen.getByPlaceholderText('Nama produk'), { target: { value: 'Barang A' } })
+  const lookup=screen.getByRole('combobox',{name:'Cari SKU atau nama barang'});fireEvent.change(lookup,{target:{value:'SKU'}});fireEvent.keyDown(lookup,{key:'Enter'})
   fireEvent.change(screen.getByLabelText('Harga satuan'), { target: { value: '0' } })
 }
 
-test('changing customer keeps original items until explicit discard and can be cancelled', () => {
-  mount(); dirtyPO()
+test('changing customer keeps original items until explicit discard and can be cancelled', async () => {
+  await mount(); dirtyPO()
   selectCustomer('Customer B')
   expect(screen.getByRole('dialog')).toBeTruthy()
   expect((screen.getByRole('combobox', { name: 'Pelanggan' }) as HTMLInputElement).value).toBe('Customer A')
@@ -68,7 +77,7 @@ test('changing customer keeps original items until explicit discard and can be c
 })
 
 test('dirty new PO guards app links and refresh while clean forms do not prompt', async () => {
-  const router = mount()
+  const router = await mount()
   const clean = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(clean)
   expect(clean.defaultPrevented).toBe(false)
   dirtyPO()
@@ -85,7 +94,7 @@ test('dirty new PO guards app links and refresh while clean forms do not prompt'
 })
 
 test('browser-style Back can be cancelled then accepted and Forward still works', async () => {
-  const router = mount(); dirtyPO()
+  const router = await mount(); dirtyPO()
   await act(() => router.navigate(-1))
   fireEvent.click(await screen.findByRole('button', { name: 'Tetap mengedit' }))
   expect(router.state.location.pathname).toBe('/athel/po/new')
@@ -100,7 +109,7 @@ test('browser-style Back can be cancelled then accepted and Forward still works'
 })
 
 test('successful PO save bypasses the dirty guard and sends optional customer expiry unchanged', async () => {
-  const router = mount(); dirtyPO()
+  const router = await mount(); dirtyPO()
   const probe = cacheProbe(clients.at(-1)!)
   const expiry = screen.getByLabelText('Tanggal Kedaluwarsa PO (opsional)')
   expect(expiry.hasAttribute('required')).toBe(false)
@@ -114,7 +123,7 @@ test('successful PO save bypasses the dirty guard and sends optional customer ex
 })
 
 test('unknown save outcomes remain recoverable and recovered success does not leave a blocker', async () => {
-  const router = mount(); dirtyPO()
+  const router = await mount(); dirtyPO()
   const probe = cacheProbe(clients.at(-1)!)
   state.send.mockImplementationOnce(async () => { state.unresolved = true; throw new Error('Hasil belum pasti') })
   fireEvent.click(screen.getByRole('button', { name: 'Simpan PO' }))
@@ -133,7 +142,7 @@ test('unknown save outcomes remain recoverable and recovered success does not le
 })
 
 test('dirty visit notes can keep editing on Cancel and warn again before leaving', async () => {
-  const router = mount('visit')
+  const router = await mount('visit')
   fireEvent.click(screen.getByRole('button', { name: 'Edit catatan' }))
   fireEvent.change(screen.getByLabelText('Catatan kunjungan'), { target: { value: 'Barang kunjungan' } })
   fireEvent.click(screen.getByRole('button', { name: 'Batal' }))
@@ -153,7 +162,7 @@ test('dirty visit notes can keep editing on Cancel and warn again before leaving
 test.each(['navigate', 'cancel'])('a visit note committed while a %s dialog is open clears it and guards later new drafts', async action => {
   let resolve!: (value: { id: string }) => void
   state.send.mockReturnValueOnce(new Promise(done => { resolve = done }))
-  const router = mount('visit')
+  const router = await mount('visit')
   fireEvent.click(screen.getByRole('button', { name: 'Edit catatan' }))
   fireEvent.change(screen.getByLabelText('Catatan kunjungan'), { target: { value: 'Pending item' } })
   fireEvent.click(screen.getByRole('button', { name: 'Simpan catatan' }))
@@ -170,24 +179,24 @@ test.each(['navigate', 'cancel'])('a visit note committed while a %s dialog is o
   expect(await screen.findByRole('dialog')).toBeTruthy()
 })
 
-test('pristine missing price stays clean; entering zero is a draft change and clearing restores clean', () => {
- mount()
- fireEvent.click(screen.getByRole('button', { name: '+ Tambah barang manual' }))
- const price = screen.getByLabelText('Harga satuan')
- expect((price as HTMLInputElement).value).toBe('')
- const clean = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(clean)
- expect(clean.defaultPrevented).toBe(false)
- fireEvent.change(price, { target: { value: '0' } })
- const dirty = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(dirty)
- expect(dirty.defaultPrevented).toBe(true)
- fireEvent.change(price, { target: { value: '' } })
- const cleared = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(cleared)
- expect(cleared.defaultPrevented).toBe(false)
+test('empty form stays clean, but selecting a catalogue line remains dirty after clearing its entered zero price', async () => {
+ const blank={product_id:null,product_name:'',sku:'',quantity:1,unit_price:Number.NaN}
+ expect(hasOrderItemChanges([blank])).toBe(false);expect(hasOrderItemChanges([{...blank,unit_price:0}])).toBe(true);expect(hasOrderItemChanges([{...blank,unit_price:Number.NaN}])).toBe(false)
+ await mount()
+ const clean=new Event('beforeunload',{cancelable:true});window.dispatchEvent(clean);expect(clean.defaultPrevented).toBe(false)
+ selectCustomer('Customer A')
+ const lookup=screen.getByRole('combobox',{name:'Cari SKU atau nama barang'});fireEvent.change(lookup,{target:{value:'SKU'}});fireEvent.keyDown(lookup,{key:'Enter'})
+ const price=screen.getByLabelText('Harga satuan') as HTMLInputElement;expect(price.value).toBe('')
+ fireEvent.change(price,{target:{value:'0'}});expect(price.value).toBe('0')
+ const dirty=new Event('beforeunload',{cancelable:true});window.dispatchEvent(dirty);expect(dirty.defaultPrevented).toBe(true)
+ fireEvent.change(price,{target:{value:''}});expect(price.value).toBe('')
+ const cleared=new Event('beforeunload',{cancelable:true});window.dispatchEvent(cleared);expect(cleared.defaultPrevented).toBe(true)
+ expect(state.send).not.toHaveBeenCalled()
 })
 
-test('new PO line fields stack on phones without narrowing SKU to one desktop column', () => {
-  mount()
-  fireEvent.click(screen.getByRole('button', { name: '+ Tambah barang manual' }))
+test('new PO line fields stack on phones without narrowing SKU to one desktop column', async () => {
+  await mount()
+  dirtyPO()
   const sku = screen.getByText('SKU', { selector: 'label' }).parentElement!
   const grid = sku.parentElement!
   expect(grid.classList.contains('grid-cols-1')).toBe(true)
@@ -201,7 +210,7 @@ vi.mock('../src/components/StorePOContext', () => ({ default: () => null }))
 vi.mock('../src/lib/reads/usePagedRead', () => ({ usePagedRead: () => ({ data: { items: [], total: 0 }, page: 1, isPending: false, setPage: vi.fn() }) }))
 
 test('dirty-navigation Escape keeps editing and restores the invoking control', async () => {
- const router = mount(); dirtyPO()
+ const router = await mount(); dirtyPO()
  const trigger = screen.getByRole('link', { name: 'Dashboard' }); trigger.focus(); fireEvent.click(trigger)
  const dialog = await screen.findByRole('dialog', { name: 'Buang perubahan?' })
  expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Tetap mengedit' }))

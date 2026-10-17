@@ -20,7 +20,13 @@ export function Dialog({ labelledBy, children, pending, onClose, returnFocus, fa
   const dialog = useRef<HTMLDialogElement>(null)
   const nativeModal = useRef(false)
   const controls = () => Array.from(dialog.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled):not([type="hidden"]), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex]:not([tabindex="-1"])') ?? [])
-    .filter(element => !element.hidden && element.getAttribute('aria-hidden') !== 'true' && element.getAttribute('aria-disabled') !== 'true')
+    .filter(element => {
+      if (element.tabIndex < 0 || element.matches(':disabled, input[type="hidden"]')) return false
+      for (let ancestor: HTMLElement | null = element; ancestor && ancestor !== dialog.current; ancestor = ancestor.parentElement) {
+        if (ancestor.matches('[hidden], [inert], [aria-hidden="true"], [aria-disabled="true"]') || getComputedStyle(ancestor).display === 'none') return false
+      }
+      return !['hidden', 'collapse'].includes(getComputedStyle(element).visibility)
+    })
   const focusInside = () => (controls()[0] ?? dialog.current)?.focus()
   useEffect(() => {
     const node = dialog.current
@@ -50,11 +56,13 @@ export function Dialog({ labelledBy, children, pending, onClose, returnFocus, fa
     onKeyDown={event => {
       if (activeOwner()?.node !== dialog.current) return
       if (event.key === 'Escape') { event.preventDefault(); if (!pending) onClose(); return }
-      if (event.key !== 'Tab') return
+      if (event.key !== 'Tab' || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return
       const targets = controls(), first = targets[0], last = targets.at(-1)
       if (!first) { event.preventDefault(); dialog.current?.focus(); return }
-      // Native modal navigation owns date-input segments and its Tab boundary.
-      if (nativeModal.current) return
+      // Date/time segments are native Tab stops within one DOM input. Keep those
+      // native, but wrap ordinary edge controls before focus can leave the page.
+      if (nativeModal.current && document.activeElement instanceof HTMLInputElement
+        && ['date', 'time', 'datetime-local', 'month', 'week'].includes(document.activeElement.type)) return
       if (!dialog.current?.contains(document.activeElement)) { event.preventDefault(); (event.shiftKey ? last : first)?.focus() }
       else if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }

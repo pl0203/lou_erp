@@ -66,9 +66,14 @@ test('zero selected-tier catalog value remains valid and is never considered mis
  const x=ready();x.cs[0].pricing_tier='harga_pokok';x.decision.rows[x.parsed.rows[0].id].unitPrice='0';x.decision.acknowledgedIssueIds.push(`${x.parsed.rows[0].id}:zero-price`)
  expect(x.run().issues.some(i=>i.field===`rows.${x.parsed.rows[0].id}.unitPrice` && i.code==='catalog-price-missing')).toBe(false)
 })
-test('manual row is explicit, retains user reviewed name and SKU, and needs no catalog creation',()=>{
+test('manual import escape is refused even with complete reviewed values',()=>{
  const x=ready();x.decision.rows[x.parsed.rows[0].id]={productId:null,manual:true,sku:'MANUAL-007',name:'User reviewed trim',quantity:'3',unitPrice:'12.34',unitConfirmed:true}
- acknowledgeFinance(x);const result=x.run();expect(result.draft!.lineItems[0]).toMatchObject({product_id:null,sku:'MANUAL-007',product_name:'User reviewed trim',quantity:3,unit_price:12.34})
+ acknowledgeFinance(x);expect(x.run().draft).toBeNull()
+})
+test('a choice removed from enabled import options cannot be applied or suggested',()=>{
+ const x=ready();const removed=x.catalog.shift()!
+ expect(matchPODraft(x.parsed,x.cs,x.catalog).productIdsByRow[x.parsed.rows[0].id]).not.toContain(removed.id)
+ expect(x.run().draft).toBeNull()
 })
 test('missing product mapping cannot become an implicit manual row',()=>{
  const x=ready();x.decision.rows[x.parsed.rows[0].id].productId=null;expect(x.run().draft).toBeNull()

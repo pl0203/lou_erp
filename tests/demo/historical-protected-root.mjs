@@ -3,6 +3,8 @@
 // 5e99f7792e47658ce70ddd8b269df61fd843be3a. The 24 additional snapshots use
 // surrogate pre-UI 5c8d851dd855bfaab3665a093c82860e9da952c6 bytes that
 // independently match the same immutable old manifest hashes.
+// Four leave-reader snapshots are exact bytes from reviewed baseline
+// 5a37760e664e87dbb7be3dd1cf26e01468cefe27 and match the immutable pins.
 // No Git lookup, hash regeneration, arbitrary fallback, network or DB activity.
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
@@ -14,6 +16,10 @@ import { DEMO_MIGRATIONS } from '../../scripts/build-demo-rollout.mjs'
 
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url))
 const snapshots = new Map([
+  ['src/lib/leave/readContracts.ts', 'readContracts.ts.snapshot'],
+  ['src/lib/leave/readQueryKeys.ts', 'readQueryKeys.ts.snapshot'],
+  ['src/lib/leave/readRpc.ts', 'readRpc.ts.snapshot'],
+  ['src/lib/leave/useLeaveReads.ts', 'useLeaveReads.ts.snapshot'],
   ['src/lib/AuthContext.tsx', 'AuthContext.tsx.snapshot'],
   ['src/pages/ihr/LeaveManagement.tsx', 'LeaveManagement.tsx.snapshot'],
   ['src/pages/ihr/UserManagement.tsx', 'UserManagement.tsx.snapshot'],

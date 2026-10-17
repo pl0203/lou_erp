@@ -73,12 +73,18 @@ test('pending authority hides calendar rows and disables interaction immediately
  expect(screen.queryByText('Fictional manager')).toBeNull();expect(screen.getByText(/Memeriksa akses kalender/)).toBeTruthy()
  expect((screen.getByLabelText('Cakupan kalender') as HTMLSelectElement).disabled).toBe(true)
 })
-test('director with no personal timezone can use server-confirmed assigned-manager month',async()=>{
+test('director without personal timezone uses all-active month and can round-trip assigned-team scope',async()=>{
  const director:LeaveContext={...context,memberKind:'director',timezone:null,capabilities:{...context.capabilities,request:false}}
- mocks.rpc.mockImplementation((name:string,args?:Record<string,string>)=>({abortSignal:()=>Promise.resolve({data:name==='leave_context_v1'?director:name==='leave_reads_context_v1'?{scopeVersion:'one',calendarAudiences:['assigned_team'],defaultRange:{from:'2026-10-01',to:'2026-10-31'},defaultRangeState:'ready'}:reply(name,args).data,error:null})}))
+ mocks.rpc.mockImplementation((name:string,args?:Record<string,string>)=>({abortSignal:()=>Promise.resolve({data:name==='leave_context_v1'?director:name==='leave_director_calendar_context_v1'?{scopeVersion:'one',calendarAudiences:['director_all','assigned_team'],defaultRange:{from:'2026-10-01',to:'2026-10-31'},defaultRangeState:'ready'}:reply(name,args).data,error:null})}))
  const Calendar=calendar.default;mount(<Calendar actorId={actor} context={director}/>);expect(await screen.findByText('Fictional manager')).toBeTruthy()
- expect((screen.getByLabelText('Cakupan kalender') as HTMLSelectElement).value).toBe('assigned_team')
- expect(screen.queryByRole('option',{name:'Cuti saya'})).toBeNull()
+ const scope=screen.getByLabelText('Cakupan kalender') as HTMLSelectElement
+ expect(scope.value).toBe('director_all');expect(screen.queryByRole('option',{name:'Cuti saya'})).toBeNull()
+ expect(mocks.rpc).toHaveBeenCalledWith('leave_director_calendar_v1',{p_from:'2026-10-01',p_to:'2026-10-31'})
+ fireEvent.change(scope,{target:{value:'assigned_team'}});await waitFor(()=>expect(mocks.rpc).toHaveBeenCalledWith('leave_calendar_v1',{p_from:'2026-10-01',p_to:'2026-10-31',p_audience:'assigned_team'}))
+ expect(await screen.findByText('Fictional manager')).toBeTruthy();expect(screen.getByRole('option',{name:'Seluruh karyawan'})).toBeTruthy()
+ fireEvent.change(scope,{target:{value:'director_all'}});expect(await screen.findByText('Fictional manager')).toBeTruthy();expect(scope.value).toBe('director_all')
+ expect(mocks.rpc).toHaveBeenCalledWith('leave_director_calendar_context_v1',{p_audience:'assigned_team'})
+ expect(mocks.rpc.mock.calls.some(([name])=>name==='leave_reads_context_v1')).toBe(false)
 })
 
 test('mixed or unconfirmed timezone keeps manual bounded selection available',async()=>{

@@ -91,16 +91,17 @@ export function useAuthorizedLeaveRead<T extends object>(actorId:string,context:
 }
 export function useLeaveReadAccess(actorId:string,context:LeaveContext,enabled=true,audience?:CalendarAudience){
  return useAuthorizedLeaveRead(actorId,context,leaveReadKeys.access(actorId,context.scopeVersion,audience),async signal=>{
-  const access=await fetchLeaveReadAccess(signal,audience)
+  const access=await fetchLeaveReadAccess(signal,audience,context.memberKind==='director')
   if(access.scopeVersion!==context.scopeVersion)throw new Error('Data atau akses cuti berubah. Muat ulang sebelum melanjutkan.')
   return access
  },enabled)
 }
 export function useLeaveCalendar(actorId:string,context:LeaveContext,range:CalendarRange,audience:CalendarAudience,enabled=true){
  return useAuthorizedLeaveRead(actorId,context,leaveReadKeys.calendar(actorId,context.scopeVersion,range,audience),signal=>fetchLeaveCalendar(range,audience,signal),enabled,
-  live=>audience!=='own'||live.memberKind==='employee'||live.memberKind==='manager')
+  live=>audience==='director_all'?live.memberKind==='director':audience!=='own'||live.memberKind==='employee'||live.memberKind==='manager')
 }
 export function useLeaveApprovalCounts(actorId:string,context:LeaveContext,filter:ApprovalCountFilter='all',enabled=true){
  return useAuthorizedLeaveRead(actorId,context,leaveReadKeys.counts(actorId,context.scopeVersion,filter),fetchLeaveApprovalCounts,enabled&&context.capabilities.approve,
   live=>live.capabilities.approve)
 }
+

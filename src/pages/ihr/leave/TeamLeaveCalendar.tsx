@@ -9,14 +9,14 @@ import type { CalendarAudience, CalendarRange } from '../../../lib/leave/readCon
 import { useLeaveCalendar, useLeaveReadAccess } from '../../../lib/leave/useLeaveReads'
 import { formatLeaveMinutes } from '../../../lib/leave/formatMinutes'
 type Props={actorId:string;context:LeaveContext;readState?:'ready'|'pending'|'error'}
-const audienceLabels:Record<CalendarAudience,string>={own:'Cuti saya',assigned_team:'Tim yang ditugaskan',granted:'Akses kalender yang diberikan'}
+const audienceLabels:Record<CalendarAudience,string>={own:'Cuti saya',assigned_team:'Tim yang ditugaskan',granted:'Akses kalender yang diberikan',director_all:'Seluruh karyawan'}
 export default function TeamLeaveCalendar(props:Props){
  return <CalendarPanel key={`${props.actorId}:${props.context.scopeVersion}`} {...props}/>
 }
 function CalendarPanel({actorId,context,readState='ready'}:Props){
  const fieldId=useId()
  const [range,setRange]=useState<CalendarRange|null>(null),[from,setFrom]=useState(''),[to,setTo]=useState(''),[error,setError]=useState(''),[manual,setManual]=useState(false)
- const [audience,setAudience]=useState<CalendarAudience>(context.memberKind==='employee'||context.memberKind==='manager'?'own':context.memberKind==='director'?'assigned_team':'granted')
+ const [audience,setAudience]=useState<CalendarAudience>(context.memberKind==='employee'||context.memberKind==='manager'?'own':context.memberKind==='director'?'director_all':'granted')
  const access=useLeaveReadAccess(actorId,context,true,audience)
  const completedAudience=useRef<{audience:CalendarAudience;allowed:boolean}|null>(null)
  if(access.data)completedAudience.current={audience,allowed:access.data.calendarAudiences.includes(audience)}
@@ -36,6 +36,7 @@ function CalendarPanel({actorId,context,readState='ready'}:Props){
  }
  return <section aria-label="Kalender tim" className="ui-section space-y-4">
   <h2 className="font-semibold text-brand-primary">Kalender Tim</h2>
+  {audience==='director_all'&&<p>Seluruh anggota cuti karyawan dan manajer yang aktif.</p>}
   <p className="text-base text-brand-secondary">Hanya cuti disetujui dan pembatalan yang masih menunggu keputusan. Sebagian jadwal menunjukkan menit cuti; waktu mulai dan selesai tidak dicatat.</p>
   <p className="text-base text-brand-secondary">Label seluruh jadwal mengacu pada kapasitas jadwal saat cuti disetujui. Kalender ini tidak memastikan cakupan petugas.</p>
   <form onSubmit={apply} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1.3fr_1fr_1fr_auto]">
@@ -66,3 +67,4 @@ function CalendarPanel({actorId,context,readState='ready'}:Props){
    </>:<div role="status" className="ui-notice ui-notice--info"><p>Kalender belum tersedia.</p><Button size="compact" type="button" onClick={()=>void calendar.refetch()} variant="secondary">Muat ulang kalender</Button></div>}
  </section>
 }
+

@@ -83,6 +83,8 @@ test('read_private never falls back to own/approval/other grants, and request ID
 
 import { runCapacityMeasurement } from '../database/ihr/capacity-measure.mjs'
 import { AS_OF, validateCapacityFixture } from '../database/ihr/capacity-fixture.mjs'
+// Repeated full 10,000-request / 60,000-day fixture builds exceed 5s on a single CPU.
+// This mocked orchestration allowance leaves RPC thresholds and all 35 observations unchanged.
 test('sampler binds HR expected authority outside timing and retains the binding with each observation', async () => {
   const generated = validateCapacityFixture(buildCapacityFixture()), workload = hr.find(w => w.name === 'hr-requests-first-50')
   const actions: string[] = [], records: any[] = [], seal = unitSeal(), plans = buildCapacityPlans()
@@ -109,4 +111,4 @@ test('sampler binds HR expected authority outside timing and retains the binding
   expect(records).toHaveLength(35)
   expect(records.every(r => r.authorityBinding.scopeVersion === binding.scopeVersion && r.authorityBinding.authorityKey === binding.authorityKey)).toBe(true)
   for (let i = 0; i < actions.length; i++) if (actions[i] === 'binding') expect(actions.slice(i, i + 7)).toEqual(['binding', 'role-proof', 'timer', 'BEGIN READ ONLY', 'RPC', 'COMMIT', 'timer'])
-})
+}, 10_000)

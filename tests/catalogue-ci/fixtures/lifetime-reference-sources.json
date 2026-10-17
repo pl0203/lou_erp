@@ -1,0 +1,32 @@
+{
+  "commit": "2cd89209305fe52163a7d064ef33c0d9f949c302",
+  "files": [
+    {
+      "path": "supabase/catalogue/v1/02-promotion-owner-extraction.sql",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "24b4285d6422cbc87c4dafa49ced4e2da6420d0d",
+      "size": 25638,
+      "url": "https://api.github.com/repos/pl0203/lou_erp/git/blobs/24b4285d6422cbc87c4dafa49ced4e2da6420d0d",
+      "sha256": "d53ad17d77fbafbf8542c29fbcd04a3b3457916d296d0f2bf28df78a1389affc"
+    },
+    {
+      "path": "supabase/catalogue/v1/new02-visit-reference-extraction.sql",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "5954416576932e0b69309bc6ecf401c328a95d88",
+      "size": 34753,
+      "url": "https://api.github.com/repos/pl0203/lou_erp/git/blobs/5954416576932e0b69309bc6ecf401c328a95d88",
+      "sha256": "5d64d14d3ebc2d7c075d8aba2d49fafece9f970235a54620393577ff2bfec71e"
+    },
+    {
+      "path": "supabase/catalogue/v1/02-co-draft-reference-extraction.sql",
+      "mode": "100644",
+      "type": "blob",
+      "sha": "9ee9ed26442c426bf618f0d700db0fe3a7b40159",
+      "size": 10630,
+      "url": "https://api.github.com/repos/pl0203/lou_erp/git/blobs/9ee9ed26442c426bf618f0d700db0fe3a7b40159",
+      "sha256": "ebdc135249aacc7c297fb88ec12640a0c5a7da3cd5cfa76c9f2adfd8050d8aa5"
+    }
+  ]
+}

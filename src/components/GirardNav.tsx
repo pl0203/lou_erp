@@ -1,4 +1,5 @@
 import { useAuth } from '../lib/AuthContext'
+import { usePendingVisitReviewCount } from '../lib/visitRequestBadge'
 import AppNavigation from './AppNavigation'
 import type { NavigationLink } from './navigationModules'
 
@@ -39,7 +40,10 @@ const ROLE_LINKS: Record<string, NavigationLink[]> = {
 
 export default function GirardNav() {
   const { profile } = useAuth()
-  const roleLinks = profile ? [...(ROLE_LINKS[profile.role] ?? [])] : []
+  const pendingReviews = usePendingVisitReviewCount(profile?.id, profile?.role)
+  const roleLinks = profile ? (ROLE_LINKS[profile.role] ?? []).map(link =>
+    link.to === '/girard/visit-requests' ? { ...link, badge: pendingReviews } : link
+  ) : []
   if (profile && ['sales_person', 'sales_manager', 'sales_head', 'executive'].includes(profile.role)) {
     roleLinks.push({ to: '/girard/visit-history', label: 'Riwayat Kunjungan Saya', icon: 'visit' })
     if (!roleLinks.some(link => link.to === '/girard/promotions')) roleLinks.push({ to: '/girard/promotions', label: 'Promosi', icon: 'promotion' })
@@ -47,3 +51,4 @@ export default function GirardNav() {
   }
   return <AppNavigation module="girard" links={roleLinks} />
 }
+

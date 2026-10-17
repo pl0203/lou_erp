@@ -22,8 +22,9 @@ let pausedContext=false, rejectContext=false, pendingSignals:AbortSignal[],finis
 const clients:QueryClient[]=[],routers:ReturnType<typeof createMemoryRouter>[]=[]
 function response(name:string,args:any={}){
  if(name==='leave_context_v1')return context
- if(name==='leave_reads_context_v1')return {scopeVersion:context.scopeVersion,calendarAudiences:audiences,defaultRange:{from:'2026-10-01',to:'2026-10-31'},defaultRangeState:'ready'}
- if(name==='leave_calendar_v1')return [{employeeId:employeeA,employeeName:'Fictional calendar employee',date:'2026-10-09',approvedMinutes:450,availabilityLabel:'full_scheduled_absence'}]
+ if(name==='leave_reads_context_v1'||name==='leave_director_calendar_context_v1')return {scopeVersion:context.scopeVersion,calendarAudiences:audiences,defaultRange:{from:'2026-10-01',to:'2026-10-31'},defaultRangeState:'ready'}
+ if(name==='leave_director_requests_v1')return {rows:[{id:requestId,sequence:1,employeeId:employeeB,employeeName:'Fictional oversight colleague',startDate:'2026-10-09',endDate:'2026-10-09',totalMinutes:450,status:'submitted',submittedAt:'2026-10-03T00:00:00Z',approverName:'Fictional assigned manager'}],nextBefore:null}
+ if(name==='leave_calendar_v1'||name==='leave_director_calendar_v1')return [{employeeId:employeeA,employeeName:'Fictional calendar employee',date:'2026-10-09',approvedMinutes:450,availabilityLabel:'full_scheduled_absence'}]
  if(name==='leave_approval_counts_v1')return counts
  if(name==='leave_assigned_inbox_v1')return {rows,nextBefore:null}
  if(name==='leave_assigned_request_v1')return detail
@@ -86,10 +87,13 @@ test('top Ajukan Cuti intent waits for an in-flight manager decision before repl
  fireEvent.click(screen.getAllByRole('link',{name:'Ajukan Cuti'})[0]);expect(tab('Persetujuan').getAttribute('aria-selected')).toBe('true');expect(screen.getByText('Fictional private reason')).toBeTruthy()
  rows=[];counts={pendingLeave:0,pendingCancellation:0};await act(async()=>finishMutation!({data:{id:requestId,version:2,operation:'approve_request'},error:null}));await waitFor(()=>expect(tab('Ajukan Cuti').getAttribute('aria-selected')).toBe('true'));expect(mocks.rpc.mock.calls.filter(([name])=>name==='leave_transaction_v1')).toHaveLength(1)
 })
-test('director sees only assigned approval and minimal assigned-manager calendar, never personal entitlement or HR settings',async()=>{
- identity(directorA);context={...personal,memberKind:'director',balances:[],currentPeriod:null,timezone:null,capabilities:{...none,approve:true}};audiences=['assigned_team'];mount()
+test('director sees assigned approvals plus all-active calendar and read-only overview, never personal entitlement or HR settings',async()=>{
+ identity(directorA);context={...personal,memberKind:'director',balances:[],currentPeriod:null,timezone:null,capabilities:{...none,approve:true}};audiences=['director_all','assigned_team'];mount()
  expect(await screen.findByRole('button',{name:'Tinjau Fictional employee'})).toBeTruthy();expect(screen.queryByRole('tab',{name:'Ajukan Cuti'})).toBeNull();expect(screen.queryByRole('tab',{name:'Pengaturan'})).toBeNull();fireEvent.click(tab('Kalender'));await screen.findByText('Fictional calendar employee')
  expect(screen.queryByRole('option',{name:'Cuti saya'})).toBeNull();expect(screen.queryByRole('option',{name:'Akses kalender yang diberikan'})).toBeNull();expect(mocks.rpc.mock.calls.some(([name])=>name==='leave_balance_accounts_v1'||name==='leave_own_history_v1'||name==='leave_admin_targets_v1')).toBe(false)
+ expect((screen.getByLabelText('Cakupan kalender') as HTMLSelectElement).value).toBe('director_all');expect(mocks.rpc).toHaveBeenCalledWith('leave_director_calendar_v1',{p_from:'2026-10-01',p_to:'2026-10-31'})
+ fireEvent.click(tab('Ringkasan Cuti'));expect(await screen.findByText('Fictional oversight colleague')).toBeTruthy();expect(screen.queryByText('Fictional private reason')).toBeNull();expect(screen.queryByRole('button',{name:/Setujui|Tolak/})).toBeNull()
+ expect(mocks.rpc.mock.calls.some(([name])=>name==='leave_transaction_v1'||name==='leave_hr_request_v1'||name==='leave_balance_accounts_v1')).toBe(false)
 })
 test('configure-only discovers exact targets and exposes policy without approval/private balance/access controls',async()=>{
  identity(hrA);context={...personal,memberKind:null,capabilities:{...none,configure:true},balances:[],currentPeriod:null};audiences=[];targets=[{id:employeeA,name:'Fictional configured target',capabilities:{configure:true,adjust:false,readPrivate:false,calendar:false,manageAccess:false}}];mount()
@@ -386,4 +390,14 @@ test('main leave selected border stays on rejected dirty tab and moves only afte
  fireEvent.click(calendar);expect(window.confirm).toHaveBeenCalled();expect(approvals.getAttribute('aria-selected')).toBe('true');marked(approvals)
  vi.mocked(window.confirm).mockReturnValue(true);fireEvent.click(calendar);await screen.findByText('Fictional calendar employee');marked(calendar)
  fireEvent.click(mine);marked(mine)
+})
+
+test('director without assignments gets overview through real authority hook and loses cached overview after scope revocation',async()=>{
+ identity(directorA);context={...personal,memberKind:'director',balances:[],currentPeriod:null,timezone:null,capabilities:none};audiences=['director_all'];mount()
+ fireEvent.click(await screen.findByRole('tab',{name:'Ringkasan Cuti'}));expect(await screen.findByText('Fictional oversight colleague')).toBeTruthy()
+ expect(screen.queryByRole('tab',{name:/Persetujuan/})).toBeNull();expect(screen.queryByRole('tab',{name:'Ajukan Cuti'})).toBeNull();expect(screen.queryByRole('tab',{name:'Pengaturan'})).toBeNull()
+ expect(mocks.rpc.mock.calls.some(([name])=>name==='leave_assigned_inbox_v1'||name==='leave_hr_request_v1'||name==='leave_balance_accounts_v1')).toBe(false)
+ context={...context,scopeVersion:'revoked-director',memberKind:null};audiences=[];fireEvent(window,new Event('focus'))
+ await waitFor(()=>expect(screen.queryByText('Fictional oversight colleague')).toBeNull())
+ await waitFor(()=>expect(screen.queryByRole('tab',{name:'Ringkasan Cuti'})).toBeNull())
 })

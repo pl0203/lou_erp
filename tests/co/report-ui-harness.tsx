@@ -9,7 +9,7 @@ export const customer = id(2), draftId = id(3), month = '2026-09-01';
 export const hash = 'a'.repeat(64), fingerprint = 'b'.repeat(64);
 const wire = vi.hoisted(() => ({ rpc: vi.fn(), invoke: vi.fn(), handler: null as any, actor: true, role: 'co_admin', guard: null as any }));
 export { wire };
-vi.mock('../../src/lib/supabase', () => ({ supabase: { rpc: wire.rpc, functions: {invoke: wire.invoke} } }));
+vi.mock('../../src/lib/supabase', () => ({ supabase: { supabaseUrl: 'https://co-catalogue.test', rest: { url: 'https://co-catalogue.test/rest/v1', schemaName: 'public' }, rpc: wire.rpc, functions: {invoke: wire.invoke} } }));
 vi.mock('../../src/lib/AuthContext', () => ({ useAuth: () => ({ user: wire.actor ? { id: '00000000-0000-0000-0000-000000000001' } : null, profile: wire.actor ? { id: '00000000-0000-0000-0000-000000000001', role: wire.role, is_active: true } : null, loading: false, error: null }), useBeforeSignOut: (guard: any) => { useEffect(() => { wire.guard = guard; return () => { wire.guard = null; }; }, [guard]); } }));
 vi.mock('../../src/components/AthelNav', () => ({ default: () => null }));
 vi.mock('../../src/lib/co/catalog', async (original) => ({ ...await original<any>(), fetchCOCustomers: async () => [{ id: customer, name: 'Store A', pricing_tier: 'others' }] }));
@@ -30,6 +30,10 @@ export function store(count = 1, reportMonth = month, reportDraftId = draftId) {
         const root = { version: '1', as_of: '2026-10-09T00:00:00Z' };
         const page = (rows: any[]) => ({ ...root, page: a.p_page, page_size: a.p_page_size, total: String(rows.length), rows: rows.slice((a.p_page - 1) * a.p_page_size, a.p_page * a.p_page_size) });
         if (name === 'pilot_co_evidence_selection_v1') return { data: {version:'1',customer_id:customer,draft_id:a.p_draft_id, draft_version:a.p_expected_draft_version,revision_id:a.p_revision_id,evidence:null},error:null };
+        if (name === 'pilot_catalog_page_v1') {
+            const rows = a.p_kind === 'customer' ? [{ id: customer, name: 'Store A', address: null, city: null, phone: null, email: null, pricing_tier: 'others', customer_category: null, is_enabled: true, catalog_version: '9007199254740993' }] : [];
+            return { data: { version: 1, actor_id: id(1), role: wire.role, kind: a.p_kind, purpose: a.p_purpose, status: a.p_status, search: a.p_search, page: a.p_page, page_size: a.p_page_size, total_count: String(rows.length), rows }, error: null };
+        }
         if (name === 'pilot_my_profile')
             return { data: [{ id: id(1), role: wire.role, is_active: true }], error: null };
         if (name === 'pilot_co_report_v1')
@@ -117,3 +121,4 @@ export function deliveryFixture(count = 1, voided = false) { const s = store(); 
     return { data: receipt, error: null };
 } if (n === 'pilot_reconcile_co_v1')
     return { data: { status: 'committed', operation: receipt.operation, receipt }, error: null }; return s.handle(n, a); }; return state; }
+

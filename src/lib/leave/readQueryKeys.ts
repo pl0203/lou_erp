@@ -12,5 +12,6 @@ export function createLeaveReadKeys(backend:string){
 export const leaveReadKeys=createLeaveReadKeys(LEAVE_BACKEND)
 /** Call after a confirmed or reconciled request transition. Whole leave-identity invalidation also covers these. */
 export function invalidateLeaveReads(client:QueryClient,actorId:string){
- return client.invalidateQueries({queryKey:leaveKeys.identity(actorId),predicate:query=>query.queryKey[3]==='private'&&['read-access','team-calendar','approval-counts'].includes(String(query.queryKey[5]))})
+ return client.invalidateQueries({queryKey:leaveKeys.identity(actorId),predicate:query=>query.queryKey[3]==='private'&&['read-access','team-calendar','approval-counts','director-overview'].includes(String(query.queryKey[5]))})
 }
+

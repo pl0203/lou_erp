@@ -9,7 +9,7 @@ type Kind = 'customer' | 'sales'
 type Layout = 'desktop' | 'mobile'
 type Trigger = 'visibility' | 'reconnect'
 const state = vi.hoisted(() => ({
-  actor: 'actor', role: 'executive', rows: ['A', 'B'], target: '200.00',
+  actor: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role: 'executive', rows: ['A', 'B'], target: '200.00',
   readGate: null as Promise<void> | null, readError: null as Error | null,
   writeGate: null as Promise<void> | null, writeError: false,
   reads: [] as { kind: Kind; actor: string; role: string; month: string; page: number }[],
@@ -17,7 +17,7 @@ const state = vi.hoisted(() => ({
 }))
 vi.mock('../../src/components/GirardNav', () => ({ default: () => <nav aria-label="Navigasi modul">Sales</nav> }))
 vi.mock('../../src/components/sales/SalesMetricSummary', () => ({ SalesMetricsPanel: () => <p>Metrik Sales terpisah</p> }))
-vi.mock('../../src/lib/AuthContext', () => ({ useAuth: () => ({ profile: { id: state.actor, role: state.role } }) }))
+vi.mock('../../src/lib/AuthContext', () => ({ useAuth: () => ({ user: { id: state.actor }, profile: { id: state.actor, role: state.role, is_active: true }, loading: false, error: null }) }))
 vi.mock('../../src/lib/reads/reports', () => ({
   fetchEarliestSalesPerformanceMonth: async () => '2026-09',
   fetchCustomerPerformancePage: async (actor: string, role: string, month: string, page: number) => {
@@ -36,6 +36,12 @@ vi.mock('../../src/lib/reads/reports', () => ({
   },
 }))
 vi.mock('../../src/lib/supabase', () => ({ supabase: {
+  supabaseUrl: 'https://legacy-target.example.invalid', rest: { url: 'https://legacy-target.example.invalid/rest/v1', schemaName: 'public' },
+  rpc: async (name: string) => {
+    if (name !== 'pilot_customer_target_write_access_v1') throw new Error(`Unexpected target RPC ${name}`)
+    if (!['sales_head', 'executive'].includes(state.role)) return { data: null, error: { code: '42501' } }
+    return { data: { version: 1, actor_id: state.actor, mode: 'legacy' }, error: null }
+  },
   auth: { getUser: async () => ({ data: { user: { id: state.actor } } }) },
   from: (table: string) => ({ upsert: async (payload: Record<string, unknown>, options: Record<string, unknown>) => {
     state.writes.push({ table, payload, options })
@@ -50,7 +56,7 @@ const clients: QueryClient[] = []
 let visibility: DocumentVisibilityState = 'visible'
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-12T12:00:00Z'))
-  state.actor = 'actor'; state.role = 'executive'; state.rows = ['A', 'B']; state.target = '200.00'
+  state.actor = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'; state.role = 'executive'; state.rows = ['A', 'B']; state.target = '200.00'
   state.readGate = null; state.readError = null; state.writeGate = null; state.writeError = false; state.reads = []; state.writes = []
   visibility = 'visible'; vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility)
   focusManager.setFocused(undefined); onlineManager.setOnline(true)
@@ -60,7 +66,7 @@ afterEach(() => {
   focusManager.setFocused(undefined); onlineManager.setOnline(true); vi.useRealTimers(); vi.unstubAllGlobals()
 })
 const family = (kind: Kind) => kind === 'customer' ? 'customer_performance' : 'performance'
-const readKey = (kind: Kind) => [family(kind), 'actor:executive', { yearMonth: '2026-10' }, 1]
+const readKey = (kind: Kind) => [family(kind), 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa:executive', { yearMonth: '2026-10' }, 1]
 const regionName = (kind: Kind) => kind === 'customer' ? 'Tabel aktivitas pelanggan' : 'Tabel aktivitas tim'
 const panelName = (kind: Kind) => kind === 'customer' ? 'Performa Pelanggan' : 'Performa Tim Sales'
 const dashboard = (client: QueryClient) => <StrictMode><QueryClientProvider client={client}><MemoryRouter><GirardDashboard /></MemoryRouter></QueryClientProvider></StrictMode>
@@ -168,7 +174,7 @@ for (const kind of ['customer', 'sales'] as const) {
       await waitFor(() => expect(screen.queryByRole('spinbutton')).toBeNull())
       expect(openers().every(button => !button.disabled)).toBe(true); expect(state.writes).toHaveLength(1)
       expect(state.writes[0]).toMatchObject({ table: kind === 'customer' ? 'customer_targets' : 'sales_targets',
-        payload: { [kind === 'customer' ? 'customer_id' : 'user_id']: `${kind}-A`, target_value: 999, year_month: '2026-10', set_by: 'actor' },
+        payload: { [kind === 'customer' ? 'customer_id' : 'user_id']: `${kind}-A`, target_value: 999, year_month: '2026-10', set_by: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' },
         options: { onConflict: kind === 'customer' ? 'customer_id,year_month' : 'user_id,year_month' } })
     })
 
@@ -234,7 +240,7 @@ for (const kind of ['customer', 'sales'] as const) {
     const { client, view } = await mount(kind); openDraft('desktop')
     const read = await beginRefresh(kind); expectMasked(kind)
     if (change === 'actor' || change === 'role' || change === 'capability') {
-      if (change === 'actor') state.actor = 'replacement'
+      if (change === 'actor') state.actor = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
       else state.role = change === 'role' ? 'sales_head' : 'sales_person'
       view.rerender(dashboard(client))
     } else if (change === 'month') {

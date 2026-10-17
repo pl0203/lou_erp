@@ -1,7 +1,7 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { expect, test, vi } from 'vitest';
-import { ids, line, mount, mountRoutes, state } from '../co/ui-harness';
+import { ids, line, mount, mountRoutes, state, product, addProduct, change } from '../co/ui-harness';
 import COOrders from '../../src/pages/athel/co/COOrders';
 import COForm from '../../src/pages/athel/co/COForm';
 import COLayout from '../../src/pages/athel/co/COLayout';
@@ -40,19 +40,33 @@ test('CO pilot keeps balanced filters, eight meanings, and compact horizontal Vi
     expect(state.commands).toHaveLength(0);
 });
 
-test('CO fields inherit shared responsive density while retaining manual editing and compact line removal', async () => {
+test('CO fields retain responsive density, saved manual editing and compact catalogue line removal', async () => {
     expect(CO_INPUT.split(' ')).toContain('ui-control');
     for (const override of ['min-h-11', 'px-3', 'py-2', 'text-base']) expect(CO_INPUT.split(' ')).not.toContain(override);
+    state.products = [product(2)];
     mount(<COForm mode="edit"/>);
     const quantity = await screen.findByLabelText('Qty Item 1');
     expect(quantity.classList.contains('ui-control')).toBe(true);
     fireEvent.change(quantity, { target: { value: '3' } });
     expect((quantity as HTMLInputElement).value).toBe('3');
+    expect(state.lines[0].product_id).toBeNull();
     compact(screen.getByRole('button', { name: 'Hapus Item 1' }), 'danger-quiet');
     expect(screen.getByRole('button', { name: 'Simpan Perubahan' }).classList.contains('ui-action--primary')).toBe(true);
     for (const name of ['Kembali', 'Batal']) compact(screen.getByRole('link', { name }), 'quiet');
-    fireEvent.click(screen.getByRole('button', { name: 'Tambah barang manual' }));
-    await waitFor(() => expect(document.activeElement?.getAttribute('aria-label')).toBe('Nama produk barang baru'));
+    expect(screen.queryByRole('button', { name: 'Tambah barang manual' })).toBeNull();
+    const search = await addProduct('SKU-2');
+    await screen.findByDisplayValue('Product 2');
+    await waitFor(() => expect(document.activeElement).toBe(search));
+    for (const label of ['SKU Product 2', 'Nama produk Product 2', 'Qty Product 2', 'Harga satuan Product 2'])
+        expect(screen.getByLabelText(label).classList.contains('ui-control')).toBe(true);
+    expect(screen.getByLabelText('Nama produk Product 2').matches(':disabled')).toBe(true);
+    expect(screen.getByLabelText('Harga satuan Product 2').matches(':disabled')).toBe(false);
+    change('Harga satuan Product 2', '12.50');
+    expect((screen.getByLabelText('Harga satuan Product 2') as HTMLInputElement).value).toBe('12.50');
+    const remove = screen.getByRole('button', { name: 'Hapus Product 2' });
+    compact(remove, 'danger-quiet'); fireEvent.click(remove);
+    expect(screen.queryByDisplayValue('Product 2')).toBeNull();
+    expect((screen.getByLabelText('Qty Item 1') as HTMLInputElement).value).toBe('3');
     expect(state.commands).toHaveLength(0);
 });
 

@@ -7,10 +7,10 @@ import PromoStockWarning, { usePromoStockSubmission } from '../../components/Pro
 import PODocumentImport from '../../components/poImport/PODocumentImport'
 import { useAuth } from '../../lib/AuthContext'
 import { POCustomerLookup, POProductLookup } from '../../components/POLookup'
-import { POLineItemsHeader, POLineRow, exactCatalogIdentity } from '../../components/POLineItems'
+import { POLineItemsHeader, POLineRow } from '../../components/POLineItems'
+import { useCatalogueOrderOptions } from '../../lib/catalogue/useCatalogueOrderOptions'
 import { resolveCatalogPrice } from '../../lib/catalogPricing'
 import ReadFailure from '../../components/ReadFailure'
-import { readCompleteQuery } from '../../lib/reads/completeQuery'
 import TransactionRecovery from '../../components/TransactionRecovery'
 import { createTransactionSender, useTransactionSender } from '../../lib/orderTransactions'
 import type { TransactionSender } from '../../lib/orderTransactions'
@@ -18,8 +18,7 @@ import { validateOrderLines } from '../../lib/orderValidation'
 import { hasOrderItemChanges, useUnsavedChanges } from '../../lib/useUnsavedChanges'
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { supabase } from '../../lib/supabase'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import AthelNav from '../../components/AthelNav'
 
 type LineItem = {
@@ -29,12 +28,6 @@ type LineItem = {
   sku: string
   quantity: number
   unit_price: number
-}
-
-type Customer = {
-  id: string
-  name: string
-  pricing_tier: string
 }
 
 type Product = {
@@ -65,24 +58,6 @@ const TIER_LABELS: Record<string, string> = {
   dalam_kota:    'Dalam Kota',
   depo_bangunan: 'Depo Bangunan',
   others: 'Others',
-}
-
-async function fetchCustomers(signal?: AbortSignal): Promise<Customer[]> {
-  const data = await readCompleteQuery((offset, limit) => supabase
-    .from('customers')
-    .select('id, name, pricing_tier', { count: 'exact' })
-    .order('id')
-    .range(offset, offset + limit - 1), row => row.id, signal)
-  return data.sort((a, b) => a.name.localeCompare(b.name))
-}
-
-async function fetchProducts(signal?: AbortSignal): Promise<Product[]> {
-  const data = await readCompleteQuery((offset, limit) => supabase
-    .from('products')
-    .select('id, name, sku, size, unit_price, harga_pokok, luar_kota, dalam_kota, depo_bangunan', { count: 'exact' })
-    .order('id')
-    .range(offset, offset + limit - 1), row => row.id, signal)
-  return data.sort((a, b) => a.name.localeCompare(b.name))
 }
 
 export async function createPO(payload: {
@@ -123,8 +98,37 @@ export default function PONew() {
   const formDirty = !!customerId || !!poNumber || !!expectedDelivery || !!notes || orderDate !== initialOrderDate || itemsDirty
   const unsaved = useUnsavedChanges(formDirty || importDirty)
 
-  const { data: customers, isError: customerReadError, isFetching: customersFetching, refetch: retryCustomers } = useQuery({ queryKey: ['customers'], queryFn: ({ signal }) => fetchCustomers(signal) })
-  const { data: products, isError: productReadError, isFetching: productsFetching, refetch: retryProducts } = useQuery({ queryKey: ['products', 'complete', 'po-new'], queryFn: ({ signal }) => fetchProducts(signal) })
+  const customerOptions = useCatalogueOrderOptions('customer', 'enabled-for-order')
+  const productOptions = useCatalogueOrderOptions('product', 'enabled-for-order')
+  const { data: customers, isError: customerReadError, isFetching: customersFetching, refetch: retryCustomers } = customerOptions
+  const { data: products, isError: productReadError, isFetching: productsFetching, refetch: retryProducts } = productOptions
+
+  // Rendered choices are display-only. Admission reads the live owner-bound query state.
+  const readCurrentCatalogue = () => {
+    const customers = customerOptions.getCurrentData(), products = productOptions.getCurrentData()
+    if (!customers || !products) throw new Error('Pilihan katalog belum siap. Tunggu pemuatan atau coba lagi.')
+    return { customers, products }
+  }
+  const assertCatalogueDraft = (draft: { customer_id: string; lineItems: Pick<LineItem, 'product_id' | 'product_name' | 'sku'>[] }) => {
+    const catalogue = readCurrentCatalogue()
+    const customer = catalogue.customers.find(row => row.id === draft.customer_id && row.is_enabled)
+    if (!customer) throw new Error('Pilih pelanggan aktif terlebih dahulu.')
+    for (const item of draft.lineItems) {
+      const product = catalogue.products.find(row => row.id === item.product_id && row.is_enabled)
+      if (!product || product.sku !== item.sku || product.name !== item.product_name) throw new Error('Pilih ulang barang dari katalog aktif.')
+    }
+    return { ...catalogue, customer }
+  }
+  // Match the importer's review context without replacing document prices.
+  const importCatalogueKey = (currentCustomers: typeof customers, currentProducts: typeof products) => JSON.stringify([
+    currentCustomers?.map(customer => [customer.id, customer.name, customer.pricing_tier]),
+    currentProducts?.map(product => [product.id, product.name, product.sku, product.size, product.harga_pokok, product.luar_kota, product.dalam_kota, product.depo_bangunan]),
+  ])
+  const importCatalogueSnapshot = importCatalogueKey(customers, products)
+  type Submission = Parameters<typeof createPO>[0] & { catalogueAdmission: string }
+  // The stock-warning hook clones drafts. Only this opaque key is cloned; the
+  // origin-bound getters stay in memory and are never added to the RPC payload.
+  const catalogueAdmission = useRef<{ key: string; assert: typeof assertCatalogueDraft } | null>(null)
 
   const onCommitted = (po: { id: string }) => {
     queryClient.invalidateQueries()
@@ -132,26 +136,26 @@ export default function PONew() {
   }
 
   const mutation = useMutation({
-    mutationFn: (payload: Parameters<typeof createPO>[0]) => createPO(payload, sendTransaction),
+    mutationFn: (payload: Submission) => {
+      const admission = catalogueAdmission.current
+      if (!admission || admission.key !== payload.catalogueAdmission) throw new Error('Pilihan katalog berubah. Periksa kembali formulir.')
+      admission.assert(payload)
+      return createPO(payload, sendTransaction)
+    },
     onSuccess: onCommitted,
   })
 
-  const stockSubmission = usePromoStockSubmission((draft: Parameters<typeof createPO>[0]) => mutation.mutateAsync(draft))
+  const stockSubmission = usePromoStockSubmission((draft: Submission) => mutation.mutateAsync(draft))
   const formLocked = mutation.isPending
+  const submissionStarting = useRef(false)
 
   // Get selected customer's pricing tier
   const selectedCustomer = customers?.find(c => c.id === customerId)
   const pricingTier = selectedCustomer?.pricing_tier ?? 'others'
 
-  const updateLine = (index: number, field: keyof LineItem, value: string | number | null) => {
-    setLineItems(prev => prev.map((item, i) => i === index ? { ...item, [field]: value, ...(field === 'sku' ? { product_id: exactCatalogIdentity(String(value), products ?? []) } : {}) } : item))
-  }
-
-  const addLine = () => {
-    const key = crypto.randomUUID()
-    pendingFocus.current = { key, field: 'name' }
-    setEntryError(null); setEntryNotice('')
-    setLineItems(prev => [...prev, { ...newLine(), _key: key }])
+  const updateLine = (index: number, field: keyof LineItem, value: string | number) => {
+    if (field !== 'quantity' && field !== 'unit_price') return
+    setLineItems(prev => prev.map((item, i) => i === index ? { ...item, [field]: value } : item))
   }
 
   const removeLine = (index: number) => {
@@ -163,7 +167,13 @@ export default function PONew() {
     if (input) { input.focus(); input.select(); input.scrollIntoView?.({ block: 'nearest' }) }
     else pendingFocus.current = { key, field: 'quantity' }
   }
-  const addProduct = (product: Product) => {
+  const addProduct = (selected: Product) => {
+    let product: Product, currentTier: typeof pricingTier
+    try {
+      const catalogue = assertCatalogueDraft({ customer_id: customerId, lineItems: [{ product_id: selected.id, product_name: selected.name, sku: selected.sku }] })
+      product = catalogue.products.find(row => row.id === selected.id)!
+      currentTier = catalogue.customer.pricing_tier
+    } catch (error) { setEntryNotice((error as Error).message); return }
     const sku = product.sku.trim().toLocaleLowerCase()
     const existing = lineItems.find(line => line.product_id === product.id || (sku && line.sku.trim().toLocaleLowerCase() === sku))
     if (existing) {
@@ -172,11 +182,12 @@ export default function PONew() {
       return
     }
     setEntryNotice(''); setEntryError(null)
-    setLineItems(prev => [...prev, { ...newLine(), product_id: product.id, product_name: product.name, sku: product.sku, quantity: 1, unit_price: resolveCatalogPrice(product, pricingTier) ?? Number.NaN }])
+    setLineItems(prev => [...prev, { ...newLine(), product_id: product.id, product_name: product.name, sku: product.sku, quantity: 1, unit_price: resolveCatalogPrice(product, currentTier) ?? Number.NaN }])
     productSearch.current?.focus()
   }
   const validateLine = (item: LineItem) => {
     try {
+      assertCatalogueDraft({ customer_id: customerId, lineItems: [item] })
       validateOrderLines([item])
     } catch (error) {
       setEntryError({ key: item._key!, message: (error as Error).message })
@@ -191,8 +202,8 @@ export default function PONew() {
   const total = lineItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0)
 
   const handleSubmit = () => {
-    if (mutation.isPending) return
-    if (!customerId) return alert('Pilih pelanggan terlebih dahulu.')
+    if (mutation.isPending || submissionStarting.current || stockSubmission.warning) return
+    if (!customerOptions.getCurrentData()?.some(customer => customer.id === customerId && customer.is_enabled)) return alert('Pilih pelanggan aktif terlebih dahulu.')
     if (!poNumber.trim()) return alert('Masukkan nomor PO terlebih dahulu.')
     if (lineItems.length === 0) {
       alert('PO harus memiliki minimal satu barang.')
@@ -201,14 +212,18 @@ export default function PONew() {
     }
     if (!lineItems.every(validateLine)) return
     setEntryError(null)
+    submissionStarting.current = true
+    const key = crypto.randomUUID()
+    catalogueAdmission.current = { key, assert: assertCatalogueDraft }
     void stockSubmission.run({
+      catalogueAdmission: key,
       customer_id: customerId,
       po_number: poNumber,
       order_date: orderDate,
       expected_delivery_date: expectedDelivery,
       notes,
       lineItems,
-    })
+    }).finally(() => { submissionStarting.current = false })
   }
 
   return (
@@ -234,10 +249,19 @@ export default function PONew() {
           disabled={!actorKey || !customers || !products || customerReadError || productReadError || customersFetching || productsFetching || formLocked}
           hasFormEdits={formDirty} onDirtyChange={setImportDirty}
           onApply={(proposed, accept) => unsaved.confirmDiscard(() => {
+            // Check before consuming acceptance so a stale confirmation cannot
+            // discard either the ordinary draft or the document review.
+            try {
+              const current = assertCatalogueDraft({ customer_id: proposed.customerId, lineItems: proposed.lineItems })
+              if (importCatalogueKey(current.customers, current.products) !== importCatalogueSnapshot) throw new Error('Pilihan katalog berubah. Periksa kembali hasil dokumen.')
+            }
+            catch (error) { setEntryNotice((error as Error).message); return }
             const draft = accept ? accept() : proposed
             if (!draft) return
+            try { assertCatalogueDraft({ customer_id: draft.customerId, lineItems: draft.lineItems }) }
+            catch (error) { setEntryNotice((error as Error).message); return }
             setCustomerId(draft.customerId); setPoNumber(draft.poNumber); setOrderDate(draft.orderDate)
-            setExpectedDelivery(draft.expectedDelivery); setNotes(draft.notes); setLineItems(draft.lineItems.map(line => ({ ...line, product_id: line.product_id ?? exactCatalogIdentity(line.sku, products ?? []) })))
+            setExpectedDelivery(draft.expectedDelivery); setNotes(draft.notes); setLineItems(draft.lineItems)
             setEntryError(null); setEntryNotice(''); setImportDirty(false)
           }, { when: formDirty, message: 'Ganti detail PO dan semua barang dengan hasil dokumen yang sudah diperiksa? Dokumen tidak disimpan dan PO belum dikirim.' })} />
 
@@ -251,6 +275,7 @@ export default function PONew() {
                   const nextCustomer = customer.id
                   if (nextCustomer === customerId) return
                   unsaved.confirmDiscard(() => {
+                    if (!customerOptions.getCurrentData()?.some(row => row.id === nextCustomer && row.is_enabled)) return
                     setCustomerId(nextCustomer)
                     setLineItems([])
                     setEntryError(null); setEntryNotice('')
@@ -316,7 +341,7 @@ export default function PONew() {
             <div className="min-w-0 space-y-2">
               <POLineItemsHeader />
               {lineItems.map((item, i) => (
-                <POLineRow key={item._key} lineKey={item._key!} item={item}
+                <POLineRow identityLocked key={item._key} lineKey={item._key!} item={item}
                   onChange={(field, value) => updateLine(i, field, value)}
                   onRemove={() => removeLine(i)}
                   nameRef={node => {
@@ -333,11 +358,8 @@ export default function PONew() {
             </div>
           )}
 
-          <p className="mt-4 text-[13px] text-gray-600">Barang manual hanya disimpan pada PO ini; tidak menambahkan produk baru ke katalog. Nama, SKU, jumlah, dan harga dicatat sebagai rincian pesanan.</p>
+          <p className="mt-4 text-[13px] text-gray-600">Barang baru harus dipilih dari katalog aktif. Nama dan SKU mengikuti pilihan katalog; harga pesanan tetap dapat ditinjau.</p>
           <div className="flex flex-wrap items-center justify-between gap-3 mt-4 pt-4 border-t border-gray-100">
-            <Button variant="secondary" type="button" onClick={addLine} >
-              + Tambah barang manual
-            </Button>
             <div className="min-w-0 text-sm text-brand-secondary [overflow-wrap:anywhere]">
               Total: <span className="text-gray-900 font-semibold text-base ml-1">
                 {Number.isFinite(total) ? `Rp ${total.toLocaleString('id-ID')}` : 'Harga belum lengkap'}

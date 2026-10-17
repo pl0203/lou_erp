@@ -74,6 +74,10 @@ test('preserves all 81 immutable protected hashes and four migration bytes in a 
 test.each([
   ['src/lib/AuthContext.tsx', 'AuthContext.tsx.snapshot'],
   ['src/pages/ForgotPassword.tsx', 'ForgotPassword.tsx.snapshot'],
+  ['src/lib/leave/readContracts.ts', 'readContracts.ts.snapshot'],
+  ['src/lib/leave/readQueryKeys.ts', 'readQueryKeys.ts.snapshot'],
+  ['src/lib/leave/readRpc.ts', 'readRpc.ts.snapshot'],
+  ['src/lib/leave/useLeaveReads.ts', 'useLeaveReads.ts.snapshot'],
 ])('rejects a tampered snapshot for %s and cleans the partial root without current-source fallback', (source, snapshot) => {
   withIsolatedHelper((root, run) => {
     const snapshotFile = join(root, fixturePath, snapshot)
@@ -90,6 +94,10 @@ test.each([
 test.each([
   ['src/lib/AuthContext.tsx', 'AuthContext.tsx.snapshot'],
   ['src/pages/ForgotPassword.tsx', 'ForgotPassword.tsx.snapshot'],
+  ['src/lib/leave/readContracts.ts', 'readContracts.ts.snapshot'],
+  ['src/lib/leave/readQueryKeys.ts', 'readQueryKeys.ts.snapshot'],
+  ['src/lib/leave/readRpc.ts', 'readRpc.ts.snapshot'],
+  ['src/lib/leave/useLeaveReads.ts', 'useLeaveReads.ts.snapshot'],
 ])('rejects a missing snapshot for %s and cleans the partial root without current-source fallback', (source, snapshot) => {
   withIsolatedHelper((root, run) => {
     const snapshotFile = join(root, fixturePath, snapshot)

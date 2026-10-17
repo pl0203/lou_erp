@@ -1,0 +1,440 @@
+{
+  "format": "catalogue-synthetic-authority-v1",
+  "status": "public-source-synthetic-observations-not-runtime-acceptance",
+  "runtimeRequirement": "Capture all PostgreSQL roles and their effective existing-column privileges, grant options, direct grant edges and memberships in the same locked transaction before adding columns. Preserve every legacy effective permission and deny client server-field writes. This synthetic manifest is evidence, never a writable-field allowlist.",
+  "sources": {
+    "synthetic": {
+      "receipt": "catalogue-baseline-capture-v1",
+      "runId": "38504255853",
+      "sourceCommit": "504911640e653dcbe50789dc363f11ef0c56be89",
+      "scope": "synthetic-composed-source-only",
+      "sha256": "03f412a7b02c7542954479d05fd6e0b22856816146683088a6a5eb204cf47a12",
+      "sections": [
+        "catalog.relations",
+        "catalog.columns",
+        "catalog.memberships"
+      ]
+    }
+  },
+  "profiles": {
+    "synthetic": {
+      "customers": {
+        "owner": "postgres",
+        "tableAcl": "{postgres=arwdDxtm/postgres,authenticated=arw/postgres,service_role=arwdDxtm/postgres}",
+        "columns": [
+          {
+            "position": 1,
+            "name": "id",
+            "acl": null,
+            "effectiveWrite": {
+              "anon": {
+                "INSERT": false,
+                "UPDATE": false
+              },
+              "authenticated": {
+                "INSERT": true,
+                "UPDATE": true
+              },
+              "service_role": {
+                "INSERT": true,
+                "UPDATE": true
+              }
+            },
+            "evidence": "derived from public synthetic table ACL, null column ACL and captured memberships"
+          },
+          {
+            "position": 2,
+            "name": "name",
+            "acl": null,
+            "effectiveWrite": {
+              "anon": {
+                "INSERT": false,
+                "UPDATE": false
+              },
+              "authenticated": {
+                "INSERT": true,
+                "UPDATE": true
+              },
+              "service_role": {
+                "INSERT": true,
+                "UPDATE": true
+              }
+            },
+            "evidence": "derived from public synthetic table ACL, null column ACL and captured memberships"
+          },
+          {
+            "position": 3,
+            "name": "address",
+            "acl": null,
+            "effectiveWrite": {
+              "anon": {
+                "INSERT": false,
+                "UPDATE": false
+              },
+              "authenticated": {
+                "INSERT": true,
+                "UPDATE": true
+              },
+              "service_role": {
+                "INSERT": true,
+                "UPDATE": true
+              }
+            },
+            "evidence": "derived from public synthetic table ACL, null column ACL and captured memberships"
+          },
+          {
+            "position": 4,
+            "name": "city",
+            "acl": null,
+            "effectiveWrite": {
+              "anon": {
+                "INSERT": false,
+                "UPDATE": false
+              },
+              "authenticated": {
+                "INSERT": true,
+                "UPDATE": true
+              },
+              "service_role": {
+                "INSERT": true,
+                "UPDATE": true
+              }
+            },
+            "evidence": "derived from public synthetic table ACL, null column ACL and captured memberships"
+          },
+          {
+            "position": 5,
+            "name": "phone",
+            "acl": null,
+            "effectiveWrite": {
+              "anon": {
+                "INSERT": false,
+                "UPDATE": false
+              },
+              "authenticated": {
+                "INSERT": true,
+                "UPDATE": true
+              },
+              "service_role": {
+                "INSERT": true,
+                "UPDATE": true
+              }
+            },
+            "evidence": "derived from public synthetic table ACL, null column ACL and captured memberships"
+          },
+          {
+            "position": 6,
+            "name": "email",
+            "acl": null,
+            "effectiveWrite": {
+              "anon": {
+                "INSERT": false,
+                "UPDATE": false
+              },
+              "authenticated": {
+                "INSERT": true,
+                "UPDATE": true
+              },
+              "service_role": {
+                "INSERT": true,
+                "UPDATE": true
+              }
+            },
+            "evidence": "derived from public synthetic table ACL, null column ACL and captured memberships"
+          },
+          {
+            "position": 7,
+            "name": "pricing_tier",
+            "acl": null,
+            "effectiveWrite": {
+              "anon": {
+                "INSERT": false,
+                "UPDATE": false
+              },
+              "authenticated": {
+                "INSERT": true,
+                "UPDATE": true
+              },
+              "service_role": {
+                "INSERT": true,
+                "UPDATE": true
+              }
+            },
+            "evidence": "derived from public synthetic table ACL, null column ACL and captured memberships"
+          },
+          {
+            "position": 8,
+            "name": "visit_frequency_days",
+            "acl": null,
+            "effectiveWrite": {
+              "anon": {
+                "INSERT": false,
+                "UPDATE": false
+              },
+              "authenticated": {
+                "INSERT": true,
+                "UPDATE": true
+              },
+              "service_role": {
+                "INSERT": true,
+                "UPDATE": true
+              }
+            },
+            "evidence": "derived from public synthetic table ACL, null column ACL and captured memberships"
+          },
+          {
+            "position": 9,
+            "name": "last_visit_date",
+            "acl": null,
+            "effectiveWrite": {
+              "anon": {
+                "INSERT": false,
+                "UPDATE": false
+              },
+              "authenticated": {
+                "INSERT": true,
+                "UPDATE": true
+              },
+              "service_role": {
+                "INSERT": true,
+                "UPDATE": true
+              }
+            },
+            "evidence": "derived from public synthetic table ACL, null column ACL and captured memberships"
+          },
+          {
+            "position": 10,
+            "name": "created_at",
+            "acl": null,
+            "effectiveWrite": {
+              "anon": {
+                "INSERT": false,
+                "UPDATE": false
+              },
+              "authenticated": {
+                "INSERT": true,
+                "UPDATE": true
+              },
+              "service_role": {
+                "INSERT": true,
+                "UPDATE": true
+              }
+            },
+            "evidence": "derived from public synthetic table ACL, null column ACL and captured memberships"
+          },
+          {
+            "position": 11,
+            "name": "customer_category",
+            "acl": null,
+            "effectiveWrite": {
+              "anon": {
+                "INSERT": false,
+                "UPDATE": false
+              },
+              "authenticated": {
+                "INSERT": true,
+                "UPDATE": true
+              },
+              "service_role": {
+                "INSERT": true,
+                "UPDATE": true
+              }
+            },
+            "evidence": "derived from public synthetic table ACL, null column ACL and captured memberships"
+          }
+        ]
+      },
+      "products": {
+        "owner": "postgres",
+        "tableAcl": "{postgres=arwdDxtm/postgres,authenticated=arwd/postgres,service_role=arwdDxtm/postgres}",
+        "columns": [
+          {
+            "position": 1,
+            "name": "id",
+            "acl": null,
+            "effectiveWrite": {
+              "anon": {
+                "INSERT": false,
+                "UPDATE": false
+              },
+              "authenticated": {
+                "INSERT": true,
+                "UPDATE": true
+              },
+              "service_role": {
+                "INSERT": true,
+                "UPDATE": true
+              }
+            },
+            "evidence": "derived from public synthetic table ACL, null column ACL and captured memberships"
+          },
+          {
+            "position": 2,
+            "name": "name",
+            "acl": null,
+            "effectiveWrite": {
+              "anon": {
+                "INSERT": false,
+                "UPDATE": false
+              },
+              "authenticated": {
+                "INSERT": true,
+                "UPDATE": true
+              },
+              "service_role": {
+                "INSERT": true,
+                "UPDATE": true
+              }
+            },
+            "evidence": "derived from public synthetic table ACL, null column ACL and captured memberships"
+          },
+          {
+            "position": 3,
+            "name": "sku",
+            "acl": null,
+            "effectiveWrite": {
+              "anon": {
+                "INSERT": false,
+                "UPDATE": false
+              },
+              "authenticated": {
+                "INSERT": true,
+                "UPDATE": true
+              },
+              "service_role": {
+                "INSERT": true,
+                "UPDATE": true
+              }
+            },
+            "evidence": "derived from public synthetic table ACL, null column ACL and captured memberships"
+          },
+          {
+            "position": 4,
+            "name": "size",
+            "acl": null,
+            "effectiveWrite": {
+              "anon": {
+                "INSERT": false,
+                "UPDATE": false
+              },
+              "authenticated": {
+                "INSERT": true,
+                "UPDATE": true
+              },
+              "service_role": {
+                "INSERT": true,
+                "UPDATE": true
+              }
+            },
+            "evidence": "derived from public synthetic table ACL, null column ACL and captured memberships"
+          },
+          {
+            "position": 5,
+            "name": "unit_price",
+            "acl": null,
+            "effectiveWrite": {
+              "anon": {
+                "INSERT": false,
+                "UPDATE": false
+              },
+              "authenticated": {
+                "INSERT": true,
+                "UPDATE": true
+              },
+              "service_role": {
+                "INSERT": true,
+                "UPDATE": true
+              }
+            },
+            "evidence": "derived from public synthetic table ACL, null column ACL and captured memberships"
+          },
+          {
+            "position": 6,
+            "name": "harga_pokok",
+            "acl": null,
+            "effectiveWrite": {
+              "anon": {
+                "INSERT": false,
+                "UPDATE": false
+              },
+              "authenticated": {
+                "INSERT": true,
+                "UPDATE": true
+              },
+              "service_role": {
+                "INSERT": true,
+                "UPDATE": true
+              }
+            },
+            "evidence": "derived from public synthetic table ACL, null column ACL and captured memberships"
+          },
+          {
+            "position": 7,
+            "name": "luar_kota",
+            "acl": null,
+            "effectiveWrite": {
+              "anon": {
+                "INSERT": false,
+                "UPDATE": false
+              },
+              "authenticated": {
+                "INSERT": true,
+                "UPDATE": true
+              },
+              "service_role": {
+                "INSERT": true,
+                "UPDATE": true
+              }
+            },
+            "evidence": "derived from public synthetic table ACL, null column ACL and captured memberships"
+          },
+          {
+            "position": 8,
+            "name": "dalam_kota",
+            "acl": null,
+            "effectiveWrite": {
+              "anon": {
+                "INSERT": false,
+                "UPDATE": false
+              },
+              "authenticated": {
+                "INSERT": true,
+                "UPDATE": true
+              },
+              "service_role": {
+                "INSERT": true,
+                "UPDATE": true
+              }
+            },
+            "evidence": "derived from public synthetic table ACL, null column ACL and captured memberships"
+          },
+          {
+            "position": 9,
+            "name": "depo_bangunan",
+            "acl": null,
+            "effectiveWrite": {
+              "anon": {
+                "INSERT": false,
+                "UPDATE": false
+              },
+              "authenticated": {
+                "INSERT": true,
+                "UPDATE": true
+              },
+              "service_role": {
+                "INSERT": true,
+                "UPDATE": true
+              }
+            },
+            "evidence": "derived from public synthetic table ACL, null column ACL and captured memberships"
+          }
+        ]
+      }
+    }
+  },
+  "limits": [
+    "Synthetic fixture observations certify only the named public-source composition. Runtime conversion captures and validates the actual schema independently.",
+    "Only owner-issued table/column write grantors are accepted. Unsupported delegated grantor graphs fail closed before ACL changes, without CASCADE.",
+    "Owner and superuser authority is retained. All non-owner table INSERT/UPDATE grants become captured legacy-column grants. Effective client server-field permissions are rejected."
+  ]
+}

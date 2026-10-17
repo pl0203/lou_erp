@@ -139,7 +139,7 @@ function DailyScheduleContent() {
       <FilterBar label="Tanggal jadwal saya" className="mx-4 my-3 md:mx-8"><Field id="daily-visit-date" label="Lihat tanggal kunjungan">{control => <input {...control} type="date" value={selectedDate} onChange={e => { if (e.target.value) setSelectedDate(e.target.value) }} />}</Field></FilterBar>
       {/* Day tabs */}
       <div className="bg-white border-b border-gray-100 px-4 md:px-8">
-        <div className="flex gap-1 overflow-x-auto">
+        <div className="flex items-start gap-1 overflow-x-auto">
           {dates.map((date, i) => {
             const daySchedules = allSchedules?.filter(s => s.scheduled_date === date) ?? []
             const isSelected = selectedDate === date
@@ -149,7 +149,7 @@ function DailyScheduleContent() {
                 variant="quiet"
                 aria-pressed={isSelected}
                 onClick={() => setSelectedDate(date)}
-                className={`flex flex-col items-center border-b-2 transition-colors whitespace-nowrap ${
+                className={`flex-none w-max max-w-none flex flex-col items-center border-b-2 transition-colors whitespace-nowrap ${
                   isSelected
                     ? 'border-brand-primary text-brand-primary underline decoration-brand-primary underline-offset-4'
                     : 'border-transparent text-brand-secondary hover:text-gray-700'
@@ -313,3 +313,4 @@ function DailyScheduleContent() {
     </div>
   )
 }
+

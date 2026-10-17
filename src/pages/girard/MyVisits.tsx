@@ -120,7 +120,7 @@ export default function MyVisits() {
 
       {/* Day tabs */}
       <div className="bg-white border-b border-gray-100 px-4 md:px-8">
-        <div className="flex gap-1 overflow-x-auto">
+        <div className="flex items-start gap-1 overflow-x-auto">
           {dates.map((date, i) => {
             const daySchedules = allSchedules?.filter(s => s.scheduled_date === date) ?? []
             const isSelected = selectedDate === date
@@ -130,7 +130,7 @@ export default function MyVisits() {
                 variant="quiet"
                 aria-pressed={isSelected}
                 onClick={() => setSelectedDate(date)}
-                className={`flex flex-col items-center border-b-2 transition-colors whitespace-nowrap ${
+                className={`flex-none w-max max-w-none flex flex-col items-center border-b-2 transition-colors whitespace-nowrap ${
                   isSelected
                     ? 'border-brand-primary text-brand-primary underline decoration-brand-primary underline-offset-4'
                     : 'border-transparent text-brand-secondary hover:text-gray-700'
@@ -280,3 +280,4 @@ export default function MyVisits() {
     </div>
   )
 }
+

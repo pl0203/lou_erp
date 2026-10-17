@@ -72,10 +72,10 @@ export function preparePOFormDraft(parsed: ParsedPO, decision: ReviewDecision, c
         }
         const selected = products.filter(p => p.id === reviewed.productId);
         const product = selected.length === 1 ? selected[0] : null;
-        if (reviewed.manual && reviewed.productId)
-            add(prefix, 'contradictory-mapping', 'Pilih satu barang katalog atau baris manual.');
-        if (!reviewed.manual && !product)
-            add(prefix, 'unresolved-product', 'Pilih barang dari katalog yang tersedia saat ini atau pilih manual.');
+        if (reviewed.manual)
+            add(prefix, 'contradictory-mapping', 'Barang impor wajib dipilih dari katalog aktif; barang manual baru tidak tersedia.');
+        if (!product)
+            add(prefix, 'unresolved-product', 'Pilih barang dari katalog aktif yang tersedia saat ini.');
         if (product && !reviewed.manual && (skuKey(reviewed.sku) !== skuKey(product.sku) || nameKey(reviewed.name) !== nameKey(product.name)))
             add(prefix, 'stale-product', 'Nama atau SKU pilihan katalog berubah; pilih ulang barang.');
         if (!reviewed.name.trim())

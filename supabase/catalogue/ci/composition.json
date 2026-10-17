@@ -1,0 +1,178 @@
+{
+  "format": "catalogue-ci-composition-v1",
+  "scope": "synthetic-source-only",
+  "source": {
+    "commit": "b7ce900494ad205420986fffdd5738f2a2cc6070",
+    "tree": "81394fc1702c12f68fb58e4b86f29df22af82ac6"
+  },
+  "composition": [
+    {
+      "path": "tests/database/fixture.sql",
+      "sha256": "4e16437026c9afff1c25578bc6f9dcf47db945b27ecd578afefbf5df553922b5"
+    },
+    {
+      "path": "supabase/migrations/202609300001_pilot_security.sql",
+      "sha256": "f361220734a5dc9bde13beb254e4089bbb1a4166ac0b90540c6d20d8e5fb15c4"
+    },
+    {
+      "path": "supabase/migrations/202609300002_order_transactions.sql",
+      "sha256": "a0e422d69bd9bd7d85051ff50fc9266b3b6303945056bb0eac05310328d24eaf"
+    },
+    {
+      "path": "supabase/migrations/202609300003_visit_storage_security.sql",
+      "sha256": "1e383aa03424543b94dacc8de03d371315f1b3ac11a67246792be01ba0b9edb7"
+    },
+    {
+      "path": "supabase/migrations/202609300004_visit_transactions.sql",
+      "sha256": "3a1fab79c36cb5d59854ac6fa75020563bc858f91a19877ed603e4424806f30a"
+    },
+    {
+      "path": "tests/database/hosted-read-policy-fixture.sql",
+      "sha256": "e348082e05d14c134a49b1a5a6ccedb0ca8d4fe3c5dcd04fabb929a57dafd07c"
+    },
+    {
+      "path": "supabase/migrations/202610010001_scalable_order_reads.sql",
+      "sha256": "071ea9280adf79b6ba5c0eb405e7b66706332f2ce2e183a9983a312a025614da"
+    },
+    {
+      "path": "supabase/migrations/202610010002_scalable_report_reads.sql",
+      "sha256": "8a7ee2a24e942f1c0d82d48b3d122ad88b25d48a090a88cc35f194d3882f03e4"
+    },
+    {
+      "path": "supabase/migrations/202610010004_scalable_order_lookup_index.sql",
+      "sha256": "9e8d5afba857af858e743b33a516eaf3f240738f7c2a5ea544f8fdc171ba0088"
+    },
+    {
+      "path": "supabase/migrations/202610010007_read_policy_plans.sql",
+      "sha256": "7cf626f169b52d993c00724c0ba34ba96438c85e03adea8b2c646a2e1a51c9dd"
+    },
+    {
+      "path": "supabase/migrations/202610010008_customer_delivery_aggregation.sql",
+      "sha256": "9bc0fb3cf69cf0273025bfbe7d2af36cce55bde5460cfee3d27fdbeaa2ef868a"
+    },
+    {
+      "path": "supabase/migrations/202610010009_sales_page_enrichment.sql",
+      "sha256": "40f8109d8e5bb449c2ea65ac54843915d80ac3ecd0431aeff33fb661427edd74"
+    },
+    {
+      "path": "supabase/migrations/202610010010_nullable_catalog_prices.sql",
+      "sha256": "0112b913abc92717c66f2bc2c9a3f826d14f9d7566eff6380cce889f410e1a46"
+    },
+    {
+      "path": "supabase/migrations/202610020001_customer_categories.sql",
+      "sha256": "ef24abedbf821688adb94ecbd141a74ecf1982b7b60228c5d0b933512ffe5462"
+    },
+    {
+      "path": "supabase/migrations/202610020003_stale_po_conflicts.sql",
+      "sha256": "e29991fdf76795e025b97dc8f9b9194da5be48229396ea10cf37387c3257e86d"
+    },
+    {
+      "path": "supabase/migrations/202610021001_ihr_leave_foundation.sql",
+      "sha256": "c77e9322b5cd49aaf60ba2b9bde7b30a3f55ba053dd465bbf2c6713990cdc6a3"
+    },
+    {
+      "path": "supabase/migrations/202610021002_ihr_leave_calendar.sql",
+      "sha256": "95fab10b94d8891bf1bfcaaf202e8c6bd2a230cecfd04eec20fa06009c86572e"
+    },
+    {
+      "path": "supabase/migrations/202610021003_ihr_leave_accounts.sql",
+      "sha256": "deb9fce2966d2013ffee758b0fdb9d0edcb8fc21a012b6bfb55e8bc1eda37914"
+    },
+    {
+      "path": "supabase/migrations/202610021004_ihr_leave_quote.sql",
+      "sha256": "d3429f1fad9bd02c2a1172cfe5e72815938d493def6711325c8c6bb2ec7d08f1"
+    },
+    {
+      "path": "supabase/migrations/202610021005_ihr_leave_requests.sql",
+      "sha256": "459dba4c181f9854e8d04ca549306d280f8219412566e33949cdd36d847462c6"
+    },
+    {
+      "path": "supabase/migrations/202610021006_ihr_leave_reads.sql",
+      "sha256": "62336dd73c0857993b378420bbe8fa131607fcf786bced49138e8180a8ff680b"
+    },
+    {
+      "path": "supabase/migrations/202610021007_ihr_leave_admin.sql",
+      "sha256": "46fb6efd077c7f61416c7f9a3cc0506d0b03f6c635393951998dccdaeddc9970"
+    },
+    {
+      "path": "supabase/migrations/202610021008_ihr_leave_context.sql",
+      "sha256": "902385119850103060dd98de70c93b3fd50ede3af61997aa3dcae33179e4e69f"
+    },
+    {
+      "path": "supabase/migrations/202610081001_ihr_po_admin_director.sql",
+      "sha256": "8402ebd330f66cb0b60e794fa8a9a4f6b480435cd13a58818927eb3fd242a837"
+    },
+    {
+      "path": "tests/database/demo/storage-fixture.sql",
+      "sha256": "f4b76485d2788bc7dabbb5a975ce7c93e6287f24605b6b8615627cafcbc9329c"
+    },
+    {
+      "path": "supabase/migrations/202610081101_demo_order_promotions.sql",
+      "sha256": "bef3867ce095f66f6a63399551478d0e4ee27895e521e183db3e728a7aca1938"
+    },
+    {
+      "path": "supabase/migrations/202610081102_demo_visit_workflow.sql",
+      "sha256": "2bca74f51de8a6f29065ef9ab88451b0bee9eb7d1caea03cf3ce19fe739488ca"
+    },
+    {
+      "path": "supabase/migrations/202610081103_demo_sales_reporting.sql",
+      "sha256": "a0851e565bfe74f5cb6b7e01e9c6d5d58132afee413460f815bbf18030bf565c"
+    },
+    {
+      "path": "supabase/migrations/202610081104_demo_sales_assignment_cardinality.sql",
+      "sha256": "4f6e679e8b23a57d9cbfa2931b89866079ecc6d32c663487b2510448b8f07fd3"
+    },
+    {
+      "path": "tests/database/demo/store-owner-seed.sql",
+      "sha256": "26ba15f395500e54e2d5cd25b09219ed1aebbddfc7c505a9932432dd27e5cede"
+    },
+    {
+      "path": "supabase/migrations/20261009061801_unify_store_owner_credit.sql",
+      "sha256": "117eba412ae0aeaef699f68ddfec9df7e1dc35d1cd0c49a462efb279dfc40057"
+    },
+    {
+      "path": "supabase/migrations/20261009110000_co_role.sql",
+      "sha256": "7917e9c8e28bf32266fd1460d2ad20635b26e44f76365fcc636158043c66433a"
+    },
+    {
+      "path": "supabase/migrations/20261009110001_co_foundation.sql",
+      "sha256": "23e1bba8ace0458918eb3f9b892c619851aee024eb4a53f008955c11160c0e9d"
+    },
+    {
+      "path": "tests/database/co/fixture.sql",
+      "sha256": "d5632c1a9b75e9a5afa01672ebe11ca92bd88aac4fb3eeb4e1bb4577b7a3b2e1"
+    },
+    {
+      "path": "supabase/migrations/20261009110002_co_orders_deliveries.sql",
+      "sha256": "d26610d5ffed5325369f21ed038078ed43a5c7b0c4834a8ed677fccf0d48cbaf"
+    },
+    {
+      "path": "supabase/migrations/20261009110003_co_monthly_fifo.sql",
+      "sha256": "b1388b07992fd3b2aeb4a844c3da326920b6981a6d970cb0413695bb9d175bb1"
+    },
+    {
+      "path": "supabase/migrations/20261009110004_co_returns_corrections.sql",
+      "sha256": "fe53057104ec61eb45f77701fac1ae8200a696abecee9a4fbc7403fd11d8f639"
+    },
+    {
+      "path": "supabase/migrations/20261009110005_co_reads.sql",
+      "sha256": "2a73faa0688c0bc5a72a198b72e976351c9d5bfcffb64e5198ac5cee09c82733"
+    },
+    {
+      "path": "supabase/migrations/20261009110006_co_reporting.sql",
+      "sha256": "583c8a2288229f56a8b43c0a46cfd4a3c31a3d8449554cf71b3735e7be581c45"
+    },
+    {
+      "path": "supabase/migrations/20261009110007_co_access.sql",
+      "sha256": "613579bcc348c7dadf77910beedd08ed88d88cad1a08f5d24b9870578c060fa6"
+    },
+    {
+      "path": "tests/database/co/evidence-storage-fixture.sql",
+      "sha256": "4284a2937bdea8306218f379356da28d83fe04d86e3ff5ea90d895b08ba0e4ff"
+    },
+    {
+      "path": "supabase/migrations/20261009110008_co_evidence.sql",
+      "sha256": "2f012c59a546c183b006f3e9055f33f0886829dda3b164891a50050e3c527bb4"
+    }
+  ]
+}

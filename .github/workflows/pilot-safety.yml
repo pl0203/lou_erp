@@ -6,6 +6,8 @@ permissions:
   contents: read
 jobs:
   synthetic-safety:
+    needs: catalogue-baseline
+    if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -60,6 +62,19 @@ jobs:
       - run: npm test -- --maxWorkers=1
       - run: npm run typecheck
       - run: npm run build
+      - name: Native synthetic catalogue browser QA
+        id: catalogue-browser
+        env:
+          CATALOGUE_BROWSER_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: node tests/catalogue-browser/run.mjs
+      - name: Preserve native synthetic browser evidence
+        if: ${{ always() && steps.catalogue-browser.outputs.artifact_ready == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalogue-native-browser-${{ github.run_id }}-${{ github.run_attempt }}
+          path: scale-results/catalogue-browser
+          if-no-files-found: error
+          retention-days: 7
       - name: Install official PostgreSQL client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
       - name: Load only synthetic test contract and candidate migrations
@@ -277,4 +292,273 @@ jobs:
           name: co-final-${{ github.run_id }}
           path: scale-results/co-final
           if-no-files-found: warn
+          retention-days: 7
+
+      - name: Bind independent read decoder source
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.repository == 'pl0203/lou_erp' &&
+          github.event.pull_request.head.repo.full_name == 'pl0203/lou_erp' &&
+          github.event.pull_request.base.repo.full_name == 'pl0203/lou_erp' &&
+          github.event.pull_request.head.ref == 'feat/catalogue-mutations-20261014' &&
+          github.event.pull_request.base.ref == 'fix/pilot-database'
+        env:
+          CATALOGUE_CI_PROFILE: github-catalogue-baseline-v1
+          CATALOGUE_CI_SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          CATALOGUE_CI_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          CATALOGUE_CI_BASE_REPOSITORY: ${{ github.event.pull_request.base.repo.full_name }}
+          CATALOGUE_CI_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          CATALOGUE_CI_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          CATALOGUE_READ_BASELINE_RESULT: ${{ needs.catalogue-baseline.result }}
+        run: |
+          set -euo pipefail
+          test "$CATALOGUE_READ_BASELINE_RESULT" = success
+          node --input-type=module <<'JS' >> "$GITHUB_ENV"
+          import assert from 'node:assert/strict'
+          import { catalogueCaptureSourceIdentity } from './scripts/catalogue-capture-source.mjs'
+          const source = catalogueCaptureSourceIdentity()
+          assert.equal(source.clean, true)
+          assert.equal(source.commit, process.env.CATALOGUE_CI_SOURCE_SHA)
+          assert.match(source.tree, /^[a-f0-9]{40}$/)
+          assert.match(source.candidate, /^[a-f0-9]{64}$/)
+          console.log(`CATALOGUE_CI_SOURCE_TREE=${source.tree}`)
+          console.log(`CATALOGUE_CI_CANDIDATE_SHA256=${source.candidate}`)
+          JS
+      - name: Download exact same-run attempt read proof
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.repository == 'pl0203/lou_erp' &&
+          github.event.pull_request.head.repo.full_name == 'pl0203/lou_erp' &&
+          github.event.pull_request.base.repo.full_name == 'pl0203/lou_erp' &&
+          github.event.pull_request.head.ref == 'feat/catalogue-mutations-20261014' &&
+          github.event.pull_request.base.ref == 'fix/pilot-database'
+        uses: actions/download-artifact@v4
+        with:
+          name: catalogue-read-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: scale-results/catalogue-read-proof
+      - name: Decode bound rollback-only SQL with actual shared TypeScript
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.repository == 'pl0203/lou_erp' &&
+          github.event.pull_request.head.repo.full_name == 'pl0203/lou_erp' &&
+          github.event.pull_request.base.repo.full_name == 'pl0203/lou_erp' &&
+          github.event.pull_request.head.ref == 'feat/catalogue-mutations-20261014' &&
+          github.event.pull_request.base.ref == 'fix/pilot-database'
+        env:
+          CATALOGUE_CI_PROFILE: github-catalogue-baseline-v1
+          CATALOGUE_CI_SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          CATALOGUE_CI_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          CATALOGUE_CI_BASE_REPOSITORY: ${{ github.event.pull_request.base.repo.full_name }}
+          CATALOGUE_CI_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          CATALOGUE_CI_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          CATALOGUE_READ_BASELINE_RESULT: ${{ needs.catalogue-baseline.result }}
+        run: |
+          set -euo pipefail
+          test "$CATALOGUE_READ_BASELINE_RESULT" = success
+          node_modules/.bin/vitest run --config vitest.catalogue-read-proof.config.ts --maxWorkers=1
+
+  # Independent of synthetic-safety: capture does not certify the full application suite.
+  catalogue-baseline:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.repository == 'pl0203/lou_erp' &&
+      github.event.pull_request.head.repo.full_name == 'pl0203/lou_erp' &&
+      github.event.pull_request.base.repo.full_name == 'pl0203/lou_erp' &&
+      github.event.pull_request.head.ref == 'feat/catalogue-mutations-20261014' &&
+      github.event.pull_request.base.ref == 'fix/pilot-database'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic-ci-only
+          POSTGRES_DB: pilot_test
+        ports:
+          - 5432:5432
+        options: >-
+          --log-driver=none
+          --health-cmd "pg_isready -U postgres -d pilot_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      GIT_NO_LAZY_FETCH: '1'
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: synthetic-ci-only
+      PGDATABASE: pilot_test
+      PGTZ: UTC
+      CATALOGUE_CI_PROFILE: github-catalogue-baseline-v1
+      CATALOGUE_CI_SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+      CATALOGUE_CI_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+      CATALOGUE_CI_BASE_REPOSITORY: ${{ github.event.pull_request.base.repo.full_name }}
+      CATALOGUE_CI_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      CATALOGUE_CI_BASE_REF: ${{ github.event.pull_request.base.ref }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          # Metadata only: sparse checkout must not trigger an implicit blob fetch.
+          sparse-checkout: /__catalogue_no_files__
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Fetch only safe exact-head source blobs
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict'
+          import { execFileSync } from 'node:child_process'
+          import { createHash } from 'node:crypto'
+          import { writeFileSync } from 'node:fs'
+          import { resolve } from 'node:path'
+          try {
+            const env = { PATH:process.env.PATH, GIT_NO_LAZY_FETCH:'1', GIT_TERMINAL_PROMPT:'0', GIT_ASKPASS:'/bin/false', SSH_ASKPASS:'/bin/false', GIT_CONFIG_NOSYSTEM:'1', GIT_CONFIG_GLOBAL:'/dev/null' }
+            const git = args => execFileSync('git',args,{env,encoding:'utf8',timeout:120000,shell:false,stdio:['pipe','pipe','pipe']})
+            const head = process.env.CATALOGUE_CI_SOURCE_SHA
+            assert.match(head ?? '',/^[a-f0-9]{40}$/)
+            assert.equal(git(['rev-parse','HEAD']).trim(),head)
+            const entry = git(['ls-tree','-z',head,'--','scripts/catalogue-checkout.mjs'])
+            const match = /^100644 blob ([a-f0-9]{40})\tscripts\/catalogue-checkout\.mjs\0$/.exec(entry)
+            assert.ok(match,'Exact regular checkout helper blob required')
+            const excluded = git(['ls-tree','-rz','--full-tree',head]).split('\0').filter(Boolean).map(line => {
+              const [meta,path] = line.split('\t')
+              assert.ok(path && !path.includes('\n') && !path.includes('\r'),'Invalid tree path')
+              const protectedPath = path.split('/').some(part => /^\.env(?:\.|$)/.test(part) || ['.npmrc','.pgpass','.pg_service.conf'].includes(part)) || path === 'supabase/config.toml' || path.startsWith('supabase/.temp/')
+              return protectedPath ? meta.split(' ')[2] : null
+            }).filter(Boolean)
+            assert.ok(!excluded.includes(match[1]),'Checkout helper aliases an excluded blob')
+            if (excluded.length) {
+              const check = execFileSync('git',['cat-file','--batch-check'],{env,input:excluded.join('\n')+'\n',encoding:'utf8',timeout:10000,shell:false,stdio:['pipe','pipe','pipe']})
+              assert.deepEqual(check.trim().split('\n'),excluded.map(id => `${id} missing`),'Excluded blobs must remain absent')
+            }
+            git(['-c','credential.helper=','-c','core.askPass=','-c','http.extraHeader=','fetch','--no-tags','--no-write-fetch-head','--filter=blob:none','https://github.com/pl0203/lou_erp.git',match[1]])
+            const bytes = execFileSync('git',['cat-file','blob',match[1]],{env,timeout:10000,shell:false,stdio:['pipe','pipe','pipe']})
+            assert.equal(createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex'),match[1])
+            const path = resolve(process.env.RUNNER_TEMP,'catalogue-checkout.mjs')
+            writeFileSync(path,bytes,{flag:'wx'})
+            execFileSync(process.execPath,[path],{env:process.env,stdio:['pipe','pipe','pipe'],timeout:240000,shell:false})
+          } catch {
+            process.stderr.write('CATALOGUE_CHECKOUT_BOOTSTRAP_REFUSED\n')
+            process.exitCode = 1
+          }
+          JS
+      - name: Check generic fail-fast harness without a database
+        run: node --test tests/database/catalogue-failfast/*.node.mjs tests/catalogue-ci/failfast.node.mjs
+      - name: Check foundation RED harness without a database
+        run: node --test tests/catalogue-ci/foundation-red.node.mjs
+      - name: Check foundation behavior harness without a database
+        run: node --test tests/catalogue-ci/foundation.node.mjs
+      - name: Check reference helper harness and frozen source without a database
+        run: node --test tests/catalogue-ci/reference-helpers.node.mjs tests/catalogue-ci/promotion-owner-extraction.node.mjs tests/catalogue/retired-co-line-resolution.source.mjs tests/catalogue-ci/po-reference-extraction.node.mjs tests/catalogue-ci/visit-reference-extraction.node.mjs tests/catalogue-ci/co-reference-extraction.node.mjs tests/catalogue-ci/nonco-lineage-resolution.node.mjs tests/catalogue-ci/co-draft-reference-extraction.node.mjs
+      - name: Check customer target harness and artifact wrapper without a database
+        run: node --test tests/catalogue-ci/customer-target-runtime.node.mjs tests/catalogue-ci/customer-target-tracking.node.mjs tests/catalogue-ci/customer-target-artifact.node.mjs
+      - name: Bind clean candidate bytes before capture
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'JS' >> "$GITHUB_ENV"
+          import assert from 'node:assert/strict'
+          import { catalogueCaptureSourceIdentity } from './scripts/catalogue-capture-source.mjs'
+          try {
+            const source = catalogueCaptureSourceIdentity()
+            assert.equal(source.clean, true)
+            assert.equal(source.commit, process.env.CATALOGUE_CI_SOURCE_SHA)
+            console.log(`CATALOGUE_CI_CANDIDATE_SHA256=${source.candidate}`)
+          } catch {
+            process.stderr.write('CATALOGUE_SOURCE_BINDING_REFUSED\n')
+            process.exitCode = 1
+          }
+          JS
+      - name: Install official PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Capture synthetic composed metadata for review
+        id: catalogue-baseline-capture
+        run: node scripts/catalogue-capture-baseline.mjs
+      - name: Preserve only unverified synthetic catalogue evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalogue-baseline-unverified-${{ github.run_id }}-${{ github.run_attempt }}
+          path: scale-results/catalogue-baseline
+          if-no-files-found: error
+          retention-days: 7
+      - name: Run bound generic fail-fast cases after capture
+        id: catalogue-failfast
+        run: node scripts/catalogue-failfast-probe.mjs
+      - name: Preserve only generic fail-fast case results
+        if: ${{ always() && steps.catalogue-failfast.outputs.bundle_ready == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalogue-failfast-${{ github.run_id }}-${{ github.run_attempt }}
+          path: scale-results/catalogue-failfast
+          if-no-files-found: error
+          retention-days: 7
+      - name: Verify intended missing foundation contract RED
+        id: catalogue-foundation-red
+        run: node scripts/catalogue-foundation-red.mjs
+      - name: Preserve only verified missing-contract RED evidence
+        if: ${{ always() && steps.catalogue-foundation-red.outputs.bundle_ready == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalogue-foundation-red-${{ github.run_id }}-${{ github.run_attempt }}
+          path: scale-results/catalogue-foundation-red
+          if-no-files-found: error
+          retention-days: 7
+      - name: Verify bound foundation behavior and rollback
+        id: catalogue-foundation
+        run: node scripts/catalogue-foundation.mjs
+      - name: Preserve only verified synthetic foundation results
+        if: ${{ always() && steps.catalogue-foundation.outputs.bundle_ready == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalogue-foundation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: scale-results/catalogue-foundation
+          if-no-files-found: error
+          retention-days: 7
+      - name: Verify bound pure reference helpers and rollback
+        # Keep this bounded proof observable after a foundation failure, without
+        # masking that failure or claiming foundation/collector completeness.
+        if: ${{ !cancelled() && steps.catalogue-baseline-capture.outcome == 'success' }}
+        id: catalogue-reference-helpers
+        run: node scripts/catalogue-reference-helpers.mjs
+      - name: Preserve only verified synthetic reference helper results
+        if: ${{ always() && steps.catalogue-reference-helpers.outputs.bundle_ready == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalogue-reference-helpers-${{ github.run_id }}-${{ github.run_attempt }}
+          path: scale-results/catalogue-reference-helpers
+          if-no-files-found: error
+          retention-days: 7
+      - name: Verify bound read composition and rollback
+        id: catalogue-read-proof
+        run: node scripts/catalogue-read-proof.mjs
+      - name: Preserve only complete synthetic read output pending decoder
+        if: ${{ success() && steps.catalogue-read-proof.outputs.bundle_ready == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalogue-read-proof-${{ github.run_id }}-${{ github.run_attempt }}
+          path: scale-results/catalogue-read-proof
+          if-no-files-found: error
+          retention-days: 7
+      - name: Verify terminal customer target runtime and disposal
+        # FINAL database operation: intentionally consumes the identity-bound child.
+        # The exclusive GitHub job service has no persistent volumes or shared users.
+        # GitHub destroys the entire per-job service at job end, including failures.
+        # Failed or uncertain setup remains CLEANUP_UNPROVEN; no blind cleanup retry.
+        if: ${{ success() && steps.catalogue-baseline-capture.outcome == 'success' && steps.catalogue-failfast.outcome == 'success' && steps.catalogue-foundation-red.outcome == 'success' && steps.catalogue-foundation.outcome == 'success' && steps.catalogue-reference-helpers.outcome == 'success' && steps.catalogue-read-proof.outcome == 'success' && steps.catalogue-read-proof.outputs.bundle_ready == 'true' }}
+        id: catalogue-customer-target-runtime
+        run: node scripts/catalogue-customer-target-artifact.mjs
+      - name: Preserve only validated target runtime and disposal results
+        if: ${{ success() && steps.catalogue-customer-target-runtime.outputs.bundle_ready == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalogue-customer-target-runtime-${{ github.run_id }}-${{ github.run_attempt }}
+          path: scale-results/catalogue-customer-target-runtime
+          if-no-files-found: error
           retention-days: 7

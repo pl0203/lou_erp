@@ -5,9 +5,10 @@ import { Field } from '../../components/ui/Field'
 import { FormActions } from '../../components/ui/FormActions'
 import PromoStockWarning, { usePromoStockSubmission } from '../../components/PromoStockWarning'
 import { POCustomerLookup, POProductLookup } from '../../components/POLookup'
-import { POLineItemsHeader, POLineRow, exactCatalogIdentity } from '../../components/POLineItems'
+import { POLineItemsHeader, POLineRow } from '../../components/POLineItems'
+import { useCatalogueOrderOptions } from '../../lib/catalogue/useCatalogueOrderOptions'
 import { resolveCatalogPrice } from '../../lib/catalogPricing'
-import { fetchCompletePOLines, fetchCompleteRows, priceForEdit } from '../../lib/reads/detailReads'
+import { fetchCompletePOLines, priceForEdit } from '../../lib/reads/detailReads'
 import TransactionRecovery from '../../components/TransactionRecovery'
 import { createTransactionSender, useTransactionSender } from '../../lib/orderTransactions'
 import type { TransactionSender } from '../../lib/orderTransactions'
@@ -20,12 +21,6 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import AthelNav from '../../components/AthelNav'
-
-type Customer = {
-  id: string
-  name: string
-  pricing_tier: string
-}
 
 type Product = {
   id: string
@@ -85,13 +80,6 @@ async function fetchPO(id: string): Promise<POData> {
     .single()
   if (error) throw error
   return { ...data, customers: singleRelation(data.customers) }
-}
-
-async function fetchCustomers(signal?: AbortSignal): Promise<Customer[]> {
-  return (await fetchCompleteRows<Customer>('customers', 'id, name, pricing_tier', {}, signal)).sort((a, b) => a.name.localeCompare(b.name))
-}
-async function fetchProducts(signal?: AbortSignal): Promise<Product[]> {
-  return (await fetchCompleteRows<Product>('products', 'id, name, sku, size, unit_price, harga_pokok, luar_kota, dalam_kota, depo_bangunan', {}, signal)).sort((a, b) => a.name.localeCompare(b.name))
 }
 
 export async function saveEdits(poId: string, payload: {
@@ -157,12 +145,39 @@ export default function POEdit() {
   const historicalLineIds = new Set((existingLines ?? []).filter(line => line.has_delivery_history).map(line => line.id))
   const deliveredByLine = Object.fromEntries((existingLines ?? []).map(line => [line.id, line.delivered_quantity]))
   const hasDeliveryHistory = lineState?.po_has_delivery_history ?? false
-  const { data: customers, isError: customersError, isFetching: customersFetching, refetch: refetchCustomers } = useQuery({
-    queryKey: ['customers', 'complete', 'po-edit'], queryFn: ({ signal }) => fetchCustomers(signal),
-  })
-  const { data: products, isError: productsError, isFetching: productsFetching, refetch: refetchProducts } = useQuery({
-    queryKey: ['products', 'complete', 'po-edit'], queryFn: ({ signal }) => fetchProducts(signal),
-  })
+  const customerHistory = useCatalogueOrderOptions('customer', 'all-for-history')
+  const productHistory = useCatalogueOrderOptions('product', 'all-for-history')
+  const { data: customers, isError: customersError, isFetching: customersFetching, refetch: refetchCustomers } = customerHistory
+  const { data: products, isError: productsError, isFetching: productsFetching, refetch: refetchProducts } = productHistory
+  const customerOptions = useCatalogueOrderOptions('customer', 'enabled-for-order')
+  const productOptions = useCatalogueOrderOptions('product', 'enabled-for-order')
+
+  const readCurrentCatalogue = () => {
+    const customers = customerHistory.getCurrentData(), products = productHistory.getCurrentData()
+    const enabledCustomers = customerOptions.getCurrentData(), enabledProducts = productOptions.getCurrentData()
+    if (!customers || !products || !enabledCustomers || !enabledProducts) throw new Error('Pilihan katalog belum siap. Tunggu pemuatan atau coba lagi.')
+    return { customers, products, enabledCustomers, enabledProducts }
+  }
+  const assertCatalogueDraft = (draft: { customer_id: string; lineItems: LineItemRow[] }) => {
+    const catalogue = readCurrentCatalogue()
+    const customer = catalogue.customers.find(row => row.id === draft.customer_id)
+    if (!customer || !customer.is_enabled && draft.customer_id !== po?.customer_id || customer.is_enabled && !catalogue.enabledCustomers.some(row => row.id === customer.id && row.is_enabled)) throw new Error('Pilih pelanggan aktif terlebih dahulu.')
+    for (const item of draft.lineItems.filter(line => !line._deleted)) {
+      const saved = existingLines?.find(line => line.id === item.id)
+      const product = catalogue.products.find(row => row.id === item.product_id)
+      if (!saved) {
+        const enabled = catalogue.enabledProducts.find(row => row.id === item.product_id && row.is_enabled)
+        if (item.id || !customer.is_enabled || !product?.is_enabled || !enabled || enabled.sku !== item.sku || enabled.name !== item.product_name || product.sku !== item.sku || product.name !== item.product_name) throw new Error('Barang baru harus dipilih dari katalog aktif untuk pelanggan aktif.')
+      } else if ((saved.product_id ?? null) !== item.product_id || (saved.sku ?? '') !== item.sku || saved.product_name !== item.product_name) {
+        throw new Error('Identitas barang tersimpan tidak boleh diubah; pilih barang pengganti dari katalog aktif.')
+      }
+      if (saved && (!customer.is_enabled || item.product_id && !product?.is_enabled) && item.quantity > saved.quantity) throw new Error('Jumlah barang untuk katalog nonaktif tidak boleh melebihi jumlah tersimpan pada baris ini.')
+    }
+    return { ...catalogue, customer }
+  }
+  type Submission = Parameters<typeof saveEdits>[1] & { catalogueAdmission: string }
+  // Keep the originating owner and editor across the stock-warning draft clone.
+  const catalogueAdmission = useRef<{ key: string; editor: typeof editor; assert: typeof assertCatalogueDraft } | null>(null)
 
   useEffect(() => {
     if (readReady && po && lineState && existingLines && !initialized) {
@@ -188,9 +203,12 @@ export default function POEdit() {
   const mutation = useMutation({
     retry: false,
     onMutate: () => activePO.current,
-    mutationFn: (draft: Parameters<typeof saveEdits>[1]) => {
+    mutationFn: (draft: Submission) => {
+      const admission = catalogueAdmission.current
+      if (!admission || admission.key !== draft.catalogueAdmission || admission.editor !== activePO.current) throw new Error('Pilihan katalog berubah. Periksa kembali formulir.')
+      admission.assert(draft)
       if (!readReady || !initialized || !lineState || lineState.po_updated_at !== initialVersion) throw new Error('Data PO berubah atau belum lengkap. Muat ulang sebelum menyimpan.')
-      if (lineItems.some(line => !line._deleted && line.quantity < (deliveredByLine[line.id ?? ''] ?? 0))) throw new Error('Jumlah tidak boleh kurang dari jumlah terkirim aktif.')
+      if (draft.lineItems.some(line => !line._deleted && line.quantity < (deliveredByLine[line.id ?? ''] ?? 0))) throw new Error('Jumlah tidak boleh kurang dari jumlah terkirim aktif.')
       return saveEdits(id!, draft, sendTransaction)
     },
     onSuccess: (_result, _draft, submittedEditor) => {
@@ -202,8 +220,9 @@ export default function POEdit() {
     },
   })
 
-  const stockSubmission = usePromoStockSubmission((draft: Parameters<typeof saveEdits>[1]) => mutation.mutateAsync(draft))
+  const stockSubmission = usePromoStockSubmission((draft: Submission) => mutation.mutateAsync(draft))
   const formLocked = mutation.isPending
+  const submissionStarting = useRef(false)
 
   useEffect(() => {
     refreshSequence.current++; setRefreshingPO(false); mutation.reset()
@@ -238,14 +257,8 @@ export default function POEdit() {
   const pricingTier = selectedCustomer?.pricing_tier ?? 'others'
 
   const updateLine = (index: number, field: keyof LineItemRow, value: string | number) => {
-    setLineItems(prev => prev.map((item, i) => i === index ? { ...item, [field]: value, ...(field === 'sku' ? { product_id: exactCatalogIdentity(String(value), products ?? []) } : {}) } : item))
-  }
-
-  const addLine = () => {
-    const key = crypto.randomUUID()
-    pendingFocus.current = { key, field: 'name' }
-    setEntryError(null); setEntryNotice('')
-    setLineItems(prev => [...prev, { _key: key, id: null, product_id: null, product_name: '', sku: '', quantity: 1, unit_price: Number.NaN }])
+    if (field !== 'quantity' && field !== 'unit_price') return
+    setLineItems(prev => prev.map((item, i) => i === index ? { ...item, [field]: value } : item))
   }
 
   const removeLine = (index: number) => {
@@ -261,7 +274,13 @@ export default function POEdit() {
     if (input) { input.focus(); input.select(); input.scrollIntoView?.({ block: 'nearest' }) }
     else pendingFocus.current = { key, field: 'quantity' }
   }
-  const addProduct = (product: Product) => {
+  const addProduct = (selected: Product) => {
+    let product: Product, currentTier: typeof pricingTier
+    try {
+      const catalogue = assertCatalogueDraft({ customer_id: customerId, lineItems: [{ id: null, product_id: selected.id, product_name: selected.name, sku: selected.sku, quantity: 1, unit_price: Number.NaN }] })
+      product = catalogue.enabledProducts.find(row => row.id === selected.id)!
+      currentTier = catalogue.customer.pricing_tier
+    } catch (error) { setEntryNotice((error as Error).message); return }
     const sku = product.sku.trim().toLocaleLowerCase()
     const existing = lineItems.find(line => !line._deleted && (sku && line.sku.trim().toLocaleLowerCase() === sku))
     if (existing) {
@@ -270,11 +289,17 @@ export default function POEdit() {
       return
     }
     setEntryNotice(''); setEntryError(null)
-    setLineItems(prev => [...prev, { id: null, product_id: product.id, _key: crypto.randomUUID(), product_name: product.name, sku: product.sku, quantity: 1, unit_price: resolveCatalogPrice(product, pricingTier) ?? Number.NaN }])
+    setLineItems(prev => [...prev, { id: null, product_id: product.id, _key: crypto.randomUUID(), product_name: product.name, sku: product.sku, quantity: 1, unit_price: resolveCatalogPrice(product, currentTier) ?? Number.NaN }])
     productSearch.current?.focus()
+  }
+  const maximumQuantity = (item: LineItemRow) => {
+    const saved = existingLines?.find(line => line.id === item.id)
+    const product = products?.find(product => product.id === item.product_id)
+    return saved && (!selectedCustomer?.is_enabled || item.product_id && !product?.is_enabled) ? saved.quantity : undefined
   }
   const validateLine = (item: LineItemRow) => {
     try {
+      assertCatalogueDraft({ customer_id: customerId, lineItems: [item] })
       validateOrderLines([item])
       if (item.quantity < (deliveredByLine[item.id ?? ''] ?? 0)) throw new Error('Jumlah tidak boleh kurang dari jumlah terkirim aktif.')
     } catch (error) {
@@ -291,7 +316,7 @@ export default function POEdit() {
   const total = visibleLines.reduce((sum, l) => sum + l.quantity * l.unit_price, 0)
 
   const handleSave = () => {
-    if (mutation.isPending) return
+    if (mutation.isPending || submissionStarting.current || stockSubmission.warning) return
     if (!customerId) return alert('Pilih pelanggan terlebih dahulu.')
     if (visibleLines.length === 0) {
       alert('PO harus memiliki minimal satu barang.')
@@ -300,7 +325,10 @@ export default function POEdit() {
     }
     if (!visibleLines.every(validateLine)) return
     setEntryError(null)
-    void stockSubmission.run({ customer_id: customerId, expected_delivery_date: expectedDelivery || null, notes: notes || null, lineItems, expected_updated_at: initialVersion })
+    submissionStarting.current = true
+    const key = crypto.randomUUID()
+    catalogueAdmission.current = { key, editor, assert: assertCatalogueDraft }
+    void stockSubmission.run({ catalogueAdmission: key, customer_id: customerId, expected_delivery_date: expectedDelivery || null, notes: notes || null, lineItems, expected_updated_at: initialVersion }).finally(() => { submissionStarting.current = false })
   }
 
   const recovery = <TransactionRecovery key={id} send={sendTransaction} onCommitted={result => {
@@ -356,16 +384,19 @@ export default function POEdit() {
 
       <div className="px-4 md:px-8 py-6 max-w-4xl mx-auto space-y-6">
 
-        {(customersError || productsError) && <div role="alert" className="text-sm text-red-700">Pilihan pelanggan atau produk belum lengkap. <Button variant="secondary"  onClick={() => { refetchCustomers(); refetchProducts() }}>Coba lagi</Button></div>}
+        {(customersError || productsError || customerOptions.isError || productOptions.isError) && <div role="alert" className="text-sm text-red-700">Pilihan pelanggan atau produk belum lengkap. <Button variant="secondary"  onClick={() => { void refetchCustomers(); void refetchProducts(); void customerOptions.refetch(); void productOptions.refetch() }}>Coba lagi</Button></div>}
         {(poFetching || linesFetching) && <p role="status" className="text-sm text-blue-600">Memperbarui data PO… Penyimpanan menunggu data lengkap; isian Anda tetap tersimpan di formulir.</p>}
         {/* Detail PO */}
         <fieldset disabled={formLocked} className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
           <h2 className="text-base font-medium text-gray-900 mb-4">Detail PO</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <Field id="po-customer" label="Pelanggan">{control => <POCustomerLookup {...control} customers={customers ?? []} selectedId={customerId} selectedLabel={po.customers?.name}
-                disabled={hasDeliveryHistory || !readReady || !customers || customersError || customersFetching || formLocked}
-                onSelect={customer => setCustomerId(customer.id)} />}</Field>
+              <Field id="po-customer" label="Pelanggan">{control => <POCustomerLookup {...control} customers={customerOptions.data ?? []} selectedId={customerId} selectedLabel={po.customers?.name}
+                disabled={customerOptions.isError || customerOptions.isFetching || !customerOptions.data || hasDeliveryHistory || !readReady || !customers || customersError || customersFetching || formLocked}
+                onSelect={customer => {
+                  const current = customerOptions.getCurrentData(), history = customerHistory.getCurrentData()
+                  if (current?.some(row => row.id === customer.id && row.is_enabled) && history?.some(row => row.id === customer.id && row.is_enabled)) setCustomerId(customer.id)
+                }} />}</Field>
               {hasDeliveryHistory && <p className="text-[13px] text-brand-secondary mt-1">Pelanggan terkunci karena PO memiliki riwayat pengiriman.</p>}
               {selectedCustomer && (
                 <p className="text-[13px] text-blue-600 mt-1">
@@ -409,8 +440,8 @@ export default function POEdit() {
           </p>
 
           <div className="mb-4 min-w-0">
-            <Field id="po-product-search" label="Cari SKU atau nama barang" hint="Ketik SKU tepat lalu Enter, atau klik hasil pencarian untuk menambahkan barang. Ulangi pencarian untuk barang berikutnya.">{control => <POProductLookup {...control} products={products ?? []} inputRef={productSearch} onSelect={addProduct}
-              disabled={!readReady || !initialized || !selectedCustomer || !products || !customers || customersError || productsError || customersFetching || productsFetching || formLocked} />}</Field>
+            <Field id="po-product-search" label="Cari SKU atau nama barang" hint="Ketik SKU tepat lalu Enter, atau klik hasil pencarian untuk menambahkan barang. Ulangi pencarian untuk barang berikutnya.">{control => <POProductLookup {...control} products={productOptions.data ?? []} inputRef={productSearch} onSelect={addProduct}
+              disabled={!selectedCustomer?.is_enabled || productOptions.isError || productOptions.isFetching || !productOptions.data || !readReady || !initialized || !selectedCustomer || !products || !customers || customersError || productsError || customersFetching || productsFetching || formLocked} />}</Field>
             {entryNotice && <p role="status" className="text-[13px] text-blue-700 mt-2">{entryNotice}</p>}
           </div>
 
@@ -424,10 +455,10 @@ export default function POEdit() {
                 const historical = !!item.id && historicalLineIds.has(item.id)
                 const minimumQuantity = Math.max(1, deliveredByLine[item.id ?? ''] ?? 0)
                 return (
-                <POLineRow key={item._key} lineKey={item._key!} item={item}
+                <POLineRow identityLocked key={item._key} lineKey={item._key!} item={item}
                   onChange={(field, value) => updateLine(realIndex, field, value)}
                   onRemove={() => removeLine(realIndex)}
-                  historical={historical} minimumQuantity={minimumQuantity} deliveredQuantity={deliveredByLine[item.id ?? ''] ?? 0}
+                  historical={historical} maximumQuantity={maximumQuantity(item)} minimumQuantity={minimumQuantity} deliveredQuantity={deliveredByLine[item.id ?? ''] ?? 0}
                   nameRef={node => {
                     nameInputs.current[item._key!] = node
                     if (node && pendingFocus.current?.key === item._key && pendingFocus.current.field === 'name') { node.focus(); pendingFocus.current = null }
@@ -443,15 +474,8 @@ export default function POEdit() {
             </div>
           )}
 
-          <p className="mt-4 text-[13px] text-gray-600">Barang manual hanya disimpan pada PO ini; tidak menambahkan produk baru ke katalog. Nama, SKU, jumlah, dan harga dicatat sebagai rincian pesanan.</p>
+          <p className="mt-4 text-[13px] text-gray-600">Barang baru harus dipilih dari katalog aktif. Nama dan SKU mengikuti pilihan katalog; harga pesanan tetap dapat ditinjau.</p>
           <div className="flex flex-wrap items-center justify-between gap-3 mt-4 pt-4 border-t border-gray-100">
-            <Button variant="secondary"
-              type="button"
-              onClick={addLine}
-
-            >
-              + Tambah barang manual
-            </Button>
             <div className="min-w-0 text-sm text-brand-secondary [overflow-wrap:anywhere]">
               Total: <span className="text-gray-900 font-semibold text-base ml-1">
                 {Number.isFinite(total) ? `Rp ${total.toLocaleString('id-ID')}` : 'Harga belum lengkap'}
@@ -468,7 +492,7 @@ export default function POEdit() {
           <Button variant="primary"
             type="button"
             pending={mutation.isPending} onClick={event => { stockTrigger.current = event.currentTarget; handleSave() }}
-            disabled={formLocked || isPOConflict(mutation.error) || !readReady || !initialized || !customers || !products || customersError || productsError || customersFetching || productsFetching}
+            disabled={customerOptions.isError || productOptions.isError || customerOptions.isFetching || productOptions.isFetching || !customerOptions.data || !productOptions.data || formLocked || isPOConflict(mutation.error) || !readReady || !initialized || !customers || !products || customersError || productsError || customersFetching || productsFetching}
 
           >
             {mutation.isPending ? 'Menyimpan...' : 'Simpan Perubahan'}
