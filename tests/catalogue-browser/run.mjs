@@ -323,7 +323,7 @@ try {
   await Promise.allSettled([...eventTasks])
   if (server) await new Promise(resolve => server.close(resolve))
   if (temporary) {
-    try { await rm(temporary, { recursive: true, force: true }) }
+    try { await rm(temporary, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }) }
     catch (error) {
       report.cleanupError = { operation: 'owned temporary profile removal', code: typeof error?.code === 'string' ? error.code : 'UNKNOWN' }
       fatal ??= 'Owned temporary browser profile cleanup failed'

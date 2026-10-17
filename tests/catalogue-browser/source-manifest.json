@@ -107,9 +107,9 @@
     },
     {
       "path": "src/components/ui/Dialog.tsx",
-      "sha": "660db10e2ad176c032c185ae88281a7e0b2f9685",
-      "sha256": "9b0006848d76a2543e5fc4c7df92d90fb697c95111000a7bdfec7b9addcb606a",
-      "bytes": 3544
+      "sha": "b4214103ad27de376492dbd922364a359ebe3b7b",
+      "sha256": "a02853c77b2681875a95e23a6f2d89d05118bc989198da5f3506178bc66773a0",
+      "bytes": 4232
     },
     {
       "path": "src/components/ui/Feedback.tsx",
