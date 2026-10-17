@@ -222,8 +222,24 @@ try {
   assert.deepEqual(await evaluate(a, `[isSecureContext, typeof navigator.locks.request, typeof HTMLDialogElement.prototype.showModal, typeof crypto.subtle.digest]`), [true, 'function', 'function', 'function'])
   await shot(a, '01-desktop-list'); proved('real source-bound CustomerList renders with native platform primitives')
   await form(a, 'Fictional Customer Alpha')
+  const focusState = `(() => {
+    const active = document.activeElement, modal = document.querySelector('dialog:modal');
+    return { active: active ? { tag: active.tagName, id: active.id, role: active.getAttribute('role'), tabIndex: active.tabIndex } : null,
+      modalControlIndex: modal ? Array.from(modal.querySelectorAll('input, select, textarea, button, a[href], [tabindex]')).indexOf(active) : -1,
+      documentHasFocus: document.hasFocus(), visibility: document.visibilityState,
+      modalOpen: !!modal, insideModal: !!modal && modal.contains(active) };
+  })()`
+  report.focusTrace = [{ phase: 'after form and before Tab', ...(await evaluate(a, focusState)) }]
   assert.equal(await evaluate(a, `document.querySelector('dialog:modal').contains(document.activeElement)`), true)
-  for (let i = 0; i < 14; i++) { await key(a, 'Tab', 'Tab', 9); assert.equal(await evaluate(a, `document.querySelector('dialog:modal').contains(document.activeElement)`), true, 'Native Tab focus escaped modal') }
+  for (let i = 0; i < 14; i++) {
+    await key(a, 'Tab', 'Tab', 9)
+    // Keep the original immediate containment measurement first. Later
+    // observations are diagnostic only and cannot turn failure into success.
+    const contained = await evaluate(a, `document.querySelector('dialog:modal').contains(document.activeElement)`)
+    const observed = await evaluate(a, focusState)
+    report.focusTrace.push({ phase: 'after native Tab', iteration: i + 1, containedAtAssertion: contained, ...observed })
+    assert.equal(contained, true, 'Native Tab focus escaped modal')
+  }
   await key(a, 'Escape', 'Escape', 27)
   await waitFor(() => evaluate(a, `!document.querySelector('dialog')`), 'idle Escape closes dialog')
   assert.equal(await evaluate(a, `document.activeElement.textContent.trim()`), '+ Tambah Pelanggan')
