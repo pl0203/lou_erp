@@ -1,3 +1,6 @@
+import { TeamSalesDashboardPanel } from '../../components/sales/MySalesDashboardPanel'
+import { dashboardFeatureEnabled } from '../../lib/salesDashboard/useDashboardRead'
+import { MainContent } from '../../components/ui/MainContent'
 import { Button } from '../../components/ui/Button'
 import { useTargetDraftSession, type TargetDraftSession } from '../../components/sales/useTargetDraftSession'
 import { InlineTargetEditor } from '../../components/sales/InlineTargetEditor'
@@ -244,7 +247,7 @@ function SummaryCards({
 }
 
 export default function GirardPerformance() {
-  return <div className="min-h-screen bg-brand-canvas"><GirardNav /><PerformanceContent /></div>
+  return <div className="min-h-screen bg-brand-canvas"><GirardNav /><MainContent>{dashboardFeatureEnabled ? <div className="px-4 py-6 md:px-8"><TeamSalesDashboardPanel /></div> : <PerformanceContent />}</MainContent></div>
 }
 
 export function PerformanceContent() {
@@ -284,7 +287,7 @@ export function PerformanceActivityContent() {
       </select>
     </div>
     <div className="rounded-lg border border-gray-200 bg-white p-4 text-sm text-brand-secondary">
-      <p>Filter bulan aktivitas ini tidak mengubah Metrik Sales. Cakupan: anggota yang kini aktif (tenaga penjualan, manajer Sales, kepala Sales, dan eksekutif) sesuai izin akun; ringkasan mencakup semua halaman.</p>
+      <p>Target lama · basis tanggal pembuatan pesanan, bukan target bulanan baru. Filter bulan aktivitas ini tidak mengubah Metrik Sales. Cakupan: anggota yang kini aktif (tenaga penjualan, manajer Sales, kepala Sales, dan eksekutif) sesuai izin akun; ringkasan mencakup semua halaman.</p>
       <p className="mt-1">Jadwal memakai tanggal kunjungan. Pesanan dan nilai pembanding target memakai tanggal pembuatan pesanan, termasuk riwayat Girard yang belum dikonversi. Basis ini berbeda dari tanggal PO, tanggal SJ, dan bulan laporan CO pada Metrik Sales.</p>
     </div>
     {isError || monthError ? <div role="alert" className="text-red-700">{monthError ? 'Daftar bulan tidak tersedia.' : 'Data performa tidak tersedia.'} <Button size="compact" variant="secondary" onClick={() => { refetch(); refetchMonths() }}>Coba lagi</Button></div> : !data ? <p className="text-center text-brand-secondary text-sm py-12">Memuat data performa...</p> : <>

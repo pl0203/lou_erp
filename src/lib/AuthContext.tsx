@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useLayoutEffect, use
 import type { ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { supabase } from './supabase'
+import { clearTargetDrafts } from './salesTargets/useTargetDraft'
 import type { User } from '@supabase/supabase-js'
 
 type UserProfile = {
@@ -34,7 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signOutGuards.current.clear()
   }, [])
   const publish = useCallback((next: AuthState) => {
-    if (verifiedScope(current.current) !== verifiedScope(next)) { authorityEpoch.current++; invalidateGuards() }
+    if (verifiedScope(current.current) !== verifiedScope(next)) { clearTargetDrafts(); authorityEpoch.current++; invalidateGuards() }
     current.current = next; setState(next)
   }, [invalidateGuards])
   const registerBeforeSignOut = useCallback((guard: BeforeSignOutGuard) => {
@@ -87,7 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         publish({ ...emptyState, error: 'Tidak dapat memuat sesi. Silakan masuk kembali.' })
       }
     })
-    return () => { disposed = true; generation.current++; authorityEpoch.current++; invalidateGuards(); subscription.unsubscribe() }
+    return () => { disposed = true; clearTargetDrafts(); generation.current++; authorityEpoch.current++; invalidateGuards(); subscription.unsubscribe() }
   }, [queryClient, publish, invalidateGuards])
 
   const signOut = useCallback((): Promise<boolean> => {

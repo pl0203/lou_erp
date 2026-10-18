@@ -75,3 +75,27 @@ for (const event of ['TOKEN_REFRESHED','SIGNED_IN']) test(`${event} preserves an
  expect(screen.getByLabelText('draft')).toBe(input)
  expect(input.value).toBe('unsaved order')
 })
+
+test('logout away from targets invalidates tab drafts before the same actor returns', async () => {
+ const { useTargetDraft } = await import('../src/lib/salesTargets/useTargetDraft')
+ const { fireEvent } = await import('@testing-library/react')
+ function DraftProbe() {
+  const auth = useAuth()
+  const { draft, update } = useTargetDraft(`synthetic:${auth.user?.id}:${auth.profile?.role}`, 'new', { month:'2026-11-01',managerId:'a',step:1,baseline:null,lines:[],plan:null,dirty:false })
+  return <><p>{draft.dirty ? 'retained target draft' : 'empty target draft'}</p><button onClick={()=>update({dirty:true})}>Edit synthetic target</button></>
+ }
+ function Host({show}: {show:boolean}) {const auth=useAuth();return <><Probe/>{show && auth.profile?.is_active && <DraftProbe/>}</>}
+ const tree=(show:boolean)=><QueryClientProvider client={client}><AuthProvider><Host show={show}/></AuthProvider></QueryClientProvider>
+ const view=render(tree(true))
+ await act(async()=>state.resolveSession({data:{session:{user:{id:'a'}}}}))
+ await act(async()=>state.resolveProfile({data:{id:'a',role:'sales_manager',is_active:true},error:null}))
+ fireEvent.click(screen.getByText('Edit synthetic target'))
+ expect(screen.getByText('retained target draft')).toBeTruthy()
+ view.rerender(tree(false))
+ await act(async()=>state.callback('SIGNED_OUT',null))
+ await act(async()=>state.callback('SIGNED_IN',{user:{id:'a'}}))
+ await act(async()=>state.resolveProfile({data:{id:'a',role:'sales_manager',is_active:true},error:null}))
+ view.rerender(tree(true))
+ expect(screen.getByText('empty target draft')).toBeTruthy()
+ expect(screen.queryByText('retained target draft')).toBeNull()
+})

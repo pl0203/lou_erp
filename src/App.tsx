@@ -40,6 +40,7 @@ import GirardTeam from './pages/girard/GirardTeam'
 import ManagerCustomers from './pages/girard/ManagerCustomers'
 import MyOrders from './pages/girard/MyOrders'
 import MySalesSummary from './pages/girard/MySalesSummary'
+import SalesTargets from './pages/girard/SalesTargets'
 import MyVisits from './pages/girard/MyVisits'
 import GirardDashboard from './pages/girard/GirardDashboard'
 import Promotions from './pages/girard/Promotions'
@@ -75,7 +76,7 @@ const routeTitles: [string, string][] = [
   ['/girard/visit-requests', 'Permintaan kunjungan'], ['/girard/visit-history', 'Riwayat kunjungan saya'],
   ['/girard/schedule', 'Jadwal kunjungan'], ['/girard/visit/:scheduleId', 'Detail kunjungan'],
   ['/girard/customer/:id', 'Detail pelanggan Sales'], ['/girard/outlet/:id', 'Detail outlet'],
-  ['/girard/my-sales', 'Ringkasan penjualan saya'], ['/girard/my-orders', 'Riwayat pesanan saya'],
+  ['/girard/targets', 'Target Penjualan'], ['/girard/my-sales', 'Ringkasan penjualan saya'], ['/girard/my-orders', 'Riwayat pesanan saya'],
   ['/girard/my-visits', 'Kunjungan saya'], ['/girard/team', 'Tim Sales'],
   ['/girard/dashboard', 'Dashboard Sales'], ['/girard/my-customers', 'Pelanggan saya'],
   ['/girard/customers', 'Daftar pelanggan Sales'], ['/girard/managers', 'Manajer Sales'],
@@ -168,6 +169,7 @@ export default function App() {
       <Route path="/girard/outlet/:id" element={
         <ProtectedRoute allowedRoles={GIRARD_ROLES}><OutletDetail /></ProtectedRoute>
       } />
+      <Route path="/girard/targets" element={<ProtectedRoute allowedRoles={GIRARD_ROLES}><SalesTargets /></ProtectedRoute>} />
       <Route path="/girard/my-sales" element={<ProtectedRoute allowedRoles={['sales_person']}><MySalesSummary /></ProtectedRoute>} />
       <Route path="/girard/my-orders" element={
         <ProtectedRoute allowedRoles={GIRARD_ROLES}><MyOrders /></ProtectedRoute>

@@ -41,9 +41,8 @@ async function upsertCustomerTarget(
 export const fetchCustomerPerformance = fetchCustomerPerformancePage
 
 function SalesPctBar({ actual, target }: { actual: string; target: string | null }) {
-  if (target == null || /^0+(?:\.0+)?$/.test(target)) {
-    return <span className="text-brand-secondary text-sm">—</span>
-  }
+  if (target == null) return <span className="text-brand-secondary text-sm">Target belum ditetapkan</span>
+  if (/^0+(?:\.0+)?$/.test(target)) return <span className="text-brand-secondary text-sm">Target nol · rasio tidak dihitung</span>
   const pctText = moneyPercentage(actual, target)
   const pct = Number(pctText)
   return (
@@ -379,21 +378,7 @@ export function CustomerActivityContent() {
                   </div>
                   <div className="pt-2 border-t border-gray-100">
                     <p className="text-[13px] text-brand-secondary mb-1">% Pembanding target</p>
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 bg-gray-100 rounded-full h-1.5">
-                        <div
-                          className={`h-1.5 rounded-full ${
-                            onTrack ? 'bg-green-500' : 'bg-red-400'
-                          }`}
-                          style={{
-                            width: `${Math.min(100, Number(moneyPercentage(r.total_sales, r.sales_target ?? '0')))}%`
-                          }}
-                        />
-                      </div>
-                      <span className="text-[13px] text-brand-secondary">
-                        {moneyPercentage(r.total_sales, r.sales_target ?? '0')}%
-                      </span>
-                    </div>
+                    <SalesPctBar actual={r.total_sales} target={r.sales_target} />
                   </div>
                 </div>
               )
