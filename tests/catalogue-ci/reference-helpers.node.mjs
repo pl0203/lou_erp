@@ -305,7 +305,13 @@ test('public PG17 CI preserves foundation failure and independently gates helper
  assert.equal(sha(browserRegion),'52835f2c64d1d3f84e534c2738b4a246013d32ece348007d14c7e814e7a3aaa5');
  assert.equal(workflow.split(browserRegion).length,2);
  assert.ok(workflow.includes('      - run: npm run build\n'+browserRegion+'      - name: Install official PostgreSQL client'));
- const prefix=workflow.slice(0,split).replace(scheduling,'').replace(browserRegion,'');
+ // Pin the approved additive SJ step independently; retain the historical prefix pin.
+ const receivedStart=workflow.indexOf('      - name: Guarded SJ received-date migration');
+ const receivedRegion=workflow.slice(receivedStart,receivedStart+901);
+ assert.equal(sha(receivedRegion),'eb6c3d02339aa38c41e742303ebcf3b87ae63557d302b0478d1a566bca3eccc9');
+ assert.equal(workflow.split(receivedRegion).length,2);
+ assert.ok(workflow.includes('          done\n'+receivedRegion+'      - name: Preserve final CO evidence'));
+ const prefix=workflow.slice(0,split).replace(scheduling,'').replace(browserRegion,'').replace(receivedRegion,'');
  const decoderStart=prefix.indexOf('      - name: Bind independent read decoder source');
  const commentStart=prefix.indexOf('  # Independent of synthetic-safety:');
  assert.ok(decoderStart>0&&commentStart>decoderStart);
