@@ -111,6 +111,10 @@ export function FixturePanel() {
       catch (error) { setProbe(`Refused: ${(error as Error).message}`) }
     }}>Probe competing sender</button>
     <p role="status">Commands: {data.attempts.length}; committed: {Object.keys(data.receipts).length}; rows: {data.customers.length}; raw calls: {data.rawCalls.length}; unexpected RPCs: {data.unexpected.length}; durable requests: {durable}; held replies: {data.held.filter(id => !data.released.includes(id)).length}</p>
-    <p>Probe: {probe}</p><pre className="whitespace-pre-wrap break-all text-xs" aria-label="Native lock diagnostics">{locks}</pre><pre className="whitespace-pre-wrap break-all text-xs" aria-label="Native diagnostics">{native}</pre>
+    <p>Probe: {probe}</p>
+    {/* Reserve diagnostic geometry before the first async lock sample and on focus changes.
+        Observing native state must not move the controls between pointer down and up. */}
+    <pre className="h-16 overflow-auto whitespace-pre-wrap break-all text-xs" aria-label="Native lock diagnostics">{locks}</pre>
+    <pre className="h-32 overflow-auto whitespace-pre-wrap break-all text-xs" aria-label="Native diagnostics">{native}</pre>
   </aside>
 }
