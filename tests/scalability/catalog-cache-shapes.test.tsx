@@ -56,7 +56,9 @@ test('navigating from promotion products to a PO never reuses an incompatible ca
     const lookup = await screen.findByRole('combobox', { name: 'Cari SKU atau nama barang' })
     fireEvent.change(lookup, { target: { value: 'Synthetic product' } })
     fireEvent.click(screen.getByRole('option', { name: /Synthetic product/ }))
-    expect((screen.getAllByRole('spinbutton')[1] as HTMLInputElement).value).toBe('0')
+    const price = screen.getByLabelText('Harga satuan') as HTMLInputElement
+    expect(price.value).toBe('')
+    fireEvent.change(price, { target: { value: '17.50' } }); expect(price.value).toBe('17.50')
     const canonical = client.getQueriesData({ queryKey: ['catalogue', 'https://catalogue.test', catalogue.actorId, 'executive', 1, 'read', 'product', 'enabled-for-order'] })
     expect(canonical).toHaveLength(1)
     expect((canonical[0][1] as { rows: unknown[] }).rows).toEqual([catalogue.product])

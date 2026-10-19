@@ -42,8 +42,9 @@ test('server deadline refusal preserves entered date and does not broaden full-S
 test('missing completion evidence fails closed for received-date action', () => {
  state.completedAt = null; mount(); expect(screen.queryByRole('button', { name: 'Ubah tanggal SJ diterima toko' })).toBeNull()
 })
-test('Unassigned credit explicitly explains the fixed creation snapshot', () => {
- mount(); expect(screen.getByText('Unassigned')).toBeTruthy(); expect(screen.getByText(/Kredit ditetapkan saat PO dibuat/)).toBeTruthy()
+test('unassigned saved credit is shown in the compact Sales line without the retired explanation box', () => {
+ mount(); expect(screen.getByText('Belum ditugaskan').closest('p')?.textContent).toBe('Sales: Belum ditugaskan')
+ expect(screen.queryByRole('region', { name: 'Kredit salesperson' })).toBeNull(); expect(screen.queryByText(/Kredit ditetapkan saat PO dibuat/)).toBeNull()
 })
 test('stale version feedback retains received date and offers authoritative refresh', async () => {
  state.send.mockRejectedValue(Object.assign(new Error('PO berubah. Muat ulang dan periksa perubahan sebelum menyimpan kembali.'), { code: 'PT409' })); mount()

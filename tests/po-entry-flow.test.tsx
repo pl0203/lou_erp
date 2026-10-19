@@ -58,7 +58,7 @@ test.each(['new', 'edit'] as const)('%s customer search finds later records and 
  expect(screen.queryByText('Tier harga: Others')).toBeNull()
  fireEvent.click(screen.getByRole('option', { name: /Later shop 19/ }))
  expect((input as HTMLInputElement).value).toBe('Later shop 19')
- expect(screen.getByText('Others')).toBeTruthy()
+ expect(screen.queryByText('Others')).toBeNull()
 })
 
 test('exact SKU wins beyond six suggestions and immediately adds a row while keeping shared search focused', () => {
@@ -96,7 +96,7 @@ test('duplicate SKU focuses its existing editable row without changing quantity 
  exact('sku'); expect(screen.getAllByDisplayValue('Product p')).toHaveLength(1)
  expect(document.activeElement).toBe(qty); expect((qty as HTMLInputElement).value).toBe('7')
  expect((screen.getByLabelText('Harga satuan') as HTMLInputElement).value).toBe('40')
- expect(screen.getByRole('status').textContent).toMatch(/sudah ada/)
+ expect(screen.getByText(/sudah ada/)).toBeTruthy()
 })
 
 test('a new search query clears the previous arrow selection; Escape dismisses suggestions', () => {
@@ -130,10 +130,10 @@ test('catalog refresh/error disables search and prevents stale Enter selection',
  fireEvent.keyDown(input, { key: 'Enter' }); expect(screen.queryByDisplayValue('Product p')).toBeNull()
 })
 
-test('edit customer reselection preserves old prices but applies new tier to newly added items', () => {
+test('edit customer reselection preserves stored prices and new items require manual prices', () => {
  mount('edit'); customer('Beta'); exact()
  expect((screen.getAllByLabelText('Harga satuan')[0] as HTMLInputElement).value).toBe('123.45')
- expect((screen.getAllByLabelText('Harga satuan')[1] as HTMLInputElement).value).toBe('30')
+ expect((screen.getAllByLabelText('Harga satuan')[1] as HTMLInputElement).value).toBe('')
 })
 
 test('edit duplicate focuses the first historical line and leaves historical duplicate IDs and prices unchanged', async () => {

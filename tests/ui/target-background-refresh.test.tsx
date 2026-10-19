@@ -68,7 +68,7 @@ afterEach(() => {
 const family = (kind: Kind) => kind === 'customer' ? 'customer_performance' : 'performance'
 const readKey = (kind: Kind) => [family(kind), 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa:executive', { yearMonth: '2026-10' }, 1]
 const regionName = (kind: Kind) => kind === 'customer' ? 'Tabel aktivitas pelanggan' : 'Tabel aktivitas tim'
-const panelName = (kind: Kind) => kind === 'customer' ? 'Performa Pelanggan' : 'Performa Tim Sales'
+const panelName = (kind: Kind) => kind === 'customer' ? 'Performa Toko' : 'Performa Tim'
 const dashboard = (client: QueryClient) => <StrictMode><QueryClientProvider client={client}><MemoryRouter><GirardDashboard /></MemoryRouter></QueryClientProvider></StrictMode>
 async function mount(kind: Kind, terminalError = false) {
   // Match src/main.tsx: default retry/focus/reconnect/staleness behavior. Only

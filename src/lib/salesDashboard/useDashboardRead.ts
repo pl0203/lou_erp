@@ -7,7 +7,8 @@ import { currentDashboardMonth, dashboardMetricDefinitions } from './definitions
 import { validateDashboardArgs, type DashboardArgs, type DashboardMetric, type DashboardScope, type DashboardSort, type DashboardAttention } from './contracts'
 import { createDashboardTransport, type DashboardTransport } from './transport'
 /** Explicit build capability, disabled by default. A valid v3 read is additionally required. */
-export const dashboardFeatureEnabled = import.meta.env.VITE_SALES_DASHBOARD_V3 === 'true'
+import { dashboardFeatureEnabled } from './feature'
+export { dashboardFeatureEnabled } from './feature'
 const BACKEND = import.meta.env.VITE_SUPABASE_URL ?? 'unconfigured'
 const productionTransport = createDashboardTransport(async (name, args, signal) => {
   const { data, error } = await supabase.rpc(name, args).abortSignal(signal)

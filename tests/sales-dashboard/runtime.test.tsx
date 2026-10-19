@@ -55,7 +55,7 @@ test('switching actor immediately hides and evicts another identity cached data'
 })
 test('leadership and manager reads request their distinct scopes', async () => {
   auth.profile.role = 'sales_head'; const transport = vi.fn<DashboardTransport>().mockResolvedValue(dashboardFixture('leadership')); mount(transport, 'leadership')
-  await screen.findByRole('heading', { name: 'Ringkasan Tim' }); expect(transport.mock.calls[0][0].p_scope).toBe('leadership')
+  await screen.findByRole('heading', { name: 'Performa Tim' }); expect(transport.mock.calls[0][0].p_scope).toBe('leadership')
 })
 
 test('sort and attention request the whole filtered cohort and reset pagination', async () => {

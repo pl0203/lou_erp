@@ -94,6 +94,7 @@ test('saved product ceilings are rechecked when another new row awaits a stock-k
     const { client } = mount(<COForm mode="edit"/>);
     await screen.findByDisplayValue('Item 1'); change('Qty Item 1', '3');
     await addProduct('SKU-2'); await screen.findByDisplayValue('Product 2');
+    change('Harga satuan Product 2', '10.00');
     let release!: (value: any) => void;
     const lookup = vi.spyOn(rpc, 'resolveCOStockKey').mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
     fireEvent.click(screen.getByRole('button', { name: 'Simpan Perubahan' }));

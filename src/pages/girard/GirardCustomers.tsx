@@ -5,11 +5,10 @@ import { Field } from '../../components/ui/Field'
 import { FilterBar } from '../../components/ui/FilterBar'
 import { FormActions } from '../../components/ui/FormActions'
 import { Dialog } from '../../components/ui/Dialog'
-import { EmptyState, StatusBadge } from '../../components/ui/Feedback'
+import { EmptyState } from '../../components/ui/Feedback'
 import { RecordList } from '../../components/ui/RecordList'
 import { SummaryList } from '../../components/ui/SummaryList'
 import { MainContent } from '../../components/ui/MainContent'
-import CustomerPricingHelp from '../../components/CustomerPricingHelp'
 import { hasInvalidCustomerCategories } from '../../lib/customerCategoryRows'
 import CustomerCategorySelect from '../../components/CustomerCategorySelect'
 import { parseCustomerCategory, formatCustomerCategory, type CustomerCategory } from '../../lib/customerCategory'
@@ -57,7 +56,6 @@ type CustomerForm = {
   email: string
   visit_frequency_days: number
   manager_id: string
-  pricing_tier: string
   customer_category: CustomerCategory | null | ''
 }
 
@@ -69,7 +67,6 @@ const EMPTY_FORM: CustomerForm = {
   email: '',
   visit_frequency_days: 7,
   manager_id: '',
-  pricing_tier: 'luar_kota',
   customer_category: '',
 }
 
@@ -80,14 +77,6 @@ const FREQUENCY_OPTIONS = [
   { label: '2x per bulan', days: 15 },
   { label: '1x per bulan', days: 30 },
 ]
-
-const TIER_LABELS: Record<string, string> = {
-  harga_pokok:   'Harga Pokok',
-  luar_kota:     'Luar Kota',
-  dalam_kota:    'Dalam Kota',
-  depo_bangunan: 'Depo Bangunan',
-  others: 'Others',
-}
 
 function frequencyLabel(days: number): string {
   const match = FREQUENCY_OPTIONS.find(f => f.days === days)
@@ -171,7 +160,6 @@ function customerChanges(form: CustomerForm, original: Customer) {
   const payload: Record<string, unknown> = {}
   if (category !== original.customer_category) payload.customer_category = category
   if (form.visit_frequency_days !== original.visit_frequency_days) payload.visit_frequency_days = form.visit_frequency_days
-  if (form.pricing_tier !== original.pricing_tier) payload.pricing_tier = form.pricing_tier
   return payload
 }
 
@@ -194,7 +182,6 @@ export default function GirardCustomers() {
   const [selectedExistingId, setSelectedExistingId] = useState('')
   const [existingFrequency, setExistingFrequency] = useState(7)
   const [existingManagerId, setExistingManagerId] = useState('')
-  const [existingPricingTier, setExistingPricingTier] = useState('luar_kota')
 
   const { data: customers, isError: customerReadError, refetch: retryCustomers } = useQuery({
     queryKey: ['all_customers'],
@@ -240,7 +227,7 @@ export default function GirardCustomers() {
         await saveCustomerAndAssignment(createCustomerId.current, {
           name: form.name, address: form.address || null, city: form.city || null,
           phone: form.phone || null, email: form.email || null, visit_frequency_days: form.visit_frequency_days,
-          pricing_tier: form.pricing_tier, customer_category: category,
+          pricing_tier: 'others', customer_category: category,
         }, true, form.manager_id, null)
       } catch (error) {
         // Never create another identity or guess whether either write committed.
@@ -264,7 +251,6 @@ export default function GirardCustomers() {
       if (!original) throw new Error('Pelanggan tidak tersedia. Muat ulang sebelum melanjutkan.')
       const payload: Record<string, unknown> = {}
       if (existingFrequency !== original.visit_frequency_days) payload.visit_frequency_days = existingFrequency
-      if (existingPricingTier !== original.pricing_tier) payload.pricing_tier = existingPricingTier
       await saveCustomerAndAssignment(selectedExistingId, payload, false, existingManagerId, originalAssignment)
     },
     onSettled: settleWrite,
@@ -303,7 +289,6 @@ export default function GirardCustomers() {
     setSelectedExistingId('')
     setExistingFrequency(7)
     setExistingManagerId('')
-    setExistingPricingTier('luar_kota')
   }
 
   const openEdit = (c: Customer, opener: HTMLElement) => {
@@ -318,7 +303,6 @@ export default function GirardCustomers() {
       ...EMPTY_FORM,
       visit_frequency_days: c.visit_frequency_days,
       manager_id: assignment?.manager_id ?? '',
-      pricing_tier: c.pricing_tier ?? 'others',
       customer_category: c.customer_category,
     })
     setModalMode('edit')
@@ -334,17 +318,6 @@ export default function GirardCustomers() {
   const isError = createMutation.isError || assignExistingMutation.isError || updateMutation.isError
   const errorMessage = ((createMutation.error || assignExistingMutation.error || updateMutation.error) as Error)?.message
 
-  const tierSelect = (value: string, onChange: (v: string) => void) => (
-    <Field id="sales-customer-pricing-tier" label="Tier Harga" hint={<CustomerPricingHelp id="sales-customer-pricing-help" />}>
-      {control => <select {...control} value={value} onChange={e => onChange(e.target.value)}>
-        <option value="harga_pokok">Harga Pokok</option>
-        <option value="luar_kota">Luar Kota</option>
-        <option value="dalam_kota">Dalam Kota</option>
-        <option value="depo_bangunan">Depo Bangunan</option>
-        <option value="others">Others</option>
-      </select>}
-    </Field>
-  )
 
   const readError = customerReadError || managerReadError || assignmentReadError || hasInvalidCustomerCategories(customers ?? [])
   const isLoading = customers === undefined && !customerReadError
@@ -388,7 +361,6 @@ export default function GirardCustomers() {
                   <th className="text-left px-5 py-3 font-medium text-brand-secondary">Pelanggan</th>
                   <th className="text-left px-5 py-3 font-medium text-brand-secondary">Lokasi</th>
                   <th className="text-left px-5 py-3 font-medium text-brand-secondary">Penanggung Jawab Toko</th>
-                  <th className="text-left px-5 py-3 font-medium text-brand-secondary">Tier Harga</th>
                   <th className="text-left px-5 py-3 font-medium text-brand-secondary">Kategori Pelanggan</th>
                   <th className="text-left px-5 py-3 font-medium text-brand-secondary">Frekuensi Kunjungan</th>
                   <th className="text-left px-5 py-3 font-medium text-brand-secondary">Kunjungan Terakhir</th>
@@ -413,9 +385,6 @@ export default function GirardCustomers() {
                           ? <span className="text-brand-primary">{assignment.managers?.full_name}</span>
                           : <span className="text-[13px] text-brand-secondary">Belum ditugaskan</span>
                         }
-                      </td>
-                      <td className="px-5 py-4">
-                        <StatusBadge tone="neutral">{TIER_LABELS[c.pricing_tier] ?? c.pricing_tier}</StatusBadge>
                       </td>
                       <td className="px-5 py-4">{formatCustomerCategory(c.customer_category)}</td>
                       <td className="px-5 py-4 text-brand-secondary">
@@ -458,7 +427,6 @@ export default function GirardCustomers() {
                   <SummaryList items={[
                     { label: 'Kategori Pelanggan', value: formatCustomerCategory(c.customer_category) },
                     { label: 'Penanggung Jawab Toko', value: assignment?.managers?.full_name ?? '—' },
-                    { label: 'Tier Harga', value: <StatusBadge tone="neutral">{TIER_LABELS[c.pricing_tier] ?? c.pricing_tier}</StatusBadge> },
                     { label: 'Frekuensi', value: frequencyLabel(c.visit_frequency_days) },
                     { label: 'Kunjungan Terakhir', value: <span className={overdue ? 'font-medium text-red-700' : undefined}>{c.last_visit_date ? new Date(c.last_visit_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : 'Belum pernah'}{overdue && ' ⚠'}</span> },
                   ]} />
@@ -505,7 +473,6 @@ export default function GirardCustomers() {
                   <Field id="sales-customer-frequency" label="Frekuensi Kunjungan">{control => <select {...control} value={form.visit_frequency_days} onChange={e => setForm(p => ({ ...p, visit_frequency_days: parseInt(e.target.value) }))}>
                     {FREQUENCY_OPTIONS.map(f => <option key={f.days} value={f.days}>{f.label}</option>)}
                   </select>}</Field>
-                  {tierSelect(form.pricing_tier, v => setForm(p => ({ ...p, pricing_tier: v })))}
                   <Field id="sales-customer-owner" label="Penanggung Jawab Toko" hint="Opsional untuk pelanggan baru.">
                     {control => <select {...control} value={form.manager_id} onChange={e => setForm(p => ({ ...p, manager_id: e.target.value }))}>
                       <option value="">Belum ditugaskan</option>
@@ -526,7 +493,7 @@ export default function GirardCustomers() {
                         const assignment = assignmentMap[e.target.value]
                         setOriginalAssignment(assignment ? { ...assignment } : null)
                         const customer = customers?.find(c => c.id === e.target.value)
-                        if (customer) { setExistingFrequency(customer.visit_frequency_days); setExistingPricingTier(customer.pricing_tier) }
+                        if (customer) { setExistingFrequency(customer.visit_frequency_days) }
                       }}
                     >
                       <option value="">Pilih pelanggan...</option>
@@ -538,7 +505,6 @@ export default function GirardCustomers() {
                   <Field id="sales-customer-frequency" label="Frekuensi Kunjungan">{control => <select {...control} value={existingFrequency} onChange={e => setExistingFrequency(parseInt(e.target.value))}>
                     {FREQUENCY_OPTIONS.map(f => <option key={f.days} value={f.days}>{f.label}</option>)}
                   </select>}</Field>
-                  {tierSelect(existingPricingTier, setExistingPricingTier)}
                   <Field id="sales-customer-owner" label="Penanggung Jawab Toko" hint="Pilih penanggung jawab toko sesuai penugasan.">
                     {control => <select {...control} value={existingManagerId} onChange={e => setExistingManagerId(e.target.value)}>
                       <option value="">Pilih penanggung jawab toko...</option>
@@ -554,7 +520,6 @@ export default function GirardCustomers() {
                   <Field id="sales-customer-frequency" label="Frekuensi Kunjungan">{control => <select {...control} value={form.visit_frequency_days} onChange={e => setForm(p => ({ ...p, visit_frequency_days: parseInt(e.target.value) }))}>
                     {FREQUENCY_OPTIONS.map(f => <option key={f.days} value={f.days}>{f.label}</option>)}
                   </select>}</Field>
-                  {tierSelect(form.pricing_tier, v => setForm(p => ({ ...p, pricing_tier: v })))}
                   <Field id="sales-customer-owner" label="Penanggung Jawab Toko" hint="Pilih penanggung jawab toko sesuai penugasan.">
                     {control => <select {...control} value={form.manager_id} onChange={e => setForm(p => ({ ...p, manager_id: e.target.value }))}>
                       <option value="">Belum ditugaskan</option>

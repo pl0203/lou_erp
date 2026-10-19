@@ -15,7 +15,7 @@ This document describes the unpublished UI-only motion extension of the approved
 
 ## Route coverage: 38 actual paths
 
-Every route below already owns `MainContent` directly or through COLayout and receives shared mounted-content/control polish. Sources are relative to `src/`. Shapes describe the changed loading presentation, not a new blocking condition.
+Every active page below owns `MainContent` directly or through COLayout and receives shared mounted-content/control polish. The retired order-history URL now redirects to the Sales schedule. Sources are relative to `src/`. Shapes describe the changed loading presentation, not a new blocking condition.
 
 | Route | Page or loading owner | Treatment |
 |---|---|---|
@@ -47,7 +47,7 @@ Every route below already owns `MainContent` directly or through COLayout and re
 | `/girard/outlet/:id` | `pages/girard/OutletDetail` | Existing unavailable state; deliberately not a loader |
 | `/girard/targets` | `SalesTargets`, `TargetWizard`, `TargetPlanInbox` | Compact access/wizard status, plan list and audit history |
 | `/girard/my-sales` | `MySalesDashboardPanel` or `SalesMetricSummary` | Dashboard shapes in both feature-flag branches |
-| `/girard/my-orders` | `pages/girard/MyOrders` | Order list and nested complete-order-line status |
+| `/girard/my-orders` | Compatibility redirect to `/girard/schedule` | Retired legacy page; no old order-history page or menu remains reachable |
 | `/girard/promotions` | `ActivePromotionsBanner`, `PromotionImage` | List and compact authorized-image loading |
 | `/girard/my-visits` | `pages/girard/MyVisits` | Visit list; inline counters stay inline |
 | `/girard/team` | `pages/girard/GirardTeam` | Team/activity list loading |
@@ -58,7 +58,7 @@ Every route below already owns `MainContent` directly or through COLayout and re
 | `/ihr/users` | `pages/ihr/UserManagement` | Directory list; waiting-for-connection title and explanation preserved |
 | `/ihr/leave` | `pages/ihr/LeaveManagement` and panels below | Context/access check and all eligible existing nested read states |
 
-`/` and `*` remain immediate redirects. App's initial authentication boundary and ProtectedRoute's defensive fallback also use LoadingState. There is still one semantic main landmark.
+`/`, `*`, and the retired `/girard/my-orders` compatibility URL are immediate redirects. The last retains its existing Sales-role authentication boundary. App's initial authentication boundary and ProtectedRoute's defensive fallback also use LoadingState. There is still one semantic main landmark.
 
 ## Nested coverage and intentional exceptions
 
@@ -76,7 +76,7 @@ TargetWizard pending and attachment checking can include command recovery, so th
 
 Existing quiet reads are deliberately not turned into new blocking branches: create-PO/CO catalogue reads, PO delivery/audit initial sections, visit order-history/photo-URL acquisition and some attachment/settlement/member-editor reads. Their current disabled/readiness handling and common entry/control styling remain. Inline KPI/date-counter text stays span/paragraph-safe rather than receiving a block skeleton.
 
-`pages/girard/GirardRevenue.tsx` has no route and is not reachable from App. CustomerPerformance and GirardPerformance are reachable through named dashboard panel exports and are included. OutletDetail is routed but intentionally unavailable.
+`pages/girard/GirardRevenue.tsx` and the retired `pages/girard/MyOrders.tsx` are not reachable from App. CustomerPerformance and GirardPerformance are reachable through named dashboard panel exports and are included. OutletDetail is routed but intentionally unavailable.
 
 ## Automated evidence and limits
 

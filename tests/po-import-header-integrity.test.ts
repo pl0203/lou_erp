@@ -45,7 +45,7 @@ test('depot continuation with another buyer never combines its 22 rows as a comp
   const input = depotTable(); replace(input, 1, 'PT. LANTERN DEPOT, Tbk', 'PT. OTHER DEPOT, Tbk')
   expectConflict(input, 'buyer', 22)
   const parsed = parsePODocument(input)
-  const decision = { customerId: 'buyer', poNumber: parsed.poNumber.value!, orderDate: '2028-04-11', expiry: '', notes: '', idrConfirmed: true, acknowledgedIssueIds: parsed.issues.map(i => i.id), rows: Object.fromEntries(parsed.rows.map(r => [r.id, { productId: null, manual: true, name: r.name.value!, sku: r.sku.value!, quantity: r.quantity.value!, unitPrice: r.unitPrice.value, unitConfirmed: true }])) }
+  const decision = { customerId: 'buyer', poNumber: parsed.poNumber.value!, orderDate: '2028-04-11', expiry: '', notes: '', acknowledgedIssueIds: parsed.issues.map(i => i.id), rows: Object.fromEntries(parsed.rows.map(r => [r.id, { productId: null, manual: true, name: r.name.value!, sku: r.sku.value!, quantity: r.quantity.value!, unitPrice: r.unitPrice.value, unitConfirmed: true }])) }
   const customers = [{ id: 'buyer', name: parsed.buyer.value!, pricing_tier: 'luar_kota' }]
   decision.acknowledgedIssueIds.push(...preparePOFormDraft(parsed, decision, customers, []).issues.map(i => i.id))
   expect(preparePOFormDraft(parsed, decision, customers, []).draft).toBeNull()
@@ -136,7 +136,7 @@ test.each([true, false])('same-page matching PO table sections cannot silently o
   input[0].tokens.push(...second.tokens)
   const parsed = parsePODocument(input)
   const customers = [{ id: 'buyer', name: parsed.buyer.value!, pricing_tier: 'luar_kota' }]
-  const decision = { customerId: 'buyer', poNumber: parsed.poNumber.value!, orderDate: parsed.orderDate.value!, expiry: '', notes: parsed.notes, idrConfirmed: true, acknowledgedIssueIds: parsed.issues.map(i => i.id), rows: Object.fromEntries(parsed.rows.map(row => [row.id, { productId: null, manual: true, name: row.name.value!, sku: row.sku.value!, quantity: row.quantity.value!, unitPrice: row.unitPrice.value, unitConfirmed: true }])) }
+  const decision = { customerId: 'buyer', poNumber: parsed.poNumber.value!, orderDate: parsed.orderDate.value!, expiry: '', notes: parsed.notes, acknowledgedIssueIds: parsed.issues.map(i => i.id), rows: Object.fromEntries(parsed.rows.map(row => [row.id, { productId: null, manual: true, name: row.name.value!, sku: row.sku.value!, quantity: row.quantity.value!, unitPrice: row.unitPrice.value, unitConfirmed: true }])) }
   decision.acknowledgedIssueIds.push(...preparePOFormDraft(parsed, decision, customers, []).issues.map(i => i.id))
   expect(parsed.complete).toBe(false)
   expect(parsed.issues.some(i => i.code === 'incomplete-extraction' && i.blocking)).toBe(true)
@@ -158,7 +158,7 @@ test.each([
   input[0].tokens.push(...second.tokens)
   const parsed = parsePODocument(input)
   const customers = [{ id: 'buyer', name: parsed.buyer.value!, pricing_tier: 'luar_kota' }]
-  const decision = { customerId: 'buyer', poNumber: parsed.poNumber.value!, orderDate: parsed.orderDate.value!, expiry: '', notes: parsed.notes, idrConfirmed: true, acknowledgedIssueIds: parsed.issues.map(i => i.id), rows: Object.fromEntries(parsed.rows.map(row => [row.id, { productId: null, manual: true, name: row.name.value!, sku: row.sku.value!, quantity: row.quantity.value!, unitPrice: row.unitPrice.value, unitConfirmed: true }])) }
+  const decision = { customerId: 'buyer', poNumber: parsed.poNumber.value!, orderDate: parsed.orderDate.value!, expiry: '', notes: parsed.notes, acknowledgedIssueIds: parsed.issues.map(i => i.id), rows: Object.fromEntries(parsed.rows.map(row => [row.id, { productId: null, manual: true, name: row.name.value!, sku: row.sku.value!, quantity: row.quantity.value!, unitPrice: row.unitPrice.value, unitConfirmed: true }])) }
   decision.acknowledgedIssueIds.push(...preparePOFormDraft(parsed, decision, customers, []).issues.map(i => i.id))
   expect(preparePOFormDraft(parsed, decision, customers, []).draft).toBeNull()
   expect(parsed.complete).toBe(false)

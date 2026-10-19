@@ -5,9 +5,9 @@ import App from '../../src/App'
 import GirardNav from '../../src/components/GirardNav'
 import { PerformanceContent } from '../../src/pages/girard/GirardPerformance'
 
-test('only salesperson navigation offers Penjualan Saya and keeps read-only order history',()=>{
-  mount(<GirardNav/>);expect(screen.getByRole('link',{name:'Penjualan Saya'}).getAttribute('href')).toBe('/girard/my-sales');expect(screen.getByRole('link',{name:'Riwayat Pesanan'}).getAttribute('href')).toBe('/girard/my-orders');expect(screen.queryByRole('link',{name:/Buat.*[PO]|Revenue/i})).toBeNull()
-  role('sales_manager');expect(screen.queryByRole('link',{name:'Penjualan Saya'})).toBeNull();expect(screen.getByRole('link',{name:'Dashboard'})).toBeTruthy()
+test('only salesperson navigation offers Penjualan Saya and legacy order history is removed',()=>{
+  mount(<GirardNav/>);expect(screen.getByRole('link',{name:'Penjualan Saya'}).getAttribute('href')).toBe('/girard/my-sales');expect(screen.queryByRole('link',{name:'Riwayat Pesanan'})).toBeNull();expect(screen.queryByRole('link',{name:/Buat.*[PO]|Revenue/i})).toBeNull()
+  role('sales_manager');expect(screen.queryByRole('link',{name:'Penjualan Saya'})).toBeNull();expect(screen.getByRole('button',{name:'Dashboard'})).toBeTruthy()
 })
 
 test.each(['po_admin','co_admin','sales_manager','sales_head','executive'])('%s cannot mount own-only summary or initiate v2 reads',async(name)=>{
@@ -57,7 +57,7 @@ test('current verified role must agree with server scope before figures can be l
 
 test('actual Dashboard tab wiring keeps customer and person groups and independently labelled activity',async()=>{
   role('sales_manager');mount(<App/>,'/girard/dashboard');await screen.findByRole('region',{name:'Ringkasan seluruh hasil'});expect(metricsCalls().at(-1)?.args.p_group_by).toBe('customer')
-  fireEvent.click(screen.getByRole('button',{name:'Performa Tim Sales'}));await screen.findByRole('region',{name:'Kontribusi per orang'});expect(metricsCalls().at(-1)?.args.p_group_by).toBe('person');expect(screen.getByRole('heading',{name:'Aktivitas dan Target Tim'})).toBeTruthy()
+  fireEvent.click(screen.getByRole('button',{name:'Performa Tim'}));await screen.findByRole('region',{name:'Kontribusi per orang'});expect(metricsCalls().at(-1)?.args.p_group_by).toBe('person');expect(screen.getByRole('heading',{name:'Aktivitas dan Target Tim'})).toBeTruthy()
 })
 
 test('forged own manager filter stays an intersecting RPC argument and cannot relabel scope',async()=>{

@@ -244,12 +244,13 @@ it('rejects a stale confirmation rather than rebasing onto a newer row', async (
   fireEvent.click(confirm)
   await screen.findByText(/Data berubah. Batalkan/); expect(state.command).not.toHaveBeenCalled()
 })
-it('preserves product pricing disclosure while status filters change', async () => {
-  mount(ProductList); await screen.findByRole('list', { name: 'Daftar barang seluler' })
-  fireEvent.click(screen.getByRole('button', { name: /Lihat semua harga/ }))
-  const mobile = screen.getByRole('list', { name: 'Daftar barang seluler' })
-  expect(within(mobile).getByText('Belum diisi')).toBeTruthy(); expect(within(mobile).getByText('Rp 0')).toBeTruthy(); expect(within(mobile).getByText('Rp 12,34')).toBeTruthy()
+it('product rows preserve status controls while obsolete price disclosure is absent', async () => {
+  mount(ProductList); const mobile = await screen.findByRole('list', { name: 'Daftar barang seluler' })
+  expect(screen.queryByRole('button', { name: /Lihat semua harga/ })).toBeNull()
+  expect(within(mobile).queryByText('Rp 0')).toBeNull(); expect(within(mobile).queryByText('Rp 12,34')).toBeNull()
+  expect(screen.getByLabelText('Status barang')).toBeTruthy()
 })
+
 it('old controller callbacks cannot revive across actor A-B-A', async () => {
   let controller!: ReturnType<typeof useCataloguePage<'customer'>>
   function Probe() { controller = useCataloguePage({ kind: 'customer', search: '', page: 1, pageSize: 10, status: 'all' }); return null }

@@ -160,10 +160,10 @@ for (const kind of kinds) {
     mount(kind); await loaded(); await openNew(kind); choose(value); save(kind, true)
     await waitFor(() => expect(page().queryByRole('heading', { name: 'Pelanggan Baru' })).toBeNull())
     const created = state.backend.state.customers.find((row: any) => row.name === 'New shop')
-    expect(created).toMatchObject({ customer_category: value, pricing_tier: 'luar_kota' })
+    expect(created).toMatchObject({ customer_category: value, pricing_tier: 'others' })
     await waitFor(() => expect(page().getAllByText(label).length).toBe(2))
     expect(page().getByRole('columnheader', { name: 'Kategori Pelanggan' })).toBeTruthy()
-    expect(page().getByRole('columnheader', { name: 'Tier Harga' })).toBeTruthy()
+    expect(page().queryByRole('columnheader', { name: 'Tier Harga' })).toBeNull()
     if (kind === 'Athel') await acceptCatalogueResult()
     await openEdit(); choose(value); save(kind)
     await waitFor(() => expect(page().queryByRole('combobox', { name: /Kategori Pelanggan/ })).toBeNull())
@@ -199,7 +199,7 @@ for (const kind of kinds) {
       if (operation === 'create') expect(page().getByDisplayValue('New shop')).toBeTruthy()
       const sent = state.catalogueCalls[0]
       expect(sent).toMatchObject({ p_operation: operation, p_payload: { kind: 'customer', values: { customer_category: 'perorangan' } } })
-      if (operation === 'create') expect(sent.p_payload.values).toMatchObject({ name: 'New shop', pricing_tier: 'luar_kota' })
+      if (operation === 'create') expect(sent.p_payload.values).toMatchObject({ name: 'New shop', pricing_tier: 'others' })
       else expect(sent.p_payload).toMatchObject({ id: customerId, expected_version: '1', values: { customer_category: 'perorangan' } })
       const durable = localStorage.getItem(localStorage.key(0)!)!
       expect(JSON.parse(durable)).toMatchObject({ request_id: sent.p_request_id, binding: { operation, kind: 'customer' } })
@@ -223,7 +223,7 @@ for (const kind of kinds) {
         expect(state.catalogueReceipts.size).toBe(1)
         await acceptCatalogueResult()
         const saved = state.backend.state.customers.find((row: any) => row.id === (operation === 'create' ? '22222222-2222-4222-8222-222222222222' : customerId))
-        expect(saved).toMatchObject({ customer_category: 'perorangan', pricing_tier: 'luar_kota' })
+        expect(saved).toMatchObject({ customer_category: 'perorangan', pricing_tier: operation === 'create' ? 'others' : 'luar_kota' })
         expect(state.backend.state.customers).toHaveLength(operation === 'create' ? 2 : 1)
       }
       expect(state.catalogueCalls).toHaveLength(1)

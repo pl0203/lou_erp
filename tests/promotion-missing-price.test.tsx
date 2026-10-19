@@ -14,12 +14,12 @@ let client: QueryClient
 beforeEach(() => { localStorage.clear(); state.price = null; state.rpc.mockReset().mockImplementation((_n,args) => Promise.resolve({ data: { id: args.p_payload.id, stock_version: 1 }, error: null })); state.upload.mockReset().mockResolvedValue({ error: null }) })
 afterEach(() => { cleanup(); client.clear() })
 function mount() { client = new QueryClient({ defaultOptions: { mutations: { retry: false } } }); render(<QueryClientProvider client={client}><Promotions /></QueryClientProvider>); fireEvent.click(screen.getByRole('button', { name: /Tambah Promosi/ })); fireEvent.change(screen.getByLabelText('Produk'), { target: { value: product } }) }
-test('blank catalog promotion keeps nullable tiers distinct and preserves an explicitly entered zero', async () => {
- mount(); const prices = ['Harga Pokok','Luar Kota','Dalam Kota','Depo Bangunan'].map(t => screen.getByLabelText(`${t} (Rp)`) as HTMLInputElement)
- expect(prices.map(x => x.value)).toEqual(['','','','']); fireEvent.change(screen.getByLabelText('Diskon otomatis (%)'), { target: { value: '10' } }); expect(prices.map(x => x.value)).toEqual(['','','',''])
- fireEvent.change(prices[1], { target: { value: '0' } }); fireEvent.change(screen.getByLabelText('Stok awal'), { target: { value: '5' } }); fireEvent.change(screen.getByLabelText('Gambar promosi'), { target: { files: [new File(['image'], 'test.png', { type: 'image/png' })] } }); fireEvent.click(screen.getByRole('button', { name: 'Simpan promosi' }))
- await waitFor(() => expect(state.rpc).toHaveBeenCalledTimes(1)); expect(state.upload.mock.calls[0][0]).toMatch(new RegExp(`^promotions/${actor}/`)); expect(state.rpc.mock.calls[0][1].p_payload).toMatchObject({ harga_pokok: null, luar_kota: 0, dalam_kota: null, depo_bangunan: null })
+test('new promotion exposes media and stock, not prices; null legacy columns satisfy the contract', async () => {
+ mount(); expect(screen.queryByLabelText('Luar Kota (Rp)')).toBeNull(); expect(screen.queryByLabelText('Diskon otomatis (%)')).toBeNull()
+ fireEvent.change(screen.getByLabelText('Stok awal'), { target: { value: '5' } }); fireEvent.change(screen.getByLabelText('Gambar promosi'), { target: { files: [new File(['image'], 'test.png', { type: 'image/png' })] } }); fireEvent.click(screen.getByRole('button', { name: 'Simpan promosi' }))
+ await waitFor(() => expect(state.rpc).toHaveBeenCalledTimes(1)); expect(state.upload.mock.calls[0][0]).toMatch(new RegExp(`^promotions/${actor}/`)); expect(state.rpc.mock.calls[0][1].p_payload).toMatchObject({ harga_pokok: null, luar_kota: null, dalam_kota: null, depo_bangunan: null, opening_quantity: 5 })
 })
-test('discount on an existing priced product retains whole-rupiah rounding', () => {
- state.price = 19.99; mount(); fireEvent.change(screen.getByLabelText('Diskon otomatis (%)'), { target: { value: '10' } }); expect(['Harga Pokok','Luar Kota','Dalam Kota','Depo Bangunan'].map(t => (screen.getByLabelText(`${t} (Rp)`) as HTMLInputElement).value)).toEqual(['18','18','18','18']); expect(state.rpc).not.toHaveBeenCalled()
+
+test('priced catalogue products do not reintroduce promotion price or discount controls', () => {
+ state.price = 19.99; mount(); expect(screen.queryByLabelText('Diskon otomatis (%)')).toBeNull(); expect(screen.queryByLabelText('Harga Pokok (Rp)')).toBeNull(); expect(state.rpc).not.toHaveBeenCalled()
 })

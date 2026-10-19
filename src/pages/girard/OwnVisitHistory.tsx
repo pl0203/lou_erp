@@ -1,6 +1,6 @@
 import { LoadingState } from '../../components/ui/LoadingState'
 import { visitDateLabel } from '../../lib/visitUsability'
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../../lib/AuthContext'
 import { singleRelation } from '../../lib/relations'
@@ -17,9 +17,9 @@ import { FormActions } from '../../components/ui/FormActions'
 import { EmptyState, Notice } from '../../components/ui/Feedback'
 import { MainContent } from '../../components/ui/MainContent'
 import { PageHeader } from '../../components/ui/PageHeader'
-import { RecordList } from '../../components/ui/RecordList'
 import { SummaryList } from '../../components/ui/SummaryList'
 import { formatVisitTimestamp } from '../../lib/visitTimestamp'
+import './own-visit-history.css'
 
 type NoteSnapshot = { id: string; notes: string | null; note_version: number }
 type DiscardConfirmation = (action: () => void, options?: { when?: boolean }) => void
@@ -31,10 +31,12 @@ export async function fetchCurrentVisitNote(visitId: string): Promise<NoteSnapsh
 }
 
 /** The containing page owns the sole router blocker, including all row drafts. */
-export function VisitNoteEditor({ visit, onDirtyChange, confirmDiscard }: {
+export function VisitNoteEditor({ visit, onDirtyChange, confirmDiscard, compact = false, leadingAction }: {
   visit: NoteSnapshot
   onDirtyChange?: (id: string, dirty: boolean) => void
   confirmDiscard?: DiscardConfirmation
+  compact?: boolean
+  leadingAction?: ReactNode
 }) {
   const noteId = useId()
   const send = useVisitPlanningSender(`note:${visit.id}`)
@@ -77,8 +79,16 @@ export function VisitNoteEditor({ visit, onDirtyChange, confirmDiscard }: {
       }
     } finally { lock.current = false; setBusy(false) }
   }
-  return <section className="mt-4 space-y-3">
+  const startEditing = () => { setNotes(visit.notes ?? ''); setBaseNotes(visit.notes ?? ''); setVersion(visit.note_version); setConflict(false); setCurrent(null); setError(''); setEditing(true) }
+  return <section className={compact ? 'space-y-3' : 'mt-4 space-y-3'}>
     <TransactionRecovery send={send} onCommitted={saved} onAbandoned={() => setRecoveryRevision(revision => revision + 1)} />
+    {compact && <>
+      {!editing && visit.notes && <p className="line-clamp-2 whitespace-pre-wrap break-words text-sm text-brand-secondary">{visit.notes}</p>}
+      <div className="flex flex-wrap items-center gap-2">
+        {leadingAction}
+        {!editing && <Button size="compact" variant="quiet" aria-label="Edit catatan" onClick={startEditing}>Catatan</Button>}
+      </div>
+    </>}
     {editing ? <>
       <Field id={noteId} label="Catatan kunjungan" hint="Maksimal 2.000 karakter.">
         {control => <textarea {...control} maxLength={2000} value={notes} disabled={busy || send.hasUnresolved()} onChange={e => setNotes(e.target.value)} />}
@@ -98,10 +108,10 @@ export function VisitNoteEditor({ visit, onDirtyChange, confirmDiscard }: {
           </FormActions>
         </div> : readError ? <div className="space-y-3"><p>Catatan terbaru belum tersedia.</p><Button size="compact" variant="secondary" disabled={busy} onClick={reloadCurrent}>Muat catatan terbaru</Button></div> : <LoadingState title="Memuat catatan terbaru..." shape="list" />}
       </Notice>}
-    </> : <>
+    </> : !compact && <>
       <h3 className="font-medium">Catatan kunjungan</h3>
       <p className="whitespace-pre-wrap">{visit.notes || 'Belum ada catatan.'}</p>
-      <Button size="compact" variant="quiet" onClick={() => { setNotes(visit.notes ?? ''); setBaseNotes(visit.notes ?? ''); setVersion(visit.note_version); setConflict(false); setCurrent(null); setError(''); setEditing(true) }}>Edit catatan</Button>
+      <Button size="compact" variant="quiet" onClick={startEditing}>Edit catatan</Button>
     </>}
     {error && !conflict && <Notice tone="error" title={error} />}
   </section>
@@ -126,26 +136,50 @@ function OwnVisitHistoryPage() {
   const query = useQuery({ queryKey: ['own_visit_history', profile?.id, profile?.role, page], queryFn: () => fetchOwnVisitHistory(profile!.id, page), enabled: !!profile?.id })
   return <div className="min-h-screen bg-brand-canvas">
     <GirardNav />{unsaved.dialog}
-    <MainContent className="max-w-2xl mx-auto p-4 space-y-4" aria-busy={query.isPending}>
-      <PageHeader title="Riwayat kunjungan saya" description={<>Hanya kunjungan yang Anda lakukan sendiri. {profile?.role !== 'sales_person' && <ActionLink size="compact" variant="quiet" to="/girard/schedule">Lihat jadwal dan kunjungan tim</ActionLink>}</>} />
+    <MainContent className="max-w-2xl lg:max-w-6xl mx-auto p-4 lg:p-6 space-y-4" aria-busy={query.isPending}>
+      <PageHeader title="Riwayat kunjungan saya" actions={profile?.role !== 'sales_person' ? <ActionLink size="compact" variant="quiet" to="/girard/schedule">Jadwal tim</ActionLink> : undefined} />
       {query.isError ? <Notice tone="error" title="Riwayat belum tersedia." actions={<Button size="compact" variant="secondary" pending={query.isFetching} onClick={() => query.refetch()}>Coba lagi</Button>} />
         : query.isPending ? <LoadingState title="Memuat riwayat..." shape="list" /> : <>
           {query.data?.items.length === 0 && <EmptyState title="Belum ada kunjungan." />}
-          <RecordList label="Daftar kunjungan saya">
-            {query.data?.items.map(visit => <li key={visit.id}>
-              <article className="ui-section space-y-4">
-                <h2 className="ui-section__title">{visit.customers?.name ?? 'Toko tidak tersedia'}</h2>
-                <SummaryList items={[
-                  { label: 'Jadwal', value: visit.sales_schedules?.scheduled_date ? visitDateLabel(visit.sales_schedules.scheduled_date) : 'Kunjungan historis' },
-                  { label: 'Waktu check-in', value: formatVisitTimestamp(visit.checked_in_at) },
-                  { label: 'Lokasi', value: visit.lat === null || visit.lng === null ? 'Tidak dicatat' : `${visit.lat}, ${visit.lng}` },
-                ]} />
-                {visit.schedule_id && <ActionLink size="compact" variant="quiet" to={`/girard/visit/${visit.schedule_id}`} aria-label={`Lihat detail kunjungan di ${visit.customers?.name ?? 'Toko tidak tersedia'}`}>Lihat detail kunjungan</ActionLink>}
-                <VisitNoteEditor visit={visit} onDirtyChange={noteDirtyChanged} confirmDiscard={unsaved.confirmDiscard} />
-              </article>
-            </li>)}
-          </RecordList>
-          <PaginationControls page={page} total={query.data?.total ?? 0} pageSize={20} pending={query.isFetching} onPageChange={changePage} />
+          {/* One DOM/editor per visit: CSS changes only the layout, never draft ownership. */}
+          {!!query.data?.items.length && <table role="table" className="own-visit-history-table">
+            <caption className="sr-only">Daftar kunjungan saya</caption>
+            <thead role="rowgroup"><tr role="row">
+              <th role="columnheader" scope="col">Toko</th>
+              <th role="columnheader" scope="col">Waktu check-in</th>
+              <th role="columnheader" scope="col">Lokasi</th>
+              <th role="columnheader" scope="col">Tindakan</th>
+            </tr></thead>
+            <tbody role="rowgroup">{query.data.items.map(visit => <tr role="row" key={visit.id}>
+              <td role="cell">
+                <h2 className="text-base font-semibold break-words">{visit.customers?.name ?? 'Toko tidak tersedia'}</h2>
+              </td>
+              <td role="cell">
+                <dl className="text-sm text-brand-secondary">
+                  <dt className="sr-only">Waktu check-in</dt>
+                  <dd>{formatVisitTimestamp(visit.checked_in_at)}</dd>
+                </dl>
+              </td>
+              <td role="cell">
+                <details className="text-sm">
+                  <summary className="min-h-[var(--ui-control-size-compact)] cursor-pointer py-[var(--ui-control-padding-y-compact)] leading-[var(--ui-line-control)] text-brand-secondary rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-primary">
+                    {visit.lat == null || visit.lng == null ? 'Lokasi tidak dicatat' : 'Lokasi tercatat'}
+                  </summary>
+                  <SummaryList className="pb-3" items={[
+                    { label: 'Jadwal', value: visit.sales_schedules?.scheduled_date ? visitDateLabel(visit.sales_schedules.scheduled_date) : 'Kunjungan historis' },
+                    { label: 'Koordinat GPS', value: visit.lat == null || visit.lng == null ? 'Tidak dicatat' : `${visit.lat}, ${visit.lng}` },
+                  ]} />
+                </details>
+              </td>
+              <td role="cell">
+                <VisitNoteEditor visit={visit} compact onDirtyChange={noteDirtyChanged} confirmDiscard={unsaved.confirmDiscard}
+                  leadingAction={visit.schedule_id ? <ActionLink size="compact" variant="quiet" to={`/girard/visit/${visit.schedule_id}`} aria-label={`Lihat detail kunjungan di ${visit.customers?.name ?? 'Toko tidak tersedia'}`}>Detail</ActionLink> : undefined} />
+              </td>
+            </tr>)}</tbody>
+          </table>}
+          {(query.data?.total ?? 0) > 20 || page > 1
+            ? <PaginationControls page={page} total={query.data?.total ?? 0} pageSize={20} pending={query.isFetching} onPageChange={changePage} />
+            : !!query.data?.total && <p className="text-sm text-brand-secondary">{query.data.total} kunjungan</p>}
         </>}
     </MainContent>
   </div>

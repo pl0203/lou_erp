@@ -87,9 +87,8 @@ const routeMatrix = [
   ['/girard/managers', 'Manajer', ['sales_head', 'executive']],
   ['/girard/team', 'Tim Saya', ['sales_manager', 'sales_head', 'executive']],
   ['/girard/my-customers', 'Pelanggan Saya', ['sales_manager', 'sales_head', 'executive']],
-  ['/girard/my-orders', 'Riwayat Pesanan Saya', ['sales_person', 'sales_manager', 'sales_head', 'executive']],
   ['/girard/my-sales', 'Penjualan Saya', ['sales_person']],
-  ['/girard/dashboard', 'Dashboard', ['sales_manager', 'sales_head', 'executive']],
+  ['/girard/dashboard', 'Performa Toko', ['sales_manager', 'sales_head', 'executive']],
   ['/girard/promotions', 'Promosi', ['sales_person', 'sales_manager', 'sales_head', 'executive']],
 ] as const
 for (const role of ['sales_person', 'sales_manager', 'sales_head', 'executive']) for (const [path, title, roles] of routeMatrix) test(`${role} retains existing reporting access for ${path}`, async () => {
@@ -188,7 +187,7 @@ test('customer directory search is explicitly labelled and retains real detail l
 test('customer edit dialog labels native controls and returns focus without changing assignment data', async () => {
   mount(GirardCustomers); const opener = (await screen.findAllByRole('button', { name: 'Ubah' }))[0]; opener.focus(); fireEvent.click(opener)
   const dialog = screen.getByRole('dialog', { name: 'Ubah Penugasan Pelanggan' })
-  const tier = within(dialog).getByLabelText('Tier Harga'); expect(tier.tagName).toBe('SELECT'); expect(tier.id).toBeTruthy()
+  expect(within(dialog).queryByLabelText('Tier Harga')).toBeNull()
   expect(within(dialog).getByLabelText('Frekuensi Kunjungan').id).toBeTruthy(); expect(within(dialog).getByLabelText('Penanggung Jawab Toko').id).toBeTruthy()
   fireEvent.click(within(dialog).getByRole('button', { name: 'Batal' })); expect(screen.queryByRole('dialog')).toBeNull(); expect(document.activeElement).toBe(opener)
   expect(state.fixture.tables.customer_manager_assignments[0].version).toBe(1)
@@ -256,7 +255,7 @@ test('personal order selected border follows status switches and leaves siblings
 })
 test('dashboard selected border follows view switches and leaves its sibling unmarked', async () => {
   mount(GirardDashboard); const filter = await screen.findByRole('region', { name: 'Tampilan dashboard' })
-  const buttons = ['Performa Pelanggan', 'Performa Tim Sales'].map(name => within(filter).getByRole('button', { name }))
+  const buttons = ['Performa Toko', 'Performa Tim'].map(name => within(filter).getByRole('button', { name }))
   for (const chosen of [buttons[0], buttons[1], buttons[0]]) {
     fireEvent.click(chosen)
     await waitFor(() => expect(chosen.getAttribute('aria-pressed')).toBe('true'))

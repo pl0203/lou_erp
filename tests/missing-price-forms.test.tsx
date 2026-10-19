@@ -1,20 +1,21 @@
 import { transferableAbortController } from 'node:util'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import React from 'react'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
-const state = vi.hoisted(() => ({ tier: 'others', send: vi.fn(), prices: null as number | null }))
+const state = vi.hoisted(() => ({ tier: 'others', role: 'sales_person', active: true, suggestions: [] as Array<{ onUsePrice: (price: number) => void; currentUnitPrice: number }>, send: vi.fn(), prices: null as number | null }))
 vi.mock('../src/lib/supabase', () => ({ supabase: {
  supabaseUrl:'https://catalogue.test',rest:{url:'https://catalogue.test/rest/v1',schemaName:'public'},
  rpc:(_name:string,args:any)=>{const request:any={abortSignal:()=>request,then:(resolve:any,reject:any)=>Promise.resolve().then(()=>{
    if (false) return {data:null,error:new Error('Options unavailable')}
    const source=args.p_kind==='customer'?[{id:'cccccccc-cccc-4ccc-8ccc-cccccccccccc',name:'Customer',pricing_tier:state.tier},{id:'dddddddd-dddd-4ddd-8ddd-dddddddddddd',name:'Different tier customer',pricing_tier:'luar_kota'}]:[{id:'11111111-1111-4111-8111-111111111111',name:'Unknown-price product',sku:'SKU',unit_price:999,luar_kota:500,dalam_kota:state.prices,harga_pokok:0}]
    const rows=source.map((row:any)=>args.p_kind==='customer'?{address:null,city:null,phone:null,email:null,customer_category:null,...row,is_enabled:true,catalog_version:'1'}:{size:null,unit_price:null,harga_pokok:null,luar_kota:null,dalam_kota:null,depo_bangunan:null,...row,is_enabled:true,catalog_version:'1'}).sort((a:any,b:any)=>a.id.localeCompare(b.id))
-   return {data:{version:1,actor_id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',role:'sales_person',kind:args.p_kind,purpose:args.p_purpose,status:args.p_status,search:args.p_search,page:args.p_page,page_size:args.p_page_size,total_count:String(rows.length),rows},error:null}
+   return {data:{version:1,actor_id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',role:state.role,kind:args.p_kind,purpose:args.p_purpose,status:args.p_status,search:args.p_search,page:args.p_page,page_size:args.p_page_size,total_count:String(rows.length),rows},error:null}
  }).then(resolve,reject)};return request},
 } }))
-vi.mock('../src/lib/AuthContext', () => ({ useAuth: () => ({ user: { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }, profile: { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role: 'sales_person', is_active: true } }) }))
+vi.mock('../src/lib/AuthContext', () => ({ useAuth: () => ({ user: { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }, profile: { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role: state.role, is_active: state.active } }) }))
+vi.mock('../src/components/POLastPriceSuggestion', () => ({ default: (props: any) => { state.suggestions.push(props); return <button type="button" disabled={props.disabled || !props.enabled} onClick={() => props.onUsePrice(123.45)}>Use synthetic history</button> } }))
 vi.mock('../src/components/AthelNav', () => ({ default: () => null }))
 vi.mock('../src/components/GirardNav', () => ({ default: () => null }))
 vi.mock('../src/components/TransactionRecovery', () => ({ default: () => null }))
@@ -34,7 +35,7 @@ import PONew from '../src/pages/athel/PONew'
 import POEdit from '../src/pages/athel/POEdit'
 import VisitPage from '../src/pages/girard/VisitPage'
 const clients: QueryClient[] = []
-beforeEach(() => { state.tier = 'others'; state.prices = null; state.send.mockReset().mockResolvedValue({ id: 'saved' }) })
+beforeEach(() => { state.tier = 'others'; state.role = 'sales_person'; state.active = true; state.suggestions = []; state.prices = null; state.send.mockReset().mockResolvedValue({ id: 'saved' }) })
 const routers: ReturnType<typeof createMemoryRouter>[] = []
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); routers.splice(0).forEach(router => router.dispose()); clients.splice(0).forEach(c => c.clear()) })
 async function mount(kind: 'po' | 'visit' | 'edit') {
@@ -103,3 +104,53 @@ vi.mock('../src/lib/reads/usePagedRead', () => ({ usePagedRead: () => ({ data: {
 beforeEach(() => { vi.stubGlobal('AbortController', class { constructor() { return transferableAbortController() } }) })
 
 function renderRoute(client: QueryClient, kind: 'po' | 'edit' | 'visit') { const router = createMemoryRouter([{ path: kind === 'po' ? '/athel/po/new' : kind === 'edit' ? '/athel/po/:id/edit' : '/girard/visit/:scheduleId', element: kind === 'po' ? <PONew /> : kind === 'edit' ? <POEdit /> : <VisitPage /> }, { path: '*', element: <p>Destination</p> }], { initialEntries: [kind === 'po' ? '/athel/po/new' : kind === 'edit' ? '/athel/po/po/edit' : '/girard/visit/s'] }); routers.push(router); return render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>) }
+
+test('known nonzero catalogue prices never prefill a new PO line', async () => {
+ state.tier = 'dalam_kota'; state.prices = 120
+ await mount('po'); selectProduct('po')
+ expect((screen.getByLabelText('Harga satuan') as HTMLInputElement).value).toBe('')
+ expect(screen.queryByText(/Tier harga:/)).toBeNull()
+ fireEvent.change(screen.getByLabelText('Harga satuan'), { target: { value: '77.50' } })
+ selectCustomer('Different tier customer')
+ expect((screen.getByLabelText('Harga satuan') as HTMLInputElement).value).toBe('77.50')
+})
+
+// Test the page boundary independently from the advisory component's own query tests.
+const lastSuggestion = () => state.suggestions[state.suggestions.length - 1]
+test('new PO applies a historical price only after explicit use and never submits automatically', async () => {
+ state.role = 'po_admin'; await mount('po'); selectProduct('po')
+ expect((screen.getByLabelText('Harga satuan') as HTMLInputElement).value).toBe('')
+ fireEvent.click(screen.getByRole('button', { name: 'Use synthetic history' }))
+ expect((screen.getByLabelText('Harga satuan') as HTMLInputElement).value).toBe('123.45')
+ expect(state.send).not.toHaveBeenCalled()
+})
+test('an old suggestion callback cannot replace a newer manual price', async () => {
+ state.role = 'po_admin'; await mount('po'); selectProduct('po'); const old = lastSuggestion().onUsePrice
+ fireEvent.change(screen.getByLabelText('Harga satuan'), { target: { value: '88.25' } })
+ act(() => old(123.45))
+ expect((screen.getByLabelText('Harga satuan') as HTMLInputElement).value).toBe('88.25')
+})
+test('removed and re-added identical products do not accept the removed line callback', async () => {
+ state.role = 'po_admin'; await mount('po'); selectProduct('po'); const old = lastSuggestion().onUsePrice
+ fireEvent.click(screen.getByRole('button', { name: 'Hapus Unknown-price product' })); selectProduct('po')
+ act(() => old(123.45))
+ expect((screen.getByLabelText('Harga satuan') as HTMLInputElement).value).toBe('')
+})
+test('customer replacement discards the old line and rejects its historical suggestion callback', async () => {
+ state.role = 'po_admin'; await mount('po'); selectProduct('po'); const old = lastSuggestion().onUsePrice
+ selectCustomer('Different tier customer'); fireEvent.click(screen.getByRole('button', { name: 'Buang perubahan' })); selectProduct('po')
+ act(() => old(123.45))
+ expect((screen.getByLabelText('Harga satuan') as HTMLInputElement).value).toBe('')
+})
+test('catalogue invalidation blocks old suggestion callbacks before observer repaint', async () => {
+ state.role = 'po_admin'; await mount('po'); selectProduct('po'); const old = lastSuggestion().onUsePrice
+ act(() => { void clients[clients.length - 1].invalidateQueries({ queryKey: ['catalogue'], refetchType: 'none' }); old(123.45) })
+ expect((screen.getByLabelText('Harga satuan') as HTMLInputElement).value).toBe('')
+ expect(state.send).not.toHaveBeenCalled()
+})
+test('identity loss rejects previously rendered historical suggestion callbacks', async () => {
+ state.role = 'po_admin'; await mount('po'); selectProduct('po'); const old = lastSuggestion().onUsePrice
+ state.active = false; fireEvent.change(screen.getByLabelText('Qty Unknown-price product'), { target: { value: '2' } })
+ act(() => old(123.45))
+ expect((screen.getByLabelText('Harga satuan') as HTMLInputElement).value).toBe('')
+})

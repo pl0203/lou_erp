@@ -128,7 +128,6 @@ export function CustomerOrderHistory({ customerId }: { customerId: string }) {
           </div>
           <p className="mt-2 text-base font-semibold text-gray-900 break-words [overflow-wrap:anywhere]">Rp {formatMoney(String(po.total_value), 'full')}</p>
           <p className="mt-1 text-[13px] text-brand-secondary">Tanggal PO: {customerDate(po.order_date)}</p>
-          <p className="mt-1 text-[13px] text-brand-secondary">Rencana pengiriman: {po.expected_delivery_date ? customerDate(po.expected_delivery_date) : 'Belum tercatat'}</p>
           <Button size="compact" variant="quiet" className={action} disabled={history.isPending} aria-expanded={expanded === po.id} onClick={() => setExpanded(expanded === po.id ? null : po.id)}>{expanded === po.id ? 'Tutup pengiriman / SJ' : 'Lihat pengiriman / SJ'}</Button>
           {expanded === po.id && <CustomerDeliveryHistory key={po.id} poId={po.id} poNumber={po.po_number} />}
         </article>)}

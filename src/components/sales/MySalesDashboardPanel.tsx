@@ -10,7 +10,7 @@ import { MySalesDashboard } from './MySalesDashboard'
 import { TeamSalesDashboard } from './TeamSalesDashboard'
 function DashboardReadContent({ scope, enabled, transport }: { scope: DashboardScope; enabled?: boolean; transport?: DashboardTransport }) {
   const read = useDashboardRead(scope, enabled, transport)
-  const frame = (notice: ReactNode) => <div className="min-w-0 space-y-5"><h1 className="text-2xl font-bold text-brand-primary sm:text-3xl">{scope === 'own' ? 'Ringkasan Saya' : 'Ringkasan Tim'}</h1>{notice}</div>
+  const frame = (notice: ReactNode) => <div className="min-w-0 space-y-5"><h1 className="text-2xl font-bold text-brand-primary sm:text-3xl">{scope === 'own' ? 'Ringkasan Saya' : 'Performa Tim'}</h1>{notice}</div>
   if (!read.enabled) return frame(<Notice tone="info" title="Ringkasan baru belum diaktifkan.">Laporan lama tetap terpisah. Belum ada target atau KPI baru yang ditampilkan.</Notice>)
   if (!read.allowed) return frame(<Notice tone="error" title="Ringkasan tidak tersedia untuk cakupan akun ini." />)
   if (!read.valid) return frame(<Notice tone="error" title="Filter ringkasan tidak valid." actions={<Button variant="secondary" size="compact" onClick={read.onReset}>Atur ulang filter</Button>} />)

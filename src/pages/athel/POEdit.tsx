@@ -1,3 +1,5 @@
+import { savedPOSalesName } from '../../lib/poSales'
+import type { SavedPOSales } from '../../lib/poSales'
 import { LoadingState } from '../../components/ui/LoadingState'
 import { Button } from '../../components/ui/Button'
 import { ActionLink } from '../../components/ui/ActionLink'
@@ -8,7 +10,6 @@ import PromoStockWarning, { usePromoStockSubmission } from '../../components/Pro
 import { POCustomerLookup, POProductLookup } from '../../components/POLookup'
 import { POLineItemsHeader, POLineRow } from '../../components/POLineItems'
 import { useCatalogueOrderOptions } from '../../lib/catalogue/useCatalogueOrderOptions'
-import { resolveCatalogPrice } from '../../lib/catalogPricing'
 import { fetchCompletePOLines, priceForEdit } from '../../lib/reads/detailReads'
 import TransactionRecovery from '../../components/TransactionRecovery'
 import { createTransactionSender, useTransactionSender } from '../../lib/orderTransactions'
@@ -46,7 +47,7 @@ type LineItemRow = {
   _deleted?: boolean
 }
 
-type POData = {
+type POData = SavedPOSales & {
   id: string
   po_number: string
   status: string
@@ -65,22 +66,14 @@ function draftSnapshot(customerId: string, expectedDelivery: string, notes: stri
     [line.id, line.product_id, line.product_name, line.sku, line.quantity, line.unit_price])])
 }
 
-const TIER_LABELS: Record<string, string> = {
-  harga_pokok:   'Harga Pokok',
-  luar_kota:     'Luar Kota',
-  dalam_kota:    'Dalam Kota',
-  depo_bangunan: 'Depo Bangunan',
-  others: 'Others',
-}
-
 async function fetchPO(id: string): Promise<POData> {
   const { data, error } = await supabase
     .from('purchase_orders')
-    .select('id, po_number, status, order_date, expected_delivery_date, total_value, updated_at, notes, customer_id, customers(name)')
+    .select('id, po_number, status, order_date, expected_delivery_date, total_value, updated_at, notes, customer_id, sales_person_id_at_creation, sales_attribution_state, sales_person_at_creation:users!purchase_orders_sales_person_id_at_creation_fkey(full_name), customers(name)')
     .eq('id', id)
     .single()
   if (error) throw error
-  return { ...data, customers: singleRelation(data.customers) }
+  return { ...data, customers: singleRelation(data.customers), sales_person_at_creation: singleRelation(data.sales_person_at_creation) }
 }
 
 export async function saveEdits(poId: string, payload: {
@@ -253,9 +246,7 @@ export default function POEdit() {
     finally { if (isCurrent()) setRefreshingPO(false) }
   }
 
-  // Get selected customer's pricing tier
   const selectedCustomer = customers?.find(c => c.id === customerId)
-  const pricingTier = selectedCustomer?.pricing_tier ?? 'others'
 
   const updateLine = (index: number, field: keyof LineItemRow, value: string | number) => {
     if (field !== 'quantity' && field !== 'unit_price') return
@@ -276,11 +267,10 @@ export default function POEdit() {
     else pendingFocus.current = { key, field: 'quantity' }
   }
   const addProduct = (selected: Product) => {
-    let product: Product, currentTier: typeof pricingTier
+    let product: Product
     try {
       const catalogue = assertCatalogueDraft({ customer_id: customerId, lineItems: [{ id: null, product_id: selected.id, product_name: selected.name, sku: selected.sku, quantity: 1, unit_price: Number.NaN }] })
       product = catalogue.enabledProducts.find(row => row.id === selected.id)!
-      currentTier = catalogue.customer.pricing_tier
     } catch (error) { setEntryNotice((error as Error).message); return }
     const sku = product.sku.trim().toLocaleLowerCase()
     const existing = lineItems.find(line => !line._deleted && (sku && line.sku.trim().toLocaleLowerCase() === sku))
@@ -290,7 +280,7 @@ export default function POEdit() {
       return
     }
     setEntryNotice(''); setEntryError(null)
-    setLineItems(prev => [...prev, { id: null, product_id: product.id, _key: crypto.randomUUID(), product_name: product.name, sku: product.sku, quantity: 1, unit_price: resolveCatalogPrice(product, currentTier) ?? Number.NaN }])
+    setLineItems(prev => [...prev, { id: null, product_id: product.id, _key: crypto.randomUUID(), product_name: product.name, sku: product.sku, quantity: 1, unit_price: Number.NaN }])
     productSearch.current?.focus()
   }
   const maximumQuantity = (item: LineItemRow) => {
@@ -399,11 +389,7 @@ export default function POEdit() {
                   if (current?.some(row => row.id === customer.id && row.is_enabled) && history?.some(row => row.id === customer.id && row.is_enabled)) setCustomerId(customer.id)
                 }} />}</Field>
               {hasDeliveryHistory && <p className="text-[13px] text-brand-secondary mt-1">Pelanggan terkunci karena PO memiliki riwayat pengiriman.</p>}
-              {selectedCustomer && (
-                <p className="text-[13px] text-blue-600 mt-1">
-                  Tier harga: <span className="font-medium">{TIER_LABELS[pricingTier]}</span>
-                </p>
-              )}
+              {po && <p className="mt-1 text-sm text-brand-secondary">Sales: <span className="font-medium">{savedPOSalesName(po)}</span></p>}
             </div>
             <Field id="po-number" label="Nomor PO">{control => <input {...control}
                 type="text"

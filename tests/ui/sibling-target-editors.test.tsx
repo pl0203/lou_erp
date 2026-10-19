@@ -39,7 +39,7 @@ const readKey = (kind: 'customer' | 'sales', actor = 'aaaaaaaa-aaaa-4aaa-8aaa-aa
 const regionName = (kind: 'customer' | 'sales') => kind === 'sales' ? 'Tabel aktivitas tim' : 'Tabel aktivitas pelanggan'
 async function panel(kind: 'customer' | 'sales') {
   mount()
-  if (kind === 'sales') fireEvent.click(screen.getByRole('button', { name: 'Performa Tim Sales' }))
+  if (kind === 'sales') fireEvent.click(screen.getByRole('button', { name: 'Performa Tim' }))
   return screen.findByRole('region', { name: kind === 'sales' ? 'Tabel aktivitas tim' : 'Tabel aktivitas pelanggan' })
 }
 function openers() { return screen.getAllByRole('button', { name: /^(?:Rp |\+ Atur target)/ }) as HTMLButtonElement[] }
@@ -272,11 +272,11 @@ for (const kind of ['customer', 'sales'] as const) {
     await panel(kind); const client = clients.at(-1)!; const invalidation = vi.spyOn(client, 'invalidateQueries')
     activate(openers()[0]); fireEvent.keyDown(screen.getByRole('spinbutton'), { key: 'Enter' })
     await waitFor(() => expect(state.writes).toHaveLength(1))
-    fireEvent.click(screen.getByRole('button', { name: kind === 'customer' ? 'Performa Tim Sales' : 'Performa Pelanggan' }))
+    fireEvent.click(screen.getByRole('button', { name: kind === 'customer' ? 'Performa Tim' : 'Performa Toko' }))
     await screen.findByRole('region', { name: regionName(kind === 'customer' ? 'sales' : 'customer') })
     expect(openers().every(button => !button.disabled)).toBe(true)
     activate(openers()[0]); expect(screen.getByRole('spinbutton')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: kind === 'customer' ? 'Performa Pelanggan' : 'Performa Tim Sales' }))
+    fireEvent.click(screen.getByRole('button', { name: kind === 'customer' ? 'Performa Toko' : 'Performa Tim' }))
     await screen.findByRole('region', { name: regionName(kind) }); expect(openers().every(button => !button.disabled)).toBe(true)
     activate(openers()[1]); const input = screen.getByRole('spinbutton') as HTMLInputElement
     fireEvent.change(input, { target: { value: '999' } })

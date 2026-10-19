@@ -67,35 +67,27 @@ async function assertRecoveredEdit() {
  expect(state.product.unit_price).toBe(17)
 }
 
-test('null catalog prices render as unset, open blank, save null and preserve legacy price', async () => {
+test('product editor hides tiers and preserves every stored price on ordinary edits', async () => {
  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
  render(<QueryClientProvider client={client}><ProductList /></QueryClientProvider>)
- await screen.findAllByText('Unset product')
- expect(screen.getAllByText('Belum diisi').length).toBeGreaterThan(0)
- await openEditor()
- const fields = screen.getAllByRole('spinbutton') as HTMLInputElement[]
- expect(fields[0].value).toBe(''); expect(fields[3].value).toBe('0')
+ await screen.findAllByText('Unset product'); expect(screen.queryByText('Belum diisi')).toBeNull()
+ await openEditor(); expect(screen.queryAllByRole('spinbutton')).toHaveLength(0)
+ fireEvent.change(screen.getByLabelText('Nama Barang *'), { target: { value: 'Renamed product' } })
  fireEvent.click(screen.getByRole('button', { name: 'Simpan' }))
  await waitFor(() => expect(state.write).toHaveBeenCalled())
- expect(state.write.mock.calls[0][0]).toMatchObject({ harga_pokok: null, luar_kota: null, dalam_kota: null, depo_bangunan: 0 })
- expect(state.write.mock.calls[0][0]).not.toHaveProperty('unit_price')
- await assertRecoveredEdit()
- client.clear()
+ expect(state.write.mock.calls[0][0]).toEqual({ name: 'Renamed product', sku: state.product.sku, size: state.product.size })
+ expect(state.product).toMatchObject({ harga_pokok: null, luar_kota: null, dalam_kota: null, depo_bangunan: 0, unit_price: 17 })
+ await assertRecoveredEdit(); client.clear()
 })
 
-test('clearing a known zero saves null and does not round excessive precision', async () => {
+test('metadata editing neither exposes nor rewrites legacy numeric catalogue prices', async () => {
+ state.product.luar_kota = 12.34 as never
  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
  render(<QueryClientProvider client={client}><ProductList /></QueryClientProvider>)
  await screen.findAllByText('Unset product'); await openEditor()
- const fields = screen.getAllByRole('spinbutton') as HTMLInputElement[]
- fireEvent.change(fields[3], { target: { value: '' } })
- fireEvent.change(fields[0], { target: { value: '1.001' } })
- fireEvent.click(screen.getByRole('button', { name: 'Simpan' }))
- await screen.findByText(/maksimal 2 angka desimal/); expect(state.write).not.toHaveBeenCalled()
- fireEvent.change(fields[0], { target: { value: '12.34' } })
- fireEvent.click(screen.getByRole('button', { name: 'Simpan' }))
+ expect(screen.queryByLabelText('Luar Kota (Rp)')).toBeNull()
+ fireEvent.change(screen.getByLabelText('Ukuran'), { target: { value: '20x30' } }); fireEvent.click(screen.getByRole('button', { name: 'Simpan' }))
  await waitFor(() => expect(state.write).toHaveBeenCalled())
- expect(state.write.mock.calls[0][0]).toMatchObject({ harga_pokok: 12.34, depo_bangunan: null })
- await assertRecoveredEdit()
- client.clear()
+ for (const key of ['harga_pokok','luar_kota','dalam_kota','depo_bangunan','unit_price']) expect(state.write.mock.calls[0][0]).not.toHaveProperty(key)
+ expect(state.product.luar_kota).toBe(12.34); await assertRecoveredEdit(); client.clear()
 })

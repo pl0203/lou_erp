@@ -1,3 +1,5 @@
+import POLastPriceSuggestion from '../../components/POLastPriceSuggestion'
+import NewPOSalesPreview from '../../components/NewPOSalesPreview'
 import { Button } from '../../components/ui/Button'
 import { ActionLink } from '../../components/ui/ActionLink'
 import { MainContent } from '../../components/ui/MainContent'
@@ -9,7 +11,6 @@ import { useAuth } from '../../lib/AuthContext'
 import { POCustomerLookup, POProductLookup } from '../../components/POLookup'
 import { POLineItemsHeader, POLineRow } from '../../components/POLineItems'
 import { useCatalogueOrderOptions } from '../../lib/catalogue/useCatalogueOrderOptions'
-import { resolveCatalogPrice } from '../../lib/catalogPricing'
 import ReadFailure from '../../components/ReadFailure'
 import TransactionRecovery from '../../components/TransactionRecovery'
 import { createTransactionSender, useTransactionSender } from '../../lib/orderTransactions'
@@ -51,14 +52,6 @@ const EMPTY_LINE: LineItem = {
 }
 
 const newLine = (): LineItem => ({ ...EMPTY_LINE, _key: crypto.randomUUID() })
-
-const TIER_LABELS: Record<string, string> = {
-  harga_pokok:   'Harga Pokok',
-  luar_kota:     'Luar Kota',
-  dalam_kota:    'Dalam Kota',
-  depo_bangunan: 'Depo Bangunan',
-  others: 'Others',
-}
 
 export async function createPO(payload: {
   customer_id: string; po_number: string; order_date: string; expected_delivery_date: string; notes: string; lineItems: LineItem[]; promo_stock_ack?: Record<string, unknown>
@@ -149,9 +142,22 @@ export default function PONew() {
   const formLocked = mutation.isPending
   const submissionStarting = useRef(false)
 
-  // Get selected customer's pricing tier
   const selectedCustomer = customers?.find(c => c.id === customerId)
-  const pricingTier = selectedCustomer?.pricing_tier ?? 'others'
+  const priceSuggestionLive = useRef({ actorKey, customerId, lineItems, blocked: false })
+  priceSuggestionLive.current = { actorKey, customerId, lineItems,
+    blocked: formLocked || customerReadError || productReadError || customersFetching || productsFetching || !customers || !products }
+  const useSuggestedPrice = (captured: LineItem, price: number) => {
+    const live = priceSuggestionLive.current
+    if (!actorKey || live.actorKey !== actorKey || live.customerId !== customerId || live.blocked || submissionStarting.current) return
+    // Recheck current, authorized catalogue state even before query observers repaint.
+    try { assertCatalogueDraft({ customer_id: customerId, lineItems: [captured] }) } catch { return }
+    setLineItems(previous => {
+      const current = priceSuggestionLive.current
+      if (current.actorKey !== actorKey || current.customerId !== customerId || current.blocked || submissionStarting.current) return previous
+      return previous.map(line => line._key === captured._key && line.product_id === captured.product_id && line.sku === captured.sku && Object.is(line.unit_price, captured.unit_price)
+        ? { ...line, unit_price: price } : line)
+    })
+  }
 
   const updateLine = (index: number, field: keyof LineItem, value: string | number) => {
     if (field !== 'quantity' && field !== 'unit_price') return
@@ -168,11 +174,10 @@ export default function PONew() {
     else pendingFocus.current = { key, field: 'quantity' }
   }
   const addProduct = (selected: Product) => {
-    let product: Product, currentTier: typeof pricingTier
+    let product: Product
     try {
       const catalogue = assertCatalogueDraft({ customer_id: customerId, lineItems: [{ product_id: selected.id, product_name: selected.name, sku: selected.sku }] })
       product = catalogue.products.find(row => row.id === selected.id)!
-      currentTier = catalogue.customer.pricing_tier
     } catch (error) { setEntryNotice((error as Error).message); return }
     const sku = product.sku.trim().toLocaleLowerCase()
     const existing = lineItems.find(line => line.product_id === product.id || (sku && line.sku.trim().toLocaleLowerCase() === sku))
@@ -182,7 +187,7 @@ export default function PONew() {
       return
     }
     setEntryNotice(''); setEntryError(null)
-    setLineItems(prev => [...prev, { ...newLine(), product_id: product.id, product_name: product.name, sku: product.sku, quantity: 1, unit_price: resolveCatalogPrice(product, currentTier) ?? Number.NaN }])
+    setLineItems(prev => [...prev, { ...newLine(), product_id: product.id, product_name: product.name, sku: product.sku, quantity: 1, unit_price: Number.NaN }])
     productSearch.current?.focus()
   }
   const validateLine = (item: LineItem) => {
@@ -281,11 +286,7 @@ export default function PONew() {
                     setEntryError(null); setEntryNotice('')
                   }, { when: itemsDirty, message: 'Mengganti pelanggan akan menghapus daftar barang dan harga yang sudah diisi. Detail PO lainnya tetap dipertahankan. Permintaan yang sudah dikirim tidak dibatalkan.' })
                 }} />}</Field>
-              {selectedCustomer && (
-                <p className="text-[13px] text-blue-600 mt-1">
-                  Tier harga: <span className="font-medium">{TIER_LABELS[pricingTier]}</span>
-                </p>
-              )}
+              {selectedCustomer && <NewPOSalesPreview customerId={selectedCustomer.id} />}
             </div>
             <Field id="po-number" label="Nomor PO">{control => <input {...control}
                 type="text"
@@ -320,12 +321,12 @@ export default function PONew() {
         <fieldset disabled={formLocked} className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
           <h2 className="text-base font-medium text-gray-900 mb-1">Daftar Barang</h2>
           <p className="text-[13px] text-brand-secondary mb-4">
-            Cari berdasarkan SKU atau nama untuk mengisi otomatis. Harga otomatis sesuai tier pelanggan dan dapat diubah per pesanan.
+            Cari berdasarkan SKU atau nama untuk memilih barang. Masukkan dan periksa harga satuan untuk pesanan ini.
           </p>
 
           {!customerId && (
             <div className="bg-yellow-50 border border-yellow-100 rounded-lg px-4 py-3 mb-4">
-              <p className="text-[13px] text-yellow-700">Pilih pelanggan terlebih dahulu agar harga otomatis sesuai tier.</p>
+              <p className="text-[13px] text-yellow-700">Pilih pelanggan terlebih dahulu sebelum menambahkan barang.</p>
             </div>
           )}
 
@@ -341,7 +342,8 @@ export default function PONew() {
             <div className="min-w-0 space-y-2">
               <POLineItemsHeader />
               {lineItems.map((item, i) => (
-                <POLineRow identityLocked key={item._key} lineKey={item._key!} item={item}
+                <div key={item._key} className="min-w-0">
+                <POLineRow identityLocked lineKey={item._key!} item={item}
                   onChange={(field, value) => updateLine(i, field, value)}
                   onRemove={() => removeLine(i)}
                   nameRef={node => {
@@ -354,6 +356,10 @@ export default function PONew() {
                   }}
                   priceRef={node => { priceInputs.current[item._key!] = node }}
                   error={entryError?.key === item._key ? entryError.message : undefined} />
+                <POLastPriceSuggestion customerId={customerId} productId={item.product_id} sku={item.sku}
+                  currentUnitPrice={item.unit_price} enabled={!priceSuggestionLive.current.blocked} disabled={priceSuggestionLive.current.blocked}
+                  onUsePrice={price => useSuggestedPrice(item, price)} />
+                </div>
               ))}
             </div>
           )}

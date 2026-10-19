@@ -252,7 +252,7 @@ test('products expose read failure and a native retry instead of a verified empt
   const retry = within(alert).getByRole('button', { name: 'Coba lagi' }); expect(retry.classList.contains('ui-action')).toBe(true)
   state.readError = false; fireEvent.click(retry); await screen.findAllByText('Unset product')
 })
-test.each([['customer', CustomerList, '+ Tambah Pelanggan', ['Nama Pelanggan *', 'Alamat', 'Kota', 'Telepon', 'Email', 'Tier Harga']], ['product', ProductList, '+ Tambah Barang', ['SKU *', 'Ukuran', 'Nama Barang *', 'Harga Pokok (Rp)', 'Luar Kota (Rp)', 'Dalam Kota (Rp)', 'Depo Bangunan (Rp)']]] as const)('%s editor labels reach actual fields and cancellation returns to its opener', async (_kind, Page, button, labels) => {
+test.each([['customer', CustomerList, '+ Tambah Pelanggan', ['Nama Pelanggan *', 'Alamat', 'Kota', 'Telepon', 'Email']], ['product', ProductList, '+ Tambah Barang', ['SKU *', 'Ukuran', 'Nama Barang *']]] as const)('%s editor labels reach actual fields and cancellation returns to its opener', async (_kind, Page, button, labels) => {
   mount(Page); const trigger = await screen.findByRole('button', { name: button }); await waitFor(() => expect((trigger as HTMLButtonElement).disabled).toBe(false)); trigger.focus(); fireEvent.click(trigger)
   const dialog = screen.getByRole('dialog'); expect(dialog.tagName).toBe('DIALOG'); expect(dialog.classList.contains('ui-dialog')).toBe(true)
   for (const label of labels) associated(label)
@@ -262,24 +262,18 @@ test.each([['customer', CustomerList, '+ Tambah Pelanggan', ['Nama Pelanggan *',
 test('category instances keep unique associated fields and explicit category-versus-tier help', () => {
   render(<><CustomerCategorySelect value="" allowUnclassified={false} onChange={() => {}} /><CustomerCategorySelect value={null} allowUnclassified onChange={() => {}} /></>)
   const selects = screen.getAllByRole('combobox'); expect(new Set(selects.map(control => control.id)).size).toBe(2)
-  for (const control of selects) { expect(control.closest('.ui-field')).toBeTruthy(); expect(document.getElementById(control.getAttribute('aria-describedby')!)?.textContent).toContain('Kategori tidak mengubah tier harga') }
+  for (const control of selects) { expect(control.closest('.ui-field')).toBeTruthy(); expect(document.getElementById(control.getAttribute('aria-describedby')!)?.textContent).toContain('Pilih menurut jenis dan skala usaha pelanggan') }
 })
-test('duplicate catalog labels keep SKU identity and exact missing, zero, fractional and maximum prices in both representations', async () => {
+test('catalogue metadata remains identifiable without exposing or rewriting legacy prices', async () => {
   state.products.push({ ...product(), id: '33333333-3333-4333-8333-333333333333', sku: 'OTHER', size: '30x60' }); mount(ProductList); await screen.findAllByText('Unset product')
   const table = screen.getByRole('region', { name: 'Daftar barang' }), mobile = screen.getByRole('list', { name: 'Daftar barang seluler' })
   expect(within(table).getAllByRole('row')).toHaveLength(3); expect(within(mobile).getAllByRole('listitem')).toHaveLength(2)
-  for (const scope of [table, mobile]) { expect(within(scope).getByText('TEST')).toBeTruthy(); expect(within(scope).getByText('OTHER')).toBeTruthy() }
-  for (const text of ['Rp 12,34', 'Rp 999.999.999.999,99', 'Rp 0', 'Belum diisi']) expect(within(table).getAllByText(text)).toHaveLength(2)
-  for (const row of within(mobile).getAllByRole('listitem')) {
-    fireEvent.click(within(row).getByRole('button', { name: /Lihat semua harga/ }))
-    for (const text of ['Rp 12,34', 'Rp 999.999.999.999,99', 'Rp 0', 'Belum diisi']) expect(within(row).getByText(text)).toBeTruthy()
-  }
-  fireEvent.click(within(table).getAllByRole('button', { name: 'Ubah' })[0])
-  expect(associated('Harga Pokok (Rp)').value).toBe(''); expect(associated('Depo Bangunan (Rp)').value).toBe('0')
-  expect(associated('Luar Kota (Rp)').value).toBe('12.34'); expect(associated('Dalam Kota (Rp)').value).toBe('999999999999.99')
+  for (const scope of [table, mobile]) { expect(within(scope).getByText('TEST')).toBeTruthy(); expect(within(scope).getByText('OTHER')).toBeTruthy(); expect(within(scope).queryByText('Rp 0')).toBeNull() }
+  fireEvent.click(within(table).getAllByRole('button', { name: 'Ubah' })[0]); expect(screen.queryAllByRole('spinbutton')).toHaveLength(0)
   fireEvent.click(screen.getByRole('button', { name: 'Simpan' })); await waitFor(() => expect(state.write).toHaveBeenCalledOnce())
-  expect(state.write.mock.calls[0][1]).toMatchObject({ harga_pokok: null, depo_bangunan: 0, luar_kota: 12.34, dalam_kota: 999999999999.99 }); expect(state.write.mock.calls[0][1]).not.toHaveProperty('unit_price')
+  for (const key of ['harga_pokok','luar_kota','dalam_kota','depo_bangunan','unit_price']) expect(state.write.mock.calls[0][1]).not.toHaveProperty(key)
 })
+
 test('duplicate customer labels retain category, tier and branch identity in desktop rows and mobile cards', async () => {
   state.backend.state.customers.push({ ...state.backend.state.customers[0], id: '33333333-3333-4333-8333-333333333333', city: 'Surabaya', phone: '123', customer_category: 'perorangan', pricing_tier: 'others' })
   mount(CustomerList); await screen.findAllByText('Alpha shop')
@@ -320,7 +314,7 @@ test('an open product dialog keeps a failed background read and its retry reacha
   expect((within(dialog).getByRole('button', { name: 'Simpan' }) as HTMLButtonElement).disabled).toBe(true)
   state.readError = false; fireEvent.click(within(alert).getByRole('button', { name: 'Coba lagi' }))
   await waitFor(() => expect((within(dialog).getByRole('button', { name: 'Simpan' }) as HTMLButtonElement).disabled).toBe(false))
-  expect(associated('Luar Kota (Rp)').value).toBe('12.34')
+  expect(associated('SKU *').value).toBe('TEST')
 })
 test('customer pending save locks category and contact fields while preserving the existing three-prop category interface', async () => {
   mount(CustomerList); await screen.findAllByText('Alpha shop'); fireEvent.click(screen.getAllByRole('button', { name: 'Ubah' })[0])
@@ -354,14 +348,14 @@ test('inline promotion fields, prices and managed stock retain their meanings wi
   mount(Promotions); await screen.findByText('Tiles'); const stock = screen.getByText('Stok tersedia: 3'); expect(stock).toBeTruthy()
   const status = screen.getByText('Berjalan'); expect(status.closest('.ui-status-badge')).toBeTruthy(); expect(status.closest('[role="status"]')).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: /Tambah Promosi/ })); expect(screen.queryByRole('dialog')).toBeNull()
-  for (const label of ['Produk', 'Stok awal', 'Gambar promosi', 'Diskon otomatis (%)', 'Harga Pokok (Rp)', 'Luar Kota (Rp)', 'Dalam Kota (Rp)', 'Depo Bangunan (Rp)']) associated(label)
+  for (const label of ['Produk', 'Stok awal', 'Gambar promosi']) associated(label)
   expect(screen.getByRole('button', { name: 'Simpan promosi' }).classList.contains('ui-action')).toBe(true)
 })
 test('unknown inline promotion result preserves manual price and one reachable original-sender recovery', async () => {
   state.send.mockImplementationOnce(async () => { state.unresolved = true; throw new Error('Unknown promotion result') })
-  mount(Promotions); await screen.findByText('Tiles'); fireEvent.click(screen.getByRole('button', { name: 'Ubah harga / gambar' }))
-  fireEvent.change(associated('Luar Kota (Rp)'), { target: { value: '123.45' } }); fireEvent.click(screen.getByRole('button', { name: 'Simpan promosi' })); await screen.findByText('Unknown promotion result')
-  expect(associated('Luar Kota (Rp)').value).toBe('123.45'); expect(screen.getAllByRole('button', { name: 'Pulihkan hasil penyimpanan' })).toHaveLength(1); expect(screen.queryByRole('dialog')).toBeNull()
+  mount(Promotions); await screen.findByText('Tiles'); fireEvent.click(screen.getByRole('button', { name: 'Ubah gambar' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Simpan promosi' })); await screen.findByText('Unknown promotion result')
+  expect(screen.queryByLabelText('Luar Kota (Rp)')).toBeNull(); expect(screen.getAllByRole('button', { name: 'Pulihkan hasil penyimpanan' })).toHaveLength(1); expect(screen.queryByRole('dialog')).toBeNull()
   expect((screen.getByRole('button', { name: 'Simpan promosi' }) as HTMLButtonElement).disabled).toBe(true); fireEvent.click(screen.getByRole('button', { name: 'Simpan promosi' })); expect(state.send).toHaveBeenCalledOnce()
 })
 test('linked image render failure uses safe shared feedback and canonical retry', async () => {
@@ -399,17 +393,15 @@ test.each([{ Page: ProductList, loaded: 'Unset product', add: '+ Tambah Barang' 
   expect(within(dialog).getByRole('button', { name: state.customerDelete ? 'Konfirmasi Hapus' : 'Hapus' }).classList.contains('ui-action--danger')).toBe(true)
   expect(within(dialog).getByRole('button', { name: 'Batal' }).classList.contains('ui-action--quiet')).toBe(true)
 })
-test('catalog price disclosure stays compact quiet and preserves expanded ownership', async () => {
+test('catalogue rows have no obsolete price disclosure', async () => {
   mount(ProductList); await screen.findAllByText('Unset product')
-  const disclosure = screen.getByRole('button', { name: 'Lihat semua harga ▼' })
-  expect(disclosure.classList.contains('ui-action--compact')).toBe(true); expect(disclosure.classList.contains('ui-action--quiet')).toBe(true)
-  expect(disclosure.getAttribute('aria-expanded')).toBe('false'); fireEvent.click(disclosure)
-  expect(disclosure.getAttribute('aria-expanded')).toBe('true')
-  expect(document.getElementById(disclosure.getAttribute('aria-controls')!)).toBeTruthy()
+  expect(screen.queryByRole('button', { name: 'Lihat semua harga ▼' })).toBeNull()
+  expect(screen.getAllByRole('button', { name: 'Ubah' })).toHaveLength(2)
 })
+
 test('promotion support actions are compact while explicit stock/save commits retain primary emphasis', async () => {
   mount(Promotions); await screen.findByText('Tiles')
-  for (const name of ['Ubah harga / gambar', 'Sesuaikan stok', 'Jeda']) {
+  for (const name of ['Ubah gambar', 'Sesuaikan stok', 'Jeda']) {
     const action = screen.getByRole('button', { name }); expect(action.classList.contains('ui-action--compact')).toBe(true); expect(action.classList.contains('ui-action--quiet')).toBe(true)
   }
   fireEvent.click(screen.getByRole('button', { name: 'Sesuaikan stok' }))

@@ -5,9 +5,9 @@
   "files": [
     {
       "path": "src/pages/athel/CustomerList.tsx",
-      "sha": "458bbced834ddc09508d0c05ce504ff86974f14f",
-      "sha256": "663f2eeb05749410b8f02838b81d63050d43bdc813172324f708598ba6e90ea3",
-      "bytes": 20862
+      "sha": "25fecf7489b3b5485cbc839931125b8aa587a808",
+      "sha256": "3c2159cfcf55cbe431545921608571c71a8fbb53e995e53942a9bda82d271650",
+      "bytes": 19732
     },
     {
       "path": "src/lib/catalogue/contracts.ts",
@@ -130,16 +130,10 @@
       "bytes": 14873
     },
     {
-      "path": "src/components/CustomerPricingHelp.tsx",
-      "sha": "7bd29383fc47d036e2d9958a3561cdb0953b98a9",
-      "sha256": "a80e9d1cb4585754dd17c421324d7b919b864b4207e79a028739f064d1fbe9c5",
-      "bytes": 520
-    },
-    {
       "path": "src/components/CustomerCategorySelect.tsx",
-      "sha": "6b343828f1b8aeb5ca75f43f187bb7604409775a",
-      "sha256": "42dba70cefb84547bd548702b695b652a66681dc5827b71d30efb1d9c992d6be",
-      "bytes": 1234
+      "sha": "1c8061dc9b08d97050689cbe4804b220734830e3",
+      "sha256": "75acc43bb5aa6a0f696f7146d6f7e9066fe54e0c7bfcb20e54b2c10a264c336e",
+      "bytes": 1151
     },
     {
       "path": "src/components/ReadFailure.tsx",

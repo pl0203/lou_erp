@@ -27,16 +27,15 @@ test('stale handler loses capability immediately on role/identity render',async(
 test('cancelled refresh cannot restore previously true authority from query cache',async()=>{let current:any;function Probe(){current=useProcurementAccess();return <p>{String(current.ready)}</p>}mount(Probe as any);await screen.findByText('true');state.rpc.mockImplementation(()=>{const q:any={then:()=>new Promise(()=>{}),abortSignal:()=>q};return q});void client.invalidateQueries({queryKey:['procurement-access']});await waitFor(()=>expect(current.ready).toBe(false));await act(async()=>{await client.cancelQueries({queryKey:['procurement-access']})});expect(current.ready).toBe(false);expect(()=>current.require('product_edit')).toThrow()})
 test('unmounted master handlers cannot retain previously granted authority',async()=>{let retained:any;function Probe(){retained=useProcurementAccess().require;return null}const view=mount(Probe as any);await waitFor(()=>expect(()=>retained('product_edit')).not.toThrow());view.unmount();expect(()=>retained('product_edit')).toThrow()})
 
-test('new customer explains pricing consequences without changing the default tier or category', async () => {
+test('new customer retains category controls with no price-tier UI', async () => {
  mount(CustomerList)
  const opener = await screen.findByRole('button', { name: /Tambah Pelanggan/ })
  await waitFor(() => expect((opener as HTMLButtonElement).disabled).toBe(false))
  fireEvent.click(opener)
- expect(screen.getByText(/Tier memilih kolom harga katalog/)).toBeTruthy()
- expect(screen.getByText(/Luar Kota adalah pilihan awal/)).toBeTruthy()
- expect(screen.getByText(/Others atau harga tier yang belum diisi/)).toBeTruthy()
- expect(screen.getByRole('combobox', { name: 'Tier Harga' }).getAttribute('aria-describedby')).toBeTruthy()
- expect((screen.getByRole('combobox', { name: 'Tier Harga' }) as HTMLSelectElement).value).toBe('luar_kota')
+ expect(screen.queryByText(/Tier memilih kolom harga katalog/)).toBeNull()
+ expect(screen.queryByText(/Luar Kota adalah pilihan awal/)).toBeNull()
+ expect(screen.queryByText(/Others atau harga tier yang belum diisi/)).toBeNull()
+ expect(screen.queryByRole('combobox', { name: 'Tier Harga' })).toBeNull()
  expect((screen.getByRole('combobox', { name: 'Kategori Pelanggan *' }) as HTMLSelectElement).value).toBe('')
  expect(state.write).not.toHaveBeenCalled()
 })

@@ -1,9 +1,9 @@
 import type { Customer, FormDraft, Issue, ParsedPO, Product, ReviewDecision } from './contracts';
-import { isValidPrice, resolveCatalogPrice } from '../catalogPricing';
+import { isValidPrice } from '../catalogPricing';
 import { nameKey, skuKey } from './matching';
 import { decimalCents, validISODate } from './numbers';
 import { issue } from './layouts/structural';
-const FINANCIAL_REVIEW_CODES = new Set(['tax-review', 'total-mismatch', 'line-total-mismatch', 'catalog-price-difference', 'catalog-price-missing', 'unsupported-charge']);
+const FINANCIAL_REVIEW_CODES = new Set(['tax-review', 'total-mismatch', 'line-total-mismatch', 'unsupported-charge']);
 /** The only financial warning codes that can be explicitly acknowledged. Integrity/validation blockers are excluded. */
 export function isFinancialReviewIssue(issue: Issue): boolean {
     return FINANCIAL_REVIEW_CODES.has(issue.code);
@@ -18,9 +18,9 @@ function financialBinding(parsed: ParsedPO, decision: ReviewDecision, customer: 
         const product = candidates.length === 1 ? candidates[0] : null;
         return [row.id, reviewed.productId, reviewed.manual, reviewed.sku, reviewed.name,
             reviewed.quantity.trim(), reviewed.unitPrice?.trim() || null, reviewed.unitConfirmed,
-            product ? [product.id, product.sku, product.name, resolveCatalogPrice(product, customer?.pricing_tier)] : null];
+            product ? [product.id, product.sku, product.name] : null];
     });
-    return JSON.stringify([customer ? [customer.id, customer.name, customer.pricing_tier] : [decision.customerId, null], parsed.currency.value, parsed.printedTotal, rows]);
+    return JSON.stringify([customer ? [customer.id, customer.name] : [decision.customerId, null], parsed.currency.value, parsed.printedTotal, rows]);
 }
 function centsText(cents: bigint): string {
     return `${cents / 100n}.${String(cents % 100n).padStart(2, '0')}`;
@@ -57,8 +57,6 @@ export function preparePOFormDraft(parsed: ParsedPO, decision: ReviewDecision, c
         add('expiry', 'invalid-date', 'Tanggal expiry harus valid.');
     if (parsed.currency.value && parsed.currency.value !== 'IDR')
         add('currency', 'foreign-currency', 'Harga mata uang asing tidak dapat diterapkan sebagai IDR.');
-    else if (!parsed.currency.value && !decision.idrConfirmed)
-        add('currency', 'currency-unconfirmed', 'Konfirmasi harga dalam IDR terlebih dahulu.');
     const rowIds = parsed.rows.map(r => r.id);
     if (new Set(rowIds).size !== rowIds.length || Object.keys(decision.rows).length !== rowIds.length || Object.keys(decision.rows).some(id => !rowIds.includes(id)))
         add('rows', 'unreviewed-row', 'Setiap baris sumber harus ditinjau, tanpa menambah atau menghapus baris.');
@@ -96,13 +94,7 @@ export function preparePOFormDraft(parsed: ParsedPO, decision: ReviewDecision, c
             const id = `${row.id}:zero-price`;
             add(`${prefix}.unitPrice`, 'zero-price', 'Konfirmasi harga nol yang telah ditinjau.', !acknowledgements.has(id), id);
         }
-        if (product && customer && !reviewed.manual) {
-            const catalog = resolveCatalogPrice(product, customer.pricing_tier);
-            if (catalog === null)
-                add(`${prefix}.unitPrice`, 'catalog-price-missing', 'Harga tier pelanggan belum tersedia; tier lain tidak digunakan.', false);
-            else if (priceText && decimalCents(String(catalog)) !== decimalCents(priceText))
-                add(`${prefix}.unitPrice`, 'catalog-price-difference', 'Harga yang ditinjau berbeda dari harga tier katalog saat ini.', false);
-        }
+
         // Keep source warnings visible; reviewed fields resolve their original uncertainty, not the integrity blockers.
         const resolvable = new Set(['fractional-quantity', 'unknown-number', 'unit-mismatch', 'quantity-mismatch', 'low-confidence', 'ambiguous-price', 'missing-name']);
         issues.push(...row.issues.filter(i => !['missing-price', 'zero-price'].includes(i.code)).map(i => ({ ...i, blocking: i.blocking && !resolvable.has(i.code) })));

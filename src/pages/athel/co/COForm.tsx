@@ -9,7 +9,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useBeforeSignOut } from '../../../lib/AuthContext';
 import { useUnsavedChanges } from '../../../lib/useUnsavedChanges';
 import { POCustomerLookup, POProductLookup } from '../../../components/POLookup';
-import { parseCOPriceInput, resolveCOCatalogPrice, coPlannedAmount } from '../../../lib/co/catalog';
+import { parseCOPriceInput, coPlannedAmount } from '../../../lib/co/catalog';
 import type { CatalogueProductRow } from '../../../lib/catalogue/contracts';
 import { useCatalogueOrderOptions } from '../../../lib/catalogue/useCatalogueOrderOptions';
 import { coHistoricalMaximum, requireCOCatalogueProduct, selectCOStockIdentity } from '../../../lib/co/catalogueSelection';
@@ -161,8 +161,7 @@ function COFormEditor({ mode, id, actor }: {
             focusQuantity(duplicate);
             return;
         }
-        const selected = customerRead.data?.find(c => c.id === customer);
-        const draft = { ...blankLine(), product_id: product.id, product_name: product.name, sku: product.sku, agreed_price: resolveCOCatalogPrice(product, selected?.pricing_tier) ?? '' };
+        const draft = { ...blankLine(), product_id: product.id, product_name: product.name, sku: product.sku, agreed_price: '' };
         const captured = live.current;
         busy.current = true;
         setPending(true);
@@ -408,7 +407,7 @@ function COFormEditor({ mode, id, actor }: {
     <COCard title="Daftar Barang">
     <div className="mb-4">
     <POProductLookup products={productOptions.data ?? []} onSelect={p => void addProduct(p)} inputRef={search} disabled={disabled || !selectedCustomer?.is_enabled}/>
-    <p className="text-[13px] text-brand-secondary mt-2">Cari SKU tepat lalu Enter, atau pilih hasil. Harga baru mengikuti tier pelanggan; harga kesepakatan tetap dipertahankan.</p>{notice && <p role="status" className="mt-2 text-[13px] text-blue-700">{notice}</p>}</div>
+    <p className="text-[13px] text-brand-secondary mt-2">Cari SKU tepat lalu Enter, atau pilih hasil. Masukkan harga kesepakatan untuk barang baru; harga barang yang sudah tercatat tetap dipertahankan.</p>{notice && <p role="status" className="mt-2 text-[13px] text-blue-700">{notice}</p>}</div>
       {collision && <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 mb-3 text-base">
         <p>SKU sudah memiliki identitas stok: {collision.source.display_sku} · {collision.source.product_name}. Pilihan katalog tidak mengganti identitas lama.</p>
         <div className="mt-2 flex flex-wrap gap-2">

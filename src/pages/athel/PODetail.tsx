@@ -1,3 +1,4 @@
+import { savedPOSalesName } from '../../lib/poSales'
 import { LoadingState } from '../../components/ui/LoadingState'
 import { Notice } from '../../components/ui/Feedback'
 import { Dialog } from '../../components/ui/Dialog'
@@ -556,6 +557,7 @@ export default function PODetail() {
             <div>
               <p className="text-brand-secondary mb-1">Pelanggan</p>
               <p className="text-gray-900">{po.customers?.name}</p>
+              <p className="mt-1 text-sm text-brand-secondary">Sales: <span className="font-medium">{savedPOSalesName(po)}</span></p>
             </div>
             <div>
               <p className="text-brand-secondary mb-1">Tanggal PO</p>
@@ -580,12 +582,6 @@ export default function PODetail() {
           </div>
         </div>
 
-        <section aria-label="Kredit salesperson" className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6">
-          <h2 className="text-base font-medium text-brand-primary">Kredit salesperson</h2>
-          <p className="mt-2 text-sm font-semibold text-brand-primary">{po.sales_attribution_state === 'unassigned' ? 'Unassigned' : po.sales_attribution_state === 'assigned' && po.sales_person_id_at_creation ? po.sales_person_at_creation?.full_name || `Salesperson ${po.sales_person_id_at_creation}` : 'Legacy / belum diketahui'}</p>
-          <p className="mt-1 text-[13px] text-gray-600">Kredit ditetapkan saat PO dibuat dan tetap setelah perubahan penugasan toko. PO Unassigned tidak otomatis diberi kredit kemudian.</p>
-          {po.sales_attributed_at && <p className="mt-1 text-[13px] text-brand-secondary">Snapshot: {formatAuditTimestamp(po.sales_attributed_at)}</p>}
-        </section>
 
         {/* Line Items */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">

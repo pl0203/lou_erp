@@ -6,7 +6,6 @@ import type { CatalogueRow, CatalogueStatus } from '../../lib/catalogue/contract
 import { CatalogueStatusActions } from '../../components/catalogue/CatalogueStatusActions'
 import { CatalogueRecovery } from '../../components/catalogue/CatalogueRecovery'
 import type { CatalogueOwner } from '../../components/catalogue/CatalogueRecovery'
-import CustomerPricingHelp from '../../components/CustomerPricingHelp'
 import { useProcurementAccess } from '../../lib/procurementAccess'
 import { hasInvalidCustomerCategories } from '../../lib/customerCategoryRows'
 import CustomerCategorySelect from '../../components/CustomerCategorySelect'
@@ -36,7 +35,6 @@ type CustomerForm = {
   city: string
   phone: string
   email: string
-  pricing_tier: string
   customer_category: CustomerCategory | null | ''
 }
 
@@ -46,16 +44,7 @@ const EMPTY_FORM: CustomerForm = {
   city: '',
   phone: '',
   email: '',
-  pricing_tier: 'luar_kota',
   customer_category: '',
-}
-
-const TIER_LABELS: Record<string, string> = {
-  harga_pokok:   'Harga Pokok',
-  luar_kota:     'Luar Kota',
-  dalam_kota:    'Dalam Kota',
-  depo_bangunan: 'Depo Bangunan',
-  others: 'Others',
 }
 
 const PAGE_SIZE = 10
@@ -68,7 +57,7 @@ async function saveCustomer(sender: CatalogueTransactionSender, form: CustomerFo
       payload[key] = key === 'name' ? form[key].trim() : form[key].trim() || null
     }
   }
-  if (!original || form.pricing_tier !== original.pricing_tier) payload.pricing_tier = form.pricing_tier
+  if (!original) payload.pricing_tier = 'others' // Required legacy contract; never used to choose order prices.
   if (!original || category !== original.customer_category) payload.customer_category = category
   return sendCatalogueForm(sender, 'customer', payload, original)
 }
@@ -190,7 +179,6 @@ export default function CustomerList() {
       city: c.city ?? '',
       phone: c.phone ?? '',
       email: c.email ?? '',
-      pricing_tier: c.pricing_tier ?? 'others',
       customer_category: c.customer_category,
     })
     formOwner.current = catalogue.owner
@@ -242,13 +230,12 @@ export default function CustomerList() {
           {!readError && data && <>
             <div role="region" aria-label="Daftar pelanggan" tabIndex={0} className="hidden md:block bg-white rounded-[14px] border border-brand-divider overflow-x-auto">
               <table className="w-full min-w-[56rem] text-sm">
-                <thead><tr className="bg-brand-canvas border-b border-brand-divider">{['Nama Pelanggan', 'Kota', 'Telepon', 'Email', 'Tier Harga', 'Kategori Pelanggan', 'Aksi'].map((label, index) => <th key={label} className={`px-5 py-3 font-medium text-brand-secondary ${index === 6 ? 'text-right' : 'text-left'}`}>{label}</th>)}</tr></thead>
+                <thead><tr className="bg-brand-canvas border-b border-brand-divider">{['Nama Pelanggan', 'Kota', 'Telepon', 'Email', 'Kategori Pelanggan', 'Aksi'].map((label, index) => <th key={label} className={`px-5 py-3 font-medium text-brand-secondary ${index === 5 ? 'text-right' : 'text-left'}`}>{label}</th>)}</tr></thead>
                 <tbody>
-                  {customers.length === 0 && <tr><td colSpan={7} className="p-4"><EmptyState title="Tidak ada pelanggan ditemukan." /></td></tr>}
+                  {customers.length === 0 && <tr><td colSpan={6} className="p-4"><EmptyState title="Tidak ada pelanggan ditemukan." /></td></tr>}
                   {customers.map(c => <tr key={c.id} className="border-b border-brand-divider">
                     <td className="px-5 py-4 font-medium text-brand-primary [overflow-wrap:anywhere]">{c.name}</td>
                     <td className="px-5 py-4 text-brand-secondary">{c.city ?? '—'}</td><td className="px-5 py-4 text-brand-secondary [overflow-wrap:anywhere]">{c.phone ?? '—'}</td><td className="px-5 py-4 text-brand-secondary [overflow-wrap:anywhere]">{c.email ?? '—'}</td>
-                    <td className="px-5 py-4"><StatusBadge tone="neutral">{TIER_LABELS[c.pricing_tier] ?? c.pricing_tier}</StatusBadge></td>
                     <td className="px-5 py-4">{formatCustomerCategory(c.customer_category)}</td><td className="px-5 py-4">{rowActions(c)}</td>
                   </tr>)}
                 </tbody>
@@ -257,8 +244,8 @@ export default function CustomerList() {
             <RecordList label="Daftar pelanggan seluler" className="md:hidden">
               {customers.length === 0 && <li><EmptyState title="Tidak ada pelanggan ditemukan." /></li>}
               {customers.map(c => <li key={c.id} className="bg-white rounded-[14px] border border-brand-divider p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3 mb-3"><div className="min-w-0 flex-1"><p className="font-semibold text-brand-primary [overflow-wrap:anywhere]">{c.name}</p>{c.city && <p className="text-[13px] text-brand-secondary mt-1">{c.city}</p>}</div><StatusBadge tone="neutral">{TIER_LABELS[c.pricing_tier] ?? c.pricing_tier}</StatusBadge></div>
-                <SummaryList items={[{ label: 'Kategori Pelanggan', value: formatCustomerCategory(c.customer_category) }, { label: 'Tier Harga', value: TIER_LABELS[c.pricing_tier] ?? c.pricing_tier }, { label: 'Telepon', value: c.phone ?? '—' }, { label: 'Email', value: c.email ?? '—' }]} />
+                <div className="flex flex-wrap items-start justify-between gap-3 mb-3"><div className="min-w-0 flex-1"><p className="font-semibold text-brand-primary [overflow-wrap:anywhere]">{c.name}</p>{c.city && <p className="text-[13px] text-brand-secondary mt-1">{c.city}</p>}</div></div>
+                <SummaryList items={[{ label: 'Kategori Pelanggan', value: formatCustomerCategory(c.customer_category) }, { label: 'Telepon', value: c.phone ?? '—' }, { label: 'Email', value: c.email ?? '—' }]} />
                 <div className="mt-4 border-t border-brand-divider pt-3">{rowActions(c)}</div>
               </li>)}
             </RecordList>
@@ -275,7 +262,6 @@ export default function CustomerList() {
           <Field id="catalog-customer-city" label="Kota">{control => <input {...control} type="text" value={form.city} disabled={formFrozen} onChange={event => { if (!mutationBusy.current && !formFrozen) setForm(p => ({ ...p, city: event.target.value })) }} placeholder="mis. Jakarta" />}</Field>
           <Field id="catalog-customer-phone" label="Telepon">{control => <input {...control} type="text" value={form.phone} disabled={formFrozen} onChange={event => { if (!mutationBusy.current && !formFrozen) setForm(p => ({ ...p, phone: event.target.value })) }} placeholder="mis. 021-5551234" />}</Field>
           <Field id="catalog-customer-email" label="Email">{control => <input {...control} type="email" value={form.email} disabled={formFrozen} onChange={event => { if (!mutationBusy.current && !formFrozen) setForm(p => ({ ...p, email: event.target.value })) }} placeholder="mis. toko@example.com" />}</Field>
-          <Field id="catalog-customer-tier" label="Tier Harga" hint={<CustomerPricingHelp id="customer-pricing-help" />}>{control => <select {...control} value={form.pricing_tier} disabled={formFrozen} onChange={event => { if (!mutationBusy.current && !formFrozen) setForm(p => ({ ...p, pricing_tier: event.target.value })) }}>{Object.entries(TIER_LABELS).map(([tier, label]) => <option key={tier} value={tier}>{label}</option>)}</select>}</Field>
           {readError && <ReadFailure onRetry={() => { void refetch() }} />}
           {saveMutation.isError && <Notice tone="error" title={(saveMutation.error as Error).message} />}
           {catalogue.unresolved && !modalPending && !catalogue.busy && catalogue.owner && catalogue.sender && <CatalogueRecovery owner={catalogue.owner} sender={catalogue.sender} available={catalogue.recoveryAvailable} acceptCanonical={catalogue.acceptCanonical} acceptAbandoned={catalogue.acceptAbandoned} onConfirmed={confirmFormRecovery} onAbandoned={abandonFormRequest} />}
