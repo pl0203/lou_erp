@@ -104,8 +104,10 @@ test('raw Sales approval and visit-note labels use the same responsive label con
 })
 
 
-test('returned SJ date label uses the shared responsive label contract while keeping its native date association', () => {
+test('both SJ correction labels use the shared responsive label contract and native date association', () => {
   const detail = source('pages/athel/PODetail.tsx')
-  expect(detail).toMatch(/<label htmlFor="returned-date" className="[^"]*ui-field__label[^"]*">Tanggal SJ kembali<\/label>/)
-  expect(detail).toMatch(/<input id="returned-date" type="date"[^\n]*className="ui-control/)
+  expect(detail).toContain("received: { field: 'Tanggal SJ Diterima Toko'")
+  expect(detail).toContain("returned: { field: 'Tanggal SJ kembali'")
+  expect(detail).toMatch(/<label htmlFor="sj-correction-date" className="[^"]*ui-field__label[^"]*">\{SJ_DATE_LABELS\[dateTarget.kind\].field\}<\/label>/)
+  expect(detail).toMatch(/<input id="sj-correction-date" type="date"[^\n]*className="ui-control/)
 })

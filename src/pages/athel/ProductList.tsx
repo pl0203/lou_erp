@@ -1,3 +1,4 @@
+import { LoadingState } from '../../components/ui/LoadingState'
 import { sendCatalogueForm } from '../../lib/catalogue/formCommands'
 import type { CatalogueTransactionSender } from '../../lib/catalogue/transactions'
 import { useCataloguePage } from '../../lib/catalogue/useCataloguePage'
@@ -235,7 +236,7 @@ export default function ProductList() {
           {!showForm && catalogue.unresolved && !catalogue.busy && catalogue.owner && catalogue.sender && <CatalogueRecovery owner={catalogue.owner} sender={catalogue.sender} available={catalogue.recoveryAvailable} acceptCanonical={catalogue.acceptCanonical} acceptAbandoned={catalogue.acceptAbandoned} onConfirmed={catalogue.onConfirmed} onAbandoned={catalogue.onAbandoned} />}
 
           {isError && <Notice tone="error" title="Daftar barang belum dapat dimuat." actions={<Button variant="secondary" onClick={() => { void refetch() }}>Coba lagi</Button>} />}
-          {!isError && !data && <Notice tone="info" title={fetchStatus === 'paused' ? 'Memuat data barang tertunda. Menunggu koneksi…' : 'Memuat data barang...'} />}
+          {!isError && !data && <LoadingState title={fetchStatus === 'paused' ? 'Memuat data barang tertunda. Menunggu koneksi…' : 'Memuat data barang...'} shape="list" />}
           {!isError && data && fetchStatus === 'paused' && <Notice tone="info" title="Pembaruan data barang tertunda. Menunggu koneksi; hasil terakhir tetap ditampilkan." />}
           {!isError && data && <>
             <div role="region" aria-label="Daftar barang" tabIndex={0} className="hidden md:block bg-white rounded-[14px] border border-brand-divider overflow-x-auto">

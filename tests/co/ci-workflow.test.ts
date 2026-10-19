@@ -29,7 +29,12 @@ test('adds CO after all 32 original gates without changing their service, source
   expect(createHash('sha256').update(browserRegion).digest('hex')).toBe('52835f2c64d1d3f84e534c2738b4a246013d32ece348007d14c7e814e7a3aaa5');
   expect(actual.split(browserRegion)).toHaveLength(2);
   expect(actual).toContain('      - run: npm run build\n' + browserRegion + '      - name: Install official PostgreSQL client');
-  const normalized = actual.replace(scheduling, '').replace(helperSourceLine + addedSuites + '\n', helperSourceLine + '\n').replace(targetSource,'').replace(targetTerminal,'').replace(browserRegion,'');
+  // The received-date feature is additive; retain every historical envelope pin.
+  const receivedStart = actual.indexOf('      - name: Guarded SJ received-date migration');
+  const receivedRegion = actual.slice(receivedStart, receivedStart + 901);
+  expect(createHash('sha256').update(receivedRegion).digest('hex')).toBe('eb6c3d02339aa38c41e742303ebcf3b87ae63557d302b0478d1a566bca3eccc9');
+  expect(actual.split(receivedRegion)).toHaveLength(2);
+  const normalized = actual.replace(scheduling, '').replace(helperSourceLine + addedSuites + '\n', helperSourceLine + '\n').replace(targetSource,'').replace(targetTerminal,'').replace(browserRegion,'').replace(receivedRegion,'');
   const decoderStart = normalized.indexOf('      - name: Bind independent read decoder source');
   const catalogueStart = normalized.indexOf('  # Independent of synthetic-safety:');
   const decoder = normalized.slice(decoderStart, catalogueStart);

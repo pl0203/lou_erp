@@ -1,3 +1,4 @@
+import { LoadingState } from '../../components/ui/LoadingState'
 import { Button } from '../../components/ui/Button'
 import { ActionLink } from '../../components/ui/ActionLink'
 import { MainContent } from '../../components/ui/MainContent'
@@ -315,7 +316,7 @@ function ManagerScheduleContent() {
           </select>}</Field>
         </div>
         <div className="px-4 md:px-8 py-6">
-          {isLoading && <Notice tone="info" title="Memuat jadwal..." />}
+          {isLoading && <LoadingState title="Memuat jadwal..." shape="list" />}
           {!isLoading && schedules.length === 0 && <EmptyState title={`Tidak ada kunjungan yang dijadwalkan untuk ${visitDateLabel(selectedDate)} pada filter ini.`} actions={<Button variant="secondary" disabled={locked || deleteMutation.isPending} onClick={event => openCreate(event.currentTarget)}>Tambahkan jadwal kunjungan baru +</Button>} />}
           {!isLoading && schedules.length > 0 && <div className="hidden md:block bg-white rounded-xl border border-gray-200 overflow-hidden">
             <table className="w-full text-sm" aria-label="Jadwal kunjungan tim">

@@ -1,3 +1,4 @@
+import { LoadingState } from '../../components/ui/LoadingState'
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import GirardNav from '../../components/GirardNav'
@@ -22,7 +23,7 @@ export default function SalesTargets({ transport: injected }: { transport?: Targ
   return <div className="min-h-screen bg-brand-canvas"><GirardNav />
     <MainContent className="space-y-6 px-4 py-6 md:px-8">
       <PageHeader title="Target Penjualan" description="Target bulanan dengan dasar historis dan persetujuan yang terpisah." />
-      {verified ? <TargetWizard actor={{ id: profile.id, role: profile.role, active: true }} teams={profile.role === 'sales_manager' ? [{ managerId: profile.id, name: `Tim ${profile.full_name}` }] : []} transport={transport} initialPlanId={search.get('plan') ?? undefined} refreshKey={planRefresh} onDirtyChange={setDirty} onPlanSaved={plan => { setInboxRefresh(value => value + 1); const next = new URLSearchParams(search); next.set('plan', plan.id); setSearch(next, { replace: true }) }} /> : <p role="status">Memeriksa akses akun…</p>}
+      {verified ? <TargetWizard actor={{ id: profile.id, role: profile.role, active: true }} teams={profile.role === 'sales_manager' ? [{ managerId: profile.id, name: `Tim ${profile.full_name}` }] : []} transport={transport} initialPlanId={search.get('plan') ?? undefined} refreshKey={planRefresh} onDirtyChange={setDirty} onPlanSaved={plan => { setInboxRefresh(value => value + 1); const next = new URLSearchParams(search); next.set('plan', plan.id); setSearch(next, { replace: true }) }} /> : <LoadingState title="Memeriksa akses akun…" shape="compact" />}
       {verified && <TargetPlanInbox key={`${user.id}:${profile.role}`} actor={{ id: profile.id, role: profile.role, active: true }} transport={transport} refreshKey={inboxRefresh} onOpen={planId => { setPlanRefresh(value => value + 1); const next = new URLSearchParams(search); next.set('plan', planId); setSearch(next) }} />}
       {protection.dialog}
     </MainContent>

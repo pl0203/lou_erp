@@ -5,7 +5,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
-test.each(['unchanged', 'original drift', 'append drift', 'catalogue drift', 'extra job'])('single-commit checkout without the ancestor enforces all workflow pins: %s', change => {
+test.each(['unchanged', 'original drift', 'append drift', 'received drift', 'catalogue drift', 'extra job'])('single-commit checkout without the ancestor enforces all workflow pins: %s', change => {
   const sandbox = mkdtempSync(join(tmpdir(), 'co-ci-single-commit-'))
   const git = (...args: string[]) => execFileSync('git', args, { cwd: sandbox, encoding: 'utf8', env: { ...process.env, GIT_NO_LAZY_FETCH: '1' } })
   try {
@@ -18,6 +18,7 @@ test.each(['unchanged', 'original drift', 'append drift', 'catalogue drift', 'ex
     const workflow = readFileSync(workflowPath, 'utf8')
     if (change === 'original drift') writeFileSync(workflowPath, workflow.replace('timeout-minutes: 20', 'timeout-minutes: 21'))
     if (change === 'append drift') writeFileSync(workflowPath, workflow.replace('Preserve final CO evidence', 'Preserve final CO altered'))
+    if (change === 'received drift') writeFileSync(workflowPath, workflow.replace('Guarded SJ received-date migration and rollback-only regression', 'Guarded SJ received-date migration altered'))
     if (change === 'catalogue drift') writeFileSync(workflowPath, workflow.replace('Capture synthetic composed metadata for review', 'Capture synthetic composed metadata altered'))
     if (change === 'extra job') writeFileSync(workflowPath, workflow + '\n  unreviewed-job:\n    runs-on: ubuntu-latest\n')
     writeFileSync(join(sandbox, 'vitest.config.mjs'), 'export default {test:{environment:"node"}}\n')
@@ -36,7 +37,7 @@ test.each(['unchanged', 'original drift', 'append drift', 'catalogue drift', 'ex
     expect(result.error).toBeUndefined()
     expect(result.status, output).toBe(change === 'unchanged' ? 0 : 1)
     if (change !== 'unchanged') {
-      const requiredPin = change === 'original drift' ? '5c12be0b5d567c3f680bba8bf8d631924533e586c775207db54d988d44fb7d27' : change === 'append drift' ? '8d8ec09325e76a1fb7e3e77dfd49ed8ff04da36ccf03af270d27fcace34cfe46' : 'c04a396d87932a0c43ae3ff903d3cb25313c444fbadb9b2480c3d7ee3bd80099'
+      const requiredPin = change === 'original drift' ? '5c12be0b5d567c3f680bba8bf8d631924533e586c775207db54d988d44fb7d27' : change === 'append drift' ? '8d8ec09325e76a1fb7e3e77dfd49ed8ff04da36ccf03af270d27fcace34cfe46' : change === 'received drift' ? 'eb6c3d02339aa38c41e742303ebcf3b87ae63557d302b0478d1a566bca3eccc9' : 'c04a396d87932a0c43ae3ff903d3cb25313c444fbadb9b2480c3d7ee3bd80099'
       expect(output).toContain(requiredPin)
     }
   } finally {

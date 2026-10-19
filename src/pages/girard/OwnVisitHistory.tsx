@@ -1,3 +1,4 @@
+import { LoadingState } from '../../components/ui/LoadingState'
 import { visitDateLabel } from '../../lib/visitUsability'
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -95,7 +96,7 @@ export function VisitNoteEditor({ visit, onDirtyChange, confirmDiscard }: {
             <Button pending={busy} disabled={send.hasUnresolved()} onClick={() => save(current.note_version)}>Simpan draf pada versi terbaru</Button>
             <Button size="compact" variant="secondary" disabled={busy} onClick={() => { setNotes(current.notes ?? ''); setBaseNotes(current.notes ?? ''); setVersion(current.note_version); setConflict(false); setCurrent(null); setError('') }}>Gunakan catatan terbaru</Button>
           </FormActions>
-        </div> : readError ? <div className="space-y-3"><p>Catatan terbaru belum tersedia.</p><Button size="compact" variant="secondary" disabled={busy} onClick={reloadCurrent}>Muat catatan terbaru</Button></div> : <p role="status">Memuat catatan terbaru...</p>}
+        </div> : readError ? <div className="space-y-3"><p>Catatan terbaru belum tersedia.</p><Button size="compact" variant="secondary" disabled={busy} onClick={reloadCurrent}>Muat catatan terbaru</Button></div> : <LoadingState title="Memuat catatan terbaru..." shape="list" />}
       </Notice>}
     </> : <>
       <h3 className="font-medium">Catatan kunjungan</h3>
@@ -128,7 +129,7 @@ function OwnVisitHistoryPage() {
     <MainContent className="max-w-2xl mx-auto p-4 space-y-4" aria-busy={query.isPending}>
       <PageHeader title="Riwayat kunjungan saya" description={<>Hanya kunjungan yang Anda lakukan sendiri. {profile?.role !== 'sales_person' && <ActionLink size="compact" variant="quiet" to="/girard/schedule">Lihat jadwal dan kunjungan tim</ActionLink>}</>} />
       {query.isError ? <Notice tone="error" title="Riwayat belum tersedia." actions={<Button size="compact" variant="secondary" pending={query.isFetching} onClick={() => query.refetch()}>Coba lagi</Button>} />
-        : query.isPending ? <Notice tone="info" title="Memuat riwayat..." /> : <>
+        : query.isPending ? <LoadingState title="Memuat riwayat..." shape="list" /> : <>
           {query.data?.items.length === 0 && <EmptyState title="Belum ada kunjungan." />}
           <RecordList label="Daftar kunjungan saya">
             {query.data?.items.map(visit => <li key={visit.id}>

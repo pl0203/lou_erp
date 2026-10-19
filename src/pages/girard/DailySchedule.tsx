@@ -1,3 +1,4 @@
+import { LoadingState } from '../../components/ui/LoadingState'
 import { Button } from '../../components/ui/Button'
 import { ActionLink } from '../../components/ui/ActionLink'
 import { MainContent } from '../../components/ui/MainContent'
@@ -173,7 +174,7 @@ function DailyScheduleContent() {
         {profile?.id && <PendingVisitRequests actorId={profile.id} date={selectedDate} />}
         {showProposal && <VisitProposalForm key={`${proposalSchedule?.id ?? 'new'}:${proposalRevision}`} source={proposalSchedule ?? undefined} onSubmitted={setRequestReceipt} onDirtyChange={setProposalDirty} confirmDiscard={unsaved.confirmDiscard} onDone={() => { setProposalDirty(false); setShowProposal(false) }} />}
 
-        {isLoading && <Notice tone="info" title="Memuat jadwal Anda..." />}
+        {isLoading && <LoadingState title="Memuat jadwal Anda..." shape="list" />}
         {isError && <Notice tone="error" title="Gagal memuat jadwal. Data belum dapat ditampilkan." actions={<Button size="compact" variant="secondary" onClick={() => refetch()}>Coba lagi</Button>} />}
         {!isLoading && !isError && schedules.length === 0 && <EmptyState title={`Tidak ada kunjungan dijadwalkan untuk ${visitDateLabel(selectedDate)}.`}><p>Periksa kembali nanti atau hubungi manajer Anda.</p></EmptyState>}
 

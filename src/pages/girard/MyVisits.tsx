@@ -1,8 +1,9 @@
+import { LoadingState } from '../../components/ui/LoadingState'
 import { Button } from '../../components/ui/Button'
 import { ActionLink } from '../../components/ui/ActionLink'
 import { MainContent } from '../../components/ui/MainContent'
 import { PageHeader } from '../../components/ui/PageHeader'
-import { EmptyState, Notice, StatusBadge } from '../../components/ui/Feedback'
+import { EmptyState, StatusBadge } from '../../components/ui/Feedback'
 import { RecordList } from '../../components/ui/RecordList'
 import { visitCadence, visitDateLabel } from '../../lib/visitUsability'
 import ReadFailure from '../../components/ReadFailure'
@@ -150,7 +151,7 @@ export default function MyVisits() {
         <ActivePromotionsBanner />
         <p className="text-[13px] text-gray-700">Jadwal memakai tanggal tanpa jam. Pengingat interval dihitung dari kunjungan terakhir pelanggan, dengan batas waktu UTC.</p>
 
-        {isLoading && <Notice tone="info" title="Memuat kunjungan Anda..." />}
+        {isLoading && <LoadingState title="Memuat kunjungan Anda..." shape="list" />}
         {!isLoading && schedules.length === 0 && <EmptyState title={`Tidak ada kunjungan dijadwalkan untuk ${visitDateLabel(selectedDate)}.`}><p>Jadwalkan kunjungan untuk diri Anda dari halaman Jadwal.</p></EmptyState>}
 
         <RecordList label="Kunjungan saya">{schedules.map(schedule => {

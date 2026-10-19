@@ -1,10 +1,11 @@
+import { LoadingState } from '../../components/ui/LoadingState'
 import { PageHeader } from '../../components/ui/PageHeader'
 import { Button } from '../../components/ui/Button'
 import { Field } from '../../components/ui/Field'
 import { FilterBar } from '../../components/ui/FilterBar'
 import { FormActions } from '../../components/ui/FormActions'
 import { Dialog } from '../../components/ui/Dialog'
-import { EmptyState, Notice, StatusBadge } from '../../components/ui/Feedback'
+import { EmptyState, StatusBadge } from '../../components/ui/Feedback'
 import { RecordList } from '../../components/ui/RecordList'
 import { SummaryList } from '../../components/ui/SummaryList'
 import { MainContent } from '../../components/ui/MainContent'
@@ -372,7 +373,7 @@ export default function GirardCustomers() {
         </FilterBar>
 
         {isLoading && (
-          <Notice tone="info" title="Memuat data pelanggan..." />
+          <LoadingState title="Memuat data pelanggan..." shape="list" />
         )}
 
         {!isLoading && !readError && filtered?.length === 0 && <EmptyState title="Tidak ada pelanggan ditemukan." />}

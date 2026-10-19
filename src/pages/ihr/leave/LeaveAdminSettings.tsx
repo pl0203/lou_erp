@@ -1,3 +1,4 @@
+import { LoadingState } from '../../../components/ui/LoadingState'
 import { FormActions } from '../../../components/ui/FormActions'
 import { Button } from '../../../components/ui/Button'
 import { Field } from '../../../components/ui/Field'
@@ -69,7 +70,7 @@ function AdminEditor(props:LeaveAdminSettingsProps){
   finally{if(live.current){setWaitingContinuity(false);setBusy(false)}inFlight.current=false;ownRefresh.current=false}
  }
  if(!allowed)return <p role="status" className="ui-notice ui-notice--info">Akses pengaturan tidak tersedia.</p>
- if(!fresh)return <p role="status" className="ui-notice ui-notice--info">Memeriksa kembali akses dan lingkup anggota…</p>
+ if(!fresh)return <LoadingState title="Memeriksa kembali akses dan lingkup anggota…" shape="compact" className="ui-notice ui-notice--info" />
  const validSettings=canConfigure&&settings?.employeeId===employeeId&&settings.authorityKey===props.authorityKey,validAccess=canManageAccess&&access?.employeeId===employeeId&&access.authorityKey===props.authorityKey
  return <div className="space-y-5" aria-label="Administrasi cuti" onKeyDown={e=>{if(e.key==='Escape'&&onClose){e.preventDefault();close()}}}>
   <h2 className="text-lg font-semibold">Pengaturan cuti dengan izin khusus</h2>

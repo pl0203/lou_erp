@@ -1,3 +1,4 @@
+import { LoadingState } from '../../../components/ui/LoadingState'
 import { RecordList } from '../../../components/ui/RecordList'
 import { FormActions } from '../../../components/ui/FormActions'
 import { EmptyState } from '../../../components/ui/Feedback'
@@ -26,7 +27,7 @@ export default function LeaveAdminRotaPanel({actorId,context,readState,onDirtyCh
  function close(){if(!dirty||window.confirm(discardLeaveDraftMessage)){setDirty(false);if(selected)setSelected(null);else onClose()}}
  return <div className="space-y-4">
   {readState==='ready'&&<Button size="compact" type="button" variant="quiet" className="underline" onClick={close}>{selected?'Kembali ke daftar kalender':'Kembali ke daftar anggota'}</Button>}
-  {selected?<RotaEditor key={selected.id} actorId={actorId} context={context} calendar={selected} readState={readState} onDirtyChange={setDirty}/>:readState==='ready'&&((query.isError||!query.available&&!query.isFetching)?<div role="alert" className="ui-notice ui-notice--error"><p>Kalender dan roster memerlukan izin konfigurasi global yang dikonfirmasi.</p><Button size="compact" type="button" onClick={()=>void query.refetch()} variant="secondary">Muat ulang kalender perusahaan</Button></div>:!query.available?<p role="status" className="ui-notice ui-notice--info">Memuat kalender perusahaan...</p>:<>
+  {selected?<RotaEditor key={selected.id} actorId={actorId} context={context} calendar={selected} readState={readState} onDirtyChange={setDirty}/>:readState==='ready'&&((query.isError||!query.available&&!query.isFetching)?<div role="alert" className="ui-notice ui-notice--error"><p>Kalender dan roster memerlukan izin konfigurasi global yang dikonfirmasi.</p><Button size="compact" type="button" onClick={()=>void query.refetch()} variant="secondary">Muat ulang kalender perusahaan</Button></div>:!query.available?<LoadingState title="Memuat kalender perusahaan..." shape="list" className="ui-notice ui-notice--info" />:<>
    <h2 className="font-semibold">Kalender dan roster perusahaan</h2>{!query.data?.rows.length&&<EmptyState title="Belum ada kalender perusahaan yang dapat diatur."/>}
    <RecordList  label="Kalender perusahaan">{query.data?.rows.map(calendar=><li key={calendar.id}><Button size="compact" type="button" variant="quiet" className="underline" onClick={()=>setSelected(calendar)}>Atur kalender {calendar.name}</Button></li>)}</RecordList>
    <FormActions ><Button size="compact" type="button" disabled={page===1} onClick={()=>setPage(page-1)} variant="quiet">Kalender sebelumnya</Button><Button size="compact" type="button" disabled={page*25>=(query.data?.total??0)} onClick={()=>setPage(page+1)} variant="quiet">Kalender berikutnya</Button></FormActions>

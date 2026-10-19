@@ -285,6 +285,17 @@ jobs:
           for marker in CO_FINAL_COMPOSED_DATABASE_PASSED CO_REAL_RACES_PASSED CO_EVIDENCE_REAL_RACES_PASSED; do
             [[ "$(grep -Fxc "$marker" scale-results/co-final/aggregate.log)" == 1 ]]
           done
+      - name: Guarded SJ received-date migration and rollback-only regression
+        env:
+          CO_CI_PROFILE: github-pilot-safety-v1
+          CO_CI_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          node scripts/test-sj-received-date-ci.mjs | tee scale-results/co-final/sj-received-date.log
+          for expected in SJ_RECEIVED_DATE_DATABASE_PASSED:3 SJ_RECEIVED_DATE_MIGRATION_LIFECYCLE_PASSED:2 SJ_RECEIVED_DATE_REAL_RACES_PASSED:2 SJ_CATALOGUE_INSTALLED_FUNCTION_PARITY_PASSED:1 SJ_CATALOGUE_COHERENT_SYNTHETIC_GRAPH_PASSED:1 SJ_RECEIVED_DATE_COHERENT_SYNTHETIC_V2_PASSED:1 SJ_RECEIVED_DATE_NATIVE_LIMITS_PASSED:1 SJ_RECEIVED_DATE_NATIVE_CATALOGUE_PASSED:1; do
+            marker="${expected%:*}"
+            [[ "$(grep -Fxc "$marker" scale-results/co-final/sj-received-date.log)" == "${expected##*:}" ]]
+          done
       - name: Preserve final CO evidence
         if: always()
         uses: actions/upload-artifact@v4

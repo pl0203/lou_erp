@@ -1,3 +1,4 @@
+import { LoadingState } from '../../../components/ui/LoadingState'
 import { PageHeader } from '../../../components/ui/PageHeader';
 import { Field } from '../../../components/ui/Field';
 import { FilterBar } from '../../../components/ui/FilterBar';
@@ -36,7 +37,7 @@ function OrdersOwner() {
     <Field id="co-filter-customer" label="Filter pelanggan" className="flex-1 basis-60">{control => <select {...control} aria-label="Filter pelanggan" className={CO_INPUT} disabled={!customers.data || customers.isFetching || customers.isError} value={filters.customer} onChange={e => update('customer', e.target.value)}>
     <option value="">Semua pelanggan</option>{customers.data?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>}</Field>
     </FilterBar>
-    {customers.isError && <COFailure error={customers.error} retry={() => void customers.refetch()}/>}{query.isError ? <COFailure error={query.error} retry={() => void query.refetch()}/> : query.isPending ? <p role="status">Memuat pesanan…</p> : <>
+    {customers.isError && <COFailure error={customers.error} retry={() => void customers.refetch()}/>}{query.isError ? <COFailure error={query.error} retry={() => void query.refetch()}/> : query.isPending ? <LoadingState title="Memuat pesanan…" shape="list" /> : <>
         <div className="hidden md:block min-w-0 overflow-x-auto rounded-[14px] border border-brand-divider bg-brand-surface" role="region" aria-label="Daftar CO" tabIndex={0}>
         <table className="w-full min-w-[70rem] text-sm">
         <thead className="bg-gray-50 text-brand-secondary">

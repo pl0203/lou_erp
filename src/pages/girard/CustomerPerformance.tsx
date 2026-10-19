@@ -1,3 +1,4 @@
+import { LoadingState } from '../../components/ui/LoadingState'
 import { useLayoutEffect, useRef } from 'react'
 import { useCustomerTargetSave } from '../../lib/catalogue/useCustomerTargetSave'
 import { Button } from '../../components/ui/Button'
@@ -210,7 +211,7 @@ export function CustomerActivityContent() {
       )}
 
       {isLoading && (
-        <div className="text-center text-brand-secondary text-sm py-12">Memuat data...</div>
+        <LoadingState title="Memuat data..." shape="dashboard" className="text-center text-brand-secondary text-sm py-12" />
       )}
 
       {!isLoading && data.length === 0 && (

@@ -1,3 +1,4 @@
+import { LoadingState } from '../../../components/ui/LoadingState'
 import { Button } from '../../../components/ui/Button'
 import { Field } from '../../../components/ui/Field'
 import { useId, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState  } from 'react'
@@ -126,7 +127,7 @@ export default function LeaveRequestForm({actorId,context,onClose,onDirtyChange,
   <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="mb-1 text-[13px] font-medium text-brand-primary">1 · Tanggal dan durasi</p><h2 className="text-lg font-semibold text-brand-primary">Pengajuan cuti tahunan</h2></div><Button size="compact" type="button" onClick={close} variant="quiet">Tutup formulir</Button></div>
   {readState==='ready'&&notice&&<p role="status" className="ui-notice ui-notice--info">{notice}</p>}
   {readState==='ready'&&error&&<div role="alert" tabIndex={-1} ref={alert} className="ui-notice ui-notice--error">{error}</div>}
-  {readState==='ready'&&!ready&&!revoked&&<div>{busy?<p role="status" className="ui-notice ui-notice--info">Memeriksa akses formulir...</p>:<Button size="compact" type="button" onClick={()=>void check()} variant="secondary">Coba lagi</Button>}</div>}
+  {readState==='ready'&&!ready&&!revoked&&<div>{busy?<LoadingState title="Memeriksa akses formulir..." shape="compact" className="ui-notice ui-notice--info" />:<Button size="compact" type="button" onClick={()=>void check()} variant="secondary">Coba lagi</Button>}</div>}
   {readState==='ready'&&ready&&!revoked&&unresolved&&<div className="space-y-2"><p>Hasil pengajuan sebelumnya belum dikonfirmasi. Pulihkan hasil untuk melanjutkan.</p><Button size="compact" type="button" disabled={busy} onClick={()=>void submitOrRecover(true)} variant="secondary">Pulihkan hasil pengajuan</Button></div>}
   {readState==='ready'&&ready&&!revoked&&!unresolved&&<form className="space-y-4" noValidate onSubmit={event=>{event.preventDefault();void check(input)}}>
    <p className="text-base text-brand-secondary">Satu durasi berlaku untuk semua tanggal kerja. Gunakan formulir terpisah untuk durasi berbeda.</p>

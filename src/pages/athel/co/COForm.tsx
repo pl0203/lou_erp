@@ -1,3 +1,4 @@
+import { LoadingState } from '../../../components/ui/LoadingState'
 import { Field } from '../../../components/ui/Field';
 import { PageHeader } from '../../../components/ui/PageHeader';
 import { FormActions } from '../../../components/ui/FormActions';
@@ -388,7 +389,7 @@ function COFormEditor({ mode, id, actor }: {
     const disabled = pending || unresolved || !ready;
     const visible = lines.slice((page - 1) * 100, page * 100);
     if (editing && !initialized)
-        return <div className="max-w-4xl mx-auto space-y-4">{unsaved.dialog}{header.isError || complete.isError ? <COFailure error={header.error ?? complete.error} retry={refreshing ? undefined : reload}/> : <p role="status">Memuat seluruh barang CO…</p>}</div>;
+        return <div className="max-w-4xl mx-auto space-y-4">{unsaved.dialog}{header.isError || complete.isError ? <COFailure error={header.error ?? complete.error} retry={refreshing ? undefined : reload}/> : <LoadingState title="Memuat seluruh barang CO…" shape="form" />}</div>;
     return <div className="max-w-4xl mx-auto space-y-6">{unsaved.dialog}<PageHeader title={editing ? `Ubah ${number}` : 'CO Baru'} actions={<ActionLink variant="quiet" size="compact" to={editing ? `/athel/co/${id}` : '/athel/co'}>Kembali</ActionLink>}/>
     {(header.isError || complete.isError || editing && (co?.co_version !== initialVersion.current || co?.customer_version !== initialCustomerVersion.current)) && <COFailure error={header.error ?? complete.error ?? new Error('CO atau sumber pelanggan berubah. Periksa isian dan muat ulang sebelum menyimpan.')} retry={refreshing ? undefined : reload}/>} {(customerRead.isError || catalog.isError || customerOptions.isError || productOptions.isError || stock.isError) && <COFailure error={customerRead.error ?? catalog.error ?? customerOptions.error ?? productOptions.error ?? stock.error} retry={refreshing ? undefined : () => { void customerRead.refetch(); void catalog.refetch(); void customerOptions.refetch(); void productOptions.refetch(); void stock.refetch(); }}/>}
     <COCard title="Detail Pesanan">

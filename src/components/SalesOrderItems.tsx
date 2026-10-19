@@ -1,3 +1,4 @@
+import { LoadingState } from './ui/LoadingState'
 import { Button } from './ui/Button'
 import { useQuery } from '@tanstack/react-query'
 import { fetchSalesOrderLines } from '../lib/reads/detailReads'
@@ -6,7 +7,7 @@ import { fetchSalesOrderLines } from '../lib/reads/detailReads'
 export default function SalesOrderItems({ orderId }: { orderId: string }) {
   const { data, isPending, isError, refetch } = useQuery({ queryKey: ['sales_order_lines', orderId], queryFn: ({ signal }) => fetchSalesOrderLines(orderId, signal) })
   if (isError) return <div role="alert" className="py-3 text-sm text-red-600">Barang pesanan belum dapat dimuat. <Button size="compact" variant="secondary" onClick={() => refetch()} >Coba lagi</Button></div>
-  if (isPending || !data) return <p role="status" className="py-3 text-sm text-brand-secondary">Memuat semua barang pesanan...</p>
+  if (isPending || !data) return <LoadingState title="Memuat semua barang pesanan..." shape="compact" className="py-3 text-sm text-brand-secondary" />
   return <div className="overflow-x-auto" role="region" aria-label="Barang pesanan sales" tabIndex={0}><table className="w-full text-sm">
     <thead><tr className="text-brand-secondary"><th className="py-2 text-left font-medium">Produk</th><th className="py-2 text-left font-medium hidden sm:table-cell">SKU</th><th className="py-2 text-right font-medium">Qty</th><th className="py-2 text-right font-medium">Harga Satuan</th><th className="py-2 text-right font-medium">Total</th></tr></thead>
     <tbody>{data.map(item => <tr key={item.id} className="border-t border-gray-50">

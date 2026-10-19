@@ -1,3 +1,4 @@
+import { LoadingState } from '../ui/LoadingState'
 import { useEffect, useId, useRef, useState } from 'react';
 import { downloadEvidence, fetchEvidence, fetchEvidenceSelection, prepareEvidenceFile, uploadEvidence, useEvidenceSender } from '../../lib/co/evidence';
 import type { EvidenceRecord, EvidenceReceipt, EvidenceRecovery } from '../../lib/co/evidence';
@@ -49,7 +50,7 @@ export function CORevisionAttachment({ customerId, revisionId, onAuthorityFailur
         finally { lock.current = false; if (live()) setBusy(false); }
     }
     if (!actor.enabled) return null;
-    return <Section title="Lampiran revisi (opsional)" className="text-sm"><div className="min-w-0 space-y-2">{error ? <COFailure error={error} retry={() => setRetry(n => n + 1)}/> : loading ? <p role="status">Memuat lampiran…</p> : record ? <Button type="button" variant="quiet" size="compact" disabled={busy} onClick={() => void download()}>Unduh {record.filename}</Button> : <p>Tidak ada lampiran untuk revisi ini.</p>}</div></Section>;
+    return <Section title="Lampiran revisi (opsional)" className="text-sm"><div className="min-w-0 space-y-2">{error ? <COFailure error={error} retry={() => setRetry(n => n + 1)}/> : loading ? <LoadingState title="Memuat lampiran…" shape="compact" /> : record ? <Button type="button" variant="quiet" size="compact" disabled={busy} onClick={() => void download()}>Unduh {record.filename}</Button> : <p>Tidak ada lampiran untuk revisi ini.</p>}</div></Section>;
 }
 
 type EvidenceResult =
@@ -218,7 +219,7 @@ export default function COEvidenceAttachment({ work, blocked = false, sourceFing
         {recovery?.status==='committed'&&!result&&<><p>Hasil lampiran ditemukan. Periksa sebelum melanjutkan.</p><Button type="button" variant="quiet" size="compact" disabled={busy} onClick={()=>void run(async live=>{const value: EvidenceResult={kind:'command',receipt:recovery.receipt};setResult(value);await importResult(value,live);},true)}>Buka hasil lampiran tersimpan</Button><Button type="button" variant="quiet" size="compact" disabled={busy} onClick={()=>setRecovery(null)}>Pertahankan isian lampiran</Button></>}
         {recovery?.status==='abandoned'&&<p>Permintaan sebelumnya tidak tersimpan. Pilih kembali untuk melanjutkan.</p>}
         {result&&<><Notice tone="warning" title="Lampiran sudah tersimpan; hasil lengkap belum diimpor. Isian laporan tetap dipertahankan."/><Button type="button" variant="quiet" size="compact" disabled={busy||work.pending} onClick={()=>void run(live=>importResult(result,live),true)}>Coba buka hasil lampiran</Button>{confirmDiscard&&<Button type="button" variant="quiet" size="compact" disabled={busy||blocked||work.pending} onClick={()=>void run(live=>resolveConflict(result,live),true)}>Selesaikan konflik lampiran</Button>}</>}
-        {busy&&<p role="status">Memeriksa lampiran…</p>}{error&&<COFailure error={error} retry={()=>setRetry(n=>n+1)}/>}
+        {busy&&<LoadingState title="Memeriksa lampiran…" shape="compact" />}{error&&<COFailure error={error} retry={()=>setRetry(n=>n+1)}/>}
         </div>
     </Section>;
 }

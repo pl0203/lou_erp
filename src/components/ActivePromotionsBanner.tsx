@@ -1,3 +1,4 @@
+import { LoadingState } from './ui/LoadingState'
 import { Button } from './ui/Button'
 import { EmptyState, Notice, StatusBadge } from './ui/Feedback'
 import { RecordList } from './ui/RecordList'
@@ -14,7 +15,7 @@ export default function ActivePromotionsBanner() {
   })
   if (!actorKey) return null
   if (promotions.isError) return <Notice tone="error" title="Promosi belum dapat dimuat." actions={<Button size="compact" variant="secondary" onClick={() => void promotions.refetch()}>Coba lagi</Button>} />
-  if (promotions.isPending) return <Notice tone="info" title="Memuat promosi…" />
+  if (promotions.isPending) return <LoadingState title="Memuat promosi…" shape="list" />
   const visible = (promotions.data ?? []).filter(isCurrentlyActive)
   if (!visible.length) return <div>{promotions.isFetching && <p role="status" className="text-sm text-brand-secondary">Memperbarui promosi…</p>}<EmptyState title="Belum ada promosi produk aktif." /></div>
   return <section aria-label="Promosi produk" className="rounded-xl border border-brand-accent bg-brand-tint p-4">

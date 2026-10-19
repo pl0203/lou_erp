@@ -1,3 +1,4 @@
+import { LoadingState } from '../../../components/ui/LoadingState'
 import { Notice } from '../../../components/ui/Feedback'
 import { Button } from '../../../components/ui/Button'
 import { Field } from '../../../components/ui/Field'
@@ -33,7 +34,7 @@ export default function LeavePeopleSettings({actorId,member,approvers,calendars,
     else{next.approver=drafts.approver;next.dates=drafts.dates}
    }
    setBaselines(next);setSaved(true);onSaved?.({hasUnsavedChanges:hasUnsaved(next)})}catch{setError('Pengaturan belum dapat disimpan. Isian tetap ada. Pulihkan hasil bila status pengiriman belum pasti.')}finally{submitting.current=false;setBusy(false)}}
- if(!authorityReady)return <p role="status" className="ui-notice ui-notice--info">Memeriksa akses pengaturan anggota...</p>
+ if(!authorityReady)return <LoadingState title="Memeriksa akses pengaturan anggota..." shape="compact" className="ui-notice ui-notice--info" />
  return <section className="ui-section space-y-4" aria-label="Pengaturan anggota">
   <h2 className="font-semibold">{member.name}</h2><LeaveSetupImpacts impacts={impacts}/>
   {own&&<p>Administrator lain harus mengatur keanggotaan dan penugasan Anda.</p>}

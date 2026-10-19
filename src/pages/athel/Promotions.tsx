@@ -1,3 +1,4 @@
+import { LoadingState } from '../../components/ui/LoadingState'
 import { useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import AthelNav from '../../components/AthelNav'
@@ -102,7 +103,7 @@ export default function Promotions() {
       ? Object.fromEntries(PRICE_TIERS.map(tier => [tier, source[tier] == null ? '' : String(Math.round(source[tier]! * (1 - percentage / 100)))])) as Form['prices'] : form.prices
     setForm({ ...form, discount: value, prices: discounted })
   }
-  if (!actorKey) return <MainContent><Notice tone={loading ? 'info' : 'error'} title={loading ? 'Memuat identitas…' : 'Administrasi promosi hanya tersedia untuk Procurement Admin dan executive aktif.'} className="m-8" /></MainContent>
+  if (!actorKey) return <MainContent>{loading ? <LoadingState title="Memuat identitas…" className="m-8" /> : <Notice tone="error" title="Administrasi promosi hanya tersedia untuk Procurement Admin dan executive aktif." className="m-8" />}</MainContent>
   return <div className="min-h-screen bg-brand-canvas">
     <AthelNav />
     <MainContent>
@@ -111,7 +112,7 @@ export default function Promotions() {
       <PageHeader className="border-b border-brand-divider bg-white px-4 py-5 md:px-8" title="Promosi" description="Pengadaan · Promosi produk dan stok tersedia" actions={<Button disabled={blocked || !!form || !!stockTarget} onClick={() => { setForm(empty()); setEditing(null); mutation.reset() }}>+ Tambah Promosi</Button>} />
       <div className="mx-auto max-w-6xl space-y-5 px-4 py-6 md:px-8">
         {promotions.isError && <Notice tone="error" title="Promosi belum dapat dimuat." actions={<Button variant="secondary" onClick={() => { void promotions.refetch() }}>Coba lagi</Button>} />}
-        {!promotions.isError && !promotions.data && <Notice tone="info" title={promotions.fetchStatus === 'paused' ? 'Memuat promosi tertunda. Menunggu koneksi…' : 'Memuat promosi…'} />}
+        {!promotions.isError && !promotions.data && <LoadingState title={promotions.fetchStatus === 'paused' ? 'Memuat promosi tertunda. Menunggu koneksi…' : 'Memuat promosi…'} shape="list" />}
         {!promotions.isError && promotions.data && (promotions.isFetching || promotions.fetchStatus === 'paused') && <Notice tone="info" title={promotions.fetchStatus === 'paused' ? 'Pembaruan promosi tertunda. Menunggu koneksi; hasil terakhir tetap ditampilkan.' : 'Memperbarui promosi… Menampilkan hasil terakhir sampai selesai.'} />}
         {!promotions.isError && promotions.data && <>
           {!promotions.data.length && <EmptyState title="Belum ada promosi." />}
@@ -130,7 +131,7 @@ export default function Promotions() {
         </>}
         {form && <Section aria-label={editing ? 'Ubah promosi' : 'Tambah promosi'} title={editing ? `Ubah ${editing.product_name}` : 'Tambah Promosi Produk'} className="border-brand-accent">
           {products.isError && <Notice tone="error" title="Daftar produk belum dapat dimuat." actions={<Button variant="secondary" onClick={() => { void products.refetch() }}>Coba lagi</Button>} />}
-          {!products.isError && !products.data && <Notice tone="info" title={products.fetchStatus === 'paused' ? 'Daftar produk tertunda. Menunggu koneksi…' : 'Memuat daftar produk…'} />}
+          {!products.isError && !products.data && <LoadingState title={products.fetchStatus === 'paused' ? 'Daftar produk tertunda. Menunggu koneksi…' : 'Memuat daftar produk…'} shape="compact" />}
           <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field id="promotion-product" label="Produk">{control => <select {...control} disabled={!!editing || blocked || products.isFetching || products.isError || !products.data} value={form.product_id} onChange={event => pickProduct(event.target.value)}><option value="">Pilih produk…</option>{products.data?.map(product => <option key={product.id} value={product.id}>{product.name} · {product.sku}</option>)}</select>}</Field>
             {!editing && <Field id="promotion-opening-stock" label="Stok awal">{control => <input {...control} type="number" min={0} step={1} inputMode="numeric" value={form.opening_quantity} disabled={blocked} onChange={event => setForm({ ...form, opening_quantity: event.target.value })} />}</Field>}
@@ -148,7 +149,7 @@ export default function Promotions() {
         </Section>}
         {versionReview && <Section aria-label="Periksa promosi terbaru" title={`Periksa promosi terbaru · ${versionReview.base.product_name}`} className="border-brand-accent bg-brand-tint">
           <p className="text-base">Isian harga, file, jumlah penyesuaian, dan alasan Anda tetap tersimpan. Periksa fakta saat ini sebelum menggunakan versi baru.</p>
-          {versionReview.status === 'loading' && <Notice tone="info" title="Memuat promosi terbaru…" className="mt-2" />}
+          {versionReview.status === 'loading' && <LoadingState title="Memuat promosi terbaru…" className="mt-2" shape="compact" />}
           {versionReview.message && <Notice tone="error" title={versionReview.message} className="mt-2" />}
           {latestReview && <div className="mt-3 space-y-2 text-base">
             <p>Versi promosi saat ini: {latestReview.stock_version}</p><p>Stok saat ini: {latestReview.remaining_quantity}</p><p>Status saat ini: {promotionStatus(latestReview)}</p>

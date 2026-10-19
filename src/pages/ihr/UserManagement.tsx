@@ -1,3 +1,4 @@
+import { LoadingState } from '../../components/ui/LoadingState'
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
@@ -357,9 +358,9 @@ export default function UserManagement() {
           <Notice tone="success" title={feedback} aria-label="User administration result" />
         </div>}
         {directoryError && <Notice tone="error" title={directoryError} />}
-        {!hasUsers && isPending && <Notice tone="info" title={waitingForConnection ? 'Waiting for connection' : 'Loading users...'}>
+        {!hasUsers && isPending && <LoadingState title={waitingForConnection ? 'Waiting for connection' : 'Loading users...'} shape="list">
           {waitingForConnection && 'The user list will load when the connection returns.'}
-        </Notice>}
+        </LoadingState>}
         {usersFailed && <Notice tone="error" title="Unable to load users. Check the connection before creating or editing accounts."
           actions={<Button size="compact" variant="secondary" onClick={() => void refetch()}>Retry</Button>} />}
         <div ref={directoryFocus} tabIndex={-1} aria-label="User directory" className="min-w-0">

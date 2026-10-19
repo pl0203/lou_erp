@@ -5,9 +5,9 @@
   "files": [
     {
       "path": "src/pages/athel/CustomerList.tsx",
-      "sha": "209804cc13cec74f1ab399112ea7e8533c750020",
-      "sha256": "fe06e3f17df625a377e17d0d1cae41b5c1af94f2a16169809719906e733eb3b3",
-      "bytes": 20791
+      "sha": "458bbced834ddc09508d0c05ce504ff86974f14f",
+      "sha256": "663f2eeb05749410b8f02838b81d63050d43bdc813172324f708598ba6e90ea3",
+      "bytes": 20862
     },
     {
       "path": "src/lib/catalogue/contracts.ts",
@@ -125,9 +125,9 @@
     },
     {
       "path": "src/styles/ui.css",
-      "sha": "7a7ff46fa514ed5082bb7550dbe08fccabbc1435",
-      "sha256": "b962c95004420505eba40a96b18ddb2935ffe2023059de3ee303397c6ddebb88",
-      "bytes": 11863
+      "sha": "370204d9595c0057c51e6b3811bd6e6a91d0becc",
+      "sha256": "daf141feb7a632bf1789b599bdd5c4fe6193f932804b804273077bd88907347c",
+      "bytes": 14873
     },
     {
       "path": "src/components/CustomerPricingHelp.tsx",
@@ -218,6 +218,12 @@
       "sha": "82b042caaaf271beb9e3cbd95ba4741a3d5b8926",
       "sha256": "9529eb888668b6a3c6dd75b6341a2fc5263fb6c9e788822e6117c29dd9e8b115",
       "bytes": 183188
+    },
+    {
+      "path": "src/components/ui/LoadingState.tsx",
+      "sha": "70f6d0db97342f8be1c2cb16ece44aaf8d29bf9e",
+      "sha256": "5d10759f258c69be162a5bafabe940d4893d44db14384c716175255ea56d5d7b",
+      "bytes": 1621
     }
   ]
 }

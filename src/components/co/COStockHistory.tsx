@@ -1,3 +1,4 @@
+import { LoadingState } from '../ui/LoadingState'
 import { useEffect, useRef, useState } from 'react';
 import { ActionLink } from '../ui/ActionLink';
 import { fetchCOStockMovements } from '../../lib/co/rpc';
@@ -33,7 +34,7 @@ export default function COStockHistory({ customerId, stockKeyId, asOf, onAuthori
     return <COCard title="Riwayat stok pelanggan/SKU">
         <p className="text-[13px] break-all">Pelanggan {customerId} · kunci SKU {stockKeyId} · {asOf ?? 'Current'}</p>
         <p className="text-sm my-3">Riwayat efektif yang telah dinyatakan ulang. Penjualan dicatat pada batas cakupan laporan, bukan tanggal penjualan harian.</p>
-        {read.isError ? <COFailure error={read.error} retry={reload}/> : !read.data ? <p role="status">Memuat riwayat stok…</p> : <>
+        {read.isError ? <COFailure error={read.error} retry={reload}/> : !read.data ? <LoadingState title="Memuat riwayat stok…" shape="list" /> : <>
             <RecordList label="Pergerakan stok tercatat">{read.data.rows.map(row => <li key={row.id} className="border-b border-brand-divider py-3 text-sm break-words">
                 <p>{row.effective_date} · {row.kind === 'sold' ? 'Penjualan pada checkpoint laporan' : row.kind === 'return' ? 'Retur belum terjual' : 'Pengiriman'} · {row.quantity_delta}</p>
                 <ActionLink variant="quiet" size="compact" to={`/athel/co/${row.co_id}`}>Bukti CO sumber</ActionLink>

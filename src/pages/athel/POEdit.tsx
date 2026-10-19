@@ -1,3 +1,4 @@
+import { LoadingState } from '../../components/ui/LoadingState'
 import { Button } from '../../components/ui/Button'
 import { ActionLink } from '../../components/ui/ActionLink'
 import { MainContent } from '../../components/ui/MainContent'
@@ -347,7 +348,7 @@ export default function POEdit() {
         {unsaved.dialog}
         <AthelNav /><MainContent>
         {recovery}
-        <div className="p-8 text-brand-secondary text-sm text-center">Memuat...</div>
+        <LoadingState title="Memuat..." shape="form" className="p-8 text-brand-secondary text-sm text-center" />
         </MainContent>
       </div>
     )

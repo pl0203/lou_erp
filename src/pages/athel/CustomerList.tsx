@@ -1,3 +1,4 @@
+import { LoadingState } from '../../components/ui/LoadingState'
 import { sendCatalogueForm } from '../../lib/catalogue/formCommands'
 import type { CatalogueTransactionSender } from '../../lib/catalogue/transactions'
 import { useCataloguePage } from '../../lib/catalogue/useCataloguePage'
@@ -236,7 +237,7 @@ export default function CustomerList() {
           {!showForm && catalogue.unresolved && !catalogue.busy && catalogue.owner && catalogue.sender && <CatalogueRecovery owner={catalogue.owner} sender={catalogue.sender} available={catalogue.recoveryAvailable} acceptCanonical={catalogue.acceptCanonical} acceptAbandoned={catalogue.acceptAbandoned} onConfirmed={catalogue.onConfirmed} onAbandoned={catalogue.onAbandoned} />}
 
           {readError && <ReadFailure onRetry={() => { void refetch() }} />}
-          {!readError && !data && <Notice tone="info" title={fetchStatus === 'paused' ? 'Memuat data pelanggan tertunda. Menunggu koneksi…' : 'Memuat data pelanggan...'} />}
+          {!readError && !data && <LoadingState title={fetchStatus === 'paused' ? 'Memuat data pelanggan tertunda. Menunggu koneksi…' : 'Memuat data pelanggan...'} shape="list" />}
           {!readError && data && fetchStatus === 'paused' && <Notice tone="info" title="Pembaruan data pelanggan tertunda. Menunggu koneksi; hasil terakhir tetap ditampilkan." />}
           {!readError && data && <>
             <div role="region" aria-label="Daftar pelanggan" tabIndex={0} className="hidden md:block bg-white rounded-[14px] border border-brand-divider overflow-x-auto">

@@ -1,3 +1,4 @@
+import { LoadingState } from '../ui/LoadingState'
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '../ui/Button'
 import { formatMoney } from '../../lib/reads/money'
@@ -153,7 +154,7 @@ export function TargetWizard({ actor, transport = unavailableTargetTransport, te
     {notice && <p role="status" className="break-words rounded-lg bg-brand-tint p-4 text-brand-primary">{notice}</p>}
     {plan?.returnReason && <section className="rounded-xl border border-amber-300 bg-amber-50 p-4"><h2 className="font-semibold text-amber-900">Catatan pengembalian</h2><p className="mt-2 break-words text-amber-900">{plan.returnReason}</p></section>}
     {frozen && <div className="space-y-3 rounded-xl border border-amber-300 bg-amber-50 p-4" role="status"><p>Permintaan belum pasti. Jangan buat pengajuan baru atau memuat ulang halaman. Isian dipertahankan dan dikunci agar tidak terkirim dua kali.</p>{recovery.snapshot.phase === 'uncertain' && <Button onClick={() => void recover()} pending={pending}>Periksa hasil</Button>}{recovery.snapshot.phase === 'retryable' && <Button onClick={() => void recover(true)} pending={pending}>Kirim ulang permintaan yang sama</Button>}</div>}
-    {pending && !frozen && <p role="status">Memuat…</p>}
+    {pending && !frozen && <LoadingState title="Memuat…" shape="compact" />}
     {pendingRoster && plan && <section className="space-y-3 rounded-xl border border-amber-300 bg-amber-50 p-4"><h2 className="font-semibold">Tim atau portofolio berubah</h2><p>Rencana tersimpan tetap utuh. {pendingRoster.people.filter(person => !plan.lines.some(line => line.personId === person.personId)).length} anggota baru perlu diisi manual; {new Set(plan.lines.filter(line => !pendingRoster.people.some(person => person.personId === line.personId)).map(line => line.personId)).size} anggota keluar dari usulan. Nilai anggota yang tetap ada dipertahankan, bukan dipindahkan ke orang lain.</p><Button disabled={pending || frozen} onClick={() => { update({ baseline: pendingRoster, lines: restoreTargetLines(plan.lines, pendingRoster.people, true), step: 2, dirty: true }); setPendingRoster(null); setValidated(false) }}>Tinjau perubahan tim</Button></section>}
     {plan && editable && !draft.baseline ? <div className="space-y-4 rounded-xl border border-brand-divider bg-white p-5"><h2>Draf tersimpan · versi {plan.version}</h2><p>Pulihkan draf untuk melanjutkan. Angka tersimpan tidak diganti dengan rekomendasi baru.</p><Button onClick={() => void restorePlan()} pending={pending}>Pulihkan draf tersimpan</Button></div>
       : editable && draft.step === 1 ? <div className="space-y-5 rounded-xl border border-brand-divider bg-white p-4 sm:p-6">

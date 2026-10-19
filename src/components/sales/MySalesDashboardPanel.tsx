@@ -1,3 +1,4 @@
+import { LoadingState } from '../ui/LoadingState'
 import { useState, type ReactNode } from 'react'
 import { Button } from '../ui/Button'
 import { Notice } from '../ui/Feedback'
@@ -14,7 +15,7 @@ function DashboardReadContent({ scope, enabled, transport }: { scope: DashboardS
   if (!read.allowed) return frame(<Notice tone="error" title="Ringkasan tidak tersedia untuk cakupan akun ini." />)
   if (!read.valid) return frame(<Notice tone="error" title="Filter ringkasan tidak valid." actions={<Button variant="secondary" size="compact" onClick={read.onReset}>Atur ulang filter</Button>} />)
   if (read.error) return frame(<Notice tone="error" title="Ringkasan baru belum tersedia." actions={<Button variant="secondary" size="compact" onClick={read.onRefresh}>Coba lagi</Button>}>Layanan atau datanya belum siap. Data lama tidak diubah menjadi KPI atau target baru.</Notice>)
-  if (!read.data) return frame(<Notice tone="info" title="Memuat ringkasan...">Angka hanya ditampilkan setelah cakupan dan kelengkapan respons diperiksa.</Notice>)
+  if (!read.data) return frame(<LoadingState title="Memuat ringkasan..." shape="dashboard">Angka hanya ditampilkan setelah cakupan dan kelengkapan respons diperiksa.</LoadingState>)
   return <LoadedDashboard key={`${read.identity}:${read.scope}:${read.month}:${read.search}:${read.data.page}`} read={{ ...read, data: read.data }} />
 }
 function LoadedDashboard({ read }: { read: ReturnType<typeof useDashboardRead> & { data: NonNullable<ReturnType<typeof useDashboardRead>['data']> } }) {

@@ -1,3 +1,4 @@
+import { LoadingState } from '../../components/ui/LoadingState'
 import { Button } from '../../components/ui/Button'
 import { ActionLink } from '../../components/ui/ActionLink'
 import StorePOContext from '../../components/StorePOContext'
@@ -216,7 +217,7 @@ function VisitOrderHistory({ customerId, visitId }: { customerId: string; visitI
       </div>
       <div className="flex justify-between text-sm"><Button size="compact" variant="quiet" disabled={orders.isPending} aria-expanded={selectedId === order.id} onClick={() => setSelectedId(selectedId === order.id ? null : order.id)}>{selectedId === order.id ? 'Tutup barang' : 'Lihat barang'}</Button><span>Rp {formatMoney(order.total_value, 'full')}</span></div>
       {selectedId === order.id && (lines.isError ? <p role="alert" className="text-sm text-red-600">Barang pesanan gagal dimuat. <Button size="compact" variant="secondary" onClick={() => lines.refetch()}>Coba lagi</Button></p>
-        : lines.isPending ? <p role="status">Memuat barang…</p> : <table className="w-full mt-3 text-sm"><thead><tr><th className="text-left">Barang</th><th>Jml</th><th>Harga</th><th>Total</th></tr></thead><tbody>
+        : lines.isPending ? <LoadingState title="Memuat barang…" shape="compact" /> : <table className="w-full mt-3 text-sm"><thead><tr><th className="text-left">Barang</th><th>Jml</th><th>Harga</th><th>Total</th></tr></thead><tbody>
           {lines.data?.map(item => <tr key={item.id}><td>{item.product_name}</td><td>{item.quantity}</td><td>Rp {item.unit_price.toLocaleString('id-ID')}</td><td>{formatLineAmount(item.quantity, item.unit_price)}</td></tr>)}
         </tbody></table>)}
     </div>)}
@@ -244,7 +245,7 @@ function VisitPageContent(){
  const handleCheckIn=()=>{if(!photoBlob||!photoBinding||busy.current)return;busy.current=true;checkInMutation.mutate({schedule_id:scheduleId!,...photoBinding,photo_blob:photoBlob,lat:location?.lat??null,lng:location?.lng??null,notes})}
  const getLocation=()=>{setLocationStatus('loading');if(!navigator.geolocation){setLocationStatus('unavailable');return}navigator.geolocation.getCurrentPosition(pos=>{setLocation({lat:pos.coords.latitude,lng:pos.coords.longitude});setLocationStatus('granted')},()=>setLocationStatus('unavailable'),{timeout:10000,enableHighAccuracy:true})}
  const recovery=<TransactionRecovery send={sendVisit} onCommitted={saved}/>
- if(scheduleLoading||visitLoading)return <div><GirardNav/>{recovery}<MainContent><p role="status" className="p-8">Memuat...</p></MainContent></div>
+ if(scheduleLoading||visitLoading)return <div><GirardNav/>{recovery}<MainContent><LoadingState title="Memuat..." shape="detail" className="p-8" /></MainContent></div>
  if(!schedule||!schedule.customers)return <div><GirardNav/>{recovery}<MainContent><p role="alert" className="p-8 text-red-700">{scheduleError ? scheduleError instanceof ScheduleCustomerUnavailableError ? scheduleError.message:'Gagal memuat jadwal. Silakan muat ulang halaman untuk mencoba lagi.' : !schedule?'Jadwal tidak ditemukan atau Anda tidak memiliki akses.':'Pelanggan untuk jadwal ini tidak tersedia. Hubungi administrator.'}</p></MainContent></div>
  const customer=schedule.customers
  const canCheckIn=!visit && !visitError && schedule.status==='pending' && schedule.sales_person_id===profile?.id

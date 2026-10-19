@@ -1,3 +1,4 @@
+import { LoadingState } from './ui/LoadingState'
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
 import { roleHome } from './navigationModules'
@@ -13,7 +14,7 @@ export default function ProtectedRoute({ children, allowedRoles }: Props) {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-400 text-sm">Loading...</p>
+        <LoadingState title="Loading..." shape="compact" className="text-brand-secondary text-sm" />
       </div>
     )
   }

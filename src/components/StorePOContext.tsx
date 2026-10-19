@@ -1,3 +1,4 @@
+import { LoadingState } from './ui/LoadingState'
 import { Button } from './ui/Button'
 import { Section } from './ui/Section'
 import { FormActions } from './ui/FormActions'
@@ -30,7 +31,7 @@ function StorePOContextPage({customerId}:{customerId:string}) {
  // Background revalidation also conceals prior results until current authority is verified.
  return <Section title="Pesanan pembelian (PO) toko" aria-label="Riwayat PO toko" className="space-y-3">
   {query.isError ? <Notice tone="error" title="Riwayat PO belum tersedia." actions={<Button size="compact" variant="secondary" onClick={()=>query.refetch()}>Coba lagi</Button>} />
-   : query.isFetching || !query.data || responseWindow!==serverWindow ? <Notice tone="info" title="Memuat riwayat PO..." /> : <>
+   : query.isFetching || !query.data || responseWindow!==serverWindow ? <LoadingState title="Memuat riwayat PO..." shape="list" /> : <>
    <p>PO terakhir (seluruh riwayat): {query.data.latest_po_date ? formatDisplayDate(query.data.latest_po_date) : 'Belum ada PO'}</p>
    <p className="text-sm text-brand-secondary">Rentang status: {formatDisplayDate(query.data.range_from)} – {formatDisplayDate(query.data.range_through)}</p>
    {query.data.items.length===0 ? <EmptyState title="Tidak ada PO pada rentang ini." /> : <ul className="divide-y">{query.data.items.map(item=><li key={item.id} className="py-2 flex flex-wrap justify-between gap-2"><span>{item.po_number} · {formatDisplayDate(item.order_date)}</span><StatusBadge tone={item.status==='complete'?'success':item.status==='cancelled'?'error':item.status==='in_progress'?'warning':'neutral'}>{PO_STATUS_LABELS[item.status] ?? item.status}</StatusBadge></li>)}</ul>}

@@ -152,6 +152,7 @@ const modalCases = [
   { kind: 'detail', open: 'Batalkan PO', confirm: 'Ya, batalkan', operation: 'cancel_po', field: 'Alasan pembatalan', value: 'Retained reason' },
   { kind: 'sales', open: 'Tolak', confirm: 'Tolak Pesanan', operation: 'reject_sales', field: 'Alasan penolakan (wajib)', value: 'Retained reason' },
   { kind: 'detail', open: 'Ubah tanggal SJ kembali', confirm: 'Simpan tanggal kembali', operation: 'edit_sj_returned_date', field: 'Tanggal SJ kembali', value: '2026-10-07' },
+  { kind: 'detail', open: 'Ubah tanggal SJ diterima toko', confirm: 'Simpan tanggal diterima', operation: 'edit_sj_received_date', field: 'Tanggal SJ Diterima Toko', value: '2026-10-07' },
 ] as const
 async function openCase(item: typeof modalCases[number]) {
   await mount(item.kind); const trigger = screen.getByRole('button', { name: item.open }); trigger.focus(); fireEvent.click(trigger)

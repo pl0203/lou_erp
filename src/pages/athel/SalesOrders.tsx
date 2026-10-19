@@ -1,3 +1,4 @@
+import { LoadingState } from '../../components/ui/LoadingState'
 import { Notice } from '../../components/ui/Feedback'
 import { Dialog } from '../../components/ui/Dialog'
 import { Button } from '../../components/ui/Button'
@@ -164,7 +165,7 @@ export default function SalesOrders() {
       <div className="px-4 md:px-8 py-6 space-y-4">
         {!isError && data && <PaginationControls page={data.page} total={data.total} pageSize={data.page_size} pending={isPending} onPageChange={setPage} />}
         {isLoading && (
-          <div className="text-center text-brand-secondary text-sm py-24">Memuat PO...</div>
+          <LoadingState title="Memuat PO..." shape="list" className="text-center text-brand-secondary text-sm py-24" />
         )}
 
         {isError && <div role="alert" className="text-center text-red-700 text-sm py-8">
@@ -282,7 +283,7 @@ export default function SalesOrders() {
 
               {/* Order summary */}
               {approvalLines.isError && <p role="alert" className="text-sm text-red-600">Barang pesanan belum dapat dimuat. <Button size="compact" variant="secondary" type="button" onClick={() => approvalLines.refetch()} >Coba lagi</Button></p>}
-              {(approvalLines.isPending || approvalLines.isFetching) && <p role="status" className="text-sm text-brand-secondary">Memuat semua barang pesanan...</p>}
+              {(approvalLines.isPending || approvalLines.isFetching) && <LoadingState title="Memuat semua barang pesanan..." shape="list" className="text-sm text-brand-secondary" />}
               <div className="bg-gray-50 rounded-lg p-3 space-y-1">
                 <p className="text-[13px] text-brand-secondary font-medium mb-2">Ringkasan PO</p>
                 {(approvalLines.data ?? []).map(item => (

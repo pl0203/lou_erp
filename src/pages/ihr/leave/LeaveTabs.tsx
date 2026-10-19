@@ -1,3 +1,4 @@
+import { LoadingState } from '../../../components/ui/LoadingState'
 import { EmptyState } from '../../../components/ui/Feedback'
 import { Button } from '../../../components/ui/Button'
 import { useContext, useEffect, useRef, useState } from 'react'
@@ -54,7 +55,7 @@ function Tabs({actorId,context,readState,onDirtyChange}:{actorId:string;context:
     setDirty(false);setSelected(id)
   }}
   const accessRetry=!personal&&!approver&&readState==='ready'&&!access.available&&!access.isFetching?<div role="alert" className="ui-notice ui-notice--error"><p>Pilihan akses kalender belum dapat dikonfirmasi.</p><Button size="compact" type="button" onClick={()=>void access.refetch()} variant="secondary">Muat ulang pilihan kalender</Button></div>:null
-  if(!tabs.length)return accessRetry??(readState==='ready'&&access.available?<EmptyState title="Belum ada akses cuti yang diberikan. Hubungi administrator HR."/>:<p role="status" className="ui-notice ui-notice--info">Memeriksa pilihan akses cuti...</p>)
+  if(!tabs.length)return accessRetry??(readState==='ready'&&access.available?<EmptyState title="Belum ada akses cuti yang diberikan. Hubungi administrator HR."/>:<LoadingState title="Memeriksa pilihan akses cuti..." shape="compact" className="ui-notice ui-notice--info" />)
   return <section>
     {accessRetry}
     {/* Own request/history already owns its router guard. The other selected editor

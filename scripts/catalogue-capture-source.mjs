@@ -147,6 +147,7 @@ export const cataloguePublicSourcePaths=[
  'src/components/ui/Button.tsx',
  'src/components/ui/Dialog.tsx',
  'src/components/ui/Feedback.tsx',
+ 'src/components/ui/LoadingState.tsx',
  'package.json',
  'package-lock.json',
  'vitest.config.ts',

@@ -1,3 +1,4 @@
+import { LoadingState } from '../../../components/ui/LoadingState'
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { fetchCOReportsPage, fetchCOReportMonths } from '../../../lib/co/rpc';
@@ -45,7 +46,7 @@ export default function COMonthlyReports() {
         {customers.isError && <COFailure error={customers.error} retry={() => void customers.refetch()}/>}
         {!customer && <p className="text-sm">Pilih satu pelanggan untuk melanjutkan pengisian laporan.</p>}
         {customer && <Section title="Periode laporan pelanggan" aria-label="Periode laporan pelanggan" aria-labelledby={undefined} className="space-y-3">
-            {months.isFetching && <p role="status">Memeriksa periode laporan berikutnya…</p>}
+            {months.isFetching && <LoadingState title="Memeriksa periode laporan berikutnya…" shape="compact" />}
             {months.isError && <COFailure error={months.error} retry={() => void months.refetch()}/>}
             {months.data && !months.isError && <>
                 <p className="text-sm">Rentang sumber pelanggan (semua CO): {formatCOReportMonth(months.data.first_month)} sampai {formatCOReportMonth(months.data.last_month)}. Batas periode mengikuti tanggal UTC server.</p>
@@ -59,7 +60,7 @@ export default function COMonthlyReports() {
                 {!months.isFetching && month && <div><ActionLink variant="quiet" size="compact" to={`/athel/co/reports/${customer}/${month}-01`}>Buka periode pilihan: {formatCOReportMonth(month)}</ActionLink></div>}
             </>}
         </Section>}
-        {reports.isError ? <COFailure error={reports.error} retry={() => void reports.refetch()}/> : !reports.data ? <p role="status">Memuat laporan…</p> : <>
+        {reports.isError ? <COFailure error={reports.error} retry={() => void reports.refetch()}/> : !reports.data ? <LoadingState title="Memuat laporan…" shape="list" /> : <>
             <p className="text-sm text-brand-secondary">Cakupan daftar: {customer ? 'pelanggan dipilih, semua CO' : 'semua pelanggan yang dapat diakses'} · {month ? formatCOReportMonth(month) : 'semua periode tercatat'} · {status === 'all' ? 'semua status' : status === 'posted' ? 'diposting' : 'draft'}. Daftar kosong berarti belum ada laporan sesuai filter, bukan penjualan terverifikasi nol.</p>
             <RecordList label="Laporan penjualan pelanggan">{(reports.data.rows as COReportHeader[]).map(h => <li key={h.id}><Link className="block min-w-0 rounded-[14px] border border-brand-divider bg-brand-surface p-4 text-sm hover:bg-brand-tint focus-visible:outline-2 focus-visible:outline-brand-primary" to={`/athel/co/reports/${h.customer_id}/${h.report_month}`}>
                 <p className="font-medium text-brand-primary underline underline-offset-4 break-words">{h.customer_name} · {formatCOReportMonth(h.report_month)}</p>

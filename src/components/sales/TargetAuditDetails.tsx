@@ -1,3 +1,4 @@
+import { LoadingState } from '../ui/LoadingState'
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '../ui/Button'
 import { formatAuditTimestamp } from '../../lib/displayDate'
@@ -42,7 +43,7 @@ export function TargetAuditDetails({ actor, plan, transport, onAccessDenied }: {
     <summary className="min-h-[var(--ui-control-size)] cursor-pointer py-2 font-semibold text-brand-primary">Riwayat perubahan & persetujuan</summary>
     <div className="mt-3 min-w-0 space-y-4">
       <p className="text-sm text-brand-secondary">Catatan tersimpan untuk rencana ini. Nilai rupiah, alasan, pelaku, dan waktu berasal dari audit server. Perubahan yang belum disimpan tidak masuk riwayat.</p>
-      {loading && <p role="status">Memuat riwayat…</p>}
+      {loading && <LoadingState title="Memuat riwayat…" shape="list" />}
       {error && <div role="alert" className="space-y-2"><p className="break-words text-red-700">{error}</p><Button variant="secondary" onClick={() => setRetry(value => value + 1)}>Coba muat riwayat lagi</Button></div>}
       {truncated && <p role="note" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Menampilkan 100 catatan terbaru untuk rencana ini. Ada catatan lebih lama yang tidak ditampilkan di sini.</p>}
       {events?.length === 0 && <p>Belum ada catatan audit tersimpan.</p>}

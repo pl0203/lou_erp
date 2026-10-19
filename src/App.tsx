@@ -1,7 +1,7 @@
+import { LoadingState } from './components/ui/LoadingState'
 import { Routes, Route, Navigate, matchPath, useLocation } from 'react-router-dom'
 import { useEffect } from 'react'
 import { MainContent } from './components/ui/MainContent'
-import { Notice } from './components/ui/Feedback'
 import { useAuth } from './lib/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import COMonthlyReports from './pages/athel/co/COMonthlyReports'
@@ -94,7 +94,7 @@ export default function App() {
   if (loading) {
     return (
       <MainContent className="min-h-screen flex items-center justify-center px-4">
-        <Notice tone="info" title="Memuat..." />
+        <LoadingState title="Memuat..." shape="form" className="w-full max-w-sm" />
       </MainContent>
     )
   }

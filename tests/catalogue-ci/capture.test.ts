@@ -368,6 +368,7 @@ test('public input list is exact and does not enumerate or read unrelated protec
  'src/components/ui/Button.tsx',
  'src/components/ui/Dialog.tsx',
  'src/components/ui/Feedback.tsx',
+ 'src/components/ui/LoadingState.tsx',
  'package.json',
  'package-lock.json',
  'vitest.config.ts',

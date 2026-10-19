@@ -1,3 +1,4 @@
+import { LoadingState } from '../../../components/ui/LoadingState'
 import { useState } from 'react'
 import { Button } from '../../../components/ui/Button'
 import { EmptyState } from '../../../components/ui/Feedback'
@@ -19,7 +20,7 @@ function Overview({actorId,context,readState='ready'}:Props){
   <h2 className="font-semibold text-brand-primary">Ringkasan Cuti</h2>
   <p>Seluruh anggota cuti karyawan dan manajer yang aktif. Hanya untuk dilihat; keputusan tetap melalui penyetuju yang ditugaskan.</p>
   <p>Alasan pribadi dan saldo cuti tidak ditampilkan.</p>
-  {readState==='pending'||requests.isFetching?<p role="status">Memeriksa akses dan memuat ringkasan...</p>:
+  {readState==='pending'||requests.isFetching?<LoadingState title="Memeriksa akses dan memuat ringkasan..." shape="compact" />:
    readState==='error'||requests.isError||!requests.available?<div role="alert"><p>Ringkasan belum tersedia atau akses berubah.</p><Button type="button" variant="secondary" onClick={()=>void requests.refetch()}>Muat ulang ringkasan</Button></div>:
    requests.data&&<>
     {!requests.data.rows.length&&<EmptyState title="Belum ada permintaan cuti."/>}

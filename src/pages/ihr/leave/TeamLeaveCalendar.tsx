@@ -1,3 +1,4 @@
+import { LoadingState } from '../../../components/ui/LoadingState'
 import { RecordList } from '../../../components/ui/RecordList'
 import { Notice, EmptyState } from '../../../components/ui/Feedback'
 import { Button } from '../../../components/ui/Button'
@@ -50,13 +51,13 @@ function CalendarPanel({actorId,context,readState='ready'}:Props){
   </form>
   {error&&<Notice tone="error" title={<> {error} </>}/>}
   {access.available&&authorized&&access.data?.defaultRange===null&&<p role="status" className="ui-notice ui-notice--info">Zona waktu perusahaan belum dikonfirmasi atau berbeda untuk cakupan ini. Pilih rentang tanggal secara manual; tanggal ditampilkan sesuai permohonan.</p>}
-  {readState==='pending'||access.isFetching?<p role="status" className="ui-notice ui-notice--info">Memeriksa akses kalender...</p>:
+  {readState==='pending'||access.isFetching?<LoadingState title="Memeriksa akses kalender..." shape="compact" className="ui-notice ui-notice--info" />:
    readState==='error'||access.isError?<div role="alert" className="ui-notice ui-notice--error"><p>Akses kalender belum dapat dikonfirmasi.</p><Button size="compact" type="button" onClick={()=>void access.refetch()} variant="secondary">Coba lagi</Button></div>:
    !access.available?<div role="status" className="ui-notice ui-notice--info"><p>Akses kalender belum tersedia.</p><Button size="compact" type="button" onClick={()=>void access.refetch()} variant="secondary">Muat ulang akses kalender</Button></div>:
    !access.data?.calendarAudiences.length?<EmptyState title="Belum ada akses kalender yang diberikan."/>:
    !authorized?<p>Cakupan kalender ini belum tersedia. Pilih cakupan yang diberikan.</p>:
    !range?<p>Pilih rentang tanggal paling lama 93 hari.</p>:
-   calendar.isFetching||calendar.isPending?<p role="status" className="ui-notice ui-notice--info">Memuat kalender...</p>:
+   calendar.isFetching||calendar.isPending?<LoadingState title="Memuat kalender..." shape="list" className="ui-notice ui-notice--info" />:
    calendar.isError?<div role="alert" className="ui-notice ui-notice--error"><p>Kalender belum dapat dimuat.</p><Button size="compact" type="button" onClick={()=>void calendar.refetch()} variant="secondary">Coba lagi</Button></div>:
    calendar.available&&calendar.data?<>
     {!calendar.data.length&&<EmptyState title="Tidak ada cuti disetujui pada rentang ini."/>}

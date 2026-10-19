@@ -89,7 +89,12 @@ test('disabled and pending actions retain readable colors without blanket opacit
     'background-color': 'var(--color-brand-canvas)', 'color': 'var(--color-brand-secondary)', 'border-color': 'var(--color-brand-control-border)',
   })
   expect(rule('.ui-action[aria-busy="true"]')['cursor']).toBe('wait')
-  expect(css).not.toMatch(/opacity:\s*0\.[0-9]+/)
+  // Finite arrival keyframes may fade a newly mounted surface. Disabled/busy
+  // controls themselves must never use blanket opacity to convey their state.
+  const steadyStyles = css.replace(/@keyframes ui-(?:content|dialog|backdrop)-enter\s*\{(?:[^{}]|\{[^{}]*\})*\}/g, '')
+  expect(steadyStyles).not.toMatch(/opacity:\s*0\.[0-9]+/)
+  expect(rule('.ui-action:disabled:not([aria-busy="true"])')['opacity']).toBeUndefined()
+  expect(rule('.ui-action[aria-busy="true"]')['opacity']).toBeUndefined()
   expect(css).not.toContain('!important')
   expect(rule('.ui-action__pending')['border']).toBe('2px solid currentColor')
 })
