@@ -1,3 +1,4 @@
+import { LoadingState } from '../../components/ui/LoadingState'
 import { Button } from '../../components/ui/Button'
 import { ActionLink } from '../../components/ui/ActionLink'
 import { MainContent } from '../../components/ui/MainContent'
@@ -298,24 +299,24 @@ function ManagerScheduleContent() {
         </FilterBar>
         {saved && <Notice tone="success" className="mx-4 md:mx-8 mb-4" title={`Kunjungan tersimpan: ${saved.customer} · ${visitDateLabel(saved.date)}.`} actions={<ActionLink size="compact" variant="quiet" to={`/girard/visit/${saved.id}`}>Lihat kunjungan tersimpan</ActionLink>} />}
         <div className="bg-white border-b border-gray-100 px-4 md:px-8">
-          <div className="flex gap-1 overflow-x-auto">
+          <div className="flex items-start gap-1 overflow-x-auto">
             {weekDates.map((date, i) => {
               const daySchedules = scopedSchedules.filter(schedule => schedule.scheduled_date === date)
               const isSelected = selectedDate === date, d = parseCalendarDate(date)
               return <Button key={date} variant="quiet" aria-pressed={isSelected} onClick={() => setSelectedDate(date)}
-                className={`flex-col whitespace-nowrap min-w-[70px] ${isSelected ? 'border-brand-primary text-brand-primary underline decoration-brand-primary underline-offset-4' : ''}`}>
+                className={`flex-none w-max max-w-none flex-col whitespace-nowrap min-w-[100px] ${isSelected ? 'border-brand-primary text-brand-primary underline decoration-brand-primary underline-offset-4' : ''}`}>
                 <span className="text-[13px] font-medium">{i === 0 ? 'Hari Ini' : i === 1 ? 'Besok' : d.toLocaleDateString('id-ID', { weekday: 'short' })}</span>
                 <span className="text-lg font-semibold">{d.getDate()}</span>
                 <span className="text-[13px] text-brand-secondary">{isLoading ? 'Memuat…' : `${daySchedules.length} kunjungan`}</span>
               </Button>
             })}
-            <Field id="manager-more-dates" label="Tanggal lainnya" className="ml-2">{control => <select {...control} value={weekDates.includes(selectedDate) ? '' : selectedDate} onChange={e => e.target.value && setSelectedDate(e.target.value)}>
-              <option value="">Tanggal lainnya...</option>{dates.slice(7).map(date => <option key={date} value={date}>{parseCalendarDate(date).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' })}</option>)}
-            </select>}</Field>
           </div>
+          <Field id="manager-more-dates" label="Tanggal lainnya" className="w-full sm:w-56 py-3">{control => <select {...control} value={weekDates.includes(selectedDate) ? '' : selectedDate} onChange={e => e.target.value && setSelectedDate(e.target.value)}>
+            <option value="">Tanggal lainnya...</option>{dates.slice(7).map(date => <option key={date} value={date}>{parseCalendarDate(date).toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' })}</option>)}
+          </select>}</Field>
         </div>
         <div className="px-4 md:px-8 py-6">
-          {isLoading && <Notice tone="info" title="Memuat jadwal..." />}
+          {isLoading && <LoadingState title="Memuat jadwal..." shape="list" />}
           {!isLoading && schedules.length === 0 && <EmptyState title={`Tidak ada kunjungan yang dijadwalkan untuk ${visitDateLabel(selectedDate)} pada filter ini.`} actions={<Button variant="secondary" disabled={locked || deleteMutation.isPending} onClick={event => openCreate(event.currentTarget)}>Tambahkan jadwal kunjungan baru +</Button>} />}
           {!isLoading && schedules.length > 0 && <div className="hidden md:block bg-white rounded-xl border border-gray-200 overflow-hidden">
             <table className="w-full text-sm" aria-label="Jadwal kunjungan tim">
@@ -367,3 +368,4 @@ function ManagerScheduleContent() {
     </div>
   )
 }
+

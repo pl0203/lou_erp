@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cacheProbe } from './scalability/cache-probe'
-const state = vi.hoisted(() => ({ checkIn: vi.fn(), imageFailure: false }))
+const state = vi.hoisted(() => ({ checkIn: vi.fn(), imageFailure: false, unresolved: false }))
 vi.mock('react-router-dom', () => ({ Link: ({ to, children, ...props }: any) => <a href={to} {...props}>{children}</a>, useNavigate: () => () => {}, useParams: () => ({ scheduleId: 's' }) }))
 vi.mock('../src/lib/useUnsavedChanges', () => ({ hasOrderItemChanges: () => false, useUnsavedChanges: () => ({ dialog: null, runWithoutPrompt: (action: () => void) => action() }) }))
 vi.mock('../src/components/StorePOContext', () => ({ default: () => null }))
@@ -11,6 +11,7 @@ vi.mock('../src/components/GirardNav', () => ({ default: () => null }))
 vi.mock('../src/lib/AuthContext', () => ({ useAuth: () => ({ profile: { id: 'u' } }) }))
 vi.mock('../src/lib/supabase', () => ({ supabase: {} }))
 vi.mock('../src/lib/visitCheckIn', () => ({ createVisitCheckIn: () => state.checkIn }))
+vi.mock('../src/lib/orderTransactions', async original => ({ ...await original<any>(), useTransactionSender: () => Object.assign(vi.fn(), { hasUnresolved: () => state.unresolved }) }))
 vi.mock('@tanstack/react-query', async original => ({ ...await original<any>(), useQuery: ({ queryKey }: any) => ({ data: queryKey[0] === 'schedule' ? { id: 's', version: 1, status: 'pending', sales_person_id: 'u', scheduled_date: '2026-10-08', customers: { id: 'c', name: 'Customer', pricing_tier: 'luar_kota' } } : queryKey[0] === 'visit' ? null : [] }) }))
 import VisitPage from '../src/pages/girard/VisitPage'
 const media = vi.fn()
@@ -18,7 +19,7 @@ const stop = vi.fn()
 const stream = { getTracks: () => [{ stop }], removeTrack: () => {} } as unknown as MediaStream
 const clients: QueryClient[] = []
 beforeEach(() => {
-  media.mockReset().mockResolvedValue(stream); stop.mockClear(); state.imageFailure = false; state.checkIn.mockReset()
+  media.mockReset().mockResolvedValue(stream); stop.mockClear(); state.imageFailure = false; state.unresolved = false; state.checkIn.mockReset()
   Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: media } })
   vi.stubGlobal('Image', class { width = 640; height = 480; onload?: () => void; onerror?: (error: Error) => void; set src(_: string) { queueMicrotask(() => state.imageFailure ? this.onerror?.(new Error('Image failed')) : this.onload?.()) } })
   vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:test-photo'), revokeObjectURL: vi.fn() }))
@@ -172,7 +173,7 @@ test('camera retry, cancellation and location use visible actions while the deli
   media.mockRejectedValueOnce(new Error('denied')).mockResolvedValue(stream)
   mount()
   expect(screen.getByRole('button', { name: /Ketuk untuk membuka kamera/ }).classList.contains('h-36')).toBe(true)
-  expect(screen.getByRole('button', { name: 'Dapatkan lokasi' }).classList.contains('ui-action')).toBe(true)
+  expect((await screen.findByRole('button', { name: 'Coba lagi lokasi' })).classList.contains('ui-action')).toBe(true)
   expect(screen.getByRole('button', { name: /Kembali/ }).classList.contains('ui-action')).toBe(true)
   fireEvent.click(screen.getByRole('button', { name: /Ketuk untuk membuka kamera/ }))
   await screen.findByText(/Akses kamera ditolak/)
@@ -181,4 +182,86 @@ test('camera retry, cancellation and location use visible actions while the deli
   fireEvent.click(screen.getByRole('button', { name: 'Coba lagi' }))
   await waitFor(() => expect(document.querySelector('video')?.srcObject).toBe(stream))
   expect(screen.getByRole('button', { name: 'Ambil foto' }).classList.contains('h-14')).toBe(true)
+})
+
+test('automatic coordinates are only sent through explicit check-in confirmation', async () => {
+  const getCurrentPosition = vi.fn((success: PositionCallback) => success({ coords: { latitude: 1.25, longitude: 2.5 } } as GeolocationPosition))
+  Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition } })
+  state.checkIn.mockRejectedValue(new Error('Retain photo'))
+  try {
+    mount(); await screen.findByText(/Lokasi berhasil didapat/)
+    expect(state.checkIn).not.toHaveBeenCalled()
+    await openCamera(); fireEvent.click(screen.getByRole('button', { name: 'Ambil foto' })); await screen.findByText('Foto berhasil diambil')
+    expect(state.checkIn).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Konfirmasi Check-in' }))
+    await waitFor(() => expect(state.checkIn).toHaveBeenCalledTimes(1))
+    expect(state.checkIn.mock.calls[0][0]).toMatchObject({ lat: 1.25, lng: 2.5, schedule_id: 's' })
+    expect(getCurrentPosition).toHaveBeenCalledTimes(1)
+  } finally { Object.defineProperty(navigator, 'geolocation', { configurable: true, value: undefined }) }
+})
+
+test('saving while location is pending preserves optional fallback and invalidates its late result', async () => {
+  let finish!: PositionCallback
+  const getCurrentPosition = vi.fn((success: PositionCallback) => { finish = success })
+  Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition } })
+  state.checkIn.mockResolvedValue({ id: 'v' })
+  try {
+    mount(); await openCamera(); fireEvent.click(screen.getByRole('button', { name: 'Ambil foto' })); await screen.findByText('Foto berhasil diambil')
+    fireEvent.click(screen.getByRole('button', { name: 'Konfirmasi Check-in' }))
+    await waitFor(() => expect(screen.queryByAltText('Foto check-in')).toBeNull())
+    expect(state.checkIn.mock.calls[0][0]).toMatchObject({ lat: null, lng: null })
+    act(() => finish({ coords: { latitude: 1.25, longitude: 2.5 } } as GeolocationPosition))
+    expect(screen.queryByText(/Lokasi berhasil didapat/)).toBeNull()
+    expect(getCurrentPosition).toHaveBeenCalledTimes(1)
+  } finally { Object.defineProperty(navigator, 'geolocation', { configurable: true, value: undefined }) }
+})
+
+test('ambiguous check-in retains acquired GPS for retrying the identical payload without a new location request', async () => {
+  const getCurrentPosition = vi.fn((success: PositionCallback) => success({ coords: { latitude: 1.25, longitude: 2.5 } } as GeolocationPosition))
+  Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition } })
+  state.checkIn.mockImplementationOnce(async () => { state.unresolved = true; throw new Error('Response lost') }).mockRejectedValue(new Error('Keep exact retry'))
+  try {
+    mount(); await screen.findByText(/Lokasi berhasil didapat/)
+    await openCamera(); fireEvent.click(screen.getByRole('button', { name: 'Ambil foto' })); await screen.findByText('Foto berhasil diambil')
+    fireEvent.click(screen.getByRole('button', { name: 'Konfirmasi Check-in' })); await screen.findByText('Response lost')
+    fireEvent.click(screen.getByRole('button', { name: 'Konfirmasi Check-in' })); await screen.findByText('Keep exact retry')
+    expect(state.checkIn.mock.calls[1][0]).toEqual(state.checkIn.mock.calls[0][0])
+    expect(state.checkIn.mock.calls[1][0]).toMatchObject({ lat: 1.25, lng: 2.5 })
+    expect(getCurrentPosition).toHaveBeenCalledTimes(1)
+  } finally { Object.defineProperty(navigator, 'geolocation', { configurable: true, value: undefined }) }
+})
+
+test('a location resolving during an ambiguous submission cannot change the null-coordinate retry payload', async () => {
+  let finish!: PositionCallback
+  let rejectSave!: (error: Error) => void
+  const getCurrentPosition = vi.fn((success: PositionCallback) => { finish = success })
+  Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition } })
+  state.checkIn.mockImplementationOnce(() => new Promise((_resolve,reject) => { rejectSave=reject })).mockRejectedValue(new Error('Keep exact retry'))
+  try {
+    mount(); await openCamera(); fireEvent.click(screen.getByRole('button', { name: 'Ambil foto' })); await screen.findByText('Foto berhasil diambil')
+    fireEvent.click(screen.getByRole('button', { name: 'Konfirmasi Check-in' })); await waitFor(() => expect(state.checkIn).toHaveBeenCalledTimes(1))
+    act(() => finish({ coords: { latitude: 1.25, longitude: 2.5 } } as GeolocationPosition))
+    expect(screen.queryByText(/Lokasi berhasil didapat/)).toBeNull()
+    await act(async () => { state.unresolved=true; rejectSave(new Error('Response lost')) })
+    await screen.findByText('Response lost'); fireEvent.click(screen.getByRole('button', { name: 'Konfirmasi Check-in' })); await screen.findByText('Keep exact retry')
+    expect(state.checkIn.mock.calls[1][0]).toEqual(state.checkIn.mock.calls[0][0])
+    expect(state.checkIn.mock.calls[1][0]).toMatchObject({lat:null,lng:null})
+    expect(getCurrentPosition).toHaveBeenCalledTimes(1)
+  } finally { Object.defineProperty(navigator, 'geolocation', { configurable: true, value: undefined }) }
+})
+
+test('same-turn GPS success and confirmation freeze one identical snapshot for ambiguous retry', async () => {
+  let finish!: PositionCallback
+  const getCurrentPosition = vi.fn((success: PositionCallback) => { finish = success })
+  Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition } })
+  state.checkIn.mockImplementationOnce(async () => { state.unresolved=true; throw new Error('Response lost') }).mockRejectedValue(new Error('Keep exact retry'))
+  try {
+    mount(); await openCamera(); fireEvent.click(screen.getByRole('button', { name: 'Ambil foto' })); await screen.findByText('Foto berhasil diambil')
+    const confirm=screen.getByRole('button', { name: 'Konfirmasi Check-in' })
+    act(() => { finish({coords:{latitude:1.25,longitude:2.5}} as GeolocationPosition); fireEvent.click(confirm) })
+    await screen.findByText('Response lost'); fireEvent.click(screen.getByRole('button', { name: 'Konfirmasi Check-in' })); await screen.findByText('Keep exact retry')
+    expect(state.checkIn.mock.calls[1][0]).toEqual(state.checkIn.mock.calls[0][0])
+    expect(state.checkIn.mock.calls[0][0]).toMatchObject({lat:1.25,lng:2.5})
+    expect(getCurrentPosition).toHaveBeenCalledTimes(1)
+  } finally { Object.defineProperty(navigator, 'geolocation', { configurable: true, value: undefined }) }
 })

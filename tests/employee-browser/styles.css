@@ -1,0 +1,3 @@
+@import "../../src/index.css";
+/* Only the fixed copied source allowlist is present in this isolated tree. */
+@source "../../src";

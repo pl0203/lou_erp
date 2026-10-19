@@ -1,4 +1,5 @@
 import React from 'react'
+import { existsSync, readFileSync } from 'node:fs'
 import { transferableAbortController } from 'node:util'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
@@ -6,6 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 const state = vi.hoisted(() => ({
+  role: 'sales_person',
   orders: [] as any[], orderError: false, lineError: false, orderRetry: vi.fn(), lineRetry: vi.fn(),
   history: [] as any[], total: 21, historyError: false, historyPending: false,
   schedule: null as any, visit: null as any, scheduleError: false, schedulePending: false, visitError: false,
@@ -13,7 +15,7 @@ const state = vi.hoisted(() => ({
   unresolved: false, send: Object.assign(vi.fn(), { hasUnresolved: () => false, reconcile: vi.fn(), acknowledgeRecovered: vi.fn() }),
   reads: [] as { table: string; select: string; options: unknown; filters: [string, unknown][]; orders: [string, unknown][]; range?: number[] }[],
 }))
-vi.mock('../../src/lib/AuthContext', () => ({ useAuth: () => ({ profile: { id: 'sales', role: 'sales_person' } }) }))
+vi.mock('../../src/lib/AuthContext', () => ({ useAuth: () => ({ profile: { id: 'sales', role: state.role } }) }))
 vi.mock('../../src/components/GirardNav', () => ({ default: () => <nav aria-label="Navigasi modul">Modul</nav> }))
 vi.mock('../../src/components/StorePOContext', () => ({ default: () => null }))
 vi.mock('../../src/lib/reads/usePagedRead', () => ({ usePagedRead: () => ({ page: 1, data: { total: state.orders.length, items: state.orders }, isPending: false, isError: state.orderError, refetch: state.orderRetry, setPage: vi.fn() }) }))
@@ -51,6 +53,7 @@ const routers: ReturnType<typeof createMemoryRouter>[] = []
 const historyVisit = (overrides = {}) => ({ id: 'v1', sales_person_id: 'sales', outlet_id: 'c1', schedule_id: 's1', checked_in_at: '2026-10-04T17:30:00Z', lat: null, lng: null, notes: 'Saved note', note_version: 1, customers: { id: 'c1', name: 'First store' }, sales_schedules: { scheduled_date: '2026-10-04' }, ...overrides })
 beforeEach(() => {
   vi.stubGlobal('AbortController', class { constructor() { return transferableAbortController() } })
+  state.role = 'sales_person'
   state.orders = []; state.orderError = false; state.lineError = false; state.orderRetry.mockReset(); state.lineRetry.mockReset()
   state.history = [historyVisit()]; state.total = 21; state.historyError = false; state.historyPending = false
   state.schedule = { id: 's1', version: 1, sales_person_id: 'sales', scheduled_date: '2026-10-04', status: 'visited', customers: { id: 'c1', name: 'First store', address: null, city: null, pricing_tier: 'luar_kota' } }
@@ -79,11 +82,11 @@ async function editNote(value = 'Retained draft') {
 
 test('history labels metadata, keeps date-only schedule and quietly styles a real detail link', async () => {
   mount(); await screen.findByRole('heading', { name: 'First store' })
-  const article = screen.getByRole('article')
+  const article = screen.getByRole('heading', { name: 'First store' }).closest('tr')!
   expect(within(article).getByText('Waktu check-in').tagName).toBe('DT')
   expect(within(article).getByText('5 Oktober 2026, 00.30 WIB').tagName).toBe('DD')
   expect(within(article).getByText('4 Oktober 2026')).toBeTruthy()
-  expect(within(article).getByText('Lokasi').tagName).toBe('DT')
+  expect(within(article).getByText('Koordinat GPS').tagName).toBe('DT')
   expect(within(article).getByText('Tidak dicatat')).toBeTruthy()
   const link = within(article).getByRole('link', { name: 'Lihat detail kunjungan di First store' })
   expect(link.getAttribute('href')).toBe('/girard/visit/s1')
@@ -102,9 +105,9 @@ test('multiple history cards identify their own store in each visible detail act
   expect(links).toHaveLength(2)
   for (const [store, schedule] of [['First store', 's1'], ['Second store', 's2']]) {
     const link = screen.getByRole('link', { name: `Lihat detail kunjungan di ${store}` })
-    expect(link.textContent).toBe('Lihat detail kunjungan')
+    expect(link.textContent).toBe('Detail')
     expect(link.getAttribute('href')).toBe(`/girard/visit/${schedule}`)
-    expect(link.closest('article')?.querySelector('h2')?.textContent).toBe(store)
+    expect(link.closest('tr')?.querySelector('h2')?.textContent).toBe(store)
   }
 })
 
@@ -112,7 +115,7 @@ test('history and detail display the same visit instant without changing the sch
   const router = mount(); await screen.findByText('5 Oktober 2026, 00.30 WIB')
   await act(async () => { await router.navigate('/girard/visit/s1') })
   expect(await screen.findByText('5 Oktober 2026, 00.30 WIB')).toBeTruthy()
-  expect(screen.getByText('Jadwal: 2026-10-04')).toBeTruthy()
+  expect(screen.getByText('Jadwal: 4 Oktober 2026')).toBeTruthy()
   expectMain()
 })
 
@@ -258,11 +261,12 @@ test('pending note save stays locked and repeated clicks send the same draft onl
 })
 
 
-test('detail history destinations are quiet real links and normal navigation retains the note draft guard', async () => {
+test('detail retains the visit history link and its note draft guard without legacy order history', async () => {
   const router = mount('/girard/visit/s1'); await screen.findByText('Sudah check-in')
-  const links = [['Riwayat pesanan saya', '/girard/my-orders'], ['Riwayat kunjungan saya', '/girard/visit-history']]
+  expect(screen.queryByRole('link', { name: 'Riwayat pesanan saya' })).toBeNull()
+  const links = [['Riwayat kunjungan saya', '/girard/visit-history']]
   for (const [name, href] of links) {
-    const link = screen.getByRole('link', { name }); expect(link.getAttribute('href')).toBe(href); expect(link.classList.contains('ui-action--quiet')).toBe(true); expect(link.classList.contains('ui-action--compact')).toBe(true)
+    const link = screen.getByRole('link', { name }); expect(link.getAttribute('href')).toBe(href); expect(link.classList.contains('ui-action--secondary')).toBe(true); expect(link.classList.contains('w-full')).toBe(true); expect(link.classList.contains('ui-action--compact')).toBe(true)
   }
   await editNote('Keep detail draft')
   const link = screen.getByRole('link', { name: 'Riwayat kunjungan saya' })
@@ -303,4 +307,151 @@ test.each(['orders', 'lines'])('detail %s failed reads retain visible retry cont
   expect(retry.classList.contains('ui-action')).toBe(true)
   if (kind === 'orders') { fireEvent.click(retry); expect(state.orderRetry).toHaveBeenCalledTimes(1) }
   else { state.lineError = false; fireEvent.click(retry); expect(await screen.findByRole('table')).toBeTruthy() }
+})
+
+test('compact history keeps schedule and exact GPS in a closed disclosure with short actions', async () => {
+  state.total = 1
+  state.history = [historyVisit({ lat: -6.123456, lng: 106.987654, notes: null })]
+  mount(); await screen.findByRole('heading', { name: 'First store' })
+  const article = screen.getByRole('heading', { name: 'First store' }).closest('tr')!
+  const disclosure = article.querySelector('details')!
+  expect(disclosure).toBeTruthy(); expect(disclosure.open).toBe(false)
+  expect(disclosure.querySelector('summary')?.textContent).toContain('Lokasi tercatat')
+  expect(within(disclosure).getByText('-6.123456, 106.987654')).toBeTruthy()
+  expect(within(disclosure).getByText('4 Oktober 2026')).toBeTruthy()
+  expect(article.querySelector('details')?.contains(screen.getByText('5 Oktober 2026, 00.30 WIB'))).toBe(false)
+  expect(within(article).getByRole('link', { name: 'Lihat detail kunjungan di First store' }).textContent).toBe('Detail')
+  expect(within(article).getByRole('button', { name: 'Edit catatan' }).textContent).toBe('Catatan')
+  expect(screen.queryByText('Belum ada catatan.')).toBeNull()
+  expect(screen.queryByRole('navigation', { name: 'Halaman hasil' })).toBeNull()
+  expect(screen.getByText('1 kunjungan')).toBeTruthy()
+})
+
+test('compact saved-note preview keeps full content editable without modifying the payload', async () => {
+  const note = 'Full saved note '.repeat(30)
+  state.total = 1; state.history = [historyVisit({ notes: note })]
+  mount(); await screen.findByRole('heading', { name: 'First store' })
+  const preview = screen.getByText(note.trim())
+  expect(preview.classList.contains('line-clamp-2')).toBe(true)
+  fireEvent.click(screen.getByRole('button', { name: 'Edit catatan' }))
+  expect((screen.getByRole('textbox', { name: 'Catatan kunjungan' }) as HTMLTextAreaElement).value).toBe(note)
+  expect(screen.getByRole('link', { name: 'Lihat detail kunjungan di First store' })).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Simpan catatan' }))
+  await waitFor(() => expect(screen.queryByRole('textbox')).toBeNull())
+  expect(state.send).toHaveBeenCalledWith('edit_visit_note', { visit_id: 'v1', expected_version: 1, notes: note })
+})
+
+test.each([0, 1, 20])('history hides dead pagination for a single result page with %s records', async total => {
+  state.total = total; if (!total) state.history = []
+  mount()
+  if (total) await screen.findByRole('heading', { name: 'First store' })
+  else await screen.findByRole('region', { name: 'Belum ada kunjungan.' })
+  expect(screen.queryByRole('navigation', { name: 'Halaman hasil' })).toBeNull()
+  expect(screen.queryByRole('button', { name: 'Sebelumnya' })).toBeNull()
+  if (total) expect(screen.getByText(`${total} kunjungan`)).toBeTruthy()
+})
+
+
+test('compact team action preserves reviewer access and matches its visible accessible label', async () => {
+  state.role = 'sales_manager'
+  mount(); await screen.findByRole('heading', { name: 'First store' })
+  const link = screen.getByRole('link', { name: 'Jadwal tim' })
+  expect(link.textContent).toBe('Jadwal tim')
+  expect(link.getAttribute('href')).toBe('/girard/schedule')
+})
+
+test('salespeople do not gain the compact team action', async () => {
+  mount(); await screen.findByRole('heading', { name: 'First store' })
+  expect(screen.queryByRole('link', { name: 'Jadwal tim' })).toBeNull()
+})
+
+test('GPS disclosure is independent of an active note draft', async () => {
+  state.history = [historyVisit({ lat: 0, lng: 0 })]
+  const router = mount(); await editNote('Retained while location expands')
+  const disclosure = screen.getByRole('heading', { name: 'First store' }).closest('tr')!.querySelector('details')!
+  expect(disclosure.querySelector('summary')?.textContent).toContain('Lokasi tercatat')
+  fireEvent.click(disclosure.querySelector('summary')!)
+  expect(disclosure.open).toBe(true)
+  expect(within(disclosure).getByText('0, 0')).toBeTruthy()
+  fireEvent.click(disclosure.querySelector('summary')!)
+  expect(disclosure.open).toBe(false)
+  expect((screen.getByRole('textbox', { name: 'Catatan kunjungan' }) as HTMLTextAreaElement).value).toBe('Retained while location expands')
+  await act(async () => { void router.navigate('/away') })
+  expect(await screen.findByRole('dialog')).toBeTruthy()
+  expect(state.send).not.toHaveBeenCalled()
+})
+
+test('a later history page can still return when refreshed totals shrink to one page', async () => {
+  mount(); await screen.findByRole('heading', { name: 'First store' })
+  fireEvent.click(screen.getByRole('button', { name: 'Berikutnya' }))
+  await screen.findByText('Halaman 2 dari 2')
+  state.total = 1
+  await act(async () => { await clients.at(-1)!.invalidateQueries({ queryKey: ['own_visit_history'] }) })
+  const previous = screen.getByRole('button', { name: 'Sebelumnya' }) as HTMLButtonElement
+  expect(previous.disabled).toBe(false)
+  fireEvent.click(previous)
+  await screen.findByText('1 kunjungan')
+  expect(screen.queryByRole('navigation', { name: 'Halaman hasil' })).toBeNull()
+})
+
+
+test('responsive history has one semantic four-column table and one set of actions per visit', async () => {
+  state.history = [historyVisit(), historyVisit({ id: 'v2', schedule_id: 's2', customers: { id: 'c2', name: 'Second store' } })]
+  mount()
+  const table = await screen.findByRole('table', { name: 'Daftar kunjungan saya' })
+  expect(table.tagName).toBe('TABLE')
+  expect(table.classList.contains('own-visit-history-table')).toBe(true)
+  const headers = within(table).getAllByRole('columnheader')
+  expect(headers.map(header => header.textContent)).toEqual(['Toko', 'Waktu check-in', 'Lokasi', 'Tindakan'])
+  expect(headers.every(header => header.getAttribute('scope') === 'col')).toBe(true)
+  const rows = table.querySelectorAll('tbody > tr')
+  expect(rows).toHaveLength(2)
+  for (const row of rows) {
+    expect(row.getAttribute('role')).toBe('row')
+    expect(within(row as HTMLElement).getAllByRole('cell')).toHaveLength(4)
+    expect(within(row as HTMLElement).getAllByRole('button', { name: 'Edit catatan' })).toHaveLength(1)
+    expect(within(row as HTMLElement).getAllByRole('link', { name: /^Lihat detail kunjungan/ })).toHaveLength(1)
+  }
+  expect(state.reads.filter(read => read.table === 'outlet_visits')).toHaveLength(1)
+})
+
+test('responsive CSS switches cards to a table at the laptop breakpoint without hiding accessible headers', () => {
+  expect(existsSync('src/pages/girard/own-visit-history.css')).toBe(true)
+  const css = readFileSync('src/pages/girard/own-visit-history.css', 'utf8')
+  expect(css).toContain('@media (min-width: 1024px)')
+  expect(css).toMatch(/\.own-visit-history-table\s*\{[^}]*display:\s*block/)
+  expect(css).toMatch(/@media[\s\S]*\.own-visit-history-table\s*\{[^}]*display:\s*table/)
+  expect(css).toMatch(/\.own-visit-history-table thead\s*\{[^}]*clip:\s*rect/)
+  expect(css).not.toMatch(/display:\s*none|visibility:\s*hidden/)
+  expect(css).toContain('overflow-wrap: anywhere')
+  expect(css).toContain('table-layout: fixed')
+})
+
+test('resizing history keeps the same focused editor, exact draft, disclosure and read count', async () => {
+  vi.stubGlobal('innerWidth', 390)
+  const router = mount(); await editNote('  One responsive draft\nKeep all spaces  ')
+  const table = screen.getByRole('table', { name: 'Daftar kunjungan saya' })
+  const textarea = screen.getByRole('textbox', { name: 'Catatan kunjungan' }) as HTMLTextAreaElement
+  const disclosure = table.querySelector('details')!
+  fireEvent.click(disclosure.querySelector('summary')!)
+  textarea.focus()
+  const reads = state.reads.length
+  for (const width of [1440, 390, 1024, 1023]) {
+    vi.stubGlobal('innerWidth', width); fireEvent(window, new Event('resize'))
+    expect(screen.getByRole('table', { name: 'Daftar kunjungan saya' })).toBe(table)
+    expect(screen.getAllByRole('textbox', { name: 'Catatan kunjungan' })).toEqual([textarea])
+    expect(document.activeElement).toBe(textarea)
+    expect(textarea.value).toBe('  One responsive draft\nKeep all spaces  ')
+    expect(disclosure.open).toBe(true)
+  }
+  expect(state.reads).toHaveLength(reads)
+  const ids = Array.from(document.querySelectorAll('[id]'), element => element.id)
+  expect(new Set(ids).size).toBe(ids.length)
+  await act(async () => { void router.navigate('/away') })
+  expect(await screen.findByRole('dialog')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Tetap mengedit' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Simpan catatan' }))
+  await waitFor(() => expect(screen.queryByRole('textbox')).toBeNull())
+  expect(state.send).toHaveBeenCalledTimes(1)
+  expect(state.send).toHaveBeenCalledWith('edit_visit_note', { visit_id: 'v1', expected_version: 1, notes: '  One responsive draft\nKeep all spaces  ' })
 })

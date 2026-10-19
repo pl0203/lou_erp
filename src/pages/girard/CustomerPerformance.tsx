@@ -1,3 +1,6 @@
+import { LoadingState } from '../../components/ui/LoadingState'
+import { useLayoutEffect, useRef } from 'react'
+import { useCustomerTargetSave } from '../../lib/catalogue/useCustomerTargetSave'
 import { Button } from '../../components/ui/Button'
 import { useTargetDraftSession } from '../../components/sales/useTargetDraftSession'
 import { InlineTargetEditor } from '../../components/sales/InlineTargetEditor'
@@ -21,9 +24,10 @@ async function upsertCustomerTarget(
   customerId: string,
   yearMonth: string,
   targetValue: number,
-  setBy: string
+  setBy: string,
+  client = supabase
 ) {
-  const { error } = await supabase
+  const { error } = await client
     .from('customer_targets')
     .upsert({
       customer_id: customerId,
@@ -38,9 +42,8 @@ async function upsertCustomerTarget(
 export const fetchCustomerPerformance = fetchCustomerPerformancePage
 
 function SalesPctBar({ actual, target }: { actual: string; target: string | null }) {
-  if (target == null || /^0+(?:\.0+)?$/.test(target)) {
-    return <span className="text-brand-secondary text-sm">—</span>
-  }
+  if (target == null) return <span className="text-brand-secondary text-sm">Target belum ditetapkan</span>
+  if (/^0+(?:\.0+)?$/.test(target)) return <span className="text-brand-secondary text-sm">Target nol · rasio tidak dihitung</span>
   const pctText = moneyPercentage(actual, target)
   const pct = Number(pctText)
   return (
@@ -90,17 +93,46 @@ export function CustomerActivityContent() {
     queryKey: ['customer_performance', readIdentity, { yearMonth }],
     refetchType: refreshActive ? 'active' : 'none',
   })
+  const targetSave = useCustomerTargetSave(async receipt => {
+    if (!profile || receipt.actor_id !== profile.id) return false
+    // A validated receipt proves the save. Fresh authorized reads refresh display,
+    // never infer an outcome from a missing customer or a matching target value.
+    await fetchCustomerPerformancePage(profile.id, profile.role, receipt.year_month, 1, new AbortController().signal)
+    await queryClient.invalidateQueries({ queryKey: ['customer_performance', readIdentity, { yearMonth: receipt.year_month }], refetchType: 'active' }, { throwOnError: true })
+    return true
+  })
   const targetEditors = useTargetDraftSession({
-    scope: editorScope, canEdit: canEditTargets, isPending, isError, records: pageData?.items,
+    scope: editorScope, canEdit: canEditTargets, isPending, isError, records: pageData?.items, unresolved: targetSave.unresolved,
     write: async (customerId, targetValue) => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('Tidak terautentikasi')
-      await upsertCustomerTarget(customerId, yearMonth, targetValue, user.id)
+      await targetSave.write({ customerId, yearMonth, targetValue }, async input => {
+        const source = supabase
+        const { data: { user } } = await source.auth.getUser()
+        if (!user || user.id !== profile?.id || !targetSave.isCurrent()) throw new Error('Tidak terautentikasi')
+        await upsertCustomerTarget(input.customerId, input.yearMonth, input.targetValue!, user.id, source)
+      })
     },
-    onSaved: invalidate,
+    // A retired backend may complete an already-dispatched legacy write, but
+    // cannot refetch the current backend through an unchanged actor/month key.
+    onSaved: refreshActive => invalidate(refreshActive && targetSave.isCurrent()),
   })
 
-  if (isError) return <div role="alert" className="p-6 text-red-700">Data performa tidak tersedia. <Button size="compact" variant="secondary" onClick={() => refetch()}>Coba lagi</Button></div>
+  const recoveryFocus = useRef<HTMLDivElement>(null), contentFocus = useRef<HTMLDivElement>(null), previouslyUnresolved = useRef(false)
+  useLayoutEffect(() => {
+    if (targetSave.unresolved && !targetSave.busy && targetSave.available) recoveryFocus.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus()
+    else if (previouslyUnresolved.current && !targetSave.unresolved) contentFocus.current?.focus()
+    previouslyUnresolved.current = targetSave.unresolved
+  }, [targetSave.unresolved, targetSave.busy, targetSave.available])
+  const recovery = targetSave.unresolved && !targetSave.busy && <div ref={recoveryFocus} role="status" className="rounded-lg border border-amber-300 p-4 text-sm">
+    <p>Hasil target belum terkonfirmasi. Jangan kirim ulang; pemulihan tetap tersedia di halaman dan bulan lain.</p>
+    {targetSave.message && <p>{targetSave.message}</p>}
+    <Button variant="secondary" pending={targetSave.busy} disabled={!targetSave.available || targetSave.busy} onClick={() => {
+      void targetSave.recover().then(result => {
+        if (result.status === 'committed' && result.receipt.year_month === yearMonth) targetEditors.confirmRecovered(result.receipt.customer_id)
+      }).catch(() => { /* The durable request and recovery message remain visible. */ })
+    }}>Periksa hasil target</Button>
+  </div>
+
+  if (isError) return <>{recovery}<div role="alert" className="p-6 text-red-700">Data performa tidak tersedia. <Button size="compact" variant="secondary" onClick={() => refetch()}>Coba lagi</Button></div></>
 
   const summary = pageData?.summary
   const totalSales = summary?.total_sales ?? '0'
@@ -114,7 +146,8 @@ export function CustomerActivityContent() {
   const showManagerCol = profile?.role === 'sales_head' || profile?.role === 'executive'
 
   return (
-    <div className="px-4 md:px-8 py-6 space-y-6">
+    <div ref={contentFocus} tabIndex={-1} className="px-4 md:px-8 py-6 space-y-6">
+      {recovery}
 
       {/* Header with month picker */}
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -178,7 +211,7 @@ export function CustomerActivityContent() {
       )}
 
       {isLoading && (
-        <div className="text-center text-brand-secondary text-sm py-12">Memuat data...</div>
+        <LoadingState title="Memuat data..." shape="dashboard" className="text-center text-brand-secondary text-sm py-12" />
       )}
 
       {!isLoading && data.length === 0 && (
@@ -346,21 +379,7 @@ export function CustomerActivityContent() {
                   </div>
                   <div className="pt-2 border-t border-gray-100">
                     <p className="text-[13px] text-brand-secondary mb-1">% Pembanding target</p>
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 bg-gray-100 rounded-full h-1.5">
-                        <div
-                          className={`h-1.5 rounded-full ${
-                            onTrack ? 'bg-green-500' : 'bg-red-400'
-                          }`}
-                          style={{
-                            width: `${Math.min(100, Number(moneyPercentage(r.total_sales, r.sales_target ?? '0')))}%`
-                          }}
-                        />
-                      </div>
-                      <span className="text-[13px] text-brand-secondary">
-                        {moneyPercentage(r.total_sales, r.sales_target ?? '0')}%
-                      </span>
-                    </div>
+                    <SalesPctBar actual={r.total_sales} target={r.sales_target} />
                   </div>
                 </div>
               )

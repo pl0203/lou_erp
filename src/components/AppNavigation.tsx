@@ -1,12 +1,12 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, MouseEvent, ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Link, NavLink, useLocation } from 'react-router-dom'
+import { Link, matchPath, useLocation } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
 import BrandLogo from './BrandLogo'
 import NavigationIcon from './NavigationIcon'
 import { moduleIcons, moduleLabels, moduleOptions, roleHome } from './navigationModules'
-import type { NavigationLink, NavigationModule } from './navigationModules'
+import type { NavigationGroup, NavigationItem, NavigationLink, NavigationModule } from './navigationModules'
 import './navigation.css'
 
 const COLLAPSED_KEY = 'padiwan.navigation.collapsed'
@@ -59,7 +59,37 @@ function MobileDrawer({ children, onClose, opener }: { children: ReactNode; onCl
   }}>{children}</dialog>
 }
 
-export default function AppNavigation({ module, links, beforeSignOut }: { module: NavigationModule; links: NavigationLink[]; beforeSignOut?: () => boolean }) {
+function linkIsActive(link: NavigationLink, location: { pathname: string; search: string }) {
+  if (!matchPath({ path: link.to.split('?')[0], end: false }, location.pathname)) return false
+  if (!link.activeSearch) return true
+  const { key, value, fallback, allowed } = link.activeSearch
+  const selected = new URLSearchParams(location.search).get(key)
+  return (selected !== null && allowed.includes(selected) ? selected : fallback) === value
+}
+
+function NavigationGroupLinks({ group, location, compact, onExpand, renderLink, tooltipEvents }: {
+  group: NavigationGroup; location: ReturnType<typeof useLocation>; compact: boolean
+  onExpand: () => void; renderLink: (link: NavigationLink) => ReactNode
+  tooltipEvents: (text: string) => Record<string, unknown>
+}) {
+  const active = group.children.some(link => linkIsActive(link, location))
+  const [open, setOpen] = useState(active)
+  const childrenId = useId()
+  useEffect(() => { if (active) setOpen(true) }, [active, location.key])
+  return <div className="navigation-group">
+    <button type="button" aria-label={group.label} aria-expanded={!compact && open} aria-controls={childrenId}
+      className={`navigation-link navigation-group-toggle ${active ? 'navigation-group-active' : ''}`}
+      onClick={() => { if (compact) { onExpand(); setOpen(true) } else setOpen(value => !value) }} {...tooltipEvents(group.label)}>
+      <NavigationIcon name={group.icon} /><span className="navigation-label">{group.label}</span>
+      <NavigationIcon name="chevron" className={`navigation-label navigation-chevron ${open ? 'navigation-chevron-open' : ''}`} />
+    </button>
+    {!compact && open && <div id={childrenId} role="group" aria-label={`Submenu ${group.label}`} className="navigation-submenu">
+      {group.children.map(renderLink)}
+    </div>}
+  </div>
+}
+
+export default function AppNavigation({ module, links, beforeSignOut }: { module: NavigationModule; links: NavigationItem[]; beforeSignOut?: () => boolean }) {
   const { profile, signOut } = useAuth()
   const location = useLocation()
   const mobile = useMobileNavigation()
@@ -139,6 +169,19 @@ export default function AppNavigation({ module, links, beforeSignOut }: { module
     trigger.current?.focus()
   }
 
+  function expandSidebar() {
+    closeMenus(); setCollapsed(false)
+    try { localStorage.setItem(COLLAPSED_KEY, 'false') } catch { /* Navigation still opens without storage. */ }
+  }
+  function renderLink(link: NavigationLink) {
+    const active = linkIsActive(link, location)
+    return <Link key={link.to} to={link.to} aria-current={active ? 'page' : undefined}
+      aria-label={link.badge && link.badge > 0 ? `${link.label}, ${link.badge} menunggu` : link.label}
+      className={`navigation-link ${active ? 'navigation-link-active' : ''}`} onClick={closeAfterNavigation} {...tooltipEvents(link.label)}>
+      <NavigationIcon name={link.icon} /><span className="navigation-label">{link.label}</span>
+      {!!link.badge && link.badge > 0 && <span aria-hidden="true" className="navigation-badge">{link.badge > 99 ? '99+' : link.badge}</span>}
+    </Link>
+  }
   const menu = <>
     <div className="navigation-toolbar">
       <button type="button" className="navigation-toggle" aria-label={mobile ? 'Tutup menu' : compact ? 'Buka menu' : 'Minimalkan menu'} aria-expanded={mobile ? true : !collapsed} aria-controls={navId} onClick={mobile ? closeDrawer : toggleCollapsed} {...tooltipEvents('Buka menu')}>
@@ -156,10 +199,9 @@ export default function AppNavigation({ module, links, beforeSignOut }: { module
       </div>}
     </div>
     <nav id={navId} aria-label={`Navigasi ${label}`} className="navigation-links">
-      {links.map(link => <NavLink key={link.to} to={link.to} aria-label={link.badge && link.badge > 0 ? `${link.label}, ${link.badge} menunggu` : link.label} className={({ isActive }) => `navigation-link ${isActive ? 'navigation-link-active' : ''}`} onClick={closeAfterNavigation} {...tooltipEvents(link.label)}>
-        <NavigationIcon name={link.icon} /><span className="navigation-label">{link.label}</span>
-        {!!link.badge && link.badge > 0 && <span aria-hidden="true" className="navigation-badge">{link.badge > 99 ? '99+' : link.badge}</span>}
-      </NavLink>)}
+      {links.map(item => 'children' in item
+        ? <NavigationGroupLinks key={item.id} group={item} location={location} compact={compact} onExpand={expandSidebar} renderLink={renderLink} tooltipEvents={tooltipEvents} />
+        : renderLink(item))}
     </nav>
     <div className="navigation-account" ref={userRef} onKeyDown={event => onPopoverKeyDown(event, showUser, accountTrigger, () => setShowUser(false))}>
       <button ref={accountTrigger} type="button" className="navigation-user-button" aria-label="Menu pengguna" aria-expanded={showUser} aria-controls={accountId} onClick={() => { setShowUser(value => !value); setShowSwitcher(false); setTooltip(null) }} {...tooltipEvents('Menu pengguna')}>

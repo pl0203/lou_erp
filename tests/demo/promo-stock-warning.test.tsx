@@ -1,9 +1,10 @@
 import { transferableAbortController } from 'node:util'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
-const state = vi.hoisted(() => ({ send: vi.fn(), unresolved: false }))
+const state = vi.hoisted(() => ({ send: vi.fn(), unresolved: false, unavailableOptions: new Set<string>(), owner: 0 }))
+vi.mock('../../src/lib/catalogue/useCatalogueOrderOptions',()=>({useCatalogueOrderOptions:(kind:string,purpose:string)=>{const owner=state.owner;return {data:kind==='customer'?[{id:'c',name:'Store',pricing_tier:'luar_kota',is_enabled:true}]:[{id:'11111111-1111-4111-8111-111111111111',name:'Tiles',sku:'SKU',luar_kota:20,is_enabled:true}],getCurrentData:()=>owner!==state.owner||state.unavailableOptions.has(`${kind}:${purpose}`)?undefined:kind==='customer'?[{id:'c',name:'Store',pricing_tier:'luar_kota',is_enabled:true}]:[{id:'11111111-1111-4111-8111-111111111111',name:'Tiles',sku:'SKU',luar_kota:20,is_enabled:true}],isError:false,isFetching:false,refetch:vi.fn()}}}))
 vi.mock('../../src/lib/supabase', () => ({ supabase: {} }))
 vi.mock('../../src/lib/AuthContext', () => ({ useAuth: () => ({ user: { id: 'actor' }, profile: { id: 'actor', role: 'po_admin', is_active: true }, loading: false }) }))
 vi.mock('../../src/components/AthelNav', () => ({ default: () => null }))
@@ -22,7 +23,7 @@ import POEdit from '../../src/pages/athel/POEdit'
 import { PromoStockWarningError } from '../../src/lib/promotionStock'
 const warning = (remaining = 2, version = 1) => new PromoStockWarningError({ code: 'PROMO_STOCK_WARNING', shortages: [{ promotion_id: productId, product_id: productId, product_name: 'Tiles', sku: 'SKU', remaining_quantity: remaining, requested_quantity: 5, incremental_quantity: 5, shortfall: 5 - remaining, stock_version: version }], ack: { opaque: { stock_version: version } } })
 const clients: QueryClient[] = []
-beforeEach(() => { state.send.mockReset(); state.unresolved = false })
+beforeEach(() => { state.send.mockReset(); state.unresolved = false; state.unavailableOptions.clear(); state.owner = 0 })
 const routers: ReturnType<typeof createMemoryRouter>[] = []
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); routers.splice(0).forEach(router => router.dispose()); clients.splice(0).forEach(c => c.clear()) })
 function mount(kind: 'new' | 'edit') {
@@ -42,6 +43,7 @@ test.each(['new', 'edit'] as const)('%s retains exact draft and entered prices a
  await screen.findByRole('dialog', { name: 'Stok promosi tidak mencukupi' })
  expect(screen.getByText('Tersisa: 2')).toBeTruthy(); expect(screen.getByText('Diminta: 5')).toBeTruthy()
  const first = state.send.mock.calls[0][1]
+ expect(first).not.toHaveProperty('catalogueAdmission')
  fireEvent.click(screen.getByRole('button', { name: 'Lanjutkan' }))
  await screen.findByText('Tersisa: 0')
  expect(state.send.mock.calls[1][1]).toEqual({ ...first, promo_stock_ack: warning().warning.ack })
@@ -71,25 +73,23 @@ test('network ambiguity offers no Continue and preserves draft for recovery', as
  fireEvent.click(screen.getByRole('button', { name: 'Simpan PO' })); await screen.findByText('response lost')
  expect(screen.queryByRole('dialog')).toBeNull(); expect((screen.getByLabelText('Harga satuan') as HTMLInputElement).value).toBe('71')
 })
-test('manual line resolves only exact unique SKU identity and reports unresolved identity', async () => {
- state.send.mockResolvedValue({ id: 'saved' }); mount('new')
- fireEvent.click(screen.getByRole('button', { name: /Tambah barang manual/ }))
- expect(screen.getByText(/Identitas katalog belum terhubung/)).toBeTruthy()
- fireEvent.change(screen.getByRole('textbox', { name: 'Nama produk barang baru' }), { target: { value: 'Manual tiles' } })
- fireEvent.change(screen.getByRole('textbox', { name: 'SKU Manual tiles' }), { target: { value: ' sku ' } })
- const prices = screen.getAllByLabelText('Harga satuan'); fireEvent.change(prices[1], { target: { value: '0' } })
- expect(screen.queryByText(/Identitas katalog belum terhubung/)).toBeNull()
- fireEvent.click(screen.getByRole('button', { name: 'Simpan PO' }))
- await waitFor(() => expect(state.send).toHaveBeenCalledTimes(1))
- expect(state.send.mock.calls[0][1].items[1]).toMatchObject({ product_id: productId, sku: ' sku ', unit_price: 0 })
+test('new stock demand requires deliberate catalogue selection, never manual SKU resolution', async () => {
+ state.send.mockResolvedValue({ id:'saved' });mount('new')
+ expect(screen.queryByRole('button',{name:/Tambah barang manual/})).toBeNull()
+ expect((screen.getByRole('textbox',{name:'SKU Tiles'}) as HTMLInputElement).disabled).toBe(true)
+ fireEvent.change(screen.getByLabelText('Harga satuan'),{target:{value:'0'}})
+ fireEvent.click(screen.getByRole('button',{name:'Simpan PO'}));await waitFor(()=>expect(state.send).toHaveBeenCalledTimes(1))
+ expect(state.send.mock.calls[0][1].items).toEqual([expect.objectContaining({product_id:productId,sku:'SKU',product_name:'Tiles',unit_price:0})])
 })
-test('changing a selected SKU clears stale identity instead of charging the old campaign', async () => {
- state.send.mockResolvedValue({ id: 'saved' }); mount('new')
- fireEvent.change(screen.getByRole('textbox', { name: 'SKU Tiles' }), { target: { value: 'noncatalog' } })
- expect(screen.getByText(/Identitas katalog belum terhubung/)).toBeTruthy()
- fireEvent.click(screen.getByRole('button', { name: 'Simpan PO' }))
- await waitFor(() => expect(state.send).toHaveBeenCalledTimes(1))
- expect(state.send.mock.calls[0][1].items[0].product_id).toBeNull()
+test('a selected identity cannot be changed into unlinked demand for another campaign', async () => {
+ state.send.mockResolvedValue({id:'saved'});mount('new')
+ const sku=screen.getByRole('textbox',{name:'SKU Tiles'}) as HTMLInputElement
+ expect(sku.disabled).toBe(true)
+ fireEvent.change(sku,{target:{value:'noncatalog'}})
+ fireEvent.change(screen.getByRole('spinbutton',{name:'Qty Tiles'}),{target:{value:'6'}})
+ expect(sku.value).toBe('SKU')
+ fireEvent.click(screen.getByRole('button',{name:'Simpan PO'}));await waitFor(()=>expect(state.send).toHaveBeenCalledTimes(1))
+ expect(state.send.mock.calls[0][1].items[0]).toMatchObject({product_id:productId,sku:'SKU',quantity:6,unit_price:71})
 })
 const changed = (paused = false) => new PromoStockWarningError({ code: 'PROMO_STOCK_CHANGED', shortages: [], allocations: [{ product_id: productId, product_name: 'Tiles', sku: 'SKU', promotion_id: paused ? null : productId, stock_version: paused ? null : 2, remaining_quantity: paused ? 0 : 9, requested_quantity: 5, incremental_quantity: 5, allocation_quantity: paused ? 0 : 5 }], ack: { version: 1, allocations: [{ promotion_id: paused ? null : productId, allocation_quantity: paused ? 0 : 5 }], opaque: 'new allocation quote' } })
 test.each([['new', true], ['edit', true], ['new', false], ['edit', false]] as const)('%s requires another explicit Continue when the campaign is %s, keeping draft and prices', async (kind, paused) => {
@@ -131,3 +131,41 @@ test('an empty refreshed allocation list still presents review before Continue',
 
 // The real data router uses Node Request, which requires a Node-compatible signal.
 beforeEach(() => { vi.stubGlobal('AbortController', class { constructor() { return transferableAbortController() } }) })
+
+
+test.each(['new', 'edit'] as const)('%s rechecks current options on promotion Continue before observer rerender', async kind => {
+ state.send.mockRejectedValueOnce(warning()).mockResolvedValueOnce({ id: 'saved' })
+ mount(kind); fireEvent.click(screen.getByRole('button', { name: kind === 'new' ? 'Simpan PO' : 'Simpan Perubahan' }))
+ await screen.findByRole('dialog', { name: 'Stok promosi tidak mencukupi' })
+ state.unavailableOptions.add('product:enabled-for-order')
+ fireEvent.click(screen.getByRole('button', { name: 'Lanjutkan' }))
+ await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+ expect(state.send).toHaveBeenCalledTimes(1)
+ expect((screen.getByLabelText('Harga satuan') as HTMLInputElement).value).toBe('71')
+})
+
+test.each(['new', 'edit'] as const)('%s never rebinds a pending promotion draft to a later catalogue owner', async kind => {
+ state.send.mockRejectedValueOnce(warning()).mockResolvedValueOnce({ id: 'saved' })
+ mount(kind); fireEvent.click(screen.getByRole('button', { name: kind === 'new' ? 'Simpan PO' : 'Simpan Perubahan' }))
+ await screen.findByRole('dialog', { name: 'Stok promosi tidak mencukupi' })
+ state.owner++
+ fireEvent.change(screen.getByPlaceholderText('Catatan (opsional)...'), { target: { value: 'Later owner' } })
+ fireEvent.click(screen.getByRole('button', { name: 'Lanjutkan' }))
+ await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+ expect(state.send).toHaveBeenCalledTimes(1)
+})
+
+
+test.each(['new', 'edit'] as const)('%s immediate double Save dispatches the first admitted draft exactly once', async kind => {
+ let finish!: (value: { id: string }) => void
+ state.send.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+ mount(kind)
+ const save = screen.getByRole('button', { name: kind === 'new' ? 'Simpan PO' : 'Simpan Perubahan' })
+ // Keep both events inside one React batch, before the pending observer render.
+ act(() => { save.click(); save.click() })
+ await waitFor(() => expect(state.send).toHaveBeenCalledTimes(1))
+ expect(state.send.mock.calls[0][1]).not.toHaveProperty('catalogueAdmission')
+ await act(async () => finish({ id: 'saved' }))
+ await screen.findByText('Destination')
+ expect(state.send).toHaveBeenCalledTimes(1)
+})

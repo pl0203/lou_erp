@@ -1,10 +1,13 @@
 import type { QueryClient } from '@tanstack/react-query'
 
-/** Only customer projections, never PO/line/catalog queries or every query. */
+/** Only customer projections, never saved PO/line history, product reads or every query. */
 export async function refreshCustomerCaches(client: QueryClient, assignments = false) {
   const prefixes = ['athel_customers', 'all_customers', 'customers', 'girard_customer', 'manager_customers', 'my_customers']
   if (assignments) prefixes.push('assignments', 'managers_data')
-  await Promise.all(prefixes.map(prefix => client.invalidateQueries({ queryKey: [prefix] })))
+  await Promise.all([
+    ...prefixes.map(prefix => client.invalidateQueries({ queryKey: [prefix] })),
+    client.invalidateQueries({ predicate: ({ queryKey: key }) => key[0] === 'catalogue' && key[4] === 1 && key[5] === 'read' && key[6] === 'customer' }),
+  ])
 }
 
 /** A successful transport alone does not confirm which intended row was written. */

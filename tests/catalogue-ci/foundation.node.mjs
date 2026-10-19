@@ -1,0 +1,526 @@
+import {normalizeEmployeeBranchBudget} from './workflow-budget.mjs'
+// Existing CI entrypoint includes the focused CO source checks.
+import './co-orders.node.mjs';
+import './lifetime-admission.node.mjs';
+import './create-edit.node.mjs';
+import './create-edit-races.node.mjs';
+import './generation-two-routers.node.mjs';
+import './checked-boundaries.node.mjs';
+import './guarded-delete.node.mjs';
+import './guarded-delete-history.node.mjs';
+import './master-completion-hooks.node.mjs';
+import './completion-races.node.mjs';
+import './native-product-delete-races.node.mjs';
+import '../catalogue/checked-controls.source.node.mjs';
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+let runner; try { runner = await import('../../scripts/catalogue-foundation.mjs'); } catch {}
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+const need = () => assert.ok(runner, 'Same-session foundation behavior runner is not implemented');
+const identity = {profile:'github-catalogue-baseline-v1',source:{clean:true,commit:'a'.repeat(40),tree:'b'.repeat(40),candidate:'c'.repeat(64)},serverAddress:'172.18.0.2',serverPort:5432,serverVersion:'170011',systemIdentifier:'123456789',runIdentity:'00000000-0000-4000-8000-000000000001',ci:{}};
+const fixtureParts = () => Object.fromEntries([
+ ['before','CREATE TEMP TABLE expected_before(id integer) ON COMMIT DROP;'],
+ ['candidate','ALTER TABLE public.customers ADD COLUMN is_enabled boolean NOT NULL DEFAULT true;'],
+ ['foundation','SELECT pg_temp.foundation_assert(true, \'behavior\');'],
+ ['legacy','SELECT pg_temp.foundation_assert(true, \'legacy\');'],
+ ['roles','SELECT pg_temp.foundation_assert(true, \'roles\');'],
+ ['orderCandidate','SELECT 1 AS inactive_order_candidate;'],
+ ['orders','SELECT 1 AS private_order_behavior;'],
+ ['coOrderCandidate','SELECT 1 AS inactive_co_order_candidate;'],
+ ['coOrders','SELECT 1 AS private_co_order_behavior;'],
+ ['promotionOwnerGrammar','SELECT 1 AS promotion_owner_grammar;'],
+ ['poGrammar','SELECT 1 AS po_grammar;'],
+ ['coGrammar','SELECT 1 AS co_grammar;'],
+ ['coDraftGrammar','SELECT 1 AS co_draft_grammar;'],
+ ['retiredCoGrammar','SELECT 1 AS retired_co_grammar;'],
+ ['visitGrammar','SELECT 1 AS visit_grammar;'],
+ ['noncoGrammar','SELECT 1 AS nonco_grammar;'],
+ ['lifetimeCandidate','SELECT 1 AS inactive_lifetime_candidate;'],
+ ['lifetime','SELECT 1 AS actual_lifetime_behavior;'],
+ ['createEditCandidate','SELECT 1 AS create_edit_candidate;'],
+ ['targetTrackingCandidate','SELECT 1 AS target_tracking_candidate;'],
+ ['checkedBoundariesCandidate','SELECT 1 AS checked_boundaries_candidate;'],
+ ['guardedDeleteCandidate','SELECT 1 AS guarded_delete_candidate;'],
+ ['masterCompletionCandidate','SELECT 1 AS master_completion_candidate;'],
+ ['createEdit','SELECT 1 AS actual_create_edit_behavior;'],
+ ['publicRouters','SELECT 1 AS public_router_dispatch_only_behavior;'],
+ ['checkedBoundaries','SELECT 1 AS checked_boundaries_behavior;'],
+ ['guardedDelete','SAVEPOINT guarded_delete_fixture;\nSELECT 1 AS guarded_delete_behavior;\nROLLBACK TO SAVEPOINT guarded_delete_fixture;\nRELEASE SAVEPOINT guarded_delete_fixture;'],
+ ['guardedDeleteHistory','SAVEPOINT guarded_delete_history_fixture;\n'+['trusted_history_fixture','trusted_history_topology','trusted_history_removed_visit','trusted_history_retired_co'].map(name=>`SAVEPOINT ${name};\nSELECT 1 AS ${name};\nROLLBACK TO SAVEPOINT ${name};\nRELEASE SAVEPOINT ${name};`).join('\n')+'\nROLLBACK TO SAVEPOINT guarded_delete_history_fixture;\nRELEASE SAVEPOINT guarded_delete_history_fixture;'],
+]);
+test('one guarded SQL session applies exact candidate between prechange and postchange suites, then rolls back', () => {
+ need(); const parts=fixtureParts(), sql=runner.buildCatalogueFoundationSession(identity, parts);
+ assert.ok(sql.includes('SELECT 1/0 AS catalogue_identity_refused;'));
+ assert.ok(sql.indexOf('BEGIN;') < sql.indexOf(parts.before));
+ assert.ok(sql.indexOf(parts.before) < sql.indexOf(parts.candidate));
+ assert.ok(sql.indexOf(parts.candidate) < sql.indexOf(parts.foundation));
+ assert.ok(sql.indexOf(parts.foundation) < sql.indexOf(parts.legacy));
+ assert.ok(sql.indexOf(parts.legacy) < sql.indexOf(parts.roles));
+ assert.ok(sql.indexOf(parts.roles) < sql.indexOf(parts.orderCandidate));
+ assert.ok(sql.indexOf(parts.orderCandidate) < sql.indexOf(parts.orders));
+ assert.ok(sql.indexOf(parts.orders) < sql.indexOf(parts.coOrderCandidate));
+ assert.ok(sql.indexOf(parts.coOrderCandidate) < sql.indexOf(parts.coOrders));
+ assert.ok(sql.indexOf(parts.coOrders) < sql.indexOf(parts.promotionOwnerGrammar));
+ assert.ok(sql.indexOf(parts.promotionOwnerGrammar) < sql.indexOf(parts.visitGrammar));
+ assert.ok(sql.indexOf(parts.visitGrammar) < sql.indexOf(parts.lifetimeCandidate));
+ assert.ok(sql.indexOf(parts.lifetimeCandidate) < sql.indexOf(parts.lifetime));
+ assert.ok(sql.indexOf(parts.lifetime) < sql.lastIndexOf('ROLLBACK;'));
+ assert.ok(sql.lastIndexOf('ROLLBACK;') < sql.indexOf('CATALOGUE_FOUNDATION_ROLLBACK_VERIFIED'));
+ assert.equal((sql.match(/^BEGIN;/gm)||[]).length,1);
+ assert.equal((sql.match(/^ROLLBACK;/gm)||[]).length,1);
+ assert.match(sql,/pg_backend_pid\(\)/); assert.match(sql,/txid_current\(\)/);
+ assert.ok(!/^COMMIT;/m.test(sql));
+});
+test('candidate transaction boundaries, client commands, and missing suites are refused before execution', () => {
+ need();for(const candidate of ['COMMIT;','BEGIN; SELECT 1; ROLLBACK;','END;','START TRANSACTION;','PREPARE TRANSACTION \'x\';','\\i outside.sql','SELECT 1;\n\\quit','CREATE FUNCTION x() RETURNS void LANGUAGE plpgsql AS $$ BEGIN NULL; END $$; COMMIT;']) {
+  assert.throws(()=>runner.buildCatalogueFoundationSession(identity,{...fixtureParts(),candidate}));
+ }
+ for(const key of ['before','candidate','foundation','legacy','roles','orderCandidate','orders','coOrderCandidate','coOrders','promotionOwnerGrammar','visitGrammar','lifetimeCandidate','lifetime','createEditCandidate','createEdit','publicRouters']) {const parts=fixtureParts();delete parts[key];assert.throws(()=>runner.buildCatalogueFoundationSession(identity,parts));}
+ // PL/pgSQL blocks and literals are not top-level transaction commands.
+ assert.doesNotThrow(()=>runner.buildCatalogueFoundationSession(identity,{...fixtureParts(),candidate:"CREATE FUNCTION x() RETURNS void LANGUAGE plpgsql AS $$ BEGIN RAISE NOTICE 'COMMIT'; END $$;"}));
+});
+test('only complete ordered live-session markers and verified rollback constitute bounded behavior evidence', () => {
+ need();const output=runner.foundationExpectedMarkers.map(x=>`${x} 412 827`).join('\n')+'\n';
+ assert.deepEqual(runner.parseCatalogueFoundationOutput(output),{backendPid:'412',transactionId:'827'});
+ for(const changed of [output.replace('412 827','413 827'),output.replace('412 827','412 828'),output.replace('CATALOGUE_FOUNDATION_ROLLBACK_VERIFIED 412 827\n',''),output+'UNEXPECTED\n',output.replace('412','0'),output.split('\n').reverse().join('\n')]) assert.throws(()=>runner.parseCatalogueFoundationOutput(changed));
+});
+test('status command session rejects preexisting request objects and verifies their rollback with the six original foundation markers', () => {
+ need(); const sql=runner.buildCatalogueFoundationSession(identity,fixtureParts());
+ for(const object of [
+  "pg_catalog.to_regclass('private.catalog_requests_v1') IS NULL",
+  "pg_catalog.to_regprocedure('private.catalog_request_terminal_v1()') IS NULL",
+  "pg_catalog.to_regprocedure('private.catalog_authorize_v1(text,uuid)') IS NULL",
+  "pg_catalog.to_regprocedure('public.pilot_catalog_transaction_v1(uuid,text,jsonb)') IS NULL",
+  "pg_catalog.to_regprocedure('public.pilot_reconcile_catalog_v1(uuid,boolean)') IS NULL",
+ ]) {
+  assert.equal(sql.split(object).length,3,`Both preexistence and rollback must cover ${object}`);
+  assert.ok(sql.indexOf(object)<sql.indexOf('BEGIN;'));
+  assert.ok(sql.lastIndexOf(object)>sql.lastIndexOf('ROLLBACK;'));
+ }
+ assert.equal(runner.foundationExpectedMarkers.length,14);
+ assert.equal((sql.match(/^\\echo CATALOGUE_FOUNDATION_/gm)||[]).length,6);
+});
+test('status command SQL remains an exact session fragment with real authenticated RPC assertions', () => {
+ need(); const candidate=readFileSync(resolve(root,runner.foundationSqlPaths.candidate),'utf8');
+ const behavior=readFileSync(resolve(root,runner.foundationSqlPaths.foundation),'utf8');
+ assert.doesNotThrow(()=>runner.foundationTopLevelSql(candidate));
+ assert.doesNotThrow(()=>runner.foundationTopLevelSql(behavior));
+ for(const signature of ['CREATE FUNCTION public.pilot_catalog_transaction_v1(', 'CREATE FUNCTION public.pilot_reconcile_catalog_v1('])assert.ok(candidate.includes(signature));
+ assert.ok(behavior.includes('SET LOCAL ROLE authenticated;'));
+ for(const label of ['status no-op does not UPDATE the master', 'exact replay after later master change',
+  'another actor cannot see the original receipt', 'abandonment fences delayed dispatch',
+  'receipt failure rolls back master identity and request', 'recovery rechecks the stored kind capability',
+  'same request under inactive profile is denied', 'status receipt preserves exact bigint text'])assert.ok(behavior.includes(label),label);
+});
+test('behavior suites are real DML and actual-role probes rather than source-contract assertions',()=>{
+ need();const read=name=>readFileSync(resolve(root,`tests/database/catalogue/${name}.sql`),'utf8');
+ const before=read('before-foundation'),foundation=read('foundation'),legacy=read('legacy-columns'),roles=read('roles');
+ assert.match(before,/foundation_probe/);assert.match(before,/SET LOCAL ROLE authenticated/);
+ for(const label of ['positive salesperson/manager baseline writes required','salesperson out-of-scope baseline remains zero rows','positive Executive raw target API baseline required'])assert.ok(before.includes(label));
+ for(const label of ['failed create rolls back evidence','9007199254740993','same UUID isolates identity kinds','forced post-evidence failure rolls back both records','live maximum discarded conflict stays a no-op'])assert.ok(foundation.includes(label));
+ assert.match(legacy,/has_column_privilege/);assert.match(legacy,/catalogue_target_topology_v1/);assert.match(legacy,/foundation_probe\(test.statement\)/);
+ assert.match(roles,/row_security_active/);assert.match(roles,/SET LOCAL ROLE anon/);
+ for(const sql of [before,foundation,legacy,roles])assert.ok(!/^\s*(BEGIN|COMMIT|ROLLBACK);/m.test(sql));
+});
+
+// These dependency-injected unit tests prove runner containment and evidence
+// classification. Only an actual guarded PG17 invocation can prove SQL behavior.
+import { createHash } from 'node:crypto';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync,writeFileSync,mkdirSync,copyFileSync,rmSync,symlinkSync,readdirSync,existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { cataloguePublicSourcePaths,catalogueCaptureSourceIdentity,catalogueCompositionSha256 } from '../../scripts/catalogue-capture-source.mjs';
+const sha=x=>createHash('sha256').update(x).digest('hex');
+const ci={repository:'pl0203/lou_erp',workflow:'Pilot safety checks',workflowRef:'pl0203/lou_erp/.github/workflows/pilot-safety.yml@refs/pull/30/merge',job:'catalogue-baseline',event:'pull_request',ref:'refs/pull/30/merge',eventSha:'d'.repeat(40),runId:'9',runAttempt:'1',headRef:'feat/catalogue-mutations-20261014',baseRef:'fix/pilot-database'};
+function fixture() {
+ need();const directory=mkdtempSync(join(tmpdir(),'catalogue-foundation-unit-'));
+ const composition=JSON.parse(readFileSync(join(root,'supabase/catalogue/ci/composition.json'),'utf8'));
+ for(const path of new Set([...cataloguePublicSourcePaths,...Object.values(runner.foundationSqlPaths),...composition.composition.map(x=>x.path)])) {
+  const destination=join(directory,path);mkdirSync(dirname(destination),{recursive:true});copyFileSync(join(root,path),destination);
+ }
+ const git=(command,args,options)=>{assert.equal(command,'git');assert.equal(options.env.GIT_NO_LAZY_FETCH,'1');return args.includes('HEAD^{tree}')?'b'.repeat(40):args.includes('HEAD')?'a'.repeat(40):'';};
+ const source=catalogueCaptureSourceIdentity(directory,git);
+ const boundIdentity={...identity,source,ci};
+ const capture={format:'catalogue-baseline-capture-v1',status:'captured-unverified',scope:'synthetic-composed-source-only',task1Complete:false,hostedVerified:false,identity:boundIdentity,compositionSha256:catalogueCompositionSha256,compositionPhases:42,refusalProbe:'verified-on-error-stop',implementationSuitesRun:[],catalog:{}};
+ const captured=join(directory,'scale-results/catalogue-baseline');mkdirSync(captured,{recursive:true});
+ const writeCapture=()=>{const bytes=JSON.stringify(capture);writeFileSync(join(captured,'capture.json'),bytes);writeFileSync(join(captured,'manifest.json'),JSON.stringify({format:'catalogue-capture-manifest-v1',status:'captured-unverified',source,ci,files:[{path:'capture.json',sha256:sha(bytes)}]}));};writeCapture();
+ const output=join(directory,'action-output');writeFileSync(output,'');
+ const env={PATH:process.env.PATH,GIT_NO_LAZY_FETCH:'1',CI:'true',GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:ci.repository,GITHUB_WORKFLOW:ci.workflow,GITHUB_WORKFLOW_REF:ci.workflowRef,GITHUB_JOB:ci.job,GITHUB_EVENT_NAME:ci.event,GITHUB_REF:ci.ref,GITHUB_SHA:ci.eventSha,GITHUB_RUN_ID:ci.runId,GITHUB_RUN_ATTEMPT:ci.runAttempt,CATALOGUE_CI_PROFILE:boundIdentity.profile,CATALOGUE_CI_HEAD_REPOSITORY:ci.repository,CATALOGUE_CI_BASE_REPOSITORY:ci.repository,CATALOGUE_CI_HEAD_REF:ci.headRef,CATALOGUE_CI_BASE_REF:ci.baseRef,CATALOGUE_CI_SOURCE_SHA:source.commit,CATALOGUE_CI_CANDIDATE_SHA256:source.candidate,PGHOST:'127.0.0.1',PGPORT:'5432',PGUSER:'postgres',PGDATABASE:'pilot_test',PGPASSWORD:'synthetic-ci-only',GITHUB_OUTPUT:output};
+ const calls=[];let behavior,afterBehavior,observedChange;
+ const execute=(command,args,options)=>{
+  if(command==='git')return git(command,args,options);
+  assert.equal(command,'psql');calls.push({args,options});
+  assert.equal(options.env.GIT_NO_LAZY_FETCH,'1');assert.equal(options.env.PGDATABASE,'pilot_catalogue_test');assert.equal(options.env.HOME,undefined);
+  assert.ok(options.input.includes('SELECT 1/0 AS catalogue_identity_refused;'));
+  assert.deepEqual(args,['-X','--no-password','-qAt','-v','ON_ERROR_STOP=1','-v','VERBOSITY=verbose','-f','-']);
+  if(options.input.includes('CATALOGUE_FIXTURE_OBSERVATION')) {
+   const observed={database:'pilot_catalogue_test',operator:'postgres',database_owner:'postgres',system_identifier:boundIdentity.systemIdentifier,server_version_num:boundIdentity.serverVersion,server_address:boundIdentity.serverAddress,server_port:5432,marker:{kind:'r',owner:'postgres',rows:[{singleton:true,purpose:'disposable-catalogue-ci-v1',identity:boundIdentity}]}};
+   if(observedChange)observedChange(observed,calls.length);return JSON.stringify(observed);
+  }
+  const output=behavior ? behavior(options.input) : runner.foundationExpectedMarkers.map(x=>`${x} 412 827`).join('\n')+'\n';
+  afterBehavior?.();return output;
+ };
+ return {directory,env,capture,writeCapture,output,calls,execute,setBehavior:x=>behavior=x,setAfterBehavior:x=>afterBehavior=x,setObservedChange:x=>observedChange=x,cleanup:()=>rmSync(directory,{recursive:true,force:true})};
+}
+const withFixture=fn=>{const f=fixture();try{return fn(f);}finally{f.cleanup();}};
+test('bound runner uses one behavior process and emits checksummed strictly bounded evidence after verified rollback',()=>withFixture(f=>{
+ const report=runner.runCatalogueFoundation({repoRoot:f.directory,env:f.env,execute:f.execute});
+ assert.equal(f.calls.length,3);const session=f.calls[1].options.input;
+ for(const path of Object.values(runner.foundationSqlPaths))assert.ok(session.includes(readFileSync(join(f.directory,path),'utf8')));
+ assert.equal(report.status,'BOUNDED_FOUNDATION_BEHAVIOR_PASSED');
+ for(const key of ['task1Complete','implementationAccepted','hostedVerified','trackingReady'])assert.equal(report[key],false);
+ assert.equal(report.executionGeneration,1);assert.equal(report.targetParity,'SYNTHETIC_SAME_SESSION_ONLY');assert.equal(report.broaderLockGraph,'UNPROVEN');
+ assert.equal(report.tests.rollback,'VERIFIED');assert.deepEqual(report.session,{backendPid:'412',transactionId:'827'});
+ assert.equal(report.commandAndReplaySuites,'SET_ENABLED_SEQUENTIAL_SAME_SESSION_PASSED');
+ assert.deepEqual(report.commandProof,{operations:['set_enabled'],role:'authenticated',
+  authorization:'VERIFIED_SYNTHETIC_POLICY_ONLY',sequentialReplay:'PASSED',sequentialAbandonment:'PASSED',
+  rollbackAtomicity:'PASSED',concurrentCommandReconcile:'UNRUN',committedCrossSessionRecovery:'UNRUN',hostedPolicyParity:'UNVERIFIED'});
+ assert.deepEqual(report.createEditProof,{operations:['create','edit'],role:'authenticated',authorization:'VERIFIED_SYNTHETIC_POLICY_ONLY',sequentialReplay:'PASSED',sequentialRecovery:'PASSED',rollbackAtomicity:'PASSED',createsRemainUnknown:true,productionGeneration:1,trackingReady:false,concurrency:'UNRUN',hostedPolicyParity:'UNVERIFIED'});
+ assert.deepEqual(report.publicRouterProof,{scope:'PUBLIC_ROUTER_DISPATCH_ONLY',routers:['po','co','promotion','owner','schedule','visit','evidence','attest'],
+  roles:['authenticated','service_role'],dispatch:'SEQUENTIAL_SAME_SESSION_PASSED',replay:'EXACT_PUBLIC_RECEIPTS_AND_OWNER_NOOP_PASSED',
+  fixtureSubtransactionRestoration:'ROWS_CONSTRAINTS_SESSION_VERIFIED',freshNotReadyRefusals:['po','co','owner'],
+  productionGeneration:1,trackingReady:false,globalLifetimeCertification:'NOT_PROVEN',rawCompatibility:'UNPROVEN',
+  loadedLegacyRetirement:'UNPROVEN',concurrency:'UNRUN',hostedParity:'UNVERIFIED'});
+ assert.deepEqual(report.checkedCompletionProof,{status:'BOUNDED_CHECKED_COMPLETION_SUITES_PASSED',scope:'FUTURE_GENERATION_TWO_SYNTHETIC_ONLY',suites:['checked-boundaries','guarded-delete','guarded-delete-history'],historyScanner:'GENERATION_ONE_OWNER_PRIVATE_ONLY',executionGeneration:2,trackingReady:true,fixtureRestoration:'GENERATION_ONE_TRACKING_FALSE_CONSTRAINTS_VERIFIED',productionGeneration:1,productionTrackingReady:false,concurrency:'UNRUN',hostedParity:'UNVERIFIED',implementationAccepted:false});
+ assert.deepEqual(report.files,Object.values(runner.foundationSqlPaths).map(path=>({path,sha256:sha(readFileSync(join(f.directory,path)))})));
+ const out=join(f.directory,'scale-results/catalogue-foundation');assert.deepEqual(readdirSync(out).sort(),['manifest.json','results.json']);
+ const bytes=readFileSync(join(out,'results.json'),'utf8');assert.deepEqual(JSON.parse(readFileSync(join(out,'manifest.json'),'utf8')).files,[{path:'results.json',sha256:sha(bytes)}]);
+ assert.equal(readFileSync(f.output,'utf8'),'bundle_ready=false\nbundle_ready=true\n');
+}));
+test('SQL failure, partial markers, source drift and post-session identity drift never authorize upload',()=>{
+ for(const change of [
+  f=>f.setBehavior(()=>{throw Object.assign(new Error('PRIVATE_CANARY'),{status:3,stderr:'PRIVATE_CANARY'});}),
+  f=>f.setBehavior(()=>runner.foundationExpectedMarkers.slice(0,-1).map(x=>`${x} 412 827`).join('\n')+'\n'),
+  f=>f.setAfterBehavior(()=>writeFileSync(join(f.directory,'tests/database/catalogue/foundation.sql'),'SELECT 1;')),
+  f=>f.setObservedChange((observed,count)=>{if(count===3)observed.server_address='172.18.0.3';}),
+  f=>{f.capture.identity.ci={...ci,runAttempt:'2'};f.writeCapture();},
+  f=>f.env.PGHOST='remote.invalid',
+  f=>f.env.PGSERVICE='PRIVATE_CANARY',
+ ])withFixture(f=>{
+  change(f);assert.throws(()=>runner.runCatalogueFoundation({repoRoot:f.directory,env:f.env,execute:f.execute}),/^Error: CATALOGUE_FOUNDATION_REFUSED$/);
+  assert.equal(readFileSync(f.output,'utf8'),'bundle_ready=false\n');assert.equal(existsSync(join(f.directory,'scale-results/catalogue-foundation/results.json')),false);
+ });
+});
+test('preexisting evidence, symlinks, and dirty transaction fragments fail before any SQL process',()=>{
+ for(const change of [
+  f=>mkdirSync(join(f.directory,'scale-results/catalogue-foundation')),
+  f=>symlinkSync(join(f.directory,'absent'),join(f.directory,'scale-results/catalogue-foundation')),
+  f=>mkdirSync(join(f.directory,'scale-results/catalogue-foundation-pending')),
+  f=>writeFileSync(join(f.directory,runner.foundationSqlPaths.candidate),'COMMIT;'),
+ ])withFixture(f=>{
+  change(f);assert.throws(()=>runner.runCatalogueFoundation({repoRoot:f.directory,env:f.env,execute:f.execute}),/CATALOGUE_FOUNDATION_REFUSED/);
+  assert.equal(f.calls.length,0);assert.equal(readFileSync(f.output,'utf8'),'bundle_ready=false\n');
+ });
+});
+test('CLI has no target/apply override and refuses local execution without leaking input',()=>{
+ for(const args of [[],['--url','PRIVATE_CANARY'],['--apply']]) {
+  const result=spawnSync(process.execPath,[join(root,'scripts/catalogue-foundation.mjs'),...args],{env:{PATH:'/intentionally-absent-executables',GIT_NO_LAZY_FETCH:'1'},encoding:'utf8'});
+  assert.equal(result.status,1);assert.equal(result.stdout,'');assert.equal(result.stderr,'CATALOGUE_FOUNDATION_REFUSED\n');
+ }
+});
+test('all executable behavior and preserved RED inputs participate in exact candidate binding',()=>{
+ for(const path of [...Object.values(runner.foundationSqlPaths),'scripts/catalogue-foundation.mjs','tests/catalogue-ci/foundation.node.mjs','tests/database/catalogue/foundation-red.sql'])assert.ok(cataloguePublicSourcePaths.includes(path),`Unbound runtime input: ${path}`);
+ const red=readFileSync(join(root,'tests/database/catalogue/foundation-red.sql'));
+ assert.equal(sha(red),'5953413767a8ec63df2ff82c5364db11c5154b13dbe4f9d30e1bfe1fe0bd0106');
+});
+test('standard SQL string backslashes cannot conceal transaction boundaries',()=>{
+ need();assert.throws(()=>runner.foundationTopLevelSql("SELECT '\\'; COMMIT; --';"));
+ assert.doesNotThrow(()=>runner.foundationTopLevelSql("SELECT E'quote\\\' and COMMIT text';"));
+ assert.doesNotThrow(()=>runner.foundationTopLevelSql("SELECT 'COMMIT'; /* outer /* COMMIT; */ comment */ SELECT $$ROLLBACK;$$;"));
+ assert.throws(()=>runner.foundationTopLevelSql("SELECT 'unclosed"));
+ assert.throws(()=>runner.foundationTopLevelSql("/* unclosed"));
+});
+test('identifier dollar signs and carriage-return comments cannot conceal transaction boundaries',()=>{
+ need();
+ for(const sql of ['SELECT 1 AS alias$$; COMMIT; SELECT 1 AS alias$$;', 'SELECT 1 AS α$$; COMMIT; SELECT 1 AS α$$;', '-- comment\rCOMMIT;'])assert.throws(()=>runner.foundationTopLevelSql(sql));
+ assert.doesNotThrow(()=>runner.foundationTopLevelSql('DO $body$ BEGIN NULL; END $body$;'));
+});
+
+test('dedicated public CI runs bound foundation after capture and RED with output-gated narrow evidence',()=>{
+ need();
+ const workflow=normalizeEmployeeBranchBudget(readFileSync(resolve(root,'.github/workflows/pilot-safety.yml'),'utf8'));
+ const split=workflow.indexOf('\n  catalogue-baseline:');assert.ok(split>0);
+ const sha=value=>createHash('sha256').update(value).digest('hex');
+ // Preserve the historical application/CO prefix; separately pin both reviewed additions.
+ const scheduling='    needs: catalogue-baseline\n    if: ${{ always() }}\n';
+ assert.equal(workflow.split(scheduling).length,2);
+ assert.ok(workflow.includes(`  synthetic-safety:\n${scheduling}    runs-on: ubuntu-latest`));
+ // Independently pin the sole browser addition before removing it from the historical prefix.
+ const browserStart=workflow.indexOf('      - name: Native synthetic catalogue browser QA');
+ const browserRegion=workflow.slice(browserStart,browserStart+640);
+ assert.equal(sha(browserRegion),'52835f2c64d1d3f84e534c2738b4a246013d32ece348007d14c7e814e7a3aaa5');
+ assert.equal(workflow.split(browserRegion).length,2);
+ assert.ok(workflow.includes('      - run: npm run build\n'+browserRegion+'      - name: Install official PostgreSQL client'));
+ // Pin the approved additive SJ step independently; retain the historical prefix pin.
+ const receivedStart=workflow.indexOf('      - name: Guarded SJ received-date migration');
+ const receivedRegion=workflow.slice(receivedStart,receivedStart+901);
+ assert.equal(sha(receivedRegion),'eb6c3d02339aa38c41e742303ebcf3b87ae63557d302b0478d1a566bca3eccc9');
+ assert.equal(workflow.split(receivedRegion).length,2);
+ assert.ok(workflow.includes('          done\n'+receivedRegion+'      - name: Preserve final CO evidence'));
+ const prefix=workflow.slice(0,split).replace(scheduling,'').replace(browserRegion,'').replace(receivedRegion,'');
+ const decoderStart=prefix.indexOf('      - name: Bind independent read decoder source');
+ const commentStart=prefix.indexOf('  # Independent of synthetic-safety:');
+ assert.ok(decoderStart>0&&commentStart>decoderStart);
+ assert.equal(sha(prefix.slice(decoderStart,commentStart)),'8921961b19dff1f49d74cf285076cab79c8a3d3467a8e7bd8b1b7453f8980e73');
+ assert.equal(sha(prefix.slice(0,decoderStart)+prefix.slice(commentStart)),'32b1e9ded0e18c707af5e2bdc15c7730a0a61634da296b078240b2d2ad6cf505');
+ const job=workflow.slice(split);
+ const unit='node --test tests/catalogue-ci/foundation.node.mjs';
+ const runtime='node scripts/catalogue-foundation.mjs';
+ assert.equal(job.split(unit).length,2);assert.equal(job.split(runtime).length,2);
+ assert.ok(job.indexOf(unit)<job.indexOf('Bind clean candidate bytes before capture'));
+ assert.ok(job.indexOf(runtime)>job.indexOf('node scripts/catalogue-capture-baseline.mjs'));
+ assert.ok(job.indexOf(runtime)>job.indexOf('node scripts/catalogue-foundation-red.mjs'));
+ assert.match(job,/id: catalogue-foundation\n\s+run: node scripts\/catalogue-foundation\.mjs/);
+ assert.ok(job.includes("if: ${{ always() && steps.catalogue-foundation.outputs.bundle_ready == 'true' }}"));
+ assert.ok(job.includes('name: catalogue-foundation-${{ github.run_id }}-${{ github.run_attempt }}'));
+ assert.ok(job.includes('path: scale-results/catalogue-foundation\n'));
+ assert.ok(job.includes('--log-driver=none'));assert.ok(job.includes('timeout-minutes: 20'));
+ assert.ok(job.includes('if-no-files-found: error'));assert.ok(job.includes('retention-days: 7'));
+ assert.ok(!job.includes('continue-on-error:'));assert.ok(!/path:\s*(?:scale-results\s*$|.*\.log\b)/m.test(job));
+ for(const path of Object.values(runner.foundationSqlPaths))assert.ok(cataloguePublicSourcePaths.includes(path),`Unbound executable input ${path}`);
+});
+
+
+test('failure diagnostics expose only fixed phase, ordered marker index and SQLSTATE',()=>{
+ need();const error={status:3,signal:null,stdout:runner.foundationExpectedMarkers.slice(0,2).map(x=>`${x} 412 827`).join('\n')+'\n',stderr:'ERROR:  42501: PRIVATE_CANARY\nDETAIL: SECRET_CANARY\n'};
+ assert.equal(typeof runner.foundationFailureDiagnostic,'function');
+ assert.deepEqual(runner.foundationFailureDiagnostic('session',error),{phase:'session',completedMarkerIndex:1,sqlstate:'42501'});
+ assert.deepEqual(runner.foundationFailureDiagnostic('session',{...error,stdout:''}),{phase:'session',completedMarkerIndex:-1,sqlstate:'42501'});
+ assert.deepEqual(runner.foundationFailureDiagnostic('PRIVATE_CANARY',error),{phase:'unknown',completedMarkerIndex:null,sqlstate:null});
+ assert.ok(!JSON.stringify(runner.foundationFailureDiagnostic('session',error)).includes('CANARY'));
+});
+test('failure diagnostics retain validated SQLSTATE and marker prefix when early exit closes a large input pipe',()=>{
+ need();
+ const stdout=runner.foundationExpectedMarkers[0]+' 412 827\n';
+ const stderr='ERROR:  23514: PRIVATE_CANARY\nDETAIL: SECRET_CANARY\n';
+ // Real installed-Node child only, not SQL: an early nonzero exit can leave a
+ // large stdin buffer unwritten and add EPIPE to an otherwise complete result.
+ let failure;
+ try {
+  execFileSync(process.execPath,['-e',`const fs=require('node:fs');fs.writeSync(1,${JSON.stringify(stdout)});fs.writeSync(2,${JSON.stringify(stderr)});process.exit(3);`],
+   {input:'x'.repeat(1024*1024),encoding:'utf8',timeout:10000,maxBuffer:512*1024,shell:false,stdio:['pipe','pipe','pipe']});
+ } catch(error) { failure=error; }
+ assert.equal(failure?.status,3);assert.equal(failure.signal,null);assert.equal(failure.code,'EPIPE');
+ assert.deepEqual(runner.foundationFailureDiagnostic('session',failure),{phase:'session',completedMarkerIndex:0,sqlstate:'23514'});
+ assert.ok(!JSON.stringify(runner.foundationFailureDiagnostic('session',failure)).includes('CANARY'));
+ for(const change of [{status:1},{status:null},{signal:'SIGTERM'},{code:'ENOBUFS'},
+  {stderr:'ERROR:  23514: PRIVATE_CANARY\nERROR:  42501: SECRET_CANARY\n'},
+  {stderr:'prefix ERROR: 23514: PRIVATE_CANARY\n'}]) {
+  assert.deepEqual(runner.foundationFailureDiagnostic('session',{...failure,stdout,stderr,...change}),
+   {phase:'session',completedMarkerIndex:null,sqlstate:null});
+ }
+ assert.deepEqual(runner.foundationFailureDiagnostic('session',{...failure,stdout:'PRIVATE_CANARY\n',stderr}),
+  {phase:'session',completedMarkerIndex:null,sqlstate:'23514'});
+});
+test('failure diagnostics reject malformed mixed or fabricated marker progress',()=>{
+ need();assert.equal(typeof runner.foundationFailureDiagnostic,'function');
+ const marker=runner.foundationExpectedMarkers[0]+' 412 827\n';
+ for(const stdout of ['PRIVATE_CANARY\n',marker+'PRIVATE_CANARY\n',runner.foundationExpectedMarkers[1]+' 412 827\n',marker+runner.foundationExpectedMarkers[1]+' 413 827\n',marker+marker,marker.trim(),runner.foundationExpectedMarkers[0]+' 0 827\n']) {
+  assert.deepEqual(runner.foundationFailureDiagnostic('session',{status:3,signal:null,stdout,stderr:'ERROR:  P0001: PRIVATE_CANARY\n'}),{phase:'session',completedMarkerIndex:null,sqlstate:'P0001'});
+ }
+});
+test('failure diagnostics do not mistake timeout spawn or mixed ERROR output for SQLSTATE',()=>{
+ need();assert.equal(typeof runner.foundationFailureDiagnostic,'function');
+ for(const change of [{status:1},{signal:'SIGTERM'},{code:'ENOENT'},{stderr:'ERROR:  P0001: x\nERROR:  42501: y\n'},{stderr:'prefix ERROR: P0001: PRIVATE_CANARY\n'},{stderr:'ERROR: PRIVATE_CANARY\n'}, {stdout:Buffer.from('PRIVATE_CANARY')}]) {
+  const error={status:3,signal:null,stdout:'',stderr:'ERROR:  P0001: PRIVATE_CANARY\n',...change};
+  const expected=change.stdout?{phase:'session',completedMarkerIndex:null,sqlstate:'P0001'}:{phase:'session',completedMarkerIndex:null,sqlstate:null};
+  assert.deepEqual(runner.foundationFailureDiagnostic('session',error),expected);
+ }
+});
+test('failure diagnostics map exact stdin line numbers to captured public source bytes only',()=>{
+ need();const parts=Object.fromEntries(Object.entries(runner.foundationSqlPaths).map(([name,path])=>[name,readFileSync(join(root,path),'utf8')]));
+ const sql=runner.buildCatalogueFoundationSession(identity,parts),map=runner.foundationSessionSourceMap(sql,parts);
+ assert.equal(map.sqlSha256,sha(sql));assert.equal(Object.isFrozen(map),true);
+ const completed={before:0,candidate:1,foundation:2,legacy:3,roles:4,orderCandidate:5,orders:5,coOrderCandidate:6,coOrders:6,promotionOwnerGrammar:7,poGrammar:7,coGrammar:7,coDraftGrammar:7,retiredCoGrammar:7,visitGrammar:7,noncoGrammar:7,lifetimeCandidate:7,lifetime:7,createEditCandidate:8,targetTrackingCandidate:8,checkedBoundariesCandidate:8,guardedDeleteCandidate:8,masterCompletionCandidate:8,createEdit:8,publicRouters:9,checkedBoundaries:10,guardedDelete:11,guardedDeleteHistory:12};
+ for(const [name,path] of Object.entries(runner.foundationSqlPaths)) {
+  const range=map.ranges.find(r=>r.path===path);assert.ok(Object.isFrozen(range));
+  const sourceLines=parts[name].trimEnd().split('\n');
+  assert.equal(sql.split('\n')[range.firstLine-1],sourceLines[0]);
+  assert.equal(sql.split('\n')[range.lastLine-1],sourceLines.at(-1));
+  for(const inputLine of [range.firstLine,range.lastLine]) {
+   const error={status:3,signal:null,code:'EPIPE',stdout:runner.foundationExpectedMarkers.slice(0,completed[name]).map(x=>`${x} 412 827\n`).join(''),stderr:`psql:<stdin>:${inputLine}: ERROR:  42501: PRIVATE_CANARY\nDETAIL: SECRET_CANARY\n`};
+   const diagnostic=runner.foundationFailureDiagnostic('session',error,map);
+   assert.deepEqual(diagnostic,{phase:'session',completedMarkerIndex:completed[name]-1,sqlstate:'42501',source:{path,sha256:sha(parts[name]),line:inputLine-range.firstLine+1}});
+   assert.equal(JSON.stringify(diagnostic).includes('CANARY'),false);
+  }
+ }
+ assert.throws(()=>runner.foundationSessionSourceMap(sql+'\r',parts));
+ assert.throws(()=>runner.foundationSessionSourceMap(sql+parts.coOrders,parts));
+ assert.throws(()=>runner.foundationSessionSourceMap(sql,{...parts,coOrders:'SELECT missing_source;'}));
+});
+test('failure diagnostics reject mixed origins unsafe line numbers forged maps and marker contradictions',()=>{
+ need();const parts=fixtureParts(),sql=runner.buildCatalogueFoundationSession(identity,parts),map=runner.foundationSessionSourceMap(sql,parts);
+ const range=map.ranges.find(r=>r.path===runner.foundationSqlPaths.coOrders),n=range.firstLine;
+ const stdout=runner.foundationExpectedMarkers.slice(0,6).map(x=>`${x} 412 827\n`).join('');
+ const error={status:3,signal:null,stdout,stderr:`psql:<stdin>:${n}: ERROR:  P0001: PRIVATE_CANARY\n`};
+ const empty={phase:'session',completedMarkerIndex:null,sqlstate:null};
+ for(const stderr of [
+  `psql:/private/file:${n}: ERROR:  P0001: PRIVATE_CANARY\n`,
+  `prefix psql:<stdin>:${n}: ERROR:  P0001: PRIVATE_CANARY\n`,
+  ...['0','-1','01','1.5','99999999',String(map.lineCount+1)].map(line=>`psql:<stdin>:${line}: ERROR:  P0001: PRIVATE_CANARY\n`),
+  error.stderr+'ERROR:  42501: SECRET_CANARY\n',error.stderr+error.stderr,error.stderr.trimEnd()+' ERROR: 42501: SECRET_CANARY\n',
+  error.stderr.trimEnd(),error.stderr+'x'.repeat(512*1024)+'\n',
+ ])assert.deepEqual(runner.foundationFailureDiagnostic('session',{...error,stderr},map),empty);
+ for(const unbound of [undefined,{...map},Object.freeze({...map}),{...map,ranges:[]}])
+  assert.deepEqual(runner.foundationFailureDiagnostic('session',error,unbound),empty);
+ for(const badOutput of ['',stdout+runner.foundationExpectedMarkers[6]+' 412 827\n',stdout+'PRIVATE_CANARY\n',stdout.trimEnd(),'x'.repeat(4097)]) {
+  const diagnostic=runner.foundationFailureDiagnostic('session',{...error,stdout:badOutput},map);
+  assert.deepEqual(diagnostic,{phase:'session',completedMarkerIndex:null,sqlstate:'P0001'});
+ }
+ assert.deepEqual(runner.foundationFailureDiagnostic('identity-preflight',error,map),{...empty,phase:'identity-preflight'});
+});
+test('failure diagnostics preserve refusal and never authorize a failure bundle',()=>withFixture(f=>{
+ f.setBehavior(()=>{throw Object.assign(new Error('PRIVATE_CANARY'),{status:3,signal:null,stdout:runner.foundationExpectedMarkers[0]+' 412 827\n',stderr:'ERROR:  P0001: SECRET_CANARY\n'});});
+ assert.throws(()=>runner.runCatalogueFoundation({repoRoot:f.directory,env:f.env,execute:f.execute}),error=>{
+  assert.equal(error.message,'CATALOGUE_FOUNDATION_REFUSED');
+  assert.deepEqual(error.diagnostic,{phase:'session',completedMarkerIndex:0,sqlstate:'P0001'});
+  assert.ok(!JSON.stringify(error).includes('CANARY'));return true;
+ });
+ assert.equal(readFileSync(f.output,'utf8'),'bundle_ready=false\n');
+ assert.equal(existsSync(join(f.directory,'scale-results/catalogue-foundation/results.json')),false);
+}));
+
+test('inactive PO core is bound into the existing rollback session without activating cutover',()=>{
+ need();
+ assert.equal(runner.foundationSqlPaths.orderCandidate,'supabase/catalogue/v1/04-order-boundaries.sql');
+ assert.equal(runner.foundationSqlPaths.orders,'tests/database/catalogue/orders.sql');
+ assert.ok(runner.foundationExpectedMarkers.includes('CATALOGUE_ORDERS_CORE_PASSED'));
+ const candidate=readFileSync(resolve(root,runner.foundationSqlPaths.orderCandidate),'utf8');
+ const suite=readFileSync(resolve(root,runner.foundationSqlPaths.orders),'utf8');
+ assert.doesNotThrow(()=>runner.foundationTopLevelSql(candidate));
+ assert.doesNotThrow(()=>runner.foundationTopLevelSql(suite));
+ for(const token of ['private.catalog_po_transaction_core_v2','private.catalog_po_transaction_v2','private.catalog_po_legacy_transaction_v1','0b1e19441a499ae9c864b2d21aef28ba','FOR NO KEY UPDATE','CATALOG_DISABLED','CATALOG_TRACKING_INCOMPLETE'])assert.ok(candidate.includes(token),token);
+ assert.ok(!candidate.includes('DROP CONSTRAINT catalog_foundation'));
+ assert.ok(!suite.includes('DROP CONSTRAINT catalog_foundation'));
+ for(const label of ['private core explicitly writes generation two','production generation two remains unavailable','exact replay ignores later disabled targets','fabricated persisted identity refused','disabled customer caps each persisted line','trusted conversion refuses disabled product','manual history preserves zero price','post-stage07 executive review remains required'])assert.ok(suite.includes(label),label);
+});
+
+test('PO identity regression fixture qualifies columns shadowed by its local id variable',()=>{
+ const sql=readFileSync(resolve(root,'tests/database/catalogue/orders.sql'),'utf8');
+ const block=sql.match(/DO \$\$ DECLARE payload jsonb; id uuid; BEGIN([\s\S]*?)END \$\$;/)?.[1];
+ assert.ok(block,'Actual foreign/removed-ID probe block must remain present');
+ assert.match(block,/SELECT p\.updated_at FROM public\.purchase_orders p WHERE p\.id=\(c\.result->>'po_id'\)::uuid/);
+ assert.doesNotMatch(block,/FROM public\.purchase_orders WHERE id=/);
+ assert.match(block,/FOREACH id IN ARRAY ARRAY\[md5\('manual-line'\)::uuid,md5\('removed-line'\)::uuid\]/);
+ assert.ok(block.includes("'22023','foreign and removed persisted line identities refused'"));
+});
+
+test('create edit installer and behavior remain in the same rollback and exact source-map gate',()=>{
+ need();
+ assert.equal(runner.foundationExpectedMarkers.at(-6),'CATALOGUE_CREATE_EDIT_CORE_PASSED');
+ assert.ok(runner.foundationSqlPaths.createEditCandidate);assert.ok(runner.foundationSqlPaths.createEdit);
+ const parts={...fixtureParts(),createEditCandidate:'SELECT 1 AS create_edit_candidate;',createEdit:'SELECT 1 AS actual_create_edit_behavior;'};
+ const sql=runner.buildCatalogueFoundationSession(identity,parts);
+ assert.ok(sql.indexOf(parts.lifetime)<sql.indexOf(parts.createEditCandidate));
+ assert.ok(sql.indexOf(parts.createEditCandidate)<sql.indexOf(parts.createEdit));
+ assert.ok(sql.indexOf(parts.createEdit)<sql.indexOf('CATALOGUE_CREATE_EDIT_CORE_PASSED'));
+ assert.ok(sql.indexOf('CATALOGUE_CREATE_EDIT_CORE_PASSED')<sql.lastIndexOf('ROLLBACK;'));
+ for(const key of ['createEditCandidate','createEdit']){const missing={...parts};delete missing[key];assert.throws(()=>runner.buildCatalogueFoundationSession(identity,missing));}
+ for(const object of ["pg_catalog.to_regclass('private.catalog_write_policy_contract_v1') IS NULL",
+  "pg_catalog.to_regprocedure('private.catalog_status_transaction_v1(uuid,text,jsonb)') IS NULL",
+  "pg_catalog.to_regprocedure('private.catalog_status_reconcile_v1(uuid,boolean)') IS NULL"]){
+  assert.equal(sql.split(object).length,3);assert.ok(sql.indexOf(object)<sql.indexOf('BEGIN;'));assert.ok(sql.lastIndexOf(object)>sql.lastIndexOf('ROLLBACK;'));
+ }
+});
+test('new create edit source checks and actual sender inputs are source-bound',()=>{
+ for(const path of ['src/pages/athel/CustomerList.tsx','src/pages/athel/ProductList.tsx','src/lib/catalogue/useCataloguePage.ts','src/lib/catalogue/formCommands.ts'])assert.equal(cataloguePublicSourcePaths.filter(p=>p===path).length,1,path);
+});
+
+test('public router dispatch-only fragment follows create edit inside the existing rollback and source map',()=>{
+ need();assert.equal(runner.foundationSqlPaths.publicRouters,'tests/database/catalogue/generation-two-routers.sql');
+ assert.deepEqual(runner.foundationExpectedMarkers.slice(-6),['CATALOGUE_CREATE_EDIT_CORE_PASSED','CATALOGUE_PUBLIC_ROUTER_DISPATCH_ONLY_PASSED','CATALOGUE_CHECKED_BOUNDARIES_PASSED','CATALOGUE_GUARDED_DELETE_PASSED','CATALOGUE_GUARDED_DELETE_HISTORY_PASSED','CATALOGUE_FOUNDATION_ROLLBACK_VERIFIED']);
+ const parts=fixtureParts(),sql=runner.buildCatalogueFoundationSession(identity,parts),marker='CATALOGUE_PUBLIC_ROUTER_DISPATCH_ONLY_PASSED';
+ assert.ok(sql.indexOf('CATALOGUE_CREATE_EDIT_CORE_PASSED')<sql.indexOf(parts.publicRouters));
+ assert.ok(sql.indexOf(parts.publicRouters)<sql.indexOf(marker));assert.ok(sql.indexOf(marker)<sql.lastIndexOf('ROLLBACK;'));
+ assert.ok(sql.slice(sql.indexOf(parts.publicRouters)+parts.publicRouters.length,sql.indexOf(marker)).includes('catalogue_foundation_session_refused'));
+ for(const path of ['tests/database/catalogue/generation-two-routers.sql','tests/catalogue-ci/generation-two-routers.node.mjs'])assert.equal(cataloguePublicSourcePaths.filter(p=>p===path).length,1,path);
+ const captureTest=readFileSync(join(root,'tests/catalogue-ci/capture.test.ts'),'utf8');
+ for(const path of ['tests/database/catalogue/generation-two-routers.sql','tests/catalogue-ci/generation-two-routers.node.mjs'])assert.equal(captureTest.split(`'${path}'`).length,2,path);
+});
+test('missing dispatch-only marker and drift in either bound router proof input cannot publish evidence',()=>{
+ for(const change of [
+  f=>f.setBehavior(()=>runner.foundationExpectedMarkers.filter(x=>x!=='CATALOGUE_PUBLIC_ROUTER_DISPATCH_ONLY_PASSED').map(x=>`${x} 412 827`).join('\n')+'\n'),
+  ...['tests/database/catalogue/generation-two-routers.sql','tests/catalogue-ci/generation-two-routers.node.mjs'].map(path=>f=>f.setAfterBehavior(()=>writeFileSync(join(f.directory,path),'// changed source\n'))),
+ ])withFixture(f=>{
+  change(f);assert.throws(()=>runner.runCatalogueFoundation({repoRoot:f.directory,env:f.env,execute:f.execute}),/^Error: CATALOGUE_FOUNDATION_REFUSED$/);
+  assert.equal(readFileSync(f.output,'utf8'),'bundle_ready=false\n');assert.equal(existsSync(join(f.directory,'scale-results/catalogue-foundation/results.json')),false);
+ });
+});
+
+// These are assembly/containment tests, not PostgreSQL execution evidence.
+test('completion assembly installs target tracking and every completion hook before create edit behavior',()=>{
+ need();const parts=fixtureParts(),sql=runner.buildCatalogueFoundationSession(identity,parts);
+ const ordered=['createEditCandidate','targetTrackingCandidate','checkedBoundariesCandidate','guardedDeleteCandidate','masterCompletionCandidate','createEdit','publicRouters','checkedBoundaries','guardedDelete'];
+ for(let i=1;i<ordered.length;i++)assert.ok(sql.indexOf(parts[ordered[i-1]])<sql.indexOf(parts[ordered[i]]),ordered[i]);
+ for(const [name,marker]of [['checkedBoundaries','CATALOGUE_CHECKED_BOUNDARIES_PASSED'],['guardedDelete','CATALOGUE_GUARDED_DELETE_PASSED']]){
+  assert.ok(sql.includes(parts[name]));const start=sql.indexOf(parts[name])+parts[name].length,end=sql.indexOf('\\echo '+marker);
+  assert.ok(end>start);assert.match(sql.slice(start,end),/catalogue_completion_restoration_refused/);
+ }
+ const rollback=sql.lastIndexOf('ROLLBACK;');assert.ok(rollback>sql.indexOf(parts.guardedDelete));
+ assert.deepEqual(runner.foundationExpectedMarkers.slice(-4),['CATALOGUE_CHECKED_BOUNDARIES_PASSED','CATALOGUE_GUARDED_DELETE_PASSED','CATALOGUE_GUARDED_DELETE_HISTORY_PASSED','CATALOGUE_FOUNDATION_ROLLBACK_VERIFIED']);
+ for(const name of ordered){const missing={...parts};delete missing[name];assert.throws(()=>runner.buildCatalogueFoundationSession(identity,missing));}
+});
+test('completion suite permits only its exact named rollback envelope and preserves every suite byte',()=>{
+ need();const parts=fixtureParts(),valid=parts.guardedDelete;
+ for(const guardedDelete of [valid.replace('SAVEPOINT guarded_delete_fixture;','SAVEPOINT arbitrary;'),valid.replace('RELEASE SAVEPOINT guarded_delete_fixture;',''),valid+'\nCOMMIT;',valid.replace('ROLLBACK TO SAVEPOINT guarded_delete_fixture;','ROLLBACK;'),valid.replace('RELEASE SAVEPOINT guarded_delete_fixture;','RELEASE SAVEPOINT guarded_delete_fixture;\nRELEASE SAVEPOINT guarded_delete_fixture;')])assert.throws(()=>runner.buildCatalogueFoundationSession(identity,{...parts,guardedDelete}));
+ assert.ok(runner.buildCatalogueFoundationSession(identity,parts).includes(valid));
+ assert.throws(()=>runner.buildCatalogueFoundationSession(identity,{...parts,checkedBoundaries:'SAVEPOINT guarded_delete_fixture;\nSELECT 1;\nROLLBACK TO SAVEPOINT guarded_delete_fixture;\nRELEASE SAVEPOINT guarded_delete_fixture;'}));
+});
+
+test('completion restoration compares exact original constraint rows rather than only their names',()=>{
+ need();const sql=runner.buildCatalogueFoundationSession(identity,fixtureParts());
+ assert.match(sql,/CREATE TEMP TABLE catalogue_completion_cutover_before_v1 ON COMMIT DROP AS/);
+ assert.match(sql,/jsonb_agg\(to_jsonb\(c\) ORDER BY c.conname\)/);
+ assert.match(runner.catalogueCompletionRestoredPredicate,/pg_temp.catalogue_completion_cutover_before_v1/);
+ assert.ok(sql.indexOf('CREATE TEMP TABLE catalogue_completion_cutover_before_v1')<sql.indexOf('CATALOGUE_FOUNDATION_CANDIDATE_APPLIED'));
+});
+
+test('history behavior is an executed third suite with finite nested rollback containment',()=>{
+ need();const p=fixtureParts(),sql=runner.buildCatalogueFoundationSession(identity,p);
+ assert.ok(sql.indexOf(p.guardedDeleteHistory)>sql.indexOf('\\echo CATALOGUE_GUARDED_DELETE_PASSED'));
+ assert.ok(sql.indexOf('\\echo CATALOGUE_GUARDED_DELETE_HISTORY_PASSED')>sql.indexOf(p.guardedDeleteHistory));
+ assert.ok(sql.lastIndexOf('ROLLBACK;')>sql.indexOf('\\echo CATALOGUE_GUARDED_DELETE_HISTORY_PASSED'));
+ for(const change of [x=>x.replace('SAVEPOINT trusted_history_topology;','SAVEPOINT arbitrary;'),x=>x.replace('RELEASE SAVEPOINT trusted_history_retired_co;',''),x=>x.replace('RELEASE SAVEPOINT guarded_delete_history_fixture;',''),x=>x.replace('SAVEPOINT trusted_history_fixture;','DO $$ BEGIN\nSAVEPOINT trusted_history_fixture;\nEND $$;')])assert.throws(()=>runner.buildCatalogueFoundationSession(identity,{...p,guardedDeleteHistory:change(p.guardedDeleteHistory)}));
+});
+
+test('CO negative history fixture is isolated after its actual deferred assertions and before later suites',()=>{
+ need();
+ const parts=fixtureParts(),sql=runner.buildCatalogueFoundationSession(identity,parts);
+ const start='SAVEPOINT catalogue_co_behavior_fixture;',rollback='ROLLBACK TO SAVEPOINT catalogue_co_behavior_fixture;',release='RELEASE SAVEPOINT catalogue_co_behavior_fixture;';
+ for(const boundary of [start,rollback,release])assert.equal(sql.split('\n').filter(line=>line===boundary).length,1,'one exact runner-owned CO boundary: '+boundary);
+ const begin=sql.indexOf(start),suite=sql.indexOf(parts.coOrders),end=suite+parts.coOrders.length,undo=sql.indexOf(rollback),done=sql.indexOf(release);
+ assert.ok(sql.indexOf(parts.coOrderCandidate)<begin && begin<suite,'installed core is outside the behavioral rollback');
+ assert.ok(end<undo && undo<done && done<sql.indexOf(parts.promotionOwnerGrammar),'only the CO behavioral suite is isolated');
+ assert.match(sql.slice(end,undo),/SET CONSTRAINTS ALL IMMEDIATE;\s*$/,'execute queued assertions before rollback, never discard them silently');
+ assert.ok(sql.slice(end,undo).includes('catalogue_foundation_session_refused'),'same owner/backend/transaction checked before drain');
+ assert.equal(sql.split(parts.coOrders).length,2,'suite bytes and every original assertion remain included once');
+ const source=readFileSync(resolve(root,runner.foundationSqlPaths.coOrders),'utf8');
+ assert.match(runner.foundationTopLevelSql(source),/SET CONSTRAINTS ALL IMMEDIATE;\s*SET CONSTRAINTS ALL DEFERRED;\s*$/,'existing CO suite already drains its assertions before returning');
+ assert.ok(source.includes("'save_report_draft','{\"lines\":null}','{}'"),'known malformed fixture history stays in its original negative proof');
+ for(const later of ['lifetime','createEdit','publicRouters','checkedBoundaries','guardedDelete','guardedDeleteHistory'])assert.ok(done<sql.indexOf(parts[later]),later+' cannot inherit the malformed CO fixture');
+ assert.throws(()=>runner.buildCatalogueFoundationSession(identity,{...parts,coOrders:start+'\n'+parts.coOrders}),'suite cannot introduce its own transaction boundaries');
+});
+
+test('PO legacy-shape fixture is isolated after its actual deferred assertions without isolating valid lifetime history',()=>{
+ need();
+ const parts=fixtureParts(),sql=runner.buildCatalogueFoundationSession(identity,parts);
+ const start='SAVEPOINT catalogue_po_behavior_fixture;',rollback='ROLLBACK TO SAVEPOINT catalogue_po_behavior_fixture;',release='RELEASE SAVEPOINT catalogue_po_behavior_fixture;';
+ for(const boundary of [start,rollback,release])assert.equal(sql.split('\n').filter(line=>line===boundary).length,1,'one exact runner-owned PO boundary: '+boundary);
+ const begin=sql.indexOf(start),suite=sql.indexOf(parts.orders),end=suite+parts.orders.length,undo=sql.indexOf(rollback),done=sql.indexOf(release);
+ assert.ok(sql.indexOf(parts.orderCandidate)<begin && begin<suite,'installed PO core is outside the behavioral rollback');
+ assert.ok(end<undo && undo<done && done<sql.indexOf(parts.coOrderCandidate),'only the PO behavioral suite is isolated');
+ assert.match(sql.slice(end,undo),/SET CONSTRAINTS ALL IMMEDIATE;\s*$/,'execute queued assertions before rollback, never discard them silently');
+ assert.ok(sql.slice(end,undo).includes('catalogue_foundation_session_refused'),'same owner/backend/transaction checked before drain');
+ assert.equal(sql.split(parts.orders).length,2,'suite bytes and every original assertion remain included once');
+ const source=readFileSync(resolve(root,runner.foundationSqlPaths.orders),'utf8');
+ assert.match(runner.foundationTopLevelSql(source),/SET CONSTRAINTS ALL IMMEDIATE;\s*SET CONSTRAINTS ALL DEFERRED;\s*$/,'existing PO suite already drains its assertions before returning');
+ assert.ok(source.includes("'execution_version',2,'generation',2"),'generation-one extra-key compatibility remains asserted by the original fixture');
+ assert.ok(source.includes("'client generation hints cannot upgrade old body'"));
+ for(const later of ['coOrderCandidate','coOrders','lifetime','createEdit','publicRouters','checkedBoundaries','guardedDelete','guardedDeleteHistory'])assert.ok(done<sql.indexOf(parts[later]),later+' cannot inherit the PO negative-shape fixture');
+ assert.ok(sql.indexOf('RELEASE SAVEPOINT catalogue_co_behavior_fixture;')<sql.indexOf(parts.lifetime),'valid lifetime history remains outside both behavioral isolation envelopes');
+ assert.throws(()=>runner.buildCatalogueFoundationSession(identity,{...parts,orders:start+'\n'+parts.orders}),'suite cannot introduce its own transaction boundaries');
+});

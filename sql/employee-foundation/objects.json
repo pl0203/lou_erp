@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "owner": "postgres",
+  "tables": [
+    "private.employee_records",
+    "private.employee_number_claims",
+    "private.employee_account_links",
+    "private.employee_episodes",
+    "private.employee_reporting_revisions",
+    "private.employee_reporting_intervals",
+    "private.employee_audit_events",
+    "private.employee_operations",
+    "private.employee_settings",
+    "private.employee_reporting_guard"
+  ],
+  "entrypoints": [
+    "public.employee_context_v1()",
+    "private.employee_context_impl_v1()",
+    "public.employee_page_v1(text,text,integer,integer)",
+    "private.employee_page_impl_v1(text,text,integer,integer)",
+    "public.employee_detail_v1(uuid)",
+    "private.employee_detail_impl_v1(uuid)",
+    "public.employee_audit_v1(uuid,integer,integer)",
+    "private.employee_audit_impl_v1(uuid,integer,integer)",
+    "public.employee_account_candidates_v1(text,integer,integer)",
+    "private.employee_account_candidates_impl_v1(text,integer,integer)",
+    "public.employee_preview_v1(uuid,bigint,text,jsonb,text,date,text)",
+    "private.employee_preview_impl_v1(uuid,bigint,text,jsonb,text,date,text)",
+    "public.employee_command_v1(uuid,uuid,bigint,text,jsonb,text,date,text,text)",
+    "private.employee_command_impl_v1(uuid,uuid,bigint,text,jsonb,text,date,text,text)",
+    "public.employee_operation_v1(uuid,text)",
+    "private.employee_operation_impl_v1(uuid,text)"
+  ],
+  "helpers": [
+    "private.employee_timezone_valid(text)",
+    "private.employee_require_director()",
+    "private.employee_read_guard(text,integer,integer)",
+    "private.employee_fields(private.employee_records)",
+    "private.employee_audit_projection(jsonb)",
+    "private.employee_trim(text)",
+    "private.employee_text(text,integer,boolean)",
+    "private.employee_date(jsonb)",
+    "private.employee_hash(jsonb)",
+    "private.employee_request(uuid,bigint,text,jsonb,text,date,text)",
+    "private.employee_lock_actor()",
+    "private.employee_lock_operation(uuid,uuid)",
+    "private.employee_prepare(jsonb)",
+    "private.employee_reporting_request(uuid,jsonb)",
+    "private.employee_reporting_prepare(jsonb)",
+    "private.employee_reporting_apply(uuid,jsonb,uuid,text)"
+  ]
+}

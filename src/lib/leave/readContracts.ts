@@ -1,12 +1,12 @@
 import { parseDateKey, parseUUID } from './contracts'
-export type CalendarAudience='own'|'assigned_team'|'granted'
+export type CalendarAudience='own'|'assigned_team'|'granted'|'director_all'
 export type CalendarRange={from:string;to:string}
 /** Exactly the five minimized server fields. No request ID/detail route or clock-time claim. */
 export type CalendarAvailability={employeeId:string;employeeName:string;date:string;approvedMinutes:number;availabilityLabel:'full_scheduled_absence'|'partial_absence'}
 export type LeaveReadAccess={scopeVersion:string;calendarAudiences:CalendarAudience[];defaultRange:CalendarRange|null;defaultRangeState:'ready'|'timezone_unconfirmed'|'timezone_mixed'|'unavailable'}
 export type ApprovalCountFilter='all'|'submitted'|'cancellation_pending'
 export type LeaveApprovalCounts={pendingLeave:number;pendingCancellation:number}
-const audiences:readonly CalendarAudience[]=['own','assigned_team','granted']
+const audiences:readonly CalendarAudience[]=['own','assigned_team','granted','director_all']
 function invalid():never{throw new Error('Respons layanan cuti tidak valid. Silakan muat ulang.')}
 function object(value:unknown):value is Record<string,unknown>{return !!value&&typeof value==='object'&&!Array.isArray(value)}
 function exact(value:unknown,keys:string[]):value is Record<string,unknown>{return object(value)&&Object.keys(value).sort().join(',')===[...keys].sort().join(',')}
@@ -62,3 +62,4 @@ export function calendarMonthRange(timezone:string|null,now:Date=new Date()):Cal
   return parseCalendarRange({from:`${year}-${month}-01`,to:`${year}-${month}-${last}`})
  }catch{return null}
 }
+

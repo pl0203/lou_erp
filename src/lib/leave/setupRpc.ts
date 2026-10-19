@@ -4,6 +4,7 @@ import { parseDateKey, parseUUID } from './contracts'
 import type { LeaveResult, Page, Recovery, UUID } from './contracts'
 import { leaveErrorMessage } from './rpc'
 import type { LeaveApproverOption, LeaveCalendarSetup, LeaveMemberSetup, LeaveSetupCommand, RosterPreview, RosterPreviewInput, SetupImpacts, CalendarPreviewInput, CalendarPreview } from './setupContracts'
+function fingerprint(value:unknown):string{if(typeof value!=='string'||!/^[0-9a-f]{64}$/.test(value))invalid();return value}
 function invalid(): never { throw new Error('Respons pengaturan cuti tidak valid. Muat ulang sebelum melanjutkan.') }
 function obj(v: unknown): Record<string, unknown> { if (!v || typeof v !== 'object' || Array.isArray(v)) invalid(); return v as Record<string, unknown> }
 function text(v: unknown): string { if (typeof v !== 'string') invalid(); return v }
@@ -34,7 +35,7 @@ export function toSetupPayload(c: LeaveSetupCommand): Record<string, unknown> {
   if (c.approverId===null && (c.effectiveFrom!==null || c.effectiveUntil!==null || c.replaceAssignmentId===null)) invalid()
   if (c.approverId!==null && c.effectiveFrom===null) invalid()
   return {...base,employee_id:parseUUID(c.employeeId),approver_id:idOrNull(c.approverId),effective_from:dateOrNull(c.effectiveFrom),effective_until:dateOrNull(c.effectiveUntil),replace_assignment_id:idOrNull(c.replaceAssignmentId)}
- case 'set_group_membership':return {...base,employee_id:parseUUID(c.employeeId),group_id:parseUUID(c.groupId),effective_from:parseDateKey(c.effectiveFrom),effective_until:dateOrNull(c.effectiveUntil),replace_membership_id:idOrNull(c.replaceMembershipId)}
+ case 'set_group_membership':return {...base,...(c.continuationFingerprint===undefined?{}:{continuation_fingerprint:fingerprint(c.continuationFingerprint)}),employee_id:parseUUID(c.employeeId),group_id:parseUUID(c.groupId),effective_from:parseDateKey(c.effectiveFrom),effective_until:dateOrNull(c.effectiveUntil),replace_membership_id:idOrNull(c.replaceMembershipId)}
  case 'save_calendar_version':return {...base,...toCalendarProposal(c),preview_fingerprint:text(c.previewFingerprint)}
  case 'publish_roster':return {...base,calendar_id:parseUUID(c.calendarId),anchor:parseDateKey(c.anchor),groups:c.groups.map(g=>({id:parseUUID(g.id),on_anchor:bool(g.onAnchor)})),effective_from:parseDateKey(c.from),effective_until:parseDateKey(c.to),preview_fingerprint:text(c.previewFingerprint)}
  default:return invalid()
@@ -90,4 +91,20 @@ export async function previewLeaveCalendar(input:CalendarPreviewInput,signal:Abo
  if(error)throw new Error(leaveErrorMessage(error));const v=obj(data)
  if(v.calendarId!==input.calendarId||v.calendarVersion!==input.expectedVersion||!text(v.fingerprint))invalid()
  return {calendarId:parseUUID(v.calendarId),calendarVersion:integer(v.calendarVersion),fingerprint:text(v.fingerprint),impacts:impacts(v.impacts)}
+}
+
+export async function fetchLeaveRosterContinuations(calendarId:string,scopeVersion:string,number:number,size:number,signal:AbortSignal):Promise<import('./setupContracts').RosterContinuationPage>{
+ if(!scopeVersion||!Number.isSafeInteger(number)||number<1||!Number.isSafeInteger(size)||size<1||size>100)invalid()
+ const {data,error}=await supabase.rpc('leave_roster_continuations_v1',{p_calendar_id:parseUUID(calendarId),p_page:number,p_page_size:size}).abortSignal(signal);signal.throwIfAborted()
+ if(error)throw new Error(leaveErrorMessage(error));const v=obj(data)
+ function exact(value:Record<string,unknown>,keys:string){if(Object.keys(value).sort().join(',')!==keys)invalid()}
+ exact(v,'calendarId,page,pageSize,rows,scopeVersion,total')
+ if(v.calendarId!==calendarId||v.scopeVersion!==scopeVersion||v.page!==number||v.pageSize!==size)invalid()
+ const rows=list(v.rows).map(value=>{const row=obj(value);exact(row,'continuationFingerprint,effectiveFrom,effectiveUntil,employeeId,employeeName,groupId,groupName,memberVersion')
+  const effectiveFrom=parseDateKey(row.effectiveFrom),effectiveUntil=parseDateKey(row.effectiveUntil),memberVersion=integer(row.memberVersion)
+  if(effectiveUntil<=effectiveFrom||memberVersion<1)invalid()
+  return {continuationFingerprint:fingerprint(row.continuationFingerprint),employeeId:parseUUID(row.employeeId),employeeName:text(row.employeeName),memberVersion,groupId:parseUUID(row.groupId),groupName:text(row.groupName),effectiveFrom,effectiveUntil}
+ }),total=integer(v.total)
+ if(rows.length>size||rows.length>total||new Set(rows.map(row=>row.employeeId)).size!==rows.length)invalid()
+ return {calendarId,scopeVersion,rows,total,page:number,pageSize:size}
 }

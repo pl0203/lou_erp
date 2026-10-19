@@ -1,3 +1,4 @@
+import { LoadingState } from '../../../components/ui/LoadingState'
 import { RecordList } from '../../../components/ui/RecordList'
 import { FormActions } from '../../../components/ui/FormActions'
 import { StatusBadge, Notice, EmptyState } from '../../../components/ui/Feedback'
@@ -115,20 +116,20 @@ function Inbox({actorId,context,readState='ready',onDirtyChange,onBusyChange}:Pr
   }catch{if(alive.current){setRecovery(true);setError('Hasil keputusan belum pasti. Periksa akses lalu pulihkan kembali.')}}
   finally{working.current=false;if(alive.current)setBusy(false)}
  }
- if(readState!=='ready')return <section aria-label="Daftar persetujuan"><p role="status" className="ui-notice ui-notice--info">Memeriksa akses persetujuan...</p></section>
+ if(readState!=='ready')return <section aria-label="Daftar persetujuan"><LoadingState title="Memeriksa akses persetujuan..." shape="compact" className="ui-notice ui-notice--info" /></section>
  return <section aria-label="Daftar persetujuan" className="space-y-4">
   <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="font-semibold">Permintaan yang ditugaskan kepada Anda</h2><Button size="compact" type="button" disabled={busy} onClick={()=>{void inbox.refetch();if(selected)void detail.refetch()}} variant="secondary" className="underline">Muat ulang daftar</Button></div>
   {message&&<p role="status" className="ui-notice ui-notice--info">{message}</p>}
   {error&&<div ref={alert} tabIndex={-1} role="alert" className="ui-notice ui-notice--error">{error}</div>}
   {recovery&&<div className="ui-notice ui-notice--warning"><p>Keputusan sebelumnya perlu dipulihkan.</p><Button size="compact" type="button" disabled={busy} onClick={()=>void recover()} variant="secondary">{busy?'Memeriksa hasil...':'Pulihkan hasil keputusan'}</Button></div>}
-  {inbox.isError?<Notice tone="error" title={<> Daftar persetujuan belum dapat dimuat. Coba muat ulang daftar. </>}/>:inbox.isFetching||inbox.isPending?<p role="status" className="ui-notice ui-notice--info">Memuat permintaan...</p>:inbox.data&&<>
+  {inbox.isError?<Notice tone="error" title={<> Daftar persetujuan belum dapat dimuat. Coba muat ulang daftar. </>}/>:inbox.isFetching||inbox.isPending?<LoadingState title="Memuat permintaan..." shape="list" className="ui-notice ui-notice--info" />:inbox.data&&<>
    {!inbox.data.rows.length&&<EmptyState title="Tidak ada permintaan yang menunggu keputusan."/>}
    <RecordList  label="Permintaan ditugaskan">{inbox.data.rows.map(row=><li key={row.id} className="space-y-3 rounded-[14px] border border-brand-divider bg-white p-4 shadow-sm"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-semibold text-brand-primary">{row.employee.name}</p><p className="mt-1 text-brand-secondary">{row.startDate} sampai {row.endDate}</p></div><p className="font-semibold text-brand-primary">{formatLeaveMinutes(row.totalMinutes)}</p></div><div className="flex flex-wrap items-center justify-between gap-3"><StatusBadge tone="warning" aria-label={`Status permintaan: ${row.status==='cancellation_pending'?'Menunggu pembatalan seluruh cuti':'Menunggu persetujuan cuti'}`}>{row.status==='cancellation_pending'?'Menunggu pembatalan seluruh cuti':'Menunggu persetujuan cuti'}</StatusBadge><button ref={el=>{if(el)openers.current.set(row.id,el);else openers.current.delete(row.id)}} type="button" disabled={busy||recovery} aria-label={`Tinjau ${row.employee.name}`} onClick={()=>select(row.id)} className="ui-action ui-action--quiet ui-action--compact">Tinjau permintaan</button></div></li>)}</RecordList>
    <FormActions ><Button size="compact" type="button" disabled={!cursors.length||busy||recovery} onClick={()=>{if(select(null)){setBefore(cursors.at(-1)!);setCursors(cursors.slice(0,-1))}}} variant="quiet">Lebih baru</Button><Button size="compact" type="button" disabled={inbox.data.nextBefore===null||busy||recovery} onClick={()=>{if(select(null)){setCursors([...cursors,before]);setBefore(inbox.data.nextBefore)}}} variant="quiet">Lebih lama</Button></FormActions>
   </>}
   {selected&&<section aria-label="Detail permintaan ditugaskan" className="ui-section space-y-4">
    <Button size="compact" type="button" disabled={busy||recovery} onClick={()=>select(null)} variant="quiet" className="underline">Tutup detail</Button>
-   {detail.isError?<div role="alert" className="ui-notice ui-notice--error"><p>Detail tidak tersedia atau penugasan berubah.</p><Button size="compact" type="button" onClick={()=>void detail.refetch()} variant="secondary">Muat ulang detail</Button></div>:detail.isPending||detail.isFetching?<p role="status" className="ui-notice ui-notice--info">Memuat detail...</p>:detail.data&&<>
+   {detail.isError?<div role="alert" className="ui-notice ui-notice--error"><p>Detail tidak tersedia atau penugasan berubah.</p><Button size="compact" type="button" onClick={()=>void detail.refetch()} variant="secondary">Muat ulang detail</Button></div>:detail.isPending||detail.isFetching?<LoadingState title="Memuat detail..." shape="compact" className="ui-notice ui-notice--info" />:detail.data&&<>
     <h3 ref={detailHeading} tabIndex={-1} className="font-semibold">{detail.data.employee.name} · {formatLeaveMinutes(detail.data.totalMinutes)}</h3>
     <p className="text-brand-secondary">{detail.data.startDate} sampai {detail.data.endDate}</p>
     <p>Durasi: {detail.data.duration.mode==='full_scheduled_day'?'Sehari sesuai jadwal':`${formatLeaveMinutes(detail.data.duration.minutes)} per hari kerja`}</p>

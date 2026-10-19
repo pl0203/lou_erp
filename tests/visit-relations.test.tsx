@@ -17,8 +17,10 @@ for (const value of [null,[]])test(`rejects missing required customer (${JSON.st
 test('missing customer shows an actionable error without rendering order actions',()=>{
  render(<VisitPage/>);expect(screen.getByText(/Pelanggan.*tidak tersedia/)).toBeTruthy();expect(screen.queryByText('+ Pesanan Baru')).toBeNull()
 })
-test('completed visit preserves historical access without any new order action',()=>{
+test('completed visit preserves current visit histories without the retired legacy order page',()=>{
  state.customer={id:'c',name:'Customer',pricing_tier:'luar_kota'}
  render(<VisitPage/>);expect(screen.queryByText('+ Pesanan Baru')).toBeNull()
- expect(screen.getByText('Riwayat pesanan saya')).toBeTruthy()
+ expect(screen.queryByText('Riwayat pesanan saya')).toBeNull()
+ expect(screen.getByText('Riwayat kunjungan saya')).toBeTruthy()
+ expect(screen.getByRole('heading',{name:'Riwayat pesanan kunjungan'})).toBeTruthy()
 })

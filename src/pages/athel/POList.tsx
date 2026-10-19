@@ -1,3 +1,4 @@
+import { POListSkeleton } from '../../components/ui/LoadingSkeletons'
 import { Field } from '../../components/ui/Field'
 import { Button } from '../../components/ui/Button'
 import { ActionLink } from '../../components/ui/ActionLink'
@@ -19,9 +20,13 @@ const STATUS_STYLES: Record<string, string> = {
   cancelled:   'bg-gray-200 text-brand-secondary',
 }
 
+async function fetchPresentedPOPage(filters: { status: POStatusFilter; search: string }, page: number, signal: AbortSignal) {
+  return { ...await fetchPOPage(filters, page, signal), appliedFilters: filters }
+}
+
 export default function POList() {
   const [search, setSearch] = useState('')
-  const { data, filters, setFilters, setPage, isPending, isError, refetch } = usePagedRead('purchase_orders', { status: 'all' as POStatusFilter, search: '' }, fetchPOPage)
+  const { data, filters, setFilters, setPage, isPending, isError, refetch } = usePagedRead('purchase_orders', { status: 'all' as POStatusFilter, search: '' }, fetchPresentedPOPage)
   useEffect(() => {
     const timer = setTimeout(() => setFilters(previous => previous.search === search ? previous : { ...previous, search }), 300)
     return () => clearTimeout(timer)
@@ -66,9 +71,12 @@ export default function POList() {
       </div>
 
       <div className="px-4 md:px-8 py-6">
-        {!isError && data && <PaginationControls page={data.page} total={data.total} pageSize={data.page_size} pending={isPending} onPageChange={setPage} />}
+        <p role="status" aria-live="polite" aria-atomic="true" className="min-h-5 text-sm text-brand-secondary">
+          {isLoading ? 'Memuat pesanan pembelian...' : !isError && data && isPending ? `Hasil sebelumnya: ${({ all: 'Semua status', ...PO_STATUS_LABELS })[data.appliedFilters.status]} · ${data.appliedFilters.search ? `Pencarian “${data.appliedFilters.search}”` : 'Tanpa pencarian'} · Halaman ${data.page}. Memperbarui…` : ''}
+        </p>
+        {!isError && data && <PaginationControls page={data.page} total={data.total} pageSize={data.page_size} pending={isPending} announcePending={false} onPageChange={setPage} />}
         {isLoading && (
-          <div className="text-center text-brand-secondary py-24 text-sm">Memuat pesanan pembelian...</div>
+          <POListSkeleton />
         )}
         {isError && (
           <div role="alert" className="text-center text-red-700 py-24 text-sm">Gagal memuat data. Periksa koneksi Anda. <Button variant="secondary" onClick={() => refetch()} >Coba lagi</Button></div>

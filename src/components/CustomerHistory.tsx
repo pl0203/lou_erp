@@ -1,3 +1,4 @@
+import { LoadingState } from './ui/LoadingState'
 import { Button } from './ui/Button'
 import { Section } from './ui/Section'
 import { SummaryList } from './ui/SummaryList'
@@ -33,7 +34,7 @@ export function NextScheduledVisit({ customerId }: { customerId: string }) {
     queryFn: ({ signal }) => fetchNextCustomerSchedule(customerId, today, signal) })
   return <Section title="Kunjungan Berikutnya" aria-label="Kunjungan berikutnya">
     {query.isError ? <ReadError message="Gagal memuat jadwal berikutnya." retry={query.refetch} />
-      : query.isPending ? <p role="status" className="mt-3 text-base text-brand-secondary">Memuat jadwal berikutnya…</p>
+      : query.isPending ? <LoadingState title="Memuat jadwal berikutnya…" shape="compact" className="mt-3 text-base text-brand-secondary" />
       : !query.data ? <EmptyState title="Belum ada kunjungan berikutnya yang dijadwalkan." />
       : <div className="mt-3 space-y-2 text-base break-words [overflow-wrap:anywhere]">
         <p className="font-medium text-gray-900">{customerDate(query.data.scheduled_date)}</p>
@@ -54,7 +55,7 @@ function VisitPhoto({ storagePath, identity }: { storagePath: string; identity: 
     },
   })
   if (photo.isError || imageFailed) return <div className="text-base text-brand-secondary"><p role="alert">Foto tidak dapat dimuat.</p><Button size="compact" variant="secondary" className={action} disabled={photo.isFetching} onClick={() => { setImageFailed(false); void photo.refetch() }}>Coba muat foto lagi</Button></div>
-  if (photo.isPending || photo.isFetching) return <p role="status" className="text-base text-brand-secondary">Memuat foto…</p>
+  if (photo.isPending || photo.isFetching) return <LoadingState title="Memuat foto…" shape="compact" className="text-base text-brand-secondary" />
   return <img src={photo.data} onError={() => setImageFailed(true)} alt="Foto check-in" className="max-h-80 w-full rounded-lg object-contain bg-gray-50" />
 }
 
@@ -63,7 +64,7 @@ function VisitEvidence({ customerId, visitId }: { customerId: string; visitId: s
   const evidence = useQuery({ queryKey: ['customer_visit_evidence', identity, customerId, visitId],
     queryFn: ({ signal }) => fetchVisitEvidence(customerId, visitId, signal) })
   if (evidence.isError) return <ReadError message="Gagal memuat catatan dan foto." retry={evidence.refetch} />
-  if (evidence.isPending) return <p role="status" className="py-3 text-base text-brand-secondary">Memuat catatan dan foto…</p>
+  if (evidence.isPending) return <LoadingState title="Memuat catatan dan foto…" shape="detail" className="py-3 text-base text-brand-secondary" />
   if (!evidence.data) return <p className="py-3 text-base text-brand-secondary">Catatan dan foto tidak tersedia atau Anda tidak memiliki akses.</p>
   return <div className="space-y-3 border-t border-gray-100 pt-3 text-base">
     <div><h3 className="font-medium text-gray-700">Catatan kunjungan</h3><p className="mt-1 whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-gray-600">{evidence.data.notes || 'Tidak ada catatan kunjungan.'}</p></div>
@@ -78,7 +79,7 @@ export function CustomerVisitHistory({ customerId }: { customerId: string }) {
   return <Section title="Riwayat kunjungan" className="space-y-3">
     <p className="text-[13px] text-brand-secondary">Riwayat kunjungan yang dapat Anda akses</p>
     {history.isError ? <ReadError message="Gagal memuat riwayat kunjungan." retry={history.refetch} />
-      : !history.data ? <p role="status" className="py-8 text-base text-brand-secondary">Memuat riwayat kunjungan…</p>
+      : !history.data ? <LoadingState title="Memuat riwayat kunjungan…" shape="list" className="py-8 text-base text-brand-secondary" />
       : <div aria-busy={history.isPending} className="space-y-3">
         {history.data.items.length === 0 && <EmptyState title="Belum ada kunjungan tercatat." />}
         {history.data.items.map(visit => <article key={visit.id} className={card}>
@@ -96,7 +97,7 @@ function CustomerDeliveryHistory({ poId, poNumber }: { poId: string; poNumber: s
   return <section role="region" aria-label={`Riwayat pengiriman ${poNumber}`} className="min-w-0 border-t border-gray-100 pt-3">
     <h3 className="text-base font-medium text-gray-900">Pengiriman / Surat Jalan</h3>
     {deliveries.isError ? <ReadError message="Gagal memuat riwayat pengiriman." retry={deliveries.refetch} />
-      : !deliveries.data ? <p role="status" className="py-3 text-base text-brand-secondary">Memuat riwayat pengiriman…</p>
+      : !deliveries.data ? <LoadingState title="Memuat riwayat pengiriman…" shape="list" className="py-3 text-base text-brand-secondary" />
       : <div aria-busy={deliveries.isPending}>
         {deliveries.data.items.length === 0 && <p className="py-3 text-base text-brand-secondary">Belum ada pengiriman tercatat.</p>}
         {deliveries.data.items.map(sj => <div key={sj.id} className="space-y-1 border-b border-gray-100 py-3 text-[13px] text-brand-secondary break-words [overflow-wrap:anywhere]">
@@ -117,7 +118,7 @@ export function CustomerOrderHistory({ customerId }: { customerId: string }) {
   return <Section title="Riwayat pesanan" className="space-y-3">
     <p className="text-[13px] text-brand-secondary">Riwayat PO yang dapat Anda akses</p>
     {history.isError ? <ReadError message="Gagal memuat riwayat pesanan." retry={history.refetch} />
-      : !history.data ? <p role="status" className="py-8 text-base text-brand-secondary">Memuat riwayat pesanan…</p>
+      : !history.data ? <LoadingState title="Memuat riwayat pesanan…" shape="list" className="py-8 text-base text-brand-secondary" />
       : <div aria-busy={history.isPending} className="space-y-3">
         {history.data.items.length === 0 && <EmptyState title="Belum ada PO tercatat." />}
         {history.data.items.map(po => <article key={po.id} className={card}>
@@ -127,7 +128,6 @@ export function CustomerOrderHistory({ customerId }: { customerId: string }) {
           </div>
           <p className="mt-2 text-base font-semibold text-gray-900 break-words [overflow-wrap:anywhere]">Rp {formatMoney(String(po.total_value), 'full')}</p>
           <p className="mt-1 text-[13px] text-brand-secondary">Tanggal PO: {customerDate(po.order_date)}</p>
-          <p className="mt-1 text-[13px] text-brand-secondary">Rencana pengiriman: {po.expected_delivery_date ? customerDate(po.expected_delivery_date) : 'Belum tercatat'}</p>
           <Button size="compact" variant="quiet" className={action} disabled={history.isPending} aria-expanded={expanded === po.id} onClick={() => setExpanded(expanded === po.id ? null : po.id)}>{expanded === po.id ? 'Tutup pengiriman / SJ' : 'Lihat pengiriman / SJ'}</Button>
           {expanded === po.id && <CustomerDeliveryHistory key={po.id} poId={po.id} poNumber={po.po_number} />}
         </article>)}

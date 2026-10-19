@@ -1,3 +1,4 @@
+import { LoadingState } from './ui/LoadingState'
 import { Button } from './ui/Button'
 import { Field } from './ui/Field'
 import { FormActions } from './ui/FormActions'
@@ -72,7 +73,7 @@ export default function VisitRequestInbox() {
  return <section aria-label="Daftar permintaan kunjungan" className="space-y-5">
   <TransactionRecovery send={send} onAbandoned={()=>refreshRecovery(value=>value+1)} onCommitted={()=>client.invalidateQueries()}/>
   {requests.isError ? <Notice tone="error" title="Permintaan belum tersedia." actions={<Button size="compact" variant="secondary" onClick={()=>requests.refetch()}>Coba lagi</Button>}><p>Coba muat ulang untuk melihat permintaan kunjungan.</p></Notice>
-   : requests.isPending ? <Notice tone="info" title="Memuat permintaan..." /> : <>
+   : requests.isPending ? <LoadingState title="Memuat permintaan..." shape="list" /> : <>
    <div className="flex flex-wrap items-center justify-between gap-2">
     <h2 className="text-base font-semibold text-brand-primary">Daftar permintaan <span className="ml-2 rounded-full bg-white px-2.5 py-1 text-[13px] text-gray-600 ring-1 ring-gray-200">{total}</span></h2>
     {total>0 && <p className="text-[13px] text-brand-secondary">Terbaru lebih dahulu</p>}

@@ -1,0 +1,793 @@
+[
+  {
+    "file": "src/App.tsx",
+    "title": "Memuat...",
+    "guards": [
+      "if loading"
+    ]
+  },
+  {
+    "file": "src/components/ActivePromotionsBanner.tsx",
+    "title": "Memuat promosi…",
+    "guards": [
+      "if promotions.isPending"
+    ]
+  },
+  {
+    "file": "src/components/CustomerHistory.tsx",
+    "title": "Memuat jadwal berikutnya…",
+    "guards": [
+      "query.isError ? false",
+      "query.isPending ? true"
+    ]
+  },
+  {
+    "file": "src/components/CustomerHistory.tsx",
+    "title": "Memuat foto…",
+    "guards": [
+      "if photo.isPending || photo.isFetching"
+    ]
+  },
+  {
+    "file": "src/components/CustomerHistory.tsx",
+    "title": "Memuat catatan dan foto…",
+    "guards": [
+      "if evidence.isPending"
+    ]
+  },
+  {
+    "file": "src/components/CustomerHistory.tsx",
+    "title": "Memuat riwayat kunjungan…",
+    "guards": [
+      "history.isError ? false",
+      "!history.data ? true"
+    ]
+  },
+  {
+    "file": "src/components/CustomerHistory.tsx",
+    "title": "Memuat riwayat pengiriman…",
+    "guards": [
+      "deliveries.isError ? false",
+      "!deliveries.data ? true"
+    ]
+  },
+  {
+    "file": "src/components/CustomerHistory.tsx",
+    "title": "Memuat riwayat pesanan…",
+    "guards": [
+      "history.isError ? false",
+      "!history.data ? true"
+    ]
+  },
+  {
+    "file": "src/components/PendingVisitRequests.tsx",
+    "title": "Memuat status permintaan kunjungan...",
+    "guards": [
+      "if pending.isPending"
+    ]
+  },
+  {
+    "file": "src/components/PromotionImage.tsx",
+    "title": "Memuat gambar…",
+    "guards": [
+      "if !image.data || image.fetchStatus !== 'idle'"
+    ]
+  },
+  {
+    "file": "src/components/ProtectedRoute.tsx",
+    "title": "Loading...",
+    "guards": [
+      "if loading"
+    ]
+  },
+  {
+    "file": "src/components/SalesOrderItems.tsx",
+    "title": "Memuat semua barang pesanan...",
+    "guards": [
+      "if isPending || !data"
+    ]
+  },
+  {
+    "file": "src/components/StorePOContext.tsx",
+    "title": "Memuat riwayat PO...",
+    "guards": [
+      "query.isError ? false",
+      "query.isFetching || !query.data || responseWindow!==serverWindow ? true"
+    ]
+  },
+  {
+    "file": "src/components/VisitRequestInbox.tsx",
+    "title": "Memuat permintaan...",
+    "guards": [
+      "requests.isError ? false",
+      "requests.isPending ? true"
+    ]
+  },
+  {
+    "file": "src/components/VisitRequestStatus.tsx",
+    "title": "Memuat status permintaan...",
+    "guards": [
+      "!valid ? false",
+      "query.isError ? false",
+      "query.isPending ? true"
+    ]
+  },
+  {
+    "file": "src/components/co/COAllocationDetails.tsx",
+    "title": "Memeriksa pendapatan di semua halaman alokasi SKU…",
+    "guards": [
+      "snapshot && stockKeyId &&",
+      "total.isError ? false",
+      "!total.data ? true"
+    ]
+  },
+  {
+    "file": "src/components/co/COAllocationDetails.tsx",
+    "title": "Memuat alokasi…",
+    "guards": [
+      "read.isError ? false",
+      "!read.data ? true"
+    ]
+  },
+  {
+    "file": "src/components/co/COChangePreview.tsx",
+    "title": "Memeriksa periode dipilih di semua halaman dampak…",
+    "guards": [
+      "selectedMonth &&",
+      "selected.isError ? false",
+      "selected.isPending ? true"
+    ]
+  },
+  {
+    "file": "src/components/co/COChangePreview.tsx",
+    "title": "Memuat dampak…",
+    "guards": [
+      "read.isError ? false",
+      "!read.data ? true"
+    ]
+  },
+  {
+    "file": "src/components/co/CODeliveryDialog.tsx",
+    "title": "Memuat seluruh sumber CO…",
+    "guards": [
+      "!loaded && !read.isError &&"
+    ]
+  },
+  {
+    "file": "src/components/co/COEvidenceAttachment.tsx",
+    "title": "Memuat lampiran…",
+    "guards": [
+      "error ? false",
+      "loading ? true"
+    ]
+  },
+  {
+    "file": "src/components/co/COEvidenceAttachment.tsx",
+    "title": "Memeriksa lampiran…",
+    "guards": [
+      "busy &&"
+    ]
+  },
+  {
+    "file": "src/components/co/COReportRevisionEvidence.tsx",
+    "title": "Memuat bukti revisi…",
+    "guards": [
+      "read.isError ? false",
+      "!read.data ? true"
+    ]
+  },
+  {
+    "file": "src/components/co/COReportWorkspace.tsx",
+    "title": "Memuat baris laporan…",
+    "guards": [
+      "work.rowsRead.data ? false",
+      "!work.rowsRead.isError &&"
+    ]
+  },
+  {
+    "file": "src/components/co/COReturnDialog.tsx",
+    "title": "Memuat seluruh sumber retur…",
+    "guards": [
+      "!loaded && !read.isError &&"
+    ]
+  },
+  {
+    "file": "src/components/co/COStockHistory.tsx",
+    "title": "Memuat riwayat stok…",
+    "guards": [
+      "read.isError ? false",
+      "!read.data ? true"
+    ]
+  },
+  {
+    "file": "src/components/sales/MySalesDashboardPanel.tsx",
+    "title": "Memuat ringkasan...",
+    "guards": [
+      "if !read.data"
+    ]
+  },
+  {
+    "file": "src/components/sales/SalesMetricSummary.tsx",
+    "title": "Memuat metrik Sales...",
+    "guards": [
+      "!read.allowed ? false",
+      "!read.valid ? false",
+      "read.unavailable ? false",
+      "!data ? true"
+    ]
+  },
+  {
+    "file": "src/components/sales/TargetAuditDetails.tsx",
+    "title": "Memuat riwayat…",
+    "guards": [
+      "loading &&"
+    ]
+  },
+  {
+    "file": "src/components/sales/TargetPlanInbox.tsx",
+    "title": "Memuat rencana…",
+    "guards": [
+      "loading &&"
+    ]
+  },
+  {
+    "file": "src/components/sales/TargetWizard.tsx",
+    "title": "Memuat…",
+    "guards": [
+      "pending && !frozen &&"
+    ]
+  },
+  {
+    "file": "src/pages/Login.tsx",
+    "title": "Memuat...",
+    "guards": [
+      "if loading"
+    ]
+  },
+  {
+    "file": "src/pages/ResetPassword.tsx",
+    "title": "Memeriksa tautan...",
+    "guards": [
+      "!setup ? true"
+    ]
+  },
+  {
+    "file": "src/pages/athel/CustomerList.tsx",
+    "title": "{fetchStatus === 'paused' ? 'Memuat data pelanggan tertunda. Menunggu koneksi…' : 'Memuat data pelanggan...'}",
+    "guards": [
+      "!readError && !data &&"
+    ]
+  },
+  {
+    "file": "src/pages/athel/PODetail.tsx",
+    "title": "Memuat...",
+    "guards": [
+      "if isLoading"
+    ]
+  },
+  {
+    "file": "src/pages/athel/PODetail.tsx",
+    "title": "Memuat barang…",
+    "guards": [
+      "deliveries.isError ? false",
+      "selectedSJId === sj.id &&",
+      "selectedLines.isError ? false",
+      "selectedLines.isPending ? true"
+    ]
+  },
+  {
+    "file": "src/pages/athel/PODetail.tsx",
+    "title": "Memuat SJ dan versi PO terbaru…",
+    "guards": [
+      "returnedTarget &&",
+      "returnedReview?.status === 'loading' &&"
+    ]
+  },
+  {
+    "file": "src/pages/athel/POEdit.tsx",
+    "title": "Memuat...",
+    "guards": [
+      "if poLoading || linesLoading || (!initialized && (poFetching || linesFetching))"
+    ]
+  },
+  {
+    "file": "src/pages/athel/ProductList.tsx",
+    "title": "{fetchStatus === 'paused' ? 'Memuat data barang tertunda. Menunggu koneksi…' : 'Memuat data barang...'}",
+    "guards": [
+      "!isError && !data &&"
+    ]
+  },
+  {
+    "file": "src/pages/athel/Promotions.tsx",
+    "title": "{promotions.fetchStatus === 'paused' ? 'Memuat promosi tertunda. Menunggu koneksi…' : 'Memuat promosi…'}",
+    "guards": [
+      "!promotions.isError && !promotions.data &&"
+    ]
+  },
+  {
+    "file": "src/pages/athel/Promotions.tsx",
+    "title": "{products.fetchStatus === 'paused' ? 'Daftar produk tertunda. Menunggu koneksi…' : 'Memuat daftar produk…'}",
+    "guards": [
+      "form &&",
+      "!products.isError && !products.data &&"
+    ]
+  },
+  {
+    "file": "src/pages/athel/Promotions.tsx",
+    "title": "Memuat promosi terbaru…",
+    "guards": [
+      "versionReview &&",
+      "versionReview.status === 'loading' &&"
+    ]
+  },
+  {
+    "file": "src/pages/athel/SalesOrders.tsx",
+    "title": "Memuat PO...",
+    "guards": [
+      "isLoading &&"
+    ]
+  },
+  {
+    "file": "src/pages/athel/SalesOrders.tsx",
+    "title": "Memuat semua barang pesanan...",
+    "guards": [
+      "approvingOrder && !stockSubmission.warning &&",
+      "(approvalLines.isPending || approvalLines.isFetching) &&"
+    ]
+  },
+  {
+    "file": "src/pages/athel/co/COCustomerStock.tsx",
+    "title": "Memuat stok…",
+    "guards": [
+      "!stock.data && !stock.isError &&"
+    ]
+  },
+  {
+    "file": "src/pages/athel/co/CODetail.tsx",
+    "title": "Memuat CO…",
+    "guards": [
+      "if !query.data"
+    ]
+  },
+  {
+    "file": "src/pages/athel/co/CODetail.tsx",
+    "title": "Memuat riwayat…",
+    "guards": [
+      "query.isError ? false",
+      "query.isPending ? true"
+    ]
+  },
+  {
+    "file": "src/pages/athel/co/COForm.tsx",
+    "title": "Memuat seluruh barang CO…",
+    "guards": [
+      "if editing && !initialized",
+      "header.isError || complete.isError ? false"
+    ]
+  },
+  {
+    "file": "src/pages/athel/co/COMonthlyReport.tsx",
+    "title": "Memuat laporan pelanggan…",
+    "guards": [
+      "if !work.accepted",
+      "work.root.isError ? false"
+    ]
+  },
+  {
+    "file": "src/pages/athel/co/COMonthlyReports.tsx",
+    "title": "Memeriksa periode laporan berikutnya…",
+    "guards": [
+      "customer &&",
+      "months.isFetching &&"
+    ]
+  },
+  {
+    "file": "src/pages/athel/co/COMonthlyReports.tsx",
+    "title": "Memuat laporan…",
+    "guards": [
+      "reports.isError ? false",
+      "!reports.data ? true"
+    ]
+  },
+  {
+    "file": "src/pages/athel/co/COOrders.tsx",
+    "title": "Memuat pesanan…",
+    "guards": [
+      "query.isError ? false",
+      "query.isPending ? true"
+    ]
+  },
+  {
+    "file": "src/pages/girard/CustomerPerformance.tsx",
+    "title": "Memuat data...",
+    "guards": [
+      "isLoading &&"
+    ]
+  },
+  {
+    "file": "src/pages/girard/DailySchedule.tsx",
+    "title": "Memuat jadwal Anda...",
+    "guards": [
+      "isLoading &&"
+    ]
+  },
+  {
+    "file": "src/pages/girard/GirardCustomerDetail.tsx",
+    "title": "Memuat pelanggan...",
+    "guards": [
+      "if isLoading || (!enabled && id)"
+    ]
+  },
+  {
+    "file": "src/pages/girard/GirardCustomers.tsx",
+    "title": "Memuat data pelanggan...",
+    "guards": [
+      "isLoading &&"
+    ]
+  },
+  {
+    "file": "src/pages/girard/GirardManagers.tsx",
+    "title": "Memuat...",
+    "guards": [
+      "isLoading &&"
+    ]
+  },
+  {
+    "file": "src/pages/girard/GirardPerformance.tsx",
+    "title": "Memuat data performa...",
+    "guards": [
+      "isError || monthError ? false",
+      "!data ? true"
+    ]
+  },
+  {
+    "file": "src/pages/girard/GirardTeam.tsx",
+    "title": "Memuat data tim...",
+    "guards": [
+      "!isError && isLoading &&"
+    ]
+  },
+  {
+    "file": "src/pages/girard/ManagerCustomers.tsx",
+    "title": "Memuat data pelanggan...",
+    "guards": [
+      "isError ? false",
+      "!data ? true"
+    ]
+  },
+  {
+    "file": "src/pages/girard/ManagerSchedule.tsx",
+    "title": "Memuat jadwal...",
+    "guards": [
+      "isLoading &&"
+    ]
+  },
+  {
+    "file": "src/pages/girard/MyOrders.tsx",
+    "title": "Memuat pesanan...",
+    "guards": [
+      "isLoading &&"
+    ]
+  },
+  {
+    "file": "src/pages/girard/MyVisits.tsx",
+    "title": "Memuat kunjungan Anda...",
+    "guards": [
+      "isLoading &&"
+    ]
+  },
+  {
+    "file": "src/pages/girard/OwnVisitHistory.tsx",
+    "title": "Memuat catatan terbaru...",
+    "guards": [
+      "editing ? true",
+      "conflict &&",
+      "current ? false",
+      "readError ? false"
+    ]
+  },
+  {
+    "file": "src/pages/girard/OwnVisitHistory.tsx",
+    "title": "Memuat riwayat...",
+    "guards": [
+      "query.isError ? false",
+      "query.isPending ? true"
+    ]
+  },
+  {
+    "file": "src/pages/girard/SalesTargets.tsx",
+    "title": "Memeriksa akses akun…",
+    "guards": [
+      "verified ? false"
+    ]
+  },
+  {
+    "file": "src/pages/girard/VisitPage.tsx",
+    "title": "Memuat barang…",
+    "guards": [
+      "selectedId === order.id &&",
+      "lines.isError ? false",
+      "lines.isPending ? true"
+    ]
+  },
+  {
+    "file": "src/pages/girard/VisitPage.tsx",
+    "title": "Memuat...",
+    "guards": [
+      "if scheduleLoading||visitLoading"
+    ]
+  },
+  {
+    "file": "src/pages/ihr/LeaveManagement.tsx",
+    "title": "Memuat akses cuti...",
+    "guards": [
+      "readState === 'pending' || !identity ? true"
+    ]
+  },
+  {
+    "file": "src/pages/ihr/UserManagement.tsx",
+    "title": "{waitingForConnection ? 'Waiting for connection' : 'Loading users...'}",
+    "guards": [
+      "!hasUsers && isPending &&"
+    ]
+  },
+  {
+    "file": "src/pages/ihr/leave/AssignedApprovalInbox.tsx",
+    "title": "Memeriksa akses persetujuan...",
+    "guards": [
+      "if readState!=='ready'"
+    ]
+  },
+  {
+    "file": "src/pages/ihr/leave/AssignedApprovalInbox.tsx",
+    "title": "Memuat permintaan...",
+    "guards": [
+      "inbox.isError ? false",
+      "inbox.isFetching||inbox.isPending ? true"
+    ]
+  },
+  {
+    "file": "src/pages/ihr/leave/AssignedApprovalInbox.tsx",
+    "title": "Memuat detail...",
+    "guards": [
+      "selected &&",
+      "detail.isError ? false",
+      "detail.isPending||detail.isFetching ? true"
+    ]
+  },
+  {
+    "file": "src/pages/ihr/leave/DirectorLeaveOverview.tsx",
+    "title": "Memeriksa akses dan memuat ringkasan...",
+    "guards": [
+      "readState==='pending'||requests.isFetching ? true"
+    ]
+  },
+  {
+    "file": "src/pages/ihr/leave/LeaveAdminPrivatePanel.tsx",
+    "title": "Memeriksa akses tinjauan privat...",
+    "guards": [
+      "readState!=='ready' ? true"
+    ]
+  },
+  {
+    "file": "src/pages/ihr/leave/LeaveAdminPrivatePanel.tsx",
+    "title": "Memuat permohonan privat...",
+    "guards": [
+      "readState!=='ready' ? false",
+      "(query.isError||!query.available&&!query.isFetching) ? false",
+      "!fresh ? true"
+    ]
+  },
+  {
+    "file": "src/pages/ihr/leave/LeaveAdminPrivatePanel.tsx",
+    "title": "Memeriksa rincian privat...",
+    "guards": [
+      "(query.isError||!fresh&&!query.isFetching)&&readState==='ready' ? false",
+      "!fresh ? true"
+    ]
+  },
+  {
+    "file": "src/pages/ihr/leave/LeaveAdminPrivatePanel.tsx",
+    "title": "Memeriksa akses riwayat peristiwa...",
+    "guards": [
+      "readState!=='ready' ? true"
+    ]
+  },
+  {
+    "file": "src/pages/ihr/leave/LeaveAdminPrivatePanel.tsx",
+    "title": "Memuat riwayat peristiwa...",
+    "guards": [
+      "readState!=='ready' ? false",
+      "(query.isError||!fresh&&!query.isFetching) ? false",
+      "!fresh ? true"
+    ]
+  },
+  {
+    "file": "src/pages/ihr/leave/LeaveAdminPrivatePanel.tsx",
+    "title": "Memeriksa akses saldo privat...",
+    "guards": [
+      "readState!=='ready' ? true"
+    ]
+  },
+  {
+    "file": "src/pages/ihr/leave/LeaveAdminPrivatePanel.tsx",
+    "title": "Memuat saldo anggota...",
+    "guards": [
+      "readState!=='ready' ? false",
+      "(query.isError||!query.available&&!query.isFetching) ? false",
+      "!fresh ? true"
+    ]
+  },
+  {
+    "file": "src/pages/ihr/leave/LeaveAdminPrivatePanel.tsx",
+    "title": "Memeriksa akses riwayat saldo...",
+    "guards": [
+      "readState!=='ready' ? true"
+    ]
+  },
+  {
+    "file": "src/pages/ihr/leave/LeaveAdminPrivatePanel.tsx",
+    "title": "Memuat riwayat saldo anggota...",
+    "guards": [
+      "readState!=='ready' ? false",
+      "(query.isError||!query.available&&!query.isFetching) ? false",
+      "!query.available ? true"
+    ]
+  },
+  {
+    "file": "src/pages/ihr/leave/LeaveAdminRotaPanel.tsx",
+    "title": "Memuat kalender perusahaan...",
+    "guards": [
+      "selected ? false",
+      "readState==='ready' &&",
+      "(query.isError||!query.available&&!query.isFetching) ? false",
+      "!query.available ? true"
+    ]
+  },
+  {
+    "file": "src/pages/ihr/leave/LeaveAdminSettings.tsx",
+    "title": "Memeriksa kembali akses dan lingkup anggota…",
+    "guards": [
+      "if !fresh"
+    ]
+  },
+  {
+    "file": "src/pages/ihr/leave/LeaveBalanceSettings.tsx",
+    "title": "Memeriksa akses perubahan saldo...",
+    "guards": [
+      "if !authorityReady"
+    ]
+  },
+  {
+    "file": "src/pages/ihr/leave/LeavePeopleSettings.tsx",
+    "title": "Memeriksa akses pengaturan anggota...",
+    "guards": [
+      "if !authorityReady"
+    ]
+  },
+  {
+    "file": "src/pages/ihr/leave/LeaveRequestForm.tsx",
+    "title": "Memeriksa akses formulir...",
+    "guards": [
+      "readState==='ready'&&!ready&&!revoked &&",
+      "busy ? true"
+    ]
+  },
+  {
+    "file": "src/pages/ihr/leave/LeaveRotaSettings.tsx",
+    "title": "Memeriksa akses kalender dan roster...",
+    "guards": [
+      "if !authorityReady"
+    ]
+  },
+  {
+    "file": "src/pages/ihr/leave/LeaveTabs.tsx",
+    "title": "Memeriksa pilihan akses cuti...",
+    "guards": [
+      "if !tabs.length",
+      "readState==='ready'&&access.available ? false"
+    ]
+  },
+  {
+    "file": "src/pages/ihr/leave/MyLeave.tsx",
+    "title": "Memeriksa akses riwayat...",
+    "guards": [
+      "if readState!=='ready'"
+    ]
+  },
+  {
+    "file": "src/pages/ihr/leave/MyLeave.tsx",
+    "title": "Memuat riwayat...",
+    "guards": [
+      "denied ? false",
+      "pending ? true"
+    ]
+  },
+  {
+    "file": "src/pages/ihr/leave/OwnLeaveHistory.tsx",
+    "title": "Memeriksa akses riwayat...",
+    "guards": [
+      "readState!=='ready' ? true"
+    ]
+  },
+  {
+    "file": "src/pages/ihr/leave/OwnLeaveHistory.tsx",
+    "title": "Memuat riwayat pengajuan...",
+    "guards": [
+      "readState!=='ready' ? false",
+      "authority.denied ? false",
+      "!authority.ready||history.isFetching||history.isPending ? true"
+    ]
+  },
+  {
+    "file": "src/pages/ihr/leave/OwnLeaveHistory.tsx",
+    "title": "Memeriksa akses rincian...",
+    "guards": [
+      "readState!=='ready' ? true"
+    ]
+  },
+  {
+    "file": "src/pages/ihr/leave/OwnLeaveHistory.tsx",
+    "title": "Memuat rincian...",
+    "guards": [
+      "readState!=='ready' ? false",
+      "authority.denied ? false",
+      "!authority.ready||detail.isPending||detail.isFetching ? true"
+    ]
+  },
+  {
+    "file": "src/pages/ihr/leave/OwnLeaveHistory.tsx",
+    "title": "Memeriksa peristiwa...",
+    "guards": [
+      "readState!=='ready'||events.isFetching ? true"
+    ]
+  },
+  {
+    "file": "src/pages/ihr/leave/OwnRequestActions.tsx",
+    "title": "Memeriksa akses tindakan...",
+    "guards": [
+      "readState!=='ready' ? true"
+    ]
+  },
+  {
+    "file": "src/pages/ihr/leave/OwnRequestActions.tsx",
+    "title": "Memeriksa akses tindakan...",
+    "guards": [
+      "readState!=='ready' ? false",
+      "authority.denied ? false",
+      "!authority.ready ? true"
+    ]
+  },
+  {
+    "file": "src/pages/ihr/leave/OwnRequestActions.tsx",
+    "title": "Memuat status tindakan...",
+    "guards": [
+      "readState!=='ready' ? false",
+      "authority.denied ? false",
+      "!authority.ready ? false",
+      "unresolved ? false",
+      "state.isError ? false",
+      "!visible ? true"
+    ]
+  },
+  {
+    "file": "src/pages/ihr/leave/TeamLeaveCalendar.tsx",
+    "title": "Memeriksa akses kalender...",
+    "guards": [
+      "readState==='pending'||access.isFetching ? true"
+    ]
+  },
+  {
+    "file": "src/pages/ihr/leave/TeamLeaveCalendar.tsx",
+    "title": "Memuat kalender...",
+    "guards": [
+      "readState==='pending'||access.isFetching ? false",
+      "readState==='error'||access.isError ? false",
+      "!access.available ? false",
+      "!access.data?.calendarAudiences.length ? false",
+      "!authorized ? false",
+      "!range ? false",
+      "calendar.isFetching||calendar.isPending ? true"
+    ]
+  }
+]

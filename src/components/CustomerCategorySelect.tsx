@@ -10,7 +10,7 @@ type Props = {
 
 export default function CustomerCategorySelect({ value, allowUnclassified, onChange }: Props) {
   const id = useId()
-  return <Field id={id} label={<>Kategori Pelanggan{!allowUnclassified && ' *'}</>} hint="Pilih menurut jenis dan skala usaha pelanggan: supermarket besar/sedang/kecil, pasar tradisional, atau perorangan. Kategori tidak mengubah tier harga; pilih tier sesuai kesepakatan harga pelanggan.">
+  return <Field id={id} label={<>Kategori Pelanggan{!allowUnclassified && ' *'}</>} hint="Pilih menurut jenis dan skala usaha pelanggan: supermarket besar/sedang/kecil, pasar tradisional, atau perorangan.">
     {control => <select {...control} required={!allowUnclassified} value={value === null ? 'unclassified' : value}
       onChange={event => onChange(event.target.value === 'unclassified' ? null : event.target.value as CustomerCategory | '')}>
       <option value="" disabled>Pilih kategori...</option>

@@ -1,3 +1,4 @@
+import { LoadingState } from '../components/ui/LoadingState'
 import BrandLogo from '../components/BrandLogo'
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -63,7 +64,7 @@ export default function Login() {
 
   if (loading) {
     return <MainContent className="min-h-screen flex items-center justify-center px-4">
-      <Notice tone="info" title="Memuat..." />
+      <LoadingState title="Memuat..." shape="form" className="w-full max-w-sm" />
     </MainContent>
   }
 

@@ -47,7 +47,7 @@ test.each(['register_evidence','finalize_evidence'])('lost %s recovers before an
  await screen.findByText(`Unduh evidence-${evidenceId}.pdf`);expect(f.commands.filter(c=>c.p_operation===operation)).toHaveLength(1);expect(localStorage.length).toBe(0);
 });
 test('late download after identity replacement cannot create or retain a browser capability',async()=>{
- const f=fixture();mount(<AttachmentProbe/>);await choose();fireEvent.click(screen.getByText('Verifikasi dan pasang lampiran'));const button=await screen.findByText(`Unduh evidence-${evidenceId}.pdf`);let release:any;wire.invoke.mockImplementation(()=>new Promise(resolve=>{release=resolve}));const create=vi.fn(),revoke=vi.fn();vi.stubGlobal('URL',class extends URL {static createObjectURL=create;static revokeObjectURL=revoke;});await waitFor(()=>{expect(workspace.evidenceState.pending).toBe(false);expect((screen.getByText(`Unduh evidence-${evidenceId}.pdf`) as HTMLButtonElement).disabled).toBe(false);});fireEvent.click(screen.getByText(`Unduh evidence-${evidenceId}.pdf`));await waitFor(()=>expect(release).toBeTypeOf('function'));wire.role='po_admin';await act(async()=>{workspace.setPage(2);});await act(async()=>{release({data:new Blob(['%PDF-1.7\n%%EOF\n']),error:null});});expect(create).not.toHaveBeenCalled();expect(screen.queryByText(`Unduh evidence-${evidenceId}.pdf`)).toBeNull();
+ const f=fixture();mount(<AttachmentProbe/>);await choose();fireEvent.click(screen.getByText('Verifikasi dan pasang lampiran'));const button=await screen.findByText(`Unduh evidence-${evidenceId}.pdf`);let release:any;wire.invoke.mockImplementation(()=>new Promise(resolve=>{release=resolve}));const create=vi.fn(),revoke=vi.fn();vi.stubGlobal('URL',class extends URL {static createObjectURL=create;static revokeObjectURL=revoke;});await waitFor(()=>{expect(workspace.evidenceState.pending).toBe(false);expect((screen.getByRole('button', { name: `Unduh evidence-${evidenceId}.pdf` }) as HTMLButtonElement).disabled).toBe(false);});fireEvent.click(screen.getByText(`Unduh evidence-${evidenceId}.pdf`));await waitFor(()=>expect(release).toBeTypeOf('function'));wire.role='po_admin';await act(async()=>{workspace.setPage(2);});await act(async()=>{release({data:new Blob(['%PDF-1.7\n%%EOF\n']),error:null});});expect(create).not.toHaveBeenCalled();expect(screen.queryByText(`Unduh evidence-${evidenceId}.pdf`)).toBeNull();
 });
 test('historical sidecar is pinned to the supplied immutable revision and download denial propagates',async()=>{
  const f=fixture();mount(<AttachmentProbe/>);await choose();fireEvent.click(screen.getByText('Verifikasi dan pasang lampiran'));await screen.findByText(`Unduh evidence-${evidenceId}.pdf`);
@@ -76,13 +76,13 @@ async function enterFinalizationConflict(reload=false, operation='finalize_evide
  fireEvent.change(await screen.findByLabelText('Terjual Item 1'),{target:{value:'12'}});
  await choose();fireEvent.click(screen.getByText('Verifikasi dan pasang lampiran'));
  await screen.findByText('Pulihkan permintaan lampiran');
- await waitFor(()=>expect((screen.getByText('Pulihkan permintaan lampiran') as HTMLButtonElement).disabled).toBe(false));
+ await waitFor(()=>expect((screen.getByRole('button', { name: 'Pulihkan permintaan lampiran' }) as HTMLButtonElement).disabled).toBe(false));
  f.s.version='3';f.s.rows[0].sold_quantity='4';f.s.metadata.notes='Latest operator note';
  if(reload){cleanup();mount(<COMonthlyReport/>);await screen.findByLabelText('Terjual Item 1');}
  fireEvent.click(await screen.findByText('Pulihkan permintaan lampiran'));
  fireEvent.click(await screen.findByText('Buka hasil lampiran tersimpan'));
  await screen.findByText('Coba buka hasil lampiran');
- await waitFor(()=>expect((screen.getByText('Coba buka hasil lampiran') as HTMLButtonElement).disabled).toBe(false));
+ await waitFor(()=>expect((screen.getByRole('button', { name: 'Coba buka hasil lampiran' }) as HTMLButtonElement).disabled).toBe(false));
  return f;
 }
 test.each([false,true])('explicit evidence conflict Keep/Discard resolves and permits the next business write (reload=%s)',async(reload)=>{
@@ -90,7 +90,7 @@ test.each([false,true])('explicit evidence conflict Keep/Discard resolves and pe
  fireEvent.click(screen.getByText('Selesaikan konflik lampiran'));
  fireEvent.click(await screen.findByText('Tetap mengedit'));
  expect(localStorage.getItem(key)).toBe(before);expect((screen.getByLabelText('Terjual Item 1') as HTMLInputElement).value).toBe(reload?'4':'12');expect(f.s.commands).toHaveLength(0);
- await waitFor(()=>expect((screen.getByText('Selesaikan konflik lampiran') as HTMLButtonElement).disabled).toBe(false));
+ await waitFor(()=>expect((screen.getByRole('button', { name: 'Selesaikan konflik lampiran' }) as HTMLButtonElement).disabled).toBe(false));
  fireEvent.click(screen.getByText('Selesaikan konflik lampiran'));fireEvent.click(await screen.findByText('Buang perubahan'));
  await waitFor(()=>expect(localStorage.length).toBe(0));
  await waitFor(()=>expect((screen.getByLabelText('Terjual Item 1') as HTMLInputElement).disabled).toBe(false));
@@ -110,17 +110,17 @@ test.each([['receipt','register_evidence'],['authority','register_evidence'],['r
  wire.handler=async(n:string,a:any)=>{const result=await base(n,a);if(kind==='receipt'&&n==='pilot_reconcile_co_evidence_v1')result.data.receipt={...result.data.receipt,version:'99'};if(kind==='authority'&&n==='pilot_co_evidence_v1')return {data:null,error:{code:'42501',message:'Conflict authority denied'}};return result;};
  fireEvent.click(screen.getByText('Selesaikan konflik lampiran'));fireEvent.click(await screen.findByText('Buang perubahan'));
  if(kind==='authority'){await screen.findByText('Conflict authority denied');expect(screen.queryByLabelText('Terjual Item 1')).toBeNull();}
- else {await waitFor(()=>expect((screen.getByText('Selesaikan konflik lampiran') as HTMLButtonElement).disabled).toBe(false));expect((screen.getByLabelText('Terjual Item 1') as HTMLInputElement).value).toBe('12');}
+ else {await waitFor(()=>expect((screen.getByRole('button', { name: 'Selesaikan konflik lampiran' }) as HTMLButtonElement).disabled).toBe(false));expect((screen.getByLabelText('Terjual Item 1') as HTMLInputElement).value).toBe('12');}
  expect(localStorage.getItem(key)).toBe(before);
 });
 test.each(['register_evidence','finalize_evidence'])('nested %s conflict uses the source discard dialog and retains pending ownership until acknowledged',async(operation)=>{
  const {default:COCorrectionDialog}=await import('../../src/components/co/COCorrectionDialog');const {useCOTransactionSender}=await import('../../src/lib/co/transactions');
  const f=fixture();f.lost=operation;f.s.impacts.missing_month=[{report_month:month,reason:'missing',head_id:null,coverage_through_date:null}];const pending=vi.fn();
  function Owner(){const sender=useCOTransactionSender({formScope:'nested-conflict',customerId:customer});return <COCorrectionDialog operation="correct_report" customerId={customer} selectedMonth="2026-08-01" source={{draft_id:draftId,expected_draft_version:'1',expected_customer_version:'1',eligible_set_fingerprint:'a'.repeat(64),report_head_id:id(4),original_revision_id:id(5),expected_report_version:'1'}} sender={sender} current={()=>wire.actor} onAccepted={async()=>true} onClose={()=>{}} onPendingChange={pending} returnFocus={null}/>;}
- mount(<Owner/>);fireEvent.change(await screen.findByLabelText('Alasan perubahan'),{target:{value:'Keep source reason'}});fireEvent.click(screen.getByText('Tinjau semua dampak'));fireEvent.click(await screen.findByText('Lengkapi periode 2026-09'));const refresh=await screen.findByText('Perbarui periode terhadap sumber usulan');await waitFor(()=>expect((refresh as HTMLButtonElement).disabled).toBe(false));fireEvent.click(refresh);fireEvent.change(await screen.findByLabelText('Terjual Item 1'),{target:{value:'12'}});
- await choose();fireEvent.click(screen.getByText('Verifikasi dan pasang lampiran'));await screen.findByText('Pulihkan permintaan lampiran');await waitFor(()=>expect((screen.getByText('Pulihkan permintaan lampiran') as HTMLButtonElement).disabled).toBe(false));
- f.s.version='4';f.s.rows[0].sold_quantity='4';fireEvent.click(screen.getByText('Pulihkan permintaan lampiran'));fireEvent.click(await screen.findByText('Buka hasil lampiran tersimpan'));await screen.findByText('Coba buka hasil lampiran');await waitFor(()=>expect((screen.getByText('Selesaikan konflik lampiran') as HTMLButtonElement).disabled).toBe(false));expect(pending).toHaveBeenLastCalledWith(true);expect((screen.getByText('Kembali ke sumber') as HTMLButtonElement).disabled).toBe(true);
- fireEvent.click(screen.getByText('Selesaikan konflik lampiran'));fireEvent.click(await screen.findByText('Tetap mengedit'));expect(localStorage.length).toBe(1);await waitFor(()=>expect((screen.getByText('Selesaikan konflik lampiran') as HTMLButtonElement).disabled).toBe(false));fireEvent.click(screen.getByText('Selesaikan konflik lampiran'));fireEvent.click(await screen.findByText('Buang perubahan'));
+ mount(<Owner/>);fireEvent.change(await screen.findByLabelText('Alasan perubahan'),{target:{value:'Keep source reason'}});fireEvent.click(screen.getByText('Tinjau semua dampak'));fireEvent.click(await screen.findByText('Lengkapi periode 2026-09'));const refresh=await screen.findByRole('button', { name: 'Perbarui periode terhadap sumber usulan' });await waitFor(()=>expect((refresh as HTMLButtonElement).disabled).toBe(false));fireEvent.click(refresh);fireEvent.change(await screen.findByLabelText('Terjual Item 1'),{target:{value:'12'}});
+ await choose();fireEvent.click(screen.getByText('Verifikasi dan pasang lampiran'));await screen.findByText('Pulihkan permintaan lampiran');await waitFor(()=>expect((screen.getByRole('button', { name: 'Pulihkan permintaan lampiran' }) as HTMLButtonElement).disabled).toBe(false));
+ f.s.version='4';f.s.rows[0].sold_quantity='4';fireEvent.click(screen.getByText('Pulihkan permintaan lampiran'));fireEvent.click(await screen.findByText('Buka hasil lampiran tersimpan'));await screen.findByText('Coba buka hasil lampiran');await waitFor(()=>expect((screen.getByRole('button', { name: 'Selesaikan konflik lampiran' }) as HTMLButtonElement).disabled).toBe(false));expect(pending).toHaveBeenLastCalledWith(true);expect((screen.getByRole('button', { name: 'Kembali ke sumber' }) as HTMLButtonElement).disabled).toBe(true);
+ fireEvent.click(screen.getByText('Selesaikan konflik lampiran'));fireEvent.click(await screen.findByText('Tetap mengedit'));expect(localStorage.length).toBe(1);await waitFor(()=>expect((screen.getByRole('button', { name: 'Selesaikan konflik lampiran' }) as HTMLButtonElement).disabled).toBe(false));fireEvent.click(screen.getByText('Selesaikan konflik lampiran'));fireEvent.click(await screen.findByText('Buang perubahan'));
  await waitFor(()=>expect(localStorage.length).toBe(0));await waitFor(()=>expect(pending).toHaveBeenLastCalledWith(false));expect((screen.getByLabelText('Terjual Item 1') as HTMLInputElement).value).toBe('4');fireEvent.change(screen.getByLabelText('Terjual Item 1'),{target:{value:'5'}});fireEvent.click(screen.getByText('Simpan Draft periode'));await waitFor(()=>expect(f.s.commands).toHaveLength(2));expect(f.s.commands[1].payload.expected_draft_version).toBe('4');expect(f.commands).toHaveLength(operation==='register_evidence'?1:2);
 });
 
@@ -137,7 +137,7 @@ test.each(['pending', 'verified'])('another actor’s %s duplicate is an actiona
     expect((screen.getByLabelText('Catatan laporan') as HTMLTextAreaElement).value).toBe('Keep authorized dirty note');
     expect(wire.invoke).not.toHaveBeenCalled(); expect(f.commands).toHaveLength(0);
     fireEvent.click(screen.getByText('Batalkan pilihan lampiran'));
-    await waitFor(() => expect((screen.getByText('Simpan Draft') as HTMLButtonElement).disabled).toBe(false));
+    await waitFor(() => expect((screen.getByRole('button', { name: 'Simpan Draft' }) as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(screen.getByText('Simpan Draft'));
     await waitFor(() => expect(f.s.commands).toHaveLength(2));
 });
@@ -156,7 +156,7 @@ async function enterRegistrationConflict(lost: boolean, reload = false, advanceC
     fireEvent.change(await screen.findByLabelText('Terjual Item 1'), { target: { value: '12' } });
     await choose(); fireEvent.click(screen.getByText('Verifikasi dan pasang lampiran'));
     await screen.findByText(lost ? 'Pulihkan permintaan lampiran' : 'Coba buka hasil lampiran');
-    await waitFor(() => expect((screen.getByText(lost ? 'Pulihkan permintaan lampiran' : 'Coba buka hasil lampiran') as HTMLButtonElement).disabled).toBe(false));
+    await waitFor(() => expect((screen.getByRole('button', { name: lost ? 'Pulihkan permintaan lampiran' : 'Coba buka hasil lampiran' }) as HTMLButtonElement).disabled).toBe(false));
     if (sameTarget) f.s.version = '2'; if (advanceCustomer) f.s.cv = '3';
     f.s.rows[0].sold_quantity = '4'; f.s.metadata.notes = 'Current canonical note';
     if (reload) { cleanup(); mount(<COMonthlyReport/>); await screen.findByLabelText('Terjual Item 1'); }
@@ -175,7 +175,7 @@ test.each([[false,false,false,true],[true,false,false,true],[false,true,true,tru
     fireEvent.click(await screen.findByText('Tetap mengedit'));
     expect(localStorage.getItem(key)).toBe(before);
     expect((screen.getByLabelText('Terjual Item 1') as HTMLInputElement).value).toBe(reload ? '4' : '12');
-    await waitFor(() => expect((screen.getByText('Selesaikan konflik lampiran') as HTMLButtonElement).disabled).toBe(false));
+    await waitFor(() => expect((screen.getByRole('button', { name: 'Selesaikan konflik lampiran' }) as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(screen.getByText('Selesaikan konflik lampiran')); fireEvent.click(await screen.findByText('Buang perubahan'));
     await waitFor(() => expect(localStorage.length).toBe(0));
     await screen.findByLabelText('Terjual Item 1');
@@ -183,7 +183,7 @@ test.each([[false,false,false,true],[true,false,false,true],[false,true,true,tru
     expect((screen.getByLabelText('Catatan laporan') as HTMLTextAreaElement).value).toBe('Current canonical note');
     await waitFor(() => expect(screen.getByLabelText('Terjual Item 1').matches(':disabled')).toBe(false));
     fireEvent.change(screen.getByLabelText('Terjual Item 1'), { target: { value: '5' } });
-    await waitFor(() => expect((screen.getByText('Simpan Draft') as HTMLButtonElement).disabled).toBe(false));
+    await waitFor(() => expect((screen.getByRole('button', { name: 'Simpan Draft' }) as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(screen.getByText('Simpan Draft'));
     await waitFor(() => expect(f.s.commands).toHaveLength(1));
     expect(f.s.commands[0].payload.expected_draft_version).toBe(sameTarget ? '2' : '1'); expect(f.commands).toHaveLength(1);
@@ -200,7 +200,7 @@ test('registration conflict retains receipt and dirty fields if a later canonica
     expect(localStorage.getItem(key)).toBe(before);
     expect((screen.getByLabelText('Terjual Item 1') as HTMLInputElement).value).toBe('12');
     failed = false;
-    await waitFor(() => expect((screen.getByText('Selesaikan konflik lampiran') as HTMLButtonElement).disabled).toBe(false));
+    await waitFor(() => expect((screen.getByRole('button', { name: 'Selesaikan konflik lampiran' }) as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(screen.getByText('Selesaikan konflik lampiran')); fireEvent.click(await screen.findByText('Buang perubahan'));
     await waitFor(() => expect(localStorage.length).toBe(0));
     await waitFor(() => expect((screen.getByLabelText('Terjual Item 1') as HTMLInputElement).value).toBe('4'));

@@ -1,6 +1,9 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
 import { spawnSync } from 'node:child_process'
+import { lstatSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join, resolve } from 'node:path'
 const target = { VERCEL_ENV: 'preview', VERCEL_GIT_COMMIT_REF: 'fix/pilot-database' }
 const url = 'https://mqfpupsuthghubkeiuey.supabase.co'
 const jwt = (role: string, ref = 'mqfpupsuthghubkeiuey') => [Buffer.from('{"alg":"HS256"}').toString('base64url'), Buffer.from(JSON.stringify({ role, ref })).toString('base64url'), 'synthetic-signature'].join('.')
@@ -12,10 +15,34 @@ describe('database preview backend build guard', () => {
     for (const env of [{}, { ...target, VERCEL_ENV: 'production' }, { ...target, VERCEL_GIT_COMMIT_REF: 'fix/pilot-safety' }]) expect(run(env).status).toBe(0)
   })
   it('blocks the actual build command before Vite can load committed .env', () => {
-    const result = spawnSync('npm', ['run', 'build'], { encoding: 'utf8', env: { PATH: process.env.PATH, ...target } })
-    expect(result.status).not.toBe(0)
-    expect(result.stderr).toContain('Database preview build blocked')
-    expect(result.stdout).not.toContain('building for production')
+    const project = process.cwd()
+    const npm = join(dirname(process.execPath), 'npm')
+    const bundledConfig = resolve(dirname(realpathSync(npm)), '..', 'npmrc')
+    // npm loads bundled/project config independently of user/global overrides.
+    // Inspect metadata only and refuse any existing entry, including symlinks.
+    expect(lstatSync(bundledConfig, { throwIfNoEntry: false })).toBeUndefined()
+    expect(lstatSync(join(project, '.npmrc'), { throwIfNoEntry: false })).toBeUndefined()
+    const fixture = mkdtempSync(join(tmpdir(), 'preview-guard-npm-'))
+    try {
+      const userConfig = join(fixture, 'user.npmrc')
+      const globalConfig = join(fixture, 'global.npmrc')
+      // Distinct exclusive files: npm rejects loading the same path twice.
+      writeFileSync(userConfig, '', { flag: 'wx' })
+      writeFileSync(globalConfig, '', { flag: 'wx' })
+      const result = spawnSync(npm, [
+        '--prefix', project,
+        '--userconfig', userConfig,
+        '--globalconfig', globalConfig,
+        '--cache', join(fixture, 'cache'),
+        '--update-notifier=false',
+        'run', 'build',
+      ], { encoding: 'utf8', env: { PATH: process.env.PATH, ...target } })
+      expect(result.status).not.toBe(0)
+      expect(result.stderr).toContain('Database preview build blocked')
+      expect(result.stdout).not.toContain('building for production')
+    } finally {
+      rmSync(fixture, { recursive: true, force: true })
+    }
   })
   it('rejects missing process env despite repository .env fallback', () => {
     expect(run(target).status).not.toBe(0)

@@ -62,14 +62,14 @@ test('Athel create form requires opening stock and image while keeping blank/zer
  expect(screen.getByRole('heading', { name: 'Tambah Promosi Produk' })).toBeTruthy()
  await screen.findByRole('option', { name: /Tiles/ })
  fireEvent.change(screen.getByLabelText('Produk'), { target: { value: id } })
- expect((screen.getByLabelText('Harga Pokok (Rp)') as HTMLInputElement).value).toBe('')
- expect((screen.getByLabelText('Luar Kota (Rp)') as HTMLInputElement).value).toBe('0')
+ expect(screen.queryByLabelText('Harga Pokok (Rp)')).toBeNull()
+ expect(screen.queryByLabelText('Luar Kota (Rp)')).toBeNull()
  fireEvent.change(screen.getByLabelText('Stok awal'), { target: { value: '5' } })
  fireEvent.change(screen.getByLabelText('Gambar promosi'), { target: { files: [file()] } })
  fireEvent.click(screen.getByRole('button', { name: 'Simpan promosi' }))
  await waitFor(() => expect(mocks.rpc.mock.calls.some(call => call[1]?.p_operation === 'create_promotion')).toBe(true))
  const payload = mocks.rpc.mock.calls.find(call => call[1]?.p_operation === 'create_promotion')![1].p_payload
- expect(payload).toMatchObject({ opening_quantity: 5, harga_pokok: null, luar_kota: 0 })
+ expect(payload).toMatchObject({ opening_quantity: 5, harga_pokok: null, luar_kota: null })
 })
 test('read-only Sales highlights expose stock and images without create, ordering, or mutations', async () => {
  mocks.role = 'sales_head'; mount(SalesPage)
@@ -139,19 +139,19 @@ test('stock conflict reload requires explicit version review while retaining adj
  await waitFor(() => expect(mocks.rpc.mock.calls.filter(call => call[1]?.p_operation === 'adjust_stock')).toHaveLength(2))
  expect(mocks.rpc.mock.calls.filter(call => call[1]?.p_operation === 'adjust_stock')[1][1].p_payload).toEqual({ promotion_id: id, expected_stock_version: 2, quantity_delta: 5, reason: 'Verified replenishment' })
 })
-test('image/price conflict reload keeps file and overrides and blocks another upload until review', async () => {
- concurrentPromotionChange(); mount(); await screen.findByRole('button', { name: 'Ubah harga / gambar' })
- fireEvent.click(screen.getByRole('button', { name: 'Ubah harga / gambar' })); fireEvent.change(screen.getByLabelText('Luar Kota (Rp)'), { target: { value: '123' } }); const replacement = file(); fireEvent.change(screen.getByLabelText('Gambar promosi'), { target: { files: [replacement] } })
+test('image conflict keeps the file, preserves latest hidden prices and blocks upload until review', async () => {
+ concurrentPromotionChange(); mount(); await screen.findByRole('button', { name: 'Ubah gambar' })
+ fireEvent.click(screen.getByRole('button', { name: 'Ubah gambar' })); const replacement = file(); fireEvent.change(screen.getByLabelText('Gambar promosi'), { target: { files: [replacement] } })
  fireEvent.click(screen.getByRole('button', { name: 'Simpan promosi' })); await screen.findByText(/Promosi berubah. Muat ulang/); expect(mocks.upload).toHaveBeenCalledTimes(1)
  fireEvent.click(screen.getByRole('button', { name: 'Simpan promosi' })); expect(mocks.upload).toHaveBeenCalledTimes(1)
  mocks.items = [item({ stock_version: 2, remaining_quantity: 8, luar_kota: 90 })]
  fireEvent.click(screen.getByRole('button', { name: 'Muat ulang promosi' })); await screen.findByText('Stok saat ini: 8')
- expect((screen.getByLabelText('Luar Kota (Rp)') as HTMLInputElement).value).toBe('123'); expect(screen.getByText('Harga saat ini · Luar Kota: Rp 90')).toBeTruthy()
+ expect(screen.queryByLabelText('Luar Kota (Rp)')).toBeNull(); expect(screen.getByText('Stok saat ini: 8')).toBeTruthy()
  fireEvent.click(screen.getByRole('button', { name: 'Simpan promosi' })); expect(mocks.upload).toHaveBeenCalledTimes(1)
  fireEvent.click(screen.getByRole('button', { name: 'Gunakan versi promosi yang sudah diperiksa' })); fireEvent.click(screen.getByRole('button', { name: 'Simpan promosi' }))
  await waitFor(() => expect(mocks.upload).toHaveBeenCalledTimes(2)); expect(mocks.upload.mock.calls[1][1]).toBe(replacement)
  await waitFor(() => expect(mocks.rpc.mock.calls.filter(call => call[1]?.p_operation === 'edit_promotion')).toHaveLength(2))
- expect(mocks.rpc.mock.calls.filter(call => call[1]?.p_operation === 'edit_promotion')[1][1].p_payload).toMatchObject({ expected_stock_version: 2, luar_kota: 123 })
+ expect(mocks.rpc.mock.calls.filter(call => call[1]?.p_operation === 'edit_promotion')[1][1].p_payload).toMatchObject({ expected_stock_version: 2, luar_kota: 90 })
 })
 test.each(['missing', 'stale', 'failed'] as const)('promotion %s reload keeps the rejected draft blocked', async state => {
  concurrentPromotionChange(); mount(); await screen.findByRole('button', { name: 'Sesuaikan stok' }); fireEvent.click(screen.getByRole('button', { name: 'Sesuaikan stok' }))
@@ -172,7 +172,7 @@ async function assertLegacyHistoryAndManagedControls() {
  expect(legacy.getByText(/Riwayat legacy dipertahankan/)).toBeTruthy()
  expect(legacy.queryByRole('button', { name: /Sesuaikan stok|Ubah harga|Jeda/ })).toBeNull()
  expect(managed.getByText('Stok tersedia: 3')).toBeTruthy()
- for (const name of ['Sesuaikan stok', 'Ubah harga / gambar', 'Jeda']) expect((managed.getByRole('button', { name }) as HTMLButtonElement).disabled).toBe(false)
+ for (const name of ['Sesuaikan stok', 'Ubah gambar', 'Jeda']) expect((managed.getByRole('button', { name }) as HTMLButtonElement).disabled).toBe(false)
  expect(screen.queryByText('Promosi belum dapat dimuat.')).toBeNull()
 }
 test('admin renders preserved legacy history alongside managed campaign controls', async () => {

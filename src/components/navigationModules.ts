@@ -1,7 +1,12 @@
 import type { NavigationIconName } from './NavigationIcon'
 
 export type NavigationModule = 'athel' | 'girard' | 'ihr' | 'home'
-export type NavigationLink = { to: string; label: string; icon: NavigationIconName; badge?: number }
+export type NavigationLink = {
+  to: string; label: string; icon: NavigationIconName; badge?: number
+  activeSearch?: { key: string; value: string; fallback: string; allowed: string[] }
+}
+export type NavigationGroup = { id: string; label: string; icon: NavigationIconName; children: NavigationLink[] }
+export type NavigationItem = NavigationLink | NavigationGroup
 export const moduleIcons: Record<Exclude<NavigationModule, 'home'>, NavigationIconName> = { athel: 'purchase', girard: 'sales', ihr: 'people' }
 export const moduleLabels: Record<NavigationModule, string> = { athel: 'Procurement', girard: 'Sales', ihr: 'HR', home: 'Padiwan' }
 export function leaveHome(role?: string) {

@@ -1,0 +1,122 @@
+[
+  {
+    "file": "tests/database/fixture.sql"
+  },
+  {
+    "file": "supabase/migrations/202609300001_pilot_security.sql"
+  },
+  {
+    "file": "supabase/migrations/202609300002_order_transactions.sql"
+  },
+  {
+    "file": "supabase/migrations/202609300003_visit_storage_security.sql"
+  },
+  {
+    "file": "supabase/migrations/202609300004_visit_transactions.sql"
+  },
+  {
+    "file": "tests/database/hosted-read-policy-fixture.sql"
+  },
+  {
+    "file": "supabase/migrations/202610010001_scalable_order_reads.sql"
+  },
+  {
+    "file": "supabase/migrations/202610010002_scalable_report_reads.sql"
+  },
+  {
+    "file": "supabase/migrations/202610010004_scalable_order_lookup_index.sql"
+  },
+  {
+    "file": "supabase/migrations/202610010007_read_policy_plans.sql"
+  },
+  {
+    "file": "supabase/migrations/202610010008_customer_delivery_aggregation.sql"
+  },
+  {
+    "file": "supabase/migrations/202610010009_sales_page_enrichment.sql"
+  },
+  {
+    "file": "supabase/migrations/202610010010_nullable_catalog_prices.sql"
+  },
+  {
+    "file": "supabase/migrations/202610020001_customer_categories.sql"
+  },
+  {
+    "file": "supabase/migrations/202610020003_stale_po_conflicts.sql"
+  },
+  {
+    "file": "supabase/migrations/202610021001_ihr_leave_foundation.sql"
+  },
+  {
+    "suite": "foundation"
+  },
+  {
+    "file": "supabase/migrations/202610021002_ihr_leave_calendar.sql"
+  },
+  {
+    "suite": "calendar"
+  },
+  {
+    "file": "supabase/migrations/202610021003_ihr_leave_accounts.sql"
+  },
+  {
+    "suite": "accounts"
+  },
+  {
+    "file": "supabase/migrations/202610021004_ihr_leave_quote.sql"
+  },
+  {
+    "suite": "quote"
+  },
+  {
+    "file": "supabase/migrations/202610021005_ihr_leave_requests.sql"
+  },
+  {
+    "suite": "requests"
+  },
+  {
+    "suite": "decisions"
+  },
+  {
+    "file": "supabase/migrations/202610021006_ihr_leave_reads.sql"
+  },
+  {
+    "file": "supabase/migrations/202610021007_ihr_leave_admin.sql"
+  },
+  {
+    "file": "supabase/migrations/202610021008_ihr_leave_context.sql"
+  },
+  {
+    "suite": "composed"
+  },
+  {
+    "file": "supabase/migrations/202610081001_ihr_po_admin_director.sql"
+  },
+  {
+    "file": "supabase/tests/security/explicit_guards.sql"
+  },
+  {
+    "file": "supabase/tests/security/pilot_security.sql"
+  },
+  {
+    "file": "supabase/tests/security/storage_helpers.sql"
+  },
+  {
+    "file": "supabase/tests/security/storage_rls.sql"
+  },
+  {
+    "file": "tests/database/ihr/po-admin-director.sql"
+  },
+  {
+    "suite": "composed"
+  },
+  {
+    "file": "supabase/migrations/20261009110000_co_role.sql"
+  },
+  {
+    "file": "sql/weekly-leave-calendar-candidate.sql"
+  },
+  {
+    "file": "sql/director-calendar-settings-candidate.sql"
+  }
+]

@@ -30,6 +30,11 @@
 .navigation-link { display: flex; align-items: center; position: relative; min-height: var(--ui-control-size); gap: 12px; padding: var(--ui-control-padding-y) 12px; border-radius: var(--ui-radius-control); border-left: 3px solid transparent; font-size: var(--ui-text-control); line-height: var(--ui-line-control); font-weight: 550; text-decoration: none; color: #4b5563; }
 .navigation-link:hover { background: var(--color-brand-canvas); color: var(--color-brand-primary); }
 .navigation-link-active { background: var(--color-brand-tint); color: var(--color-brand-primary); border-left-color: var(--color-brand-primary); font-weight: 700; }
+.navigation-group-toggle { width: 100%; text-align: left; cursor: pointer; }
+.navigation-group-active { background: var(--color-brand-canvas); color: var(--color-brand-primary); font-weight: 700; }
+.navigation-chevron-open { transform: rotate(180deg); }
+.navigation-submenu { display: flex; flex-direction: column; gap: var(--ui-space); margin: 4px 0 4px 14px; padding-left: 6px; border-left: 1px solid var(--color-brand-divider); }
+.navigation-submenu .navigation-link { gap: 8px; padding-inline: 8px; }
 .navigation-badge { flex-shrink: 0; display: grid; place-items: center; margin-left: auto; min-width: 22px; height: 22px; padding: 0 4px; border-radius: 12px; background: #b91c1c; color: white; font-size: 13px; font-weight: 700; }
 .navigation-account { position: relative; margin: 0 12px; padding: 12px 0; border-top: 1px solid #e5e7eb; flex-shrink: 0; }
 .navigation-user-button { width: 100%; min-height: var(--ui-control-size); display: flex; align-items: center; gap: 10px; padding: var(--ui-control-padding-y) 6px; border-radius: var(--ui-radius-control); text-align: left; cursor: pointer; }
@@ -77,4 +82,9 @@
 }
 @media (prefers-reduced-motion: no-preference) {
   .navigation-link, .navigation-toggle, .navigation-module-button { transition: background-color 120ms, color 120ms; }
+  .navigation-user-button, .navigation-popover :is(button, a) { transition: background-color 160ms ease-out, color 160ms ease-out; }
+  .navigation-drawer[open] { animation: ui-navigation-enter 200ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .navigation-drawer[open]::backdrop { animation: ui-backdrop-enter 160ms ease-out; }
+  .navigation-popover { animation: ui-content-enter 160ms ease-out; }
 }
+@keyframes ui-navigation-enter { from { opacity: 0.6; transform: translateX(-12px); } to { opacity: 1; transform: none; } }

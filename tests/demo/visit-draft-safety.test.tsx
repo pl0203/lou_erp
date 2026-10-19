@@ -24,13 +24,13 @@ const clients:QueryClient[]=[];const routers:ReturnType<typeof createMemoryRoute
 afterEach(()=>{cleanup();routers.splice(0).forEach(r=>r.dispose());clients.splice(0).forEach(c=>c.clear());vi.unstubAllGlobals()})
 beforeEach(()=>{vi.stubGlobal('AbortController',class {constructor(){return transferableAbortController()}});state.profile={id:'sales',role:'sales_person'};state.scheduleDates=[];state.send.mockReset()})
 function mount(element:React.ReactNode){const client=new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}});clients.push(client);const router=createMemoryRouter([{path:'/',element},{path:'/away',element:<p>Other route</p>},{path:'/girard/visit/:id',element:<p>Visit evidence route</p>}]);routers.push(router);render(<QueryClientProvider client={client}><RouterProvider router={router}/></QueryClientProvider>);return router}
-async function editFirstNote(){await screen.findAllByText('Edit catatan');fireEvent.click(screen.getAllByText('Edit catatan')[0]);fireEvent.change(screen.getByLabelText('Catatan kunjungan'),{target:{value:'Keep earlier row draft'}})}
+async function editFirstNote(){await screen.findAllByRole('button',{name:'Edit catatan'});fireEvent.click(screen.getAllByRole('button',{name:'Edit catatan'})[0]);fireEvent.change(screen.getByLabelText('Catatan kunjungan'),{target:{value:'Keep earlier row draft'}})}
 test('earlier history-row draft blocks route navigation even when later rows are clean',async()=>{
  const router=mount(<OwnVisitHistory/>);await editFirstNote();await act(async()=>{void router.navigate('/away')});expect(await screen.findByRole('dialog')).toBeTruthy();fireEvent.click(screen.getByText('Tetap mengedit'));expect((screen.getByLabelText('Catatan kunjungan') as HTMLTextAreaElement).value).toBe('Keep earlier row draft');expect(screen.queryByText('Other route')).toBeNull()
 })
 test('history pagination and evidence navigation confirm before discarding an earlier note draft',async()=>{
  const router=mount(<OwnVisitHistory/>);await editFirstNote();fireEvent.click(screen.getByText('Berikutnya'));expect(await screen.findByRole('dialog')).toBeTruthy();fireEvent.click(screen.getByText('Tetap mengedit'));expect(screen.getByText('Halaman 1 dari 2')).toBeTruthy()
- const laterRow=screen.getByRole('heading',{level:2,name:'Second store'}).closest('article')!
+ const laterRow=screen.getByRole('heading',{level:2,name:'Second store'}).closest('tr')!
  const link=within(laterRow).getByRole('link',{name:'Lihat detail kunjungan di Second store'})
  expect(link.getAttribute('href')).toBe('/girard/visit/s2');fireEvent.click(link);expect(await screen.findByRole('dialog')).toBeTruthy();expect(router.state.location.pathname).toBe('/');fireEvent.click(screen.getByText('Tetap mengedit'));expect((screen.getByLabelText('Catatan kunjungan') as HTMLTextAreaElement).value).toBe('Keep earlier row draft')
  fireEvent.click(screen.getByText('Berikutnya'));fireEvent.click(await screen.findByText('Buang perubahan'));await screen.findByText('Three');expect(screen.queryByLabelText('Catatan kunjungan')).toBeNull()
@@ -44,10 +44,10 @@ test('blank manager date never reaches a DATE filter and leaves the selector usa
 
 test('clean later-row detail link preserves href and confirms an earlier-row draft before routing',async()=>{
  const router=mount(<OwnVisitHistory/>);await editFirstNote()
- const laterRow=screen.getByRole('heading',{level:2,name:'Second store'}).closest('article')!
+ const laterRow=screen.getByRole('heading',{level:2,name:'Second store'}).closest('tr')!
  const link=within(laterRow).getByRole('link',{name:'Lihat detail kunjungan di Second store'})
  expect(link.getAttribute('href')).toBe('/girard/visit/s2');fireEvent.click(link);expect(await screen.findByRole('dialog')).toBeTruthy();expect(router.state.location.pathname).toBe('/');fireEvent.click(screen.getByText('Tetap mengedit'));expect((screen.getByLabelText('Catatan kunjungan') as HTMLTextAreaElement).value).toBe('Keep earlier row draft');fireEvent.click(link);fireEvent.click(await screen.findByText('Buang perubahan'));expect(await screen.findByText('Visit evidence route')).toBeTruthy();expect(router.state.location.pathname).toBe('/girard/visit/s2')
 })
 test('note Cancel keeps an earlier draft until discard is accepted and does not send a save',async()=>{
- mount(<OwnVisitHistory/>);await editFirstNote();fireEvent.click(screen.getByRole('button',{name:'Batal'}));expect(await screen.findByRole('dialog')).toBeTruthy();fireEvent.click(screen.getByText('Tetap mengedit'));expect((screen.getByLabelText('Catatan kunjungan') as HTMLTextAreaElement).value).toBe('Keep earlier row draft');fireEvent.click(screen.getByRole('button',{name:'Batal'}));fireEvent.click(await screen.findByText('Buang perubahan'));expect(screen.queryByLabelText('Catatan kunjungan')).toBeNull();expect(state.send).not.toHaveBeenCalled();fireEvent.click(screen.getAllByText('Edit catatan')[0]);expect((screen.getByLabelText('Catatan kunjungan') as HTMLTextAreaElement).value).toBe('One')
+ mount(<OwnVisitHistory/>);await editFirstNote();fireEvent.click(screen.getByRole('button',{name:'Batal'}));expect(await screen.findByRole('dialog')).toBeTruthy();fireEvent.click(screen.getByText('Tetap mengedit'));expect((screen.getByLabelText('Catatan kunjungan') as HTMLTextAreaElement).value).toBe('Keep earlier row draft');fireEvent.click(screen.getByRole('button',{name:'Batal'}));fireEvent.click(await screen.findByText('Buang perubahan'));expect(screen.queryByLabelText('Catatan kunjungan')).toBeNull();expect(state.send).not.toHaveBeenCalled();fireEvent.click(screen.getAllByRole('button',{name:'Edit catatan'})[0]);expect((screen.getByLabelText('Catatan kunjungan') as HTMLTextAreaElement).value).toBe('One')
 })

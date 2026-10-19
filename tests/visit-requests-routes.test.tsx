@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
@@ -7,10 +8,11 @@ vi.mock('../src/pages/Login', () => ({ default: () => <p>Login boundary</p> }))
 vi.mock('../src/pages/athel/POList', () => ({ default: () => <p>Procurement home</p> }))
 vi.mock('../src/components/GirardNav', () => ({ default: () => null }))
 vi.mock('../src/components/VisitRequestInbox', () => ({ default: () => <p>Scoped requests</p>, VisitProposalForm: () => null }))
+vi.mock('../src/lib/supabase', () => ({ supabase: { rpc: vi.fn(), from: () => ({ select: () => ({ eq: async () => ({count:0,error:null}) }) }) } }))
 import App from '../src/App'
 beforeEach(() => { state.user = true })
 afterEach(cleanup)
-function mount() { render(<MemoryRouter initialEntries={['/girard/visit-requests']}><App /></MemoryRouter>) }
+function mount() { render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}><MemoryRouter initialEntries={['/girard/visit-requests']}><App /></MemoryRouter></QueryClientProvider>) }
 test.each(['sales_person', 'sales_manager', 'sales_head', 'executive'])('%s reaches the dedicated requests page', role => {
  state.role = role; mount()
  expect(screen.getByRole('heading', { level: 1, name: 'Permintaan Kunjungan' })).toBeTruthy()

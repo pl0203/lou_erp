@@ -1,0 +1,80 @@
+/* Keep one semantic table and one editor per visit. Small screens stack the
+   same cells into cards; no viewport listener can remount a dirty draft. */
+.own-visit-history-table {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.own-visit-history-table thead {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.own-visit-history-table tbody {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.own-visit-history-table tbody > tr {
+  display: block;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--color-brand-divider);
+  border-radius: var(--ui-radius-card);
+  background: var(--color-brand-surface);
+}
+.own-visit-history-table td {
+  display: block;
+  min-width: 0;
+  padding: 0;
+  vertical-align: top;
+}
+.own-visit-history-table td + td { margin-top: 8px; }
+
+@media (min-width: 1024px) {
+  .own-visit-history-table {
+    display: table;
+    table-layout: fixed;
+    border-collapse: separate;
+    border-spacing: 0;
+    border: 1px solid var(--color-brand-divider);
+    border-radius: var(--ui-radius-card);
+    background: var(--color-brand-surface);
+  }
+  .own-visit-history-table thead {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    clip: auto;
+    white-space: normal;
+  }
+  .own-visit-history-table th {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--color-brand-divider);
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .own-visit-history-table th:nth-child(1) { width: 26%; }
+  .own-visit-history-table th:nth-child(2) { width: 24%; }
+  .own-visit-history-table th:nth-child(3) { width: 21%; }
+  .own-visit-history-table th:nth-child(4) { width: 29%; }
+  .own-visit-history-table tbody { display: table-row-group; }
+  .own-visit-history-table tbody > tr { display: table-row; }
+  .own-visit-history-table td {
+    display: table-cell;
+    padding: 16px;
+    border-bottom: 1px solid var(--color-brand-divider);
+  }
+  .own-visit-history-table td + td { margin-top: 0; }
+  .own-visit-history-table tbody > tr:last-child > td { border-bottom: 0; }
+}

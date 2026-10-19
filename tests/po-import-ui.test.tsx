@@ -7,7 +7,12 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import type { LocalDocument, ParsedPO, ReviewDecision } from '../src/lib/poImport/contracts'
 
 const state = vi.hoisted(() => ({ send: vi.fn(), read: vi.fn(), parse: vi.fn(), prepare: vi.fn(), navigate: vi.fn(),
- customers: [] as any[], products: [] as any[], fetching: false, error: false, actor: 'u', role: 'po_admin', profileActive: true, realMatches: false }))
+ customers: [] as any[], products: [] as any[], fetching: false, error: false, actor: 'u', role: 'po_admin', profileActive: true, realMatches: false, unavailableOptions: new Set<string>() }))
+vi.mock('../src/lib/catalogue/useCatalogueOrderOptions', () => ({ useCatalogueOrderOptions: (kind: string, purpose: string) => ({
+ data: (kind === 'customer' ? state.customers : state.products).map(row => ({ ...row, is_enabled: row.is_enabled ?? true })).filter(row => purpose === 'all-for-history' || row.is_enabled),
+ getCurrentData: () => state.fetching || state.error || state.unavailableOptions.has(kind) || !state.actor || !state.profileActive || !['po_admin', 'executive'].includes(state.role) ? undefined : (kind === 'customer' ? state.customers : state.products).map(row => ({ ...row, is_enabled: row.is_enabled ?? true })).filter(row => purpose === 'all-for-history' || row.is_enabled),
+ isFetching: state.fetching, isError: state.error, refetch: vi.fn(),
+}) }))
 vi.mock('../src/lib/supabase', () => ({ supabase: {} }))
 vi.mock('../src/lib/AuthContext', () => ({ useAuth: () => ({ user: state.actor ? { id: state.actor } : null, profile: state.actor ? { id: state.actor, role: state.role, is_active: state.profileActive } : null, loading: false, error: null }) }))
 vi.mock('../src/components/AthelNav', () => ({ default: () => null }))
@@ -16,7 +21,6 @@ vi.mock('../src/lib/orderTransactions', async original => ({ ...await original<a
 vi.mock('@tanstack/react-query', async original => ({ ...await original<any>(), useQuery: ({ queryKey }: any) => ({ data: queryKey[0] === 'customers' ? state.customers : state.products, isFetching: state.fetching, isError: state.error, refetch: vi.fn() }) }))
 vi.mock('../src/lib/poImport/reader', () => ({ readPODocument: (...args: any[]) => state.read(...args) }))
 vi.mock('../src/lib/poImport/parse', () => ({ parsePODocument: (...args: any[]) => state.parse(...args) }))
-vi.mock('../src/lib/poImport/matching', async original => { const actual = await original<any>(); return { ...actual, matchPODraft: (...args: any[]) => state.realMatches ? actual.matchPODraft(...args) : ({ customerIds: state.customers.filter(c => c.name === 'Synthetic buyer').map(c => c.id), productIdsByRow: { r1: state.products.filter(p => p.sku === 'SYN-1').map(p => p.id) } }) } })
 vi.mock('../src/lib/poImport/review', async original => { const actual = await original<any>(); return { preparePOFormDraft: (...args: any[]) => state.prepare(...args), isFinancialReviewIssue: actual.isFinancialReviewIssue } })
 import PONew from '../src/pages/athel/PONew'
 const field = (value: string | null) => ({ raw: value ?? '', value, page: 1 })
@@ -27,7 +31,7 @@ function parsed(price: string | null = '125'): ParsedPO {
 function localDocument(): LocalDocument { return { pages: [], previews: [new Blob(['synthetic'], { type: 'image/png' })], dispose: vi.fn() } }
 const clients: QueryClient[] = []
 beforeEach(() => {
- state.send.mockReset().mockResolvedValue({ id: 'saved' }); state.navigate.mockReset(); state.fetching = false; state.error = false; state.actor = 'u'; state.role = 'po_admin'; state.profileActive = true; state.realMatches = false
+ state.send.mockReset().mockResolvedValue({ id: 'saved' }); state.navigate.mockReset(); state.fetching = false; state.error = false; state.actor = 'u'; state.role = 'po_admin'; state.profileActive = true; state.realMatches = false; state.unavailableOptions.clear()
  state.customers = [{ id: 'c', name: 'Synthetic buyer', pricing_tier: 'luar_kota' }, { id: 'd', name: 'Other buyer', pricing_tier: 'dalam_kota' }]
  state.products = [{ id: 'p', sku: 'SYN-1', name: 'Synthetic product', size: 'pcs', unit_price: 999, harga_pokok: 20, luar_kota: 30, dalam_kota: 40, depo_bangunan: null }]
  state.read.mockReset().mockResolvedValue(localDocument()); state.parse.mockReset().mockReturnValue(parsed())
@@ -36,12 +40,11 @@ beforeEach(() => {
   if (!po.complete || !po.layout) issues.push({ id: 'fallback', message: 'Dokumen tidak lengkap; isi PO secara manual', blocking: true })
   if (!customers.some(c => c.id === d.customerId)) issues.push({ id: 'customer', message: 'Pilih pelanggan', blocking: true })
   if (!d.poNumber || !d.orderDate) issues.push({ id: 'header', message: 'Lengkapi nomor dan tanggal PO', blocking: true })
-  if (!row || (!row.manual && !products.some(p => p.id === row.productId))) issues.push({ id: 'product', message: 'Pilih produk atau barang manual', blocking: true })
+  if (!row || (row.manual || !products.some(p => p.id === row.productId))) issues.push({ id: 'product', message: 'Pilih produk atau barang manual', blocking: true })
   if (row && !row.unitConfirmed) issues.push({ id: 'unit', message: 'Konfirmasi satuan', blocking: true })
   const missingId = po.rows[0].issues.find(i => i.code === 'missing-price')?.id ?? `${po.rows[0].id}:missing-price`
   if (row && row.unitPrice === null && !d.acknowledgedIssueIds.includes(missingId)) issues.push({ id: missingId, message: 'Akui harga kosong', blocking: true })
   if (row && row.unitPrice !== null && Number(row.unitPrice) === 0 && !d.acknowledgedIssueIds.includes(`${po.rows[0].id}:zero-price`)) issues.push({ id: `${po.rows[0].id}:zero-price`, message: 'Akui harga nol', blocking: true })
-  if (!d.idrConfirmed) issues.push({ id: 'currency', message: 'Konfirmasi IDR', blocking: true })
   return { issues, draft: issues.length ? null : { customerId: d.customerId, poNumber: d.poNumber, orderDate: d.orderDate, expectedDelivery: d.expiry, notes: d.notes, lineItems: [{ _key: 'import-r1', product_id: row.productId, product_name: row.name, sku: row.sku, quantity: Number(row.quantity), unit_price: row.unitPrice === null ? Number.NaN : Number(row.unitPrice) }] } }
  })
  vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, media: '(min-width: 768px)', addEventListener: vi.fn(), removeEventListener: vi.fn() })))
@@ -52,10 +55,29 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); routers.splice(0).forEach(ro
 function mount() { const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } }); clients.push(client); return renderRoute(client) }
 function upload(name = 'synthetic.png') { fireEvent.change(screen.getByLabelText('Dokumen PO'), { target: { files: [new File(['synthetic'], name, { type: 'image/png' })] } }) }
 async function review() { fireEvent.click(screen.getByRole('button', { name: 'Import dokumen PO' })); upload(); await screen.findByRole('button', { name: 'Terapkan ke formulir' }) }
-function confirmReview() { fireEvent.click(screen.getByLabelText('Saya sudah memeriksa satuan barang 1')); fireEvent.click(screen.getByLabelText('Saya memastikan nilai harga dalam IDR tanpa konversi')) }
+function confirmReview() { fireEvent.click(screen.getByLabelText('Saya sudah memeriksa satuan barang 1')) }
 function acknowledgeFinancial() { screen.queryAllByRole('checkbox', { name: /^Saya telah meninjau:/ }).forEach(checkbox => { if (!(checkbox as HTMLInputElement).checked) fireEvent.click(checkbox) }) }
 function apply() { fireEvent.click(screen.getByRole('button', { name: 'Terapkan ke formulir' })) }
 function forceRerender(value = 'manual rerender') { fireEvent.change(screen.getByPlaceholderText('mis. PO-2024-001'), { target: { value } }) }
+
+test('trusted unique exact SKU wins over other name-only suggestions without applying or confirming units', async () => {
+ state.realMatches = true
+ state.products.push({ ...state.products[0], id: 'name-only', sku: 'OTHER' })
+ mount(); await review()
+ expect(screen.getByText('Produk dipilih: SYN-1 · Synthetic product')).toBeTruthy()
+ expect((screen.getByLabelText('Saya sudah memeriksa satuan barang 1') as HTMLInputElement).checked).toBe(false)
+ expect((screen.getByPlaceholderText('mis. PO-2024-001') as HTMLInputElement).value).toBe('')
+ expect(state.send).not.toHaveBeenCalled()
+})
+
+test('normalized exact SKU collision never auto-selects even if one description matches better', async () => {
+ state.realMatches = true
+ state.products.push({ ...state.products[0], id: 'collision', sku: ' syn-1 ', name: 'Other description' })
+ mount(); await review()
+ expect(screen.getByText('Produk dipilih: Belum dipilih')).toBeTruthy()
+ expect(screen.getByText(/lebih dari satu produk katalog/)).toBeTruthy()
+ expect(state.send).not.toHaveBeenCalled()
+})
 
 test('Import, extraction, review and Apply never send a transaction; only ordinary Save writes once', async () => {
  mount(); await review(); expect(state.send).not.toHaveBeenCalled(); confirmReview(); apply()
@@ -81,12 +103,23 @@ test.each([false, null])('unknown/incomplete documents provide honest manual fal
  expect((screen.getByRole('button', { name: 'Terapkan ke formulir' }) as HTMLButtonElement).disabled).toBe(true); expect(state.send).not.toHaveBeenCalled()
 })
 
-test('customer ambiguity requires deliberate choice and unmatched row requires deliberate manual decision', async () => {
- state.customers.push({ id: 'duplicate', name: 'Synthetic buyer', pricing_tier: 'others' }); state.products = []
+test('nonempty reader text reaches the distinct unreliable-structure fallback without permitting Apply', async () => {
+ const po = parsed(); po.layout = null; po.complete = false; state.parse.mockReturnValue(po)
+ state.read.mockResolvedValue({ ...localDocument(), pages: [{ page: 1, width: 100, height: 100, source: 'ocr', tokens: [{ text: 'SYNTHETIC PURCHASE ORDER', x: 1, y: 1, width: 90, height: 10, confidence: 95 }] }] })
+ mount(); await review()
+ expect(screen.getByRole('alert').textContent).toMatch(/Teks dokumen sudah terbaca/)
+ expect((screen.getByRole('button', { name: 'Terapkan ke formulir' }) as HTMLButtonElement).disabled).toBe(true)
+ expect(state.send).not.toHaveBeenCalled()
+})
+
+test('customer ambiguity requires deliberate choice and unmatched import cannot become manual', async () => {
+ state.customers.push({ id:'duplicate',name:'Synthetic buyer',pricing_tier:'others' }); state.products=[]
  mount(); await review(); expect((screen.getByLabelText('Pelanggan hasil impor') as HTMLSelectElement).value).toBe('')
- fireEvent.change(screen.getByLabelText('Pelanggan hasil impor'), { target: { value: 'c' } }); fireEvent.click(screen.getByLabelText('Gunakan barang manual 1')); confirmReview(); apply()
- await waitFor(() => expect((screen.getByPlaceholderText('mis. PO-2024-001') as HTMLInputElement).value).toBe('SYN-PO'))
- expect(state.send).not.toHaveBeenCalled(); expect(screen.getByDisplayValue('Synthetic product')).toBeTruthy()
+ fireEvent.change(screen.getByLabelText('Pelanggan hasil impor'), { target:{value:'c'} })
+ expect(screen.queryByLabelText('Gunakan barang manual 1')).toBeNull()
+ confirmReview(); apply()
+ expect((screen.getByPlaceholderText('mis. PO-2024-001') as HTMLInputElement).value).toBe('')
+ expect(state.send).not.toHaveBeenCalled()
 })
 
 test('declining replacement preserves manual edits and importer remains usable', async () => {
@@ -297,7 +330,7 @@ test('unproven source SKU coincidence offers a deliberate one-click suggestion c
  const actual = await vi.importActual<any>('../src/lib/poImport/review'); state.prepare.mockImplementation(actual.preparePOFormDraft)
  mount(); await review(); expect(screen.getByText('Produk dipilih: Belum dipilih')).toBeTruthy(); expect((screen.getByLabelText('SKU hasil impor 1') as HTMLInputElement).value).toBe('SYN-1')
  confirmReview(); apply(); expect((screen.getByPlaceholderText('mis. PO-2024-001') as HTMLInputElement).value).toBe('')
- fireEvent.click(screen.getByRole('button', { name: 'Gunakan saran produk barang 1: SYN-1 · Synthetic product' })); fireEvent.click(screen.getByLabelText('Saya sudah memeriksa satuan barang 1')); acknowledgeFinancial(); apply()
+ fireEvent.click(screen.getByRole('button', { name: 'Pilih SYN-1 untuk barang 1: Synthetic product' })); fireEvent.click(screen.getByLabelText('Saya sudah memeriksa satuan barang 1')); acknowledgeFinancial(); apply()
  expect((screen.getByPlaceholderText('mis. PO-2024-001') as HTMLInputElement).value).toBe('SYN-PO'); expect(state.send).not.toHaveBeenCalled()
 })
 
@@ -312,11 +345,10 @@ test.each(['tax-review', 'total-mismatch', 'line-total-mismatch'])('real financi
  fireEvent.click(checkbox); apply(); expect((screen.getByPlaceholderText('mis. PO-2024-001') as HTMLInputElement).value).toBe('SYN-PO'); expect(state.send).not.toHaveBeenCalled()
 })
 
-test('current generated catalog warning is visible before Apply and requires real review acknowledgement', async () => {
+test('catalogue tier differences neither replace reviewed document prices nor require unrelated acknowledgements', async () => {
  const actual = await vi.importActual<any>('../src/lib/poImport/review'); state.prepare.mockImplementation(actual.preparePOFormDraft)
- mount(); await review(); confirmReview(); const warning = screen.getByRole('checkbox', { name: /Saya telah meninjau:.*harga tier katalog/i }) as HTMLInputElement
- expect(warning.checked).toBe(false); apply(); expect((screen.getByPlaceholderText('mis. PO-2024-001') as HTMLInputElement).value).toBe('')
- fireEvent.click(warning); apply(); expect((screen.getByPlaceholderText('mis. PO-2024-001') as HTMLInputElement).value).toBe('SYN-PO'); expect(state.send).not.toHaveBeenCalled()
+ mount(); await review(); confirmReview(); expect(screen.queryByText(/Harga tier katalog/)).toBeNull(); expect(screen.queryByRole('checkbox', { name: /harga tier katalog/i })).toBeNull()
+ apply(); expect((screen.getByLabelText('Harga satuan') as HTMLInputElement).value).toBe('125'); expect(state.send).not.toHaveBeenCalled()
 })
 
 test('desktop shows source and review together, mobile retains one keyboard-selected panel', async () => {
@@ -333,7 +365,7 @@ test.each(['CONFLICTING-BUYER-CODE', null])('real matching and prepare keep %s s
  const po = parsed(); po.rows[0].sku = field(sourceSku); state.parse.mockReturnValue(po); state.products[0].luar_kota = 125
  mount(); await review(); expect(screen.getByText('Produk dipilih: Belum dipilih')).toBeTruthy(); expect((screen.getByLabelText('SKU hasil impor 1') as HTMLInputElement).value).toBe(sourceSku ?? '')
  confirmReview(); apply(); expect((screen.getByPlaceholderText('mis. PO-2024-001') as HTMLInputElement).value).toBe('')
- fireEvent.click(screen.getByRole('button', { name: 'Gunakan saran produk barang 1: SYN-1 · Synthetic product' })); fireEvent.click(screen.getByLabelText('Saya sudah memeriksa satuan barang 1')); acknowledgeFinancial(); apply()
+ fireEvent.click(screen.getByRole('button', { name: 'Pilih SYN-1 untuk barang 1: Synthetic product' })); fireEvent.click(screen.getByLabelText('Saya sudah memeriksa satuan barang 1')); acknowledgeFinancial(); apply()
  expect((screen.getByPlaceholderText('mis. PO-2024-001') as HTMLInputElement).value).toBe('SYN-PO'); expect(state.send).not.toHaveBeenCalled()
 })
 
@@ -355,11 +387,10 @@ test('intrinsic source and validation blockers never receive acknowledgement con
  expect(screen.getByRole('alert').textContent).toMatch(/Synthetic intrinsic integrity blocker/); expect((screen.getByPlaceholderText('mis. PO-2024-001') as HTMLInputElement).value).toBe(''); expect(state.send).not.toHaveBeenCalled()
 })
 
-test('catalog price missing warning also needs explicit current review without silently filling document price', async () => {
+test('missing catalogue tier price leaves the reviewed document price intact', async () => {
  const actual = await vi.importActual<any>('../src/lib/poImport/review'); state.prepare.mockImplementation(actual.preparePOFormDraft); state.products[0].luar_kota = null
- mount(); await review(); confirmReview(); const warning = screen.getByRole('checkbox', { name: /Saya telah meninjau:.*Harga tier pelanggan belum tersedia/ })
- expect((screen.getByLabelText('Harga hasil impor 1') as HTMLInputElement).value).toBe('125'); apply(); expect((screen.getByPlaceholderText('mis. PO-2024-001') as HTMLInputElement).value).toBe('')
- fireEvent.click(warning); apply(); expect((screen.getByLabelText('Harga satuan') as HTMLInputElement).value).toBe('125'); expect(state.send).not.toHaveBeenCalled()
+ mount(); await review(); confirmReview(); expect(screen.queryByRole('checkbox', { name: /Harga tier pelanggan/ })).toBeNull()
+ expect((screen.getByLabelText('Harga hasil impor 1') as HTMLInputElement).value).toBe('125'); apply(); expect((screen.getByLabelText('Harga satuan') as HTMLInputElement).value).toBe('125'); expect(state.send).not.toHaveBeenCalled()
 })
 
 test('unsupported charge review is explicit and its reviewed context stays in ordinary notes', async () => {
@@ -382,10 +413,10 @@ async function useActualSource(make: () => import('../src/lib/poImport/contracts
 }
 function confirmActualRows(count: number) {
  for (let i = 1; i <= count; i++) {
-  fireEvent.click(screen.getByRole('button', { name: new RegExp(`^Gunakan saran produk barang ${i}:`) }))
+  fireEvent.click(screen.getAllByRole('button', { name: new RegExp(`^Pilih .+ untuk barang ${i}:`) })[0])
   fireEvent.click(screen.getByLabelText(`Saya sudah memeriksa satuan barang ${i}`))
  }
- fireEvent.click(screen.getByLabelText('Saya memastikan nilai harga dalam IDR tanpa konversi')); acknowledgeFinancial()
+ acknowledgeFinancial()
 }
 test.each(['photo', 'priced'] as const)('actual %s source context initializes editable notes and survives real Apply by default', async layout => {
  const fixtures = await import('./fixtures/po-import-layouts')
@@ -464,5 +495,21 @@ test('mobile import active-tab tint and border follow keyboard and click selecti
  fireEvent.keyDown(documentTab, { key: 'End' }); expectSelected(reviewTab, documentTab); expect(document.activeElement).toBe(reviewTab)
  fireEvent.click(documentTab); expectSelected(documentTab, reviewTab)
  fireEvent.click(reviewTab); expectSelected(reviewTab, documentTab)
+ expect(state.send).not.toHaveBeenCalled()
+})
+
+
+test.each(['customer', 'product', 'disabled-product', 'renamed-product', 'changed-price', 'changed-tier'])('pending Apply checks live %s before the observer rerenders', async change => {
+ mount(); forceRerender('Keep this draft'); await review(); confirmReview(); apply()
+ if (change === 'disabled-product') state.products = [{ ...state.products[0], is_enabled: false }]
+ else if (change === 'renamed-product') state.products = [{ ...state.products[0], name: 'New canonical identity' }]
+ else if (change === 'changed-price') state.products = [{ ...state.products[0], luar_kota: 31 }]
+ else if (change === 'changed-tier') state.customers = [{ ...state.customers[0], pricing_tier: 'dalam_kota' }, state.customers[1]]
+ else state.unavailableOptions.add(change)
+ // The pending confirmation still owns the previous rendered options.
+ fireEvent.click(screen.getByRole('button', { name: 'Buang perubahan' }))
+ expect((screen.getByPlaceholderText('mis. PO-2024-001') as HTMLInputElement).value).toBe('Keep this draft')
+ expect(screen.queryByLabelText('Harga satuan')).toBeNull()
+ expect(screen.queryByText('Hasil sudah diterapkan. Periksa formulir lalu gunakan Simpan PO jika benar.')).toBeNull()
  expect(state.send).not.toHaveBeenCalled()
 })

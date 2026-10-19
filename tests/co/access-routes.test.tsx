@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, expect, test, vi } from 'vitest'
@@ -19,11 +20,12 @@ vi.mock('../../src/pages/athel/POEdit', () => ({ default: () => { reads('po'); r
 vi.mock('../../src/pages/athel/CustomerList', () => ({ default: () => <p>Customer data</p> }))
 vi.mock('../../src/pages/athel/ProductList', () => ({ default: () => <p>Item data</p> }))
 vi.mock('../../src/pages/ihr/LeaveManagement', () => ({ default: () => <p>HR data</p> }))
+vi.mock('../../src/lib/supabase', () => ({ supabase: { rpc: vi.fn(), from: () => ({ select: () => ({ eq: async () => ({count:0,error:null}) }) }) } }))
 import App from '../../src/App'
 import AthelNav from '../../src/components/AthelNav'
 import { roleHome, moduleOptions } from '../../src/components/navigationModules'
 afterEach(() => { cleanup(); reads.mockClear(); auth.profile.is_active = true })
-function mount(role: string, path: string) { auth.profile.role = role; render(<MemoryRouter initialEntries={[path]}><App /></MemoryRouter>) }
+function mount(role: string, path: string) { auth.profile.role = role; render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}><MemoryRouter initialEntries={[path]}><App /></MemoryRouter></QueryClientProvider>) }
 test.each(['po_admin', 'co_admin'])('%s cannot mount disallowed data routes', role => {
   for (const path of ['/athel/dashboard', '/athel/promotions', '/athel/sales-orders', '/girard/dashboard', '/ihr/users', ...(role === 'co_admin' ? ['/athel/po/new', '/athel/po/1', '/athel/po/1/edit'] : [])]) {
     mount(role, path); expect(reads).not.toHaveBeenCalled(); cleanup()
@@ -44,7 +46,7 @@ test('CO has an authorized minimal route shell and home', () => {
   expect(moduleOptions('co_admin').map(v=>v.to)).toEqual(['/athel/co','/ihr/leave'])
 })
 test.each(['co_admin','po_admin','executive'])('%s has only approved Procurement links', role => {
- auth.profile.role=role; render(<MemoryRouter><AthelNav /></MemoryRouter>);
+ auth.profile.role=role; render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}><MemoryRouter><AthelNav /></MemoryRouter></QueryClientProvider>);
  const links=within(screen.getByRole('navigation',{name:'Navigasi Procurement'})).getAllByRole('link').map(v=>v.getAttribute('href'));
  expect(links).toEqual(role==='executive'?['/athel/dashboard','/athel/po','/athel/co','/athel/customers','/athel/promotions','/athel/products']: [`/athel/${role==='co_admin'?'co':'po'}`,'/athel/customers','/athel/products'])
 })

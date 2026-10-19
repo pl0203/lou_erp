@@ -36,7 +36,8 @@ export type LeaveContext = {
   currentPeriod?: AnnualPeriod | null
   scopeVersion: string
   memberKind: 'employee' | 'manager' | 'director' | null
-  capabilities: { request: boolean; approve: boolean; configure: boolean; adjust: boolean; readPrivate: boolean; manageAccess: boolean }
+  /** Explicit server calendar authority. Omission never admits Director. */
+  capabilities: { calendarConfigure?: boolean; request: boolean; approve: boolean; configure: boolean; adjust: boolean; readPrivate: boolean; manageAccess: boolean }
   setup: { ready: boolean; blockers: SetupBlocker[] }
   balances: Balance[]
   timezone: string | null
@@ -91,4 +92,9 @@ export function parseDurationSelection(value: unknown): DurationSelection {
     return { mode: 'fixed_minutes', minutes: selection.minutes as Extract<DurationSelection, { mode: 'fixed_minutes' }>['minutes'] }
   }
   throw new TypeError('Leave duration must be a supported fixed choice or full scheduled day')
+}
+
+/** Legacy non-Director contexts retain their existing guarded calendar entry. */
+export function canConfigureLeaveCalendar(context: LeaveContext): boolean {
+  return context.capabilities.calendarConfigure === true || (context.capabilities.calendarConfigure === undefined && context.memberKind !== 'director' && context.capabilities.configure)
 }

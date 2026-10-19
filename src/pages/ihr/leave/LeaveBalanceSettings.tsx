@@ -1,3 +1,4 @@
+import { LoadingState } from '../../../components/ui/LoadingState'
 import { Notice } from '../../../components/ui/Feedback'
 import { Button } from '../../../components/ui/Button'
 import { Field } from '../../../components/ui/Field'
@@ -64,7 +65,7 @@ function BalanceEditor({actorId,employeeId,currentPeriod,balance,accountMetadata
   }catch{setError('Saldo belum dapat disimpan. Periksa akses, versi dan isian. Isian tetap ada; pulihkan hasil bila status belum pasti.')}
   finally{submitting.current=false;setBusy(false)}
  }
- if(!authorityReady)return <p role="status" className="ui-notice ui-notice--info">Memeriksa akses perubahan saldo...</p>
+ if(!authorityReady)return <LoadingState title="Memeriksa akses perubahan saldo..." shape="compact" className="ui-notice ui-notice--info" />
  return <section className="ui-section space-y-4" aria-label="Pengaturan saldo">
   <h2 className="font-semibold">Saldo tahunan {currentPeriod?.year??'belum dikonfirmasi'}</h2>
   {own&&<p>Administrator lain harus mengubah saldo Anda.</p>}

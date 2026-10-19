@@ -1,3 +1,5 @@
+import { savedPOSalesName } from '../../lib/poSales'
+import { LoadingState } from '../../components/ui/LoadingState'
 import { Notice } from '../../components/ui/Feedback'
 import { Dialog } from '../../components/ui/Dialog'
 import { Button } from '../../components/ui/Button'
@@ -81,10 +83,16 @@ async function fetchPO(id: string): Promise<PO> {
   return normalizePO(data)
 }
 
-type ReturnedDateRead = { po: PO; sj: { id: string; sj_number: string; sj_date_returned: string | null; voided_at: string | null; void_reason: string | null } }
-type ReturnedDateReview = { status: 'needed' | 'loading' | 'ready' | 'failed'; value?: ReturnedDateRead; message?: string }
-/** Preserve PostgreSQL microseconds only for this returned-date review's newer-version proof. */
-function returnedDateVersionMicros(value: unknown): bigint | null {
+type SJDateKind = 'received' | 'returned'
+const SJ_DATE_LABELS = {
+  received: { field: 'Tanggal SJ Diterima Toko', action: 'Ubah tanggal SJ diterima toko', save: 'Simpan tanggal diterima' },
+  returned: { field: 'Tanggal SJ kembali', action: 'Ubah tanggal SJ kembali', save: 'Simpan tanggal kembali' },
+} as const
+
+type SJDateRead = { po: PO; sj: { id: string; sj_number: string; date: string | null; voided_at: string | null; void_reason: string | null } }
+type SJDateReview = { status: 'needed' | 'loading' | 'ready' | 'failed'; value?: SJDateRead; message?: string }
+/** Preserve PostgreSQL microseconds only for this date-correction review's newer-version proof. */
+function sjDateVersionMicros(value: unknown): bigint | null {
   if (typeof value !== 'string') return null
   const milliseconds = Date.parse(value)
   if (!Number.isFinite(milliseconds)) return null
@@ -92,19 +100,19 @@ function returnedDateVersionMicros(value: unknown): bigint | null {
   return BigInt(milliseconds) * 1000n + BigInt(fraction.padEnd(6, '0').slice(3))
 }
 /** One authorized joined statement pins the selected SJ evidence and its parent version to one snapshot. */
-async function fetchReturnedDateRead(poId: string, sjId: string, rejectedVersion: string, signal: AbortSignal): Promise<ReturnedDateRead> {
+async function fetchSJDateRead(poId: string, sjId: string, kind: SJDateKind, rejectedVersion: string, signal: AbortSignal): Promise<SJDateRead> {
   signal.throwIfAborted()
   const { data, error } = await supabase.from('surat_jalan')
-    .select(`id, purchase_order_id, sj_number, sj_date_returned, voided_at, void_reason, purchase_orders!inner(${PO_COLUMNS})`)
+    .select(`id, purchase_order_id, sj_number, sj_date_${kind}, voided_at, void_reason, purchase_orders!inner(${PO_COLUMNS})`)
     .eq('id', sjId).eq('purchase_order_id', poId).abortSignal(signal).single()
   signal.throwIfAborted()
   if (error) throw error
   const parent = singleRelation<any>(data?.purchase_orders)
-  const returned = data?.sj_date_returned
-  const validDate = returned === null || (typeof returned === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(returned) && Number.isFinite(Date.parse(returned)) && new Date(`${returned}T00:00:00Z`).toISOString().slice(0, 10) === returned)
-  const currentVersion = returnedDateVersionMicros(parent?.updated_at), rejected = returnedDateVersionMicros(rejectedVersion)
+  const storedDate = data?.[`sj_date_${kind}`]
+  const validDate = storedDate === null || (typeof storedDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(storedDate) && Number.isFinite(Date.parse(storedDate)) && new Date(`${storedDate}T00:00:00Z`).toISOString().slice(0, 10) === storedDate)
+  const currentVersion = sjDateVersionMicros(parent?.updated_at), rejected = sjDateVersionMicros(rejectedVersion)
   if (!data || data.id !== sjId || data.purchase_order_id !== poId || typeof data.sj_number !== 'string' || !parent || parent.id !== poId || currentVersion === null || rejected === null || currentVersion <= rejected || !validDate || (data.voided_at !== null && !Number.isFinite(Date.parse(data.voided_at)))) throw new Error('Data SJ terbaru belum lengkap atau masih memakai versi lama. Muat ulang sebelum melanjutkan.')
-  return { po: normalizePO(parent), sj: { id: data.id, sj_number: data.sj_number, sj_date_returned: returned, voided_at: data.voided_at, void_reason: data.void_reason } }
+  return { po: normalizePO(parent), sj: { id: data.id, sj_number: data.sj_number, date: storedDate, voided_at: data.voided_at, void_reason: data.void_reason } }
 }
 
 type DeliveryPayload = {
@@ -164,21 +172,21 @@ export default function PODetail() {
   const [sjDate, setSjDate] = useState('')
   const [sjDateReceived, setSjDateReceived] = useState('')
   const [sjDateReturned, setSjDateReturned] = useState('')
-  const [returnedTarget, setReturnedTarget] = useState<{ id: string; number: string; version: string } | null>(null)
-  const [returnedDate, setReturnedDate] = useState('')
-  const returnedBusy = useRef(false)
-  const returnedTrigger = useRef<HTMLElement | null>(null)
+  const [dateTarget, setDateTarget] = useState<{ id: string; number: string; version: string; kind: SJDateKind } | null>(null)
+  const [correctionDate, setCorrectionDate] = useState('')
+  const dateBusy = useRef<symbol | null>(null)
+  const dateTrigger = useRef<HTMLElement | null>(null)
   const dialogTrigger = useRef<HTMLElement | null>(null)
   const dialogCommitted = useRef(false)
   const dialogBusy = useRef(false)
   const dialogEpoch = useRef(0)
   const successFocus = useRef<HTMLDivElement>(null)
   const [, refreshRecovery] = useState(0)
-  const returnedBackground = useRef<HTMLDivElement>(null)
-  const [returnedReview, setReturnedReview] = useState<ReturnedDateReview | null>(null)
-  const returnedReviewRequired = useRef(false)
-  const returnedReadSequence = useRef(0)
-  const returnedRead = useRef<AbortController | null>(null)
+  const dateBackground = useRef<HTMLDivElement>(null)
+  const [dateReview, setDateReview] = useState<SJDateReview | null>(null)
+  const dateReviewRequired = useRef(false)
+  const dateReadSequence = useRef(0)
+  const dateRead = useRef<AbortController | null>(null)
   const [sjLines, setSjLines] = useState<SJFormLine[]>([])
 
   const [refreshingPO, setRefreshingPO] = useState(false)
@@ -231,15 +239,17 @@ export default function PODetail() {
   const takePresentation = () => {
     dialogEpoch.current++; supersedePreparation(); setRecoveredReceipt(null)
   }
-  useEffect(() => () => { preparation.current?.abort(); returnedRead.current?.abort() }, [])
+  useEffect(() => () => { preparation.current?.abort(); dateRead.current?.abort() }, [])
   useEffect(() => { supersedePreparation() }, [id, sendTransaction, supersedePreparation])
   useEffect(() => {
     refreshSequence.current++; setRefreshingPO(false); setRecoveredReceipt(null)
     audits.setFilters({ poId: id! }); deliveries.setFilters({ poId: id! })
     setSelectedSJId(null)
     setShowSJModal(false); setEditingSJ(null); setSjLines([])
-    setShowDeleteConfirm(false); setDeletingSJId(null); setActionReason(''); setReturnedTarget(null); setReturnedReview(null); returnedReviewRequired.current = false; returnedReadSequence.current++; returnedRead.current?.abort()
-  }, [id, audits.setFilters, deliveries.setFilters])
+    setShowDeleteConfirm(false); setDeletingSJId(null); setActionReason(''); setDateTarget(null); setDateReview(null); dateReviewRequired.current = false; dateReadSequence.current++; dateRead.current?.abort()
+    // A new authenticated sender cannot inherit another actor's draft, read proof or pending observer.
+    dialogEpoch.current++; dateBusy.current = null; setCorrectionDate(''); dateMutation.reset()
+  }, [id, sendTransaction, audits.setFilters, deliveries.setFilters])
   useEffect(() => () => { void queryClient.cancelQueries({ queryKey: ['po_line_state', id, 'detail'] }) }, [id, queryClient])
   const selectedLines = useQuery({
     queryKey: ['sj_lines', selectedSJId], queryFn: ({ signal }) => fetchDeliveryLines(selectedSJId!, signal), enabled: !!selectedSJId,
@@ -261,39 +271,44 @@ export default function PODetail() {
     onSettled: () => { dialogBusy.current = false },
   })
 
-  const closeReturnedDate = () => { dialogEpoch.current++; returnedReadSequence.current++; returnedRead.current?.abort(); returnedReviewRequired.current = false; setReturnedReview(null); setReturnedTarget(null) }
-  const refreshReturnedDate = async () => {
-    if (!returnedTarget || returnedBusy.current) return
-    const target = returnedTarget, poId = id!, generation = activePO.current.generation, sequence = ++returnedReadSequence.current
-    returnedRead.current?.abort(); const controller = new AbortController(); returnedRead.current = controller
-    const current = () => !controller.signal.aborted && activePO.current.id === poId && activePO.current.generation === generation && sequence === returnedReadSequence.current
-    returnedReviewRequired.current = true; setReturnedReview({ status: 'loading' })
+  const closeCorrectionDate = () => { dialogEpoch.current++; dateReadSequence.current++; dateRead.current?.abort(); dateReviewRequired.current = false; setDateReview(null); setDateTarget(null) }
+  const refreshCorrectionDate = async () => {
+    if (!dateTarget || dateBusy.current) return
+    const target = dateTarget, poId = id!, record = activePO.current, sender = sendTransaction, epoch = dialogEpoch.current, sequence = ++dateReadSequence.current
+    dateRead.current?.abort(); const controller = new AbortController(); dateRead.current = controller
+    const current = () => mounted.current && !controller.signal.aborted && activePO.current === record && latestSender.current === sender && dialogEpoch.current === epoch && sequence === dateReadSequence.current
+    dateReviewRequired.current = true; setDateReview({ status: 'loading' })
     try {
-      const value = await fetchReturnedDateRead(poId, target.id, target.version, controller.signal)
+      const value = await fetchSJDateRead(poId, target.id, target.kind, target.version, controller.signal)
       if (!current()) return
       queryClient.setQueryData(['po', poId], value.po)
-      setReturnedReview({ status: 'ready', value })
+      setDateReview({ status: 'ready', value })
       void queryClient.invalidateQueries({ queryKey: ['surat_jalan'] })
-    } catch (error) { if (current()) setReturnedReview({ status: 'failed', message: (error as Error).message }) }
+    } catch (error) { if (current()) setDateReview({ status: 'failed', message: (error as Error).message }) }
   }
-  const returnedReviewEligible = returnedReview?.status === 'ready' && !!returnedReview.value && returnedReview.value.po.updated_at === po?.updated_at && !poFetching && returnedReview.value.sj.voided_at === null && ['confirm', 'in_progress', 'complete'].includes(returnedReview.value.po.status) && (returnedReview.value.po.status !== 'complete' || Number.isFinite(Date.parse(returnedReview.value.po.completed_at ?? '')))
-  const adoptReturnedDateReview = () => {
-    if (!returnedTarget || !returnedReviewEligible || !returnedReview?.value || returnedBusy.current) return
-    setReturnedTarget({ id: returnedReview.value.sj.id, number: returnedReview.value.sj.sj_number, version: returnedReview.value.po.updated_at })
-    returnedReviewRequired.current = false; setReturnedReview(null); returnedMutation.reset()
+  const dateReviewEligible = dateReview?.status === 'ready' && !!dateReview.value && dateReview.value.po.updated_at === po?.updated_at && !poFetching && dateReview.value.sj.voided_at === null && ['confirm', 'in_progress', 'complete'].includes(dateReview.value.po.status) && (dateReview.value.po.status !== 'complete' || Number.isFinite(Date.parse(dateReview.value.po.completed_at ?? '')))
+  const adoptSJDateReview = () => {
+    if (!dateTarget || !dateReviewEligible || !dateReview?.value || dateBusy.current) return
+    setDateTarget({ id: dateReview.value.sj.id, number: dateReview.value.sj.sj_number, version: dateReview.value.po.updated_at, kind: dateTarget.kind })
+    dateReviewRequired.current = false; setDateReview(null); dateMutation.reset()
   }
 
-  const returnedMutation = useMutation({
+  const dateMutation = useMutation({
     retry: false,
-    mutationFn: (payload: { sj_id: string; expected_updated_at: string; sj_date_returned: string | null }) => sendTransaction('edit_sj_returned_date', payload),
-    onSuccess: () => { dialogCommitted.current = true; invalidate(); closeReturnedDate() },
+    mutationFn: ({ kind, date, ...payload }: { kind: SJDateKind; date: string | null; sj_id: string; expected_updated_at: string }) => sendTransaction(`edit_sj_${kind}_date`, { ...payload, [`sj_date_${kind}`]: date }),
   })
-  const saveReturnedDate = async () => {
-    if (!returnedTarget || sendTransaction.hasUnresolved() || returnedBusy.current || returnedReviewRequired.current || returnedTarget.version !== po?.updated_at) return
-    returnedBusy.current = true
-    try { await returnedMutation.mutateAsync({ sj_id: returnedTarget.id, expected_updated_at: returnedTarget.version, sj_date_returned: returnedDate || null }) }
-    catch (error) { if (isPOConflict(error)) { returnedReviewRequired.current = true; setReturnedReview({ status: 'needed' }) } /* Keep the exact date draft visible. */ }
-    finally { returnedBusy.current = false }
+  const saveCorrectionDate = async () => {
+    if (!dateTarget || sendTransaction.hasUnresolved() || dateBusy.current || dateReviewRequired.current || dateTarget.version !== po?.updated_at) return
+    const record = activePO.current, sender = sendTransaction, epoch = dialogEpoch.current, token = Symbol('sj-date-save')
+    const current = () => mounted.current && activePO.current === record && latestSender.current === sender && dialogEpoch.current === epoch
+    dateBusy.current = token
+    try {
+      await dateMutation.mutateAsync({ sj_id: dateTarget.id, expected_updated_at: dateTarget.version, kind: dateTarget.kind, date: correctionDate || null })
+      invalidate()
+      if (current()) { dialogCommitted.current = true; closeCorrectionDate() }
+    }
+    catch (error) { if (current() && isPOConflict(error)) { dateReviewRequired.current = true; setDateReview({ status: 'needed' }) } /* Keep the current owner's exact date draft visible. */ }
+    finally { if (dateBusy.current === token) dateBusy.current = null }
   }
 
   const deleteSJMutation = useMutation({
@@ -381,7 +396,7 @@ export default function PODetail() {
   const deliveryWillComplete = sjLines.some(line => line.quantity_to_deliver > 0) && sjLines.every(line => line.quantity_to_deliver >= line.quantity_outstanding)
 
   const handleSaveSJ = async () => {
-    if (dialogBusy.current || returnedBusy.current || transactionLocked || !lineReady || editVersion !== lineState?.po_updated_at) return
+    if (dialogBusy.current || dateBusy.current || transactionLocked || !lineReady || editVersion !== lineState?.po_updated_at) return
     if (!sjNumber.trim()) return alert('Nomor SJ wajib diisi.')
     if (!sjDate) return alert('Tanggal SJ wajib diisi.')
     if (sjLines.every(l => l.quantity_to_deliver === 0))
@@ -418,9 +433,9 @@ export default function PODetail() {
     }
   }
 
-  const writePending = sjMutation.isPending || updateSJMutation.isPending || deleteSJMutation.isPending || deleteMutation.isPending || returnedMutation.isPending
+  const writePending = sjMutation.isPending || updateSJMutation.isPending || deleteSJMutation.isPending || deleteMutation.isPending || dateMutation.isPending
   const transactionLocked = writePending || sendTransaction.hasUnresolved()
-  const activeModal = showSJModal || !!deletingSJId || showDeleteConfirm || !!returnedTarget
+  const activeModal = showSJModal || !!deletingSJId || showDeleteConfirm || !!dateTarget
   const recoveryRecord = activePO.current, recoveryEpoch = dialogEpoch.current
   const currentReceipt = recoveredReceipt?.sender === sendTransaction && recoveredReceipt.record === recoveryRecord ? recoveredReceipt.reference : null
   const receipt = currentReceipt ? <Notice tone="success" className="m-4" title={`Periksa hasil tersimpan (referensi ${currentReceipt}).`} /> : null
@@ -433,12 +448,12 @@ export default function PODetail() {
     }
     supersedePreparation()
     setRecoveredReceipt({ sender: sendTransaction, record: recoveryRecord, reference: result.id })
-    dialogCommitted.current = true; closeSJModal(); setDeletingSJId(null); setShowDeleteConfirm(false); closeReturnedDate()
+    dialogCommitted.current = true; closeSJModal(); setDeletingSJId(null); setShowDeleteConfirm(false); closeCorrectionDate()
   }} />
   const restoreDialogFocus = () => !dialogCommitted.current && dialogTrigger.current?.isConnected ? dialogTrigger.current : successFocus.current
-  const restoreReturnedFocus = () => !dialogCommitted.current && returnedTrigger.current?.isConnected ? returnedTrigger.current : successFocus.current
+  const restoreDateFocus = () => !dialogCommitted.current && dateTrigger.current?.isConnected ? dateTrigger.current : successFocus.current
 
-  if (isLoading) return <div className="min-h-screen bg-brand-canvas"><AthelNav /><MainContent>{receipt}{recovery}<p role="status" className="p-8 text-brand-secondary">Memuat...</p></MainContent></div>
+  if (isLoading) return <div className="min-h-screen bg-brand-canvas"><AthelNav /><MainContent>{receipt}{recovery}<LoadingState title="Memuat..." shape="detail" className="p-8 text-brand-secondary" /></MainContent></div>
   if (poError || !po) return <div className="min-h-screen bg-brand-canvas"><AthelNav /><MainContent>{receipt}{recovery}<div role="alert" className="p-8 text-red-700">Data PO belum tersedia. <Button variant="secondary" onClick={() => refetchPO()}>Coba lagi</Button></div></MainContent></div>
 
   const isInProgress = po.status === 'in_progress'
@@ -448,14 +463,14 @@ export default function PODetail() {
     ? new Date(po.completed_at).getTime() + 7 * 24 * 60 * 60 * 1000
     : null
   const canAddSJ = !isCancelled && (!isComplete || (sevenDaysAfterComplete !== null && Date.now() <= sevenDaysAfterComplete))
-  const returnedDeadline = po.completed_at && Number.isFinite(Date.parse(po.completed_at)) ? Date.parse(po.completed_at) + 14 * 24 * 60 * 60 * 1000 : null
+  const dateDeadline = po.completed_at && Number.isFinite(Date.parse(po.completed_at)) ? Date.parse(po.completed_at) + 14 * 24 * 60 * 60 * 1000 : null
   // This action never grants a browser-clock deadline extension; the server decides eligibility.
-  const canEditReturnedDate = !isCancelled && (!isComplete || returnedDeadline !== null)
+  const canEditSJDate = !isCancelled && (!isComplete || dateDeadline !== null)
   const deletingSJ = sjList?.find(s => s.id === deletingSJId)
 
   return (
     <div className="min-h-screen bg-brand-canvas">
-      <div ref={returnedBackground} inert={activeModal} aria-hidden={activeModal ? true : undefined}>
+      <div ref={dateBackground} inert={activeModal} aria-hidden={activeModal ? true : undefined}>
       <AthelNav />
       <MainContent>
         {receipt}
@@ -542,6 +557,7 @@ export default function PODetail() {
             <div>
               <p className="text-brand-secondary mb-1">Pelanggan</p>
               <p className="text-gray-900">{po.customers?.name}</p>
+              <p className="mt-1 text-sm text-brand-secondary">Sales: <span className="font-medium">{savedPOSalesName(po)}</span></p>
             </div>
             <div>
               <p className="text-brand-secondary mb-1">Tanggal PO</p>
@@ -566,12 +582,6 @@ export default function PODetail() {
           </div>
         </div>
 
-        <section aria-label="Kredit salesperson" className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6">
-          <h2 className="text-base font-medium text-brand-primary">Kredit salesperson</h2>
-          <p className="mt-2 text-sm font-semibold text-brand-primary">{po.sales_attribution_state === 'unassigned' ? 'Unassigned' : po.sales_attribution_state === 'assigned' && po.sales_person_id_at_creation ? po.sales_person_at_creation?.full_name || `Salesperson ${po.sales_person_id_at_creation}` : 'Legacy / belum diketahui'}</p>
-          <p className="mt-1 text-[13px] text-gray-600">Kredit ditetapkan saat PO dibuat dan tetap setelah perubahan penugasan toko. PO Unassigned tidak otomatis diberi kredit kemudian.</p>
-          {po.sales_attributed_at && <p className="mt-1 text-[13px] text-brand-secondary">Snapshot: {formatAuditTimestamp(po.sales_attributed_at)}</p>}
-        </section>
 
         {/* Line Items */}
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -649,14 +659,14 @@ export default function PODetail() {
                   {sj.sj_date_returned && <p className="text-[13px] text-brand-secondary">SJ Kembali: {formatDisplayDate(sj.sj_date_returned)}</p>}
                 </div><div className="flex flex-wrap gap-3">
                   <Button variant="quiet" size="compact" disabled={deliveries.isPending} onClick={() => setSelectedSJId(selectedSJId === sj.id ? null : sj.id)} >{selectedSJId === sj.id ? 'Tutup barang' : 'Lihat barang'}</Button>
-                  {canEditReturnedDate && !sj.voided_at && <Button variant="quiet" size="compact" type="button" disabled={poFetching || deliveries.isPending || returnedMutation.isPending} onClick={event => { takePresentation(); returnedTrigger.current = event.currentTarget; dialogCommitted.current = false; returnedReadSequence.current++; returnedRead.current?.abort(); returnedReviewRequired.current = false; setReturnedReview(null); setReturnedTarget({ id: sj.id, number: sj.sj_number, version: po.updated_at }); setReturnedDate(sj.sj_date_returned ?? ''); returnedMutation.reset() }} >Ubah tanggal SJ kembali</Button>}
+                  {canEditSJDate && !sj.voided_at && (['received', 'returned'] as const).map(kind => <Button key={kind} variant="quiet" size="compact" type="button" disabled={poFetching || deliveries.isPending || dateMutation.isPending} onClick={event => { takePresentation(); dateTrigger.current = event.currentTarget; dialogCommitted.current = false; dateReadSequence.current++; dateRead.current?.abort(); dateReviewRequired.current = false; setDateReview(null); setDateTarget({ id: sj.id, number: sj.sj_number, version: po.updated_at, kind }); setCorrectionDate(sj[`sj_date_${kind}`] ?? ''); dateMutation.reset() }} >{SJ_DATE_LABELS[kind].action}</Button>)}
                   {canAddSJ && !sj.voided_at && <>
                     <Button variant="quiet" size="compact" disabled={!lineReady || preparingSJ || deliveries.isPending} onClick={event => void openEditSJModal(sj, event.currentTarget)} >Ubah</Button>
                     <Button variant="danger-quiet" size="compact" disabled={deliveries.isPending} onClick={event => { takePresentation(); dialogTrigger.current = event.currentTarget; dialogCommitted.current = false; setActionVersion(po.updated_at); setActionReason(''); setDeletingSJId(sj.id) }} >Batalkan</Button>
                   </>}
                 </div></div>
                 {selectedSJId === sj.id && (selectedLines.isError ? <p role="alert">Barang pengiriman gagal dimuat. <Button variant="secondary" onClick={() => selectedLines.refetch()}>Coba lagi</Button></p>
-                  : selectedLines.isPending ? <p role="status">Memuat barang…</p> : <div className="mt-3 max-w-full overflow-x-auto" role="region" aria-label={`Barang ${sj.sj_number}`} tabIndex={0}><table className="w-full min-w-[24rem] text-sm"><thead><tr><th className="text-left">Item</th><th>SKU</th><th>Qty Terkirim</th></tr></thead><tbody>
+                  : selectedLines.isPending ? <LoadingState title="Memuat barang…" shape="compact" /> : <div className="mt-3 max-w-full overflow-x-auto" role="region" aria-label={`Barang ${sj.sj_number}`} tabIndex={0}><table className="w-full min-w-[24rem] text-sm"><thead><tr><th className="text-left">Item</th><th>SKU</th><th>Qty Terkirim</th></tr></thead><tbody>
                     {selectedLines.data?.map(sli => { const li = lineItems?.find(line => line.id === sli.po_line_item_id); return <tr key={sli.id}><td>{li?.product_name ?? '—'}</td><td>{li?.sku ?? '—'}</td><td>{sli.quantity_delivered}</td></tr> })}
                   </tbody></table></div>)}
               </div>)}
@@ -869,26 +879,27 @@ export default function PODetail() {
           </div>
         </Dialog>
       )}
-      {returnedTarget && <ReturnedDateDialog pending={transactionLocked} onClose={() => { if (!transactionLocked && !returnedBusy.current) closeReturnedDate() }} returnFocus={null} fallbackFocus={restoreReturnedFocus}>
-          <h2 id="returned-date-title" className="ui-dialog__title">Tanggal SJ kembali · {returnedTarget.number}</h2>
+      {dateTarget && <ReturnedDateDialog labelledBy="sj-date-title" pending={transactionLocked} onClose={() => { if (!transactionLocked && !dateBusy.current) closeCorrectionDate() }} returnFocus={null} fallbackFocus={restoreDateFocus}>
+          <h2 id="sj-date-title" className="ui-dialog__title">{SJ_DATE_LABELS[dateTarget.kind].field} · {dateTarget.number}</h2>
           {recovery}
-          {isComplete && returnedDeadline !== null && <p className="mt-2 text-[13px] text-gray-600">Batas pengubahan: {new Date(returnedDeadline).toLocaleString('id-ID')}. Waktu dan izin diperiksa oleh server saat menyimpan.</p>}
-          <label htmlFor="returned-date" className="ui-field__label mt-4 block text-gray-700">Tanggal SJ kembali</label>
-          <input id="returned-date" type="date" value={returnedDate} disabled={transactionLocked} onChange={event => setReturnedDate(event.target.value)} className="ui-control mt-1 focus:outline-none focus:ring-2 focus:ring-brand-accent" />
-          {returnedMutation.isError && <p role="alert" className="mt-3 text-sm text-red-600">{(returnedMutation.error as Error).message}</p>}
-          {(isPOConflict(returnedMutation.error) || returnedTarget.version !== po.updated_at || returnedReview) && <Button variant="secondary" type="button" onClick={() => void refreshReturnedDate()} disabled={returnedReview?.status === 'loading' || transactionLocked} className="mt-2">Muat ulang PO</Button>}
-          {returnedReview?.status === 'loading' && <p role="status" className="mt-3 text-sm">Memuat SJ dan versi PO terbaru…</p>}
-          {returnedReview?.message && <p role="alert" className="mt-3 text-sm text-red-600">{returnedReview.message}</p>}
-          {returnedReview?.value && <div className="mt-3 space-y-2 text-sm text-gray-600">
-            <p>Tanggal tersimpan saat ini: {returnedReview.value.sj.sj_date_returned ?? 'Belum diisi'}</p><p>Status SJ saat ini: {returnedReview.value.sj.voided_at ? 'Dibatalkan' : 'Aktif'}</p>
-            {returnedReview.value.sj.void_reason && <p>Alasan pembatalan: {returnedReview.value.sj.void_reason}</p>}
+          {isComplete && dateDeadline !== null && <p className="mt-2 text-[13px] text-gray-600">Batas pengubahan: {new Date(dateDeadline).toLocaleString('id-ID')}. Waktu dan izin diperiksa oleh server saat menyimpan.</p>}
+          <p className="mt-2 text-sm text-brand-secondary">{dateTarget.kind === 'received' ? 'Hanya mengubah tanggal penerimaan toko, bukan tanggal SJ kembali, jumlah barang, atau status PO.' : 'Hanya mengubah tanggal dokumen SJ kembali, bukan tanggal penerimaan toko atau retur barang.'} Kosongkan untuk menghapus tanggal.</p>
+          <label htmlFor="sj-correction-date" className="ui-field__label mt-4 block text-gray-700">{SJ_DATE_LABELS[dateTarget.kind].field}</label>
+          <input id="sj-correction-date" type="date" value={correctionDate} disabled={transactionLocked} onChange={event => setCorrectionDate(event.target.value)} className="ui-control mt-1 focus:outline-none focus:ring-2 focus:ring-brand-accent" />
+          {dateMutation.isError && <p role="alert" className="mt-3 text-sm text-red-600">{(dateMutation.error as Error).message}</p>}
+          {(isPOConflict(dateMutation.error) || dateTarget.version !== po.updated_at || dateReview) && <Button variant="secondary" type="button" onClick={() => void refreshCorrectionDate()} disabled={dateReview?.status === 'loading' || transactionLocked} className="mt-2">Muat ulang PO</Button>}
+          {dateReview?.status === 'loading' && <LoadingState title="Memuat SJ dan versi PO terbaru…" shape="compact" className="mt-3 text-sm" />}
+          {dateReview?.message && <p role="alert" className="mt-3 text-sm text-red-600">{dateReview.message}</p>}
+          {dateReview?.value && <div className="mt-3 space-y-2 text-sm text-gray-600">
+            <p>Tanggal tersimpan saat ini: {dateReview.value.sj.date ?? 'Belum diisi'}</p><p>Status SJ saat ini: {dateReview.value.sj.voided_at ? 'Dibatalkan' : 'Aktif'}</p>
+            {dateReview.value.sj.void_reason && <p>Alasan pembatalan: {dateReview.value.sj.void_reason}</p>}
             <p>Periksa data tersimpan ini sebelum menggunakan versi baru. Tanggal yang Anda isi tetap dipertahankan.</p>
-            {!returnedReviewEligible && <p className="text-red-600">SJ tidak dapat diubah atau data berubah lagi. Muat ulang sebelum melanjutkan.</p>}
-            <Button variant="secondary" type="button" disabled={!returnedReviewEligible || transactionLocked} onClick={adoptReturnedDateReview} >Gunakan versi PO terbaru</Button>
+            {!dateReviewEligible && <p className="text-red-600">SJ tidak dapat diubah atau data berubah lagi. Muat ulang sebelum melanjutkan.</p>}
+            <Button variant="secondary" type="button" disabled={!dateReviewEligible || transactionLocked} onClick={adoptSJDateReview} >Gunakan versi PO terbaru</Button>
           </div>}
           <FormActions className="mt-5">
-            <Button variant="quiet" type="button" disabled={transactionLocked} onClick={() => { if (!transactionLocked && !returnedBusy.current) closeReturnedDate() }} >Batal</Button>
-            <Button variant="primary" type="button" pending={returnedMutation.isPending} onClick={() => void saveReturnedDate()} disabled={transactionLocked || returnedReviewRequired.current || poFetching || refreshingPO || returnedTarget.version !== po.updated_at} >{returnedMutation.isPending ? 'Menyimpan...' : 'Simpan tanggal kembali'}</Button>
+            <Button variant="quiet" type="button" disabled={transactionLocked} onClick={() => { if (!transactionLocked && !dateBusy.current) closeCorrectionDate() }} >Batal</Button>
+            <Button variant="primary" type="button" pending={dateMutation.isPending} onClick={() => void saveCorrectionDate()} disabled={transactionLocked || dateReviewRequired.current || poFetching || refreshingPO || dateTarget.version !== po.updated_at} >{dateMutation.isPending ? 'Menyimpan...' : SJ_DATE_LABELS[dateTarget.kind].save}</Button>
           </FormActions>
       </ReturnedDateDialog>}
     </div>

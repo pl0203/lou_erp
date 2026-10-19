@@ -1,3 +1,4 @@
+import { weeklyAccess,weeklyPage,weeklyRow } from '../ihr/weekly-calendar-fixtures'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { transferableAbortController } from 'node:util'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
@@ -24,8 +25,8 @@ const clients:QueryClient[]=[],routers:ReturnType<typeof createMemoryRouter>[]=[
 function response(name:string,args:any={}){
  if(name==='leave_context_v1')return context
  if(name==='leave_quote_v1')return quoteFixture
- if(name==='leave_reads_context_v1')return {scopeVersion:context.scopeVersion,calendarAudiences:audiences,defaultRange:{from:'2026-10-01',to:'2026-10-31'},defaultRangeState:'ready'}
- if(name==='leave_calendar_v1')return [{employeeId:employeeA,employeeName:'Fictional calendar employee',date:'2026-10-09',approvedMinutes:450,availabilityLabel:'full_scheduled_absence'}]
+ if(name==='leave_team_calendar_context_v1')return {...weeklyAccess(audiences),scopeVersion:context.scopeVersion}
+ if(name==='leave_team_calendar_v1')return {...weeklyPage([weeklyRow(employeeA,'Fictional calendar employee')]),scopeVersion:context.scopeVersion}
  if(name==='leave_approval_counts_v1')return counts
  if(name==='leave_assigned_inbox_v1')return {rows,nextBefore:null}
  if(name==='leave_assigned_request_v1')return detail
@@ -99,8 +100,8 @@ test('application admin role alone grants no HR actions while calendar-only capa
  audiences=['granted'];await act(async()=>client.invalidateQueries({queryKey:leaveKeys.identity(hrA)}))
  fireEvent.click(await screen.findByRole('tab',{name:'Kalender'}));await screen.findByText('Fictional calendar employee')
  expect(screen.queryByRole('tab',{name:'Pengaturan'})).toBeNull();expect(screen.queryByRole('tab',{name:'Persetujuan'})).toBeNull()
- for(const label of ['Cakupan kalender','Dari tanggal','Sampai tanggal'])expect(screen.getByLabelText(label).closest('.ui-field')).toBeTruthy()
- expect((screen.getByRole('button',{name:'Tampilkan'}) as HTMLButtonElement).type).toBe('submit')
+ for(const label of ['Cakupan kalender','Tanggal dalam periode'])expect(screen.getByLabelText(label).closest('.ui-field')).toBeTruthy()
+ expect((screen.getByRole('button',{name:'Tampilkan periode'}) as HTMLButtonElement).type).toBe('submit')
 })
 test('configure-only target keeps explicit unknown choices typed fields and static impacts',async()=>{
  identity(hrA);context={...personal,memberKind:null,capabilities:{...none,configure:true},currentPeriod:null};audiences=[];targets=[{id:employeeA,name:'Fictional target',capabilities:{configure:true,adjust:false,readPrivate:false,calendar:false,manageAccess:false}}]

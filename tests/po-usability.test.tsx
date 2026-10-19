@@ -83,10 +83,10 @@ test('Sales order history explains the Admin PO handoff without offering inacces
  expect(screen.queryByRole('link', { name: /Procurement|Pengadaan/ })).toBeNull()
 })
 
-test('customer classification guidance makes category independent of the pricing tier', () => {
+test('customer classification guidance does not refer to removed pricing tiers', () => {
  render(<CustomerCategorySelect value="" allowUnclassified={false} onChange={vi.fn()} />)
  expect(screen.getByText(/jenis dan skala usaha/)).toBeTruthy()
- expect(screen.getByText(/Kategori tidak mengubah tier harga/)).toBeTruthy()
+ expect(screen.queryByText(/tier harga/)).toBeNull(); expect(screen.getByText(/Pilih menurut jenis dan skala usaha pelanggan/)).toBeTruthy()
  const select = screen.getByRole('combobox', { name: 'Kategori Pelanggan *' })
  expect(select.getAttribute('aria-describedby')).toBeTruthy()
 })

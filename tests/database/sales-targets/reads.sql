@@ -1,0 +1,31 @@
+BEGIN;
+INSERT INTO private.sales_target_history_coverage VALUES('po_order_value','2026-01-01','2027-01-01','Synthetic complete source','10000000-0000-4000-8000-000000000001',now()),('po_delivery_value','2026-01-01','2027-01-01','Synthetic complete source','10000000-0000-4000-8000-000000000001',now());
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000003',true);
+DO $$DECLARE b jsonb; x jsonb; BEGIN
+ b:=public.pilot_sales_target_baseline_v1('2026-10-01','10000000-0000-4000-8000-000000000003');
+ PERFORM public.test_assert(b->>'schemaVersion'='1','versioned baseline');
+ PERFORM public.test_assert(jsonb_array_length(b->'people')=3,'canonical manager personal and two direct reports');
+ PERFORM public.test_assert((SELECT sum((cell->>'baseline')::numeric) FROM jsonb_array_elements(b->'people')p CROSS JOIN LATERAL jsonb_array_elements(p->'customers')c CROSS JOIN LATERAL jsonb_array_elements(c->'cells')cell WHERE cell->>'metric'='po_order_value')=120,'60/80/100 and 20/40/60 equal 80+40=120 without uplift');
+ PERFORM public.test_assert((SELECT bool_and(jsonb_array_length(cell->'months')=3 AND jsonb_array_length(cell->'contextMonths')=6) FROM jsonb_array_elements(b->'people')p CROSS JOIN LATERAL jsonb_array_elements(p->'customers')c CROSS JOIN LATERAL jsonb_array_elements(c->'cells')cell),'three baseline and six context months');
+ PERFORM public.test_assert(b->'warnings'?'TRANSFER_ACTUALS_REMAIN_PREDECESSOR','transferred history disclosed');
+ PERFORM public.test_assert(NOT b::text LIKE '%Predecessor%' AND NOT b::text LIKE '%10000000-0000-4000-8000-000000000008%','no predecessor identity exposed');
+ x:=public.pilot_sales_dashboard_v3('2026-09-01','team',NULL,1,1);
+ PERFORM public.test_assert(x->>'total'='3' AND jsonb_array_length(x->'items')=1,'whole roster count separate from page');
+ PERFORM public.test_assert(x->'summary'->'poOrderValue'->>'value'='0.00','predecessor baseline not reattributed as team actual');
+ PERFORM public.test_assert(x->'summary'=public.pilot_sales_dashboard_v3('2026-09-01','team',NULL,2,1)->'summary','whole-filter totals independent page');
+ PERFORM public.test_assert(public.pilot_sales_dashboard_v3('2026-09-01','team',NULL,1,20,'Rep A')->>'total'='1','bounded server search');
+END$$;
+ROLLBACK;
+BEGIN;
+INSERT INTO private.sales_target_history_coverage VALUES('po_order_value','2026-01-01','2027-01-01','Synthetic known-customer PO coverage including legacy','10000000-0000-4000-8000-000000000001',now());
+INSERT INTO public.purchase_orders(customer_id,order_date,status,total_value,sales_person_id_at_creation,sales_attribution_state) VALUES('20000000-0000-4000-8000-000000000001','2026-09-05','confirm',30,NULL,'legacy');
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000003',true);
+DO $$DECLARE b jsonb; BEGIN
+ b:=public.pilot_sales_target_baseline_v1('2026-10-01','10000000-0000-4000-8000-000000000003');
+ PERFORM public.test_assert((SELECT (cell->>'baseline')::numeric FROM jsonb_array_elements(b->'people')p CROSS JOIN LATERAL jsonb_array_elements(p->'customers')c CROSS JOIN LATERAL jsonb_array_elements(c->'cells')cell WHERE c->>'customerId'='20000000-0000-4000-8000-000000000001' AND cell->>'metric'='po_order_value')=90,'known-customer legacy PO included only as planning history');
+ PERFORM public.test_assert(public.pilot_sales_dashboard_v3('2026-09-01','team',NULL,1,20)->'summary'->'poOrderValue'->>'value'='0.00','legacy planning history never credited to current rep dashboard');
+END$$;
+ROLLBACK;
+SELECT 'READS_PASSED';

@@ -5,23 +5,32 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, within, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 const state = vi.hoisted(() => ({ lines: [] as any[], history: [] as any[], failLines: false, stale: false, failDeliveryLines: false, audit: [] as any[], writes: [] as any[] }))
+const catalogue = vi.hoisted(() => ({
+  actorId: '00000000-0000-4000-8000-000000000002',
+  customer: { id: '00000000-0000-4000-8000-000000000010', name: 'Customer', address: null, city: null, phone: null, email: null, pricing_tier: 'luar_kota', customer_category: null, is_enabled: true, catalog_version: '1' },
+}))
 const version = '2026-10-01T00:00:00Z'
 vi.mock('../../src/lib/supabase', () => ({ supabase: {
+  supabaseUrl: 'https://catalogue.test', rest: { url: 'https://catalogue.test/rest/v1', schemaName: 'public' },
   rpc: (_name: string, args: any) => {
     if (_name === 'pilot_order_transaction') { state.writes.push(args); return Promise.resolve({data:{id:'po'},error:null}) }
+    if (_name === 'pilot_catalog_page_v1') {
+      const rows = args.p_kind === 'customer' ? [catalogue.customer] : []
+      const q: any = { abortSignal: () => q, then: (ok: any, fail: any) => Promise.resolve({ data: { version: 1, actor_id: catalogue.actorId, role: 'po_admin', kind: args.p_kind, purpose: args.p_purpose, status: args.p_status, search: args.p_search, page: args.p_page, page_size: args.p_page_size, total_count: String(rows.length), rows: rows.slice((args.p_page - 1) * args.p_page_size, args.p_page * args.p_page_size) }, error: null }).then(ok, fail) }; return q
+    }
     const q: any = { abortSignal: () => q, then: (ok: any, fail: any) => Promise.resolve(state.failLines ? { data: null, error: new Error('line page unavailable') } : { data: {version:1,as_of:'2026-10-01T00:00:00Z', page:args.p_page,page_size:args.p_page_size,total:state.lines.length,po_updated_at:state.stale && args.p_page > 1 ? '2026-10-02T00:00:00Z' : '2026-10-01T00:00:00Z',po_has_delivery_history:true,items:state.lines.slice((args.p_page-1)*args.p_page_size,args.p_page*args.p_page_size)},error:null }).then(ok,fail) }; return q
   },
   from: (table: string) => {
     let offset=0, end=Infinity
-    const all = table==='purchase_orders' ? [{id:'po',po_number:'PO-TEST',status:'in_progress',customer_id:'c',customers:{name:'Customer'},order_date:'2026-10-01',updated_at:'2026-10-01T00:00:00Z',total_value:100,completed_at:null}]
+    const all = table==='purchase_orders' ? [{id:'po',po_number:'PO-TEST',status:'in_progress',customer_id:catalogue.customer.id,customers:{name:'Customer'},order_date:'2026-10-01',updated_at:'2026-10-01T00:00:00Z',total_value:100,completed_at:null}]
       :table==='po_line_items'?state.lines.map(l=>({...l,unit_price:Number(l.unit_price),line_total:Number(l.line_total)}))
-      :table==='surat_jalan'?state.history:table==='po_audit_log'?state.audit:table==='customers'?[{id:'c',name:'Customer',pricing_tier:'luar_kota'}]:[]
+      :table==='surat_jalan'?state.history:table==='po_audit_log'?state.audit:table==='customers'?[catalogue.customer]:[]
     const result=()=>({data:all.slice(offset,Math.min(end+1,offset+100)),count:all.length,error:table==='sj_line_items' && state.failDeliveryLines ? new Error('selected lines failed') : null})
     const q:any={select:()=>q,eq:()=>q,order:()=>q,abortSignal:()=>q,range:(a:number,b:number)=>{offset=a;end=b;return q},single:async()=>({data:all[0],error:null}),then:(ok:any,fail:any)=>Promise.resolve(result()).then(ok,fail)};return q
   },
 } }))
 vi.mock('../../src/components/AthelNav',()=>({default:()=>null}))
-vi.mock('../../src/lib/AuthContext',()=>({useAuth:()=>({user:{id:'u'},profile:{id:'u',role:'staff'}})}))
+vi.mock('../../src/lib/AuthContext',()=>({useAuth:()=>({user:{id:catalogue.actorId},profile:{id:catalogue.actorId,role:'po_admin',is_active:true},loading:false,error:null})}))
 import POEdit from '../../src/pages/athel/POEdit'
 import PODetail from '../../src/pages/athel/PODetail'
 const clients:QueryClient[]=[]

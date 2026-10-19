@@ -1,3 +1,4 @@
+import { LoadingState } from '../ui/LoadingState'
 import { Field } from '../ui/Field';
 import { FormActions } from '../ui/FormActions';
 import { ActionLink } from '../ui/ActionLink';
@@ -395,7 +396,7 @@ function ReturnEditor({ customerId, customerVersion, observedVersion, selection,
                 <Button variant="quiet" size="compact" disabled={pending || reviewPending || blocked} onClick={() => void resolveCommittedConflict()}>Selesaikan konflik retur</Button>
             </div>}
             {posted && <p role="status">Retur sudah tercatat</p>}
-            {!loaded && !read.isError && <p role="status">Memuat seluruh sumber retur…</p>}
+            {!loaded && !read.isError && <LoadingState title="Memuat seluruh sumber retur…" shape="compact" />}
             {read.isError && <COFailure error={read.error} retry={() => void read.refetch()}/>}
             {(stale || parentStale) && <p role="alert">Sumber berubah. Isian tetap disimpan; muat sumber terbaru dan periksa lagi.</p>}
             {loaded && !readonly && <Button variant="quiet" size="compact" disabled={pending || reviewPending || blocked || !!confirmed || sender.hasUnresolved()} onClick={() => void refresh()}>Muat sumber retur terbaru</Button>}
