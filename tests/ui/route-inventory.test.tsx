@@ -41,6 +41,7 @@ vi.mock('../../src/pages/girard/VisitPage', () => ({ default: () => <p data-test
 vi.mock('../../src/pages/girard/GirardCustomerDetail', () => ({ default: () => <p data-testid="route-leaf">GirardCustomerDetail</p> }))
 vi.mock('../../src/pages/girard/OutletDetail', () => ({ default: () => <p data-testid="route-leaf">OutletDetail</p> }))
 vi.mock('../../src/pages/girard/MySalesSummary', () => ({ default: () => <p data-testid="route-leaf">MySalesSummary</p> }))
+vi.mock('../../src/pages/girard/SalesTargets', () => ({ default: () => <p data-testid="route-leaf">SalesTargets</p> }))
 vi.mock('../../src/pages/girard/MyOrders', () => ({ default: () => <p data-testid="route-leaf">MyOrders</p> }))
 vi.mock('../../src/pages/girard/Promotions', () => ({ default: () => <p data-testid="route-leaf">Promotions</p> }))
 vi.mock('../../src/pages/girard/MyVisits', () => ({ default: () => <p data-testid="route-leaf">MyVisits</p> }))
@@ -61,7 +62,7 @@ const E: Role[] = ['executive'], PO: Role[] = ['po_admin', 'executive'], CO: Rol
 const MASTER: Role[] = ['po_admin', 'co_admin', 'executive']
 const SALES: Role[] = ['sales_person', 'sales_manager', 'sales_head', 'executive']
 const MANAGERS: Role[] = ['sales_manager', 'sales_head', 'executive'], HEADS: Role[] = ['sales_head', 'executive']
-type Page = { path: string; roles: readonly Role[] | null; leaf: string }
+type Page = { path: string; roles: readonly Role[] | null; leaf: string; redirect?: string }
 // Fixed approved specification, independent of App's implementation constants.
 const PAGES: Page[] = [
   { path: '/login', roles: null, leaf: 'Login' },
@@ -91,7 +92,8 @@ const PAGES: Page[] = [
   { path: '/girard/customer/:id', roles: SALES, leaf: 'GirardCustomerDetail' },
   { path: '/girard/outlet/:id', roles: SALES, leaf: 'OutletDetail' },
   { path: '/girard/my-sales', roles: ['sales_person'], leaf: 'MySalesSummary' },
-  { path: '/girard/my-orders', roles: SALES, leaf: 'MyOrders' },
+  { path: '/girard/targets', roles: SALES, leaf: 'SalesTargets' },
+  { path: '/girard/my-orders', roles: SALES, leaf: 'schedule', redirect: '/girard/schedule' },
   { path: '/girard/promotions', roles: SALES, leaf: 'Promotions' },
   { path: '/girard/my-visits', roles: MANAGERS, leaf: 'MyVisits' },
   { path: '/girard/team', roles: MANAGERS, leaf: 'GirardTeam' },
@@ -122,7 +124,7 @@ for (const page of PAGES) {
     const path = actualPath(page.path)
     mount(path)
     const allowed = page.roles === null || page.roles.includes(role)
-    const destination = allowed ? path : roleHome(role)
+    const destination = allowed ? page.redirect ?? path : roleHome(role)
     expect(screen.getByTestId('route-location').textContent).toBe(destination)
     const destinationPage = allowed ? page : PAGES.find(candidate => candidate.path === destination)!
     expect(screen.getByTestId('route-leaf').textContent).toBe(expectedLeaf(destinationPage, role))
@@ -293,7 +295,7 @@ function elements(inspect: (source: ts.SourceFile, node: Opening) => void) {
   for (const source of reachableSources()) visit(source, node => { if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) inspect(source, node) })
 }
 
-test('real App declares exactly the approved 37 patterns and inherited outer gates', () => {
+test('real App declares exactly the approved 38 patterns and inherited outer gates', () => {
   const source = sourceAt('src/App.tsx'), arrays = new Map<string, string[]>()
   for (const statement of source.statements) if (ts.isVariableStatement(statement)) for (const declaration of statement.declarationList.declarations) {
     if (declaration.initializer && ts.isArrayLiteralExpression(declaration.initializer) && declaration.initializer.elements.every(ts.isStringLiteral)) arrays.set(declaration.name.getText(source), declaration.initializer.elements.map(element => (element as ts.StringLiteral).text))
@@ -331,9 +333,9 @@ test('real App declares exactly the approved 37 patterns and inherited outer gat
     ts.forEachChild(node, child => collect(child, parent, inherited))
   }
   collect(source)
-  expect(PAGES).toHaveLength(37)
+  expect(PAGES).toHaveLength(38)
   expect(pages.map(page => page.path).sort()).toEqual(PAGES.map(page => page.path).sort())
-  expect(new Set(pages.map(page => page.path)).size).toBe(37)
+  expect(new Set(pages.map(page => page.path)).size).toBe(38)
   for (const page of PAGES) {
     const actual = pages.find(candidate => candidate.path === page.path)!
     expect(actual.roles === null ? null : [...actual.roles].sort(), page.path).toEqual(page.roles === null ? null : [...page.roles].sort())
@@ -349,7 +351,7 @@ test('reachable audit includes lazy charts and embedded dashboard panels, exclud
 })
 test('reachable operational buttons have shared or explicitly owned visible action surfaces', () => {
   const violations: string[] = []
-  const navigationClasses = ['navigation-toggle', 'navigation-module-button', 'navigation-user-button', 'navigation-sign-out']
+  const navigationClasses = ['navigation-group-toggle', 'navigation-toggle', 'navigation-module-button', 'navigation-user-button', 'navigation-sign-out']
   elements((source, node) => {
     if (node.tagName.getText(source) !== 'button') return
     const classes = classText(source, node), file = relative(root, source.fileName)

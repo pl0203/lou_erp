@@ -1,3 +1,4 @@
+import { LoadingState } from '../../../components/ui/LoadingState'
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { fetchCOCustomers } from '../../../lib/co/catalog';
@@ -103,7 +104,7 @@ export default function COCustomerStock() {
             </div>
         </div>}
         {!returning && readFailure}
-        {!stock.data && !stock.isError && <p role="status">Memuat stok…</p>}
+        {!stock.data && !stock.isError && <LoadingState title="Memuat stok…" shape="list" />}
         {stock.data && !stock.isError && <>
             <p className="text-sm">Periode {formatDisplayDate(stock.data.period_start)} sampai {formatDisplayDate(stock.data.coverage_date)} (tanggal UTC server) · {asOf ? 'Akhir bulan, riwayat efektif dinyatakan ulang' : 'Stok terkini, bulan berjalan'}</p>
             <p className="text-sm">Total seluruh hasil filter: {stock.data.summary.opening_quantity} + {stock.data.summary.delivered_quantity} − {stock.data.summary.sold_quantity} − {stock.data.summary.returned_quantity} = {stock.data.summary.recorded_quantity}</p>

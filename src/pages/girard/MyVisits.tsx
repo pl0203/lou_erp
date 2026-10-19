@@ -1,8 +1,9 @@
+import { LoadingState } from '../../components/ui/LoadingState'
 import { Button } from '../../components/ui/Button'
 import { ActionLink } from '../../components/ui/ActionLink'
 import { MainContent } from '../../components/ui/MainContent'
 import { PageHeader } from '../../components/ui/PageHeader'
-import { EmptyState, Notice, StatusBadge } from '../../components/ui/Feedback'
+import { EmptyState, StatusBadge } from '../../components/ui/Feedback'
 import { RecordList } from '../../components/ui/RecordList'
 import { visitCadence, visitDateLabel } from '../../lib/visitUsability'
 import ReadFailure from '../../components/ReadFailure'
@@ -120,7 +121,7 @@ export default function MyVisits() {
 
       {/* Day tabs */}
       <div className="bg-white border-b border-gray-100 px-4 md:px-8">
-        <div className="flex gap-1 overflow-x-auto">
+        <div className="flex items-start gap-1 overflow-x-auto">
           {dates.map((date, i) => {
             const daySchedules = allSchedules?.filter(s => s.scheduled_date === date) ?? []
             const isSelected = selectedDate === date
@@ -130,7 +131,7 @@ export default function MyVisits() {
                 variant="quiet"
                 aria-pressed={isSelected}
                 onClick={() => setSelectedDate(date)}
-                className={`flex flex-col items-center border-b-2 transition-colors whitespace-nowrap ${
+                className={`flex-none w-max max-w-none flex flex-col items-center border-b-2 transition-colors whitespace-nowrap ${
                   isSelected
                     ? 'border-brand-primary text-brand-primary underline decoration-brand-primary underline-offset-4'
                     : 'border-transparent text-brand-secondary hover:text-gray-700'
@@ -150,7 +151,7 @@ export default function MyVisits() {
         <ActivePromotionsBanner />
         <p className="text-[13px] text-gray-700">Jadwal memakai tanggal tanpa jam. Pengingat interval dihitung dari kunjungan terakhir pelanggan, dengan batas waktu UTC.</p>
 
-        {isLoading && <Notice tone="info" title="Memuat kunjungan Anda..." />}
+        {isLoading && <LoadingState title="Memuat kunjungan Anda..." shape="list" />}
         {!isLoading && schedules.length === 0 && <EmptyState title={`Tidak ada kunjungan dijadwalkan untuk ${visitDateLabel(selectedDate)}.`}><p>Jadwalkan kunjungan untuk diri Anda dari halaman Jadwal.</p></EmptyState>}
 
         <RecordList label="Kunjungan saya">{schedules.map(schedule => {
@@ -280,3 +281,4 @@ export default function MyVisits() {
     </div>
   )
 }
+

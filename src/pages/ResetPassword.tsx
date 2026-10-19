@@ -1,3 +1,4 @@
+import { LoadingState } from '../components/ui/LoadingState'
 import BrandLogo from '../components/BrandLogo'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -70,7 +71,7 @@ export default function ResetPassword() {
       <div className="bg-white rounded-[14px] border border-brand-divider p-8 w-full max-w-sm shadow-sm">
         <BrandLogo className="mb-8" />
         <PageHeader className="mb-8" title="Buat kata sandi baru" description="Pilih kata sandi yang kuat untuk akun Anda." />
-        {!setup ? <Notice tone="info" title="Memeriksa tautan..." /> : !setup.identity ? (
+        {!setup ? <LoadingState title="Memeriksa tautan..." shape="compact" /> : !setup.identity ? (
           <div ref={errorSummary} role="group" aria-label="Ringkasan kesalahan kata sandi" tabIndex={-1}><Notice tone="error" title={setup.error} actions={<ActionLink to="/forgot-password" variant="quiet">Minta tautan reset baru</ActionLink>} /></div>
         ) : <form noValidate onSubmit={event => { event.preventDefault(); void handleReset() }} className="space-y-4">
           <p className="text-brand-secondary">{setup.identity.email}</p>

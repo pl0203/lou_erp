@@ -70,6 +70,7 @@ test('new order authority denial clears its chosen customer and private new inpu
     const { chooseCustomer, addProduct } = await import('./ui-harness');
     const { client } = mount(<COForm mode="create"/>, '/athel/co/new');
     await chooseCustomer(); change('Nomor CO', 'PRIVATE NEW ORDER'); await addProduct();
+    await screen.findByDisplayValue('Product 1'); change('Harga satuan Product 1', '10.00');
     state.send.mockRejectedValue(denial()); await click('Simpan CO'); await screen.findByText('Confirmed source denial');
     expect(screen.queryByDisplayValue('PRIVATE NEW ORDER')).toBeNull(); expect(screen.queryByText('Product 1')).toBeNull();
     expect(privateCache(client)).toEqual([]);

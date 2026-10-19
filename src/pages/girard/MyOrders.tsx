@@ -1,3 +1,4 @@
+import { LoadingState } from '../../components/ui/LoadingState'
 import { PageHeader } from '../../components/ui/PageHeader'
 import { Button } from '../../components/ui/Button'
 import { FilterBar } from '../../components/ui/FilterBar'
@@ -77,7 +78,7 @@ export default function MyOrders() {
       <div className="px-4 md:px-8 py-6 max-w-2xl mx-auto space-y-4">
         {!isError && data && <PaginationControls page={data.page} total={data.total} pageSize={data.page_size} pending={isPending} onPageChange={setPage} />}
         {isLoading && (
-          <Notice tone="info" title="Memuat pesanan..." />
+          <LoadingState title="Memuat pesanan..." shape="list" />
         )}
 
         {isError && <Notice tone="error" title="Gagal memuat pesanan. Data belum dapat ditampilkan."

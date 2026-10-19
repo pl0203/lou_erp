@@ -29,6 +29,8 @@ type Submission = {
 type Options = {
   scope: string
   canEdit: boolean
+  /** A checked request is durable and cannot be resubmitted or locally cancelled. */
+  unresolved?: boolean
   isPending: boolean
   isError: boolean
   records: readonly { id: string }[] | undefined
@@ -37,7 +39,7 @@ type Options = {
 }
 
 /** Owns only the target session, above rows that private-read masking removes. */
-export function useTargetDraftSession({ scope, canEdit, isPending, isError, records, write, onSaved }: Options) {
+export function useTargetDraftSession({ scope, canEdit, isPending, isError, records, write, onSaved, unresolved = false }: Options) {
   const lock = useTargetEditorLock(scope)
   const { claim, release } = lock
   const owner = useMemo<Owner>(() => ({ mounted: false, ready: false, recordIds: new Set(), draft: null, operation: null }), [scope])
@@ -66,14 +68,14 @@ export function useTargetDraftSession({ scope, canEdit, isPending, isError, reco
   }, [owner, release])
 
   useLayoutEffect(() => {
-    owner.ready = canEdit && !isPending && !isError
+    owner.ready = canEdit && !isPending && !isError && !unresolved
     owner.recordIds = new Set(records?.map(record => record.id))
     // A pending read is not a fresh absence. Terminal errors deliberately clear
     // conservatively, without introducing a shared read-error classification.
-    if (owner.draft && (!canEdit || isError || (!isPending && !owner.recordIds.has(owner.draft.recordId)))) {
+    if (owner.draft && (!canEdit || !unresolved && (isError || (!isPending && !owner.recordIds.has(owner.draft.recordId))))) {
       clear(owner)
     }
-  }, [owner, canEdit, isPending, isError, records, clear])
+  }, [owner, canEdit, isPending, isError, records, clear, unresolved])
 
   const isCurrent = ({ owner, token }: Submission) => owner.mounted && owner.draft?.token === token
   const mutation = useMutation({
@@ -102,13 +104,17 @@ export function useTargetDraftSession({ scope, canEdit, isPending, isError, reco
   const draft = snapshot?.owner === owner && snapshot.draft && canEdit && !isPending && !isError && records?.some(record => record.id === snapshot.draft.recordId)
     ? snapshot.draft : null
   return {
-    busy: lock.busy,
+    busy: lock.busy || unresolved,
+    unresolved,
     layout: lock.layout,
     descriptionId: lock.descriptionId,
     description: owner.operation
       ? 'Target sedang disimpan. Tunggu hingga penyimpanan selesai sebelum mengubah target lain.'
       : 'Simpan atau batalkan target yang sedang diedit sebelum mengubah target lain.',
-    draft,
+    draft: draft && unresolved ? { ...draft, pending: true } : draft,
+    confirmRecovered(recordId: string) {
+      if (owner.mounted && !owner.operation && owner.draft?.recordId === recordId) clear(owner)
+    },
     open(recordId: string, layout: TargetEditorLayout, value: string) {
       if (!owner.mounted || !owner.ready || owner.draft || owner.operation || !owner.recordIds.has(recordId)) return
       const token = Symbol('target-session')

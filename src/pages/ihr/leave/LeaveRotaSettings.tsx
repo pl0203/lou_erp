@@ -1,3 +1,4 @@
+import { LoadingState } from '../../../components/ui/LoadingState'
 import { Notice } from '../../../components/ui/Feedback'
 import { Button } from '../../../components/ui/Button'
 import { Field } from '../../../components/ui/Field'
@@ -27,7 +28,7 @@ export default function LeaveRotaSettings({calendar,send,preview,previewCalendar
   try{const response=await preview(input());if(generation.current===current)setResult(response)}catch{if(generation.current===current)setError('Pratinjau belum tersedia. Periksa acuan, kelompok, cakupan dan zona waktu.')}finally{submitting.current=false;setBusy(false)}}
  async function save(command:LeaveSetupCommand){if(submitting.current||!authorityReady||(command.operation==='save_calendar_version'?!calendarResult?.impacts.available:command.operation==='publish_roster'&&!result?.impacts.available))return;submitting.current=true;saving.current=true;setBusy(true);setError('');setSaved(false);generation.current++;setResult(null);setCalendarResult(null)
   try{const response=await send(command);setVersion(response.version);const next={...baselines,reason,[command.operation==='save_calendar_version'?'config':'roster']:command.operation==='save_calendar_version'?drafts.config:drafts.roster};setBaselines(next);setSaved(true);onSaved?.({hasUnsavedChanges:hasUnsaved(next)})}catch{setError('Pengaturan belum dapat disimpan. Isian tetap ada. Pulihkan hasil bila status belum pasti.')}finally{submitting.current=false;saving.current=false;setBusy(false)}}
- if(!authorityReady)return <p role="status" className="ui-notice ui-notice--info">Memeriksa akses kalender dan roster...</p>
+ if(!authorityReady)return <LoadingState title="Memeriksa akses kalender dan roster..." shape="compact" className="ui-notice ui-notice--info" />
  return <section className="ui-section space-y-4" aria-label="Pengaturan kalender dan roster"><h2 className="font-semibold">Kalender dan roster Sabtu</h2>
   <p>Versi baru berlaku ke depan. Kelompok, zona waktu, hari Minggu dan hari libur tidak diasumsikan.</p>
   <LeaveSetupImpacts impacts={calendarResult?.impacts??result?.impacts??calendar.impacts??{available:false,pendingCount:null,approvedCount:null}}/>

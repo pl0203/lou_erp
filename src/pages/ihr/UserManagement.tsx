@@ -1,3 +1,5 @@
+import './user-management.css'
+import { LoadingState } from '../../components/ui/LoadingState'
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
@@ -339,7 +341,7 @@ export default function UserManagement() {
   return (
     <div className="min-h-screen bg-brand-canvas">
       <IHRNav />
-      <MainContent className="px-4 md:px-8 py-6 max-w-6xl mx-auto space-y-4">
+      <MainContent className="user-management-page px-4 md:px-8 py-6 max-w-6xl mx-auto space-y-4">
         <PageHeader title="User Management" description={countDescription}
           actions={<Button onClick={event => openCreate(event.currentTarget)}>+ Invite User</Button>} />
         <FilterBar label="Filter users">
@@ -357,38 +359,38 @@ export default function UserManagement() {
           <Notice tone="success" title={feedback} aria-label="User administration result" />
         </div>}
         {directoryError && <Notice tone="error" title={directoryError} />}
-        {!hasUsers && isPending && <Notice tone="info" title={waitingForConnection ? 'Waiting for connection' : 'Loading users...'}>
+        {!hasUsers && isPending && <LoadingState title={waitingForConnection ? 'Waiting for connection' : 'Loading users...'} shape="list">
           {waitingForConnection && 'The user list will load when the connection returns.'}
-        </Notice>}
+        </LoadingState>}
         {usersFailed && <Notice tone="error" title="Unable to load users. Check the connection before creating or editing accounts."
           actions={<Button size="compact" variant="secondary" onClick={() => void refetch()}>Retry</Button>} />}
         <div ref={directoryFocus} tabIndex={-1} aria-label="User directory" className="min-w-0">
           {hasUsers && (filtered?.length === 0 ? <EmptyState title="No users found." /> : (
             <div role="region" aria-label="User directory" tabIndex={0} className="bg-white rounded-[14px] border border-brand-divider overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="user-directory-table w-full">
                 <caption className="sr-only">User directory</caption>
                 <thead><tr className="bg-brand-canvas border-b border-brand-divider">
-                  <th scope="col" className="text-left px-5 py-3 font-medium text-brand-secondary">Name</th>
-                  <th scope="col" className="text-left px-5 py-3 font-medium text-brand-secondary hidden md:table-cell">Email</th>
-                  <th scope="col" className="text-left px-5 py-3 font-medium text-brand-secondary">Role</th>
-                  <th scope="col" className="text-left px-5 py-3 font-medium text-brand-secondary hidden md:table-cell">Manager</th>
-                  <th scope="col" className="text-left px-5 py-3 font-medium text-brand-secondary hidden md:table-cell">Status</th>
-                  <th scope="col" className="text-right px-5 py-3 font-medium text-brand-secondary">Actions</th>
+                  <th scope="col" className="text-left text-brand-secondary">Name</th>
+                  <th scope="col" className="text-left text-brand-secondary hidden md:table-cell">Email</th>
+                  <th scope="col" className="text-left text-brand-secondary">Role</th>
+                  <th scope="col" className="text-left text-brand-secondary hidden md:table-cell">Manager</th>
+                  <th scope="col" className="text-left text-brand-secondary hidden md:table-cell">Status</th>
+                  <th scope="col" className="text-right text-brand-secondary">Actions</th>
                 </tr></thead>
                 <tbody>{filtered?.map(user => {
                   const manager = users.find(candidate => candidate.id === user.manager_id)
                   return <tr key={user.id} className={`border-b border-brand-divider ${user.is_active ? 'hover:bg-brand-canvas' : 'bg-brand-canvas'}`}>
-                    <td className="px-5 py-4"><div className="flex items-center gap-3">
+                    <td className="user-directory-table__name"><div className="flex items-center gap-2">
                       <div aria-hidden="true" className="w-8 h-8 rounded-full bg-brand-tint text-brand-primary text-[13px] font-semibold flex items-center justify-center shrink-0">
                         {user.full_name.split(' ').map(name => name[0]).slice(0, 2).join('').toUpperCase()}
                       </div>
-                      <div><p className="font-medium text-brand-primary">{user.full_name}</p><p className="text-[13px] text-brand-secondary md:hidden">{user.email}</p></div>
+                      <div className="min-w-0"><p className="user-directory-table__name-text text-brand-primary">{user.full_name}</p><p className="user-directory-table__email text-brand-secondary md:hidden">{user.email}</p></div>
                     </div></td>
-                    <td className="px-5 py-4 text-brand-secondary hidden md:table-cell">{user.email}</td>
-                    <td className="px-5 py-4"><StatusBadge tone="neutral">{ROLES.find(role => role.value === user.role)?.label ?? user.role}</StatusBadge></td>
-                    <td className="px-5 py-4 text-brand-secondary hidden md:table-cell">{manager?.full_name ?? '—'}</td>
-                    <td className="px-5 py-4 hidden md:table-cell"><StatusBadge tone={user.is_active ? 'success' : 'neutral'}>{user.is_active ? 'Active' : 'Inactive'}</StatusBadge></td>
-                    <td className="px-5 py-4"><FormActions>
+                    <td className="user-directory-table__email text-brand-secondary hidden md:table-cell">{user.email}</td>
+                    <td className="user-directory-table__role"><StatusBadge tone="neutral">{ROLES.find(role => role.value === user.role)?.label ?? user.role}</StatusBadge></td>
+                    <td className="user-directory-table__manager text-brand-secondary hidden md:table-cell">{manager?.full_name ?? '—'}</td>
+                    <td className="user-directory-table__status hidden md:table-cell"><StatusBadge tone={user.is_active ? 'success' : 'neutral'}>{user.is_active ? 'Active' : 'Inactive'}</StatusBadge></td>
+                    <td className="user-directory-table__actions"><FormActions>
                       <Button size="compact" variant="quiet" onClick={event => openEdit(user, event.currentTarget)}>Edit</Button>
                       {user.is_active ? <Button size="compact" variant="danger-quiet" onClick={event => openDeactivate(user.id, event.currentTarget)}>Deactivate</Button>
                         : <Button size="compact" variant="quiet" pending={reactivatingIds.has(user.id)} onClick={() => handleReactivate(user.id)}>{reactivatingIds.has(user.id) ? 'Reactivating...' : 'Reactivate'}</Button>}

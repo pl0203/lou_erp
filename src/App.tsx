@@ -1,7 +1,7 @@
+import { LoadingState } from './components/ui/LoadingState'
 import { Routes, Route, Navigate, matchPath, useLocation } from 'react-router-dom'
 import { useEffect } from 'react'
 import { MainContent } from './components/ui/MainContent'
-import { Notice } from './components/ui/Feedback'
 import { useAuth } from './lib/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import COMonthlyReports from './pages/athel/co/COMonthlyReports'
@@ -38,8 +38,8 @@ import GirardCustomers from './pages/girard/GirardCustomers'
 import GirardManagers from './pages/girard/GirardManagers'
 import GirardTeam from './pages/girard/GirardTeam'
 import ManagerCustomers from './pages/girard/ManagerCustomers'
-import MyOrders from './pages/girard/MyOrders'
 import MySalesSummary from './pages/girard/MySalesSummary'
+import SalesTargets from './pages/girard/SalesTargets'
 import MyVisits from './pages/girard/MyVisits'
 import GirardDashboard from './pages/girard/GirardDashboard'
 import Promotions from './pages/girard/Promotions'
@@ -75,7 +75,7 @@ const routeTitles: [string, string][] = [
   ['/girard/visit-requests', 'Permintaan kunjungan'], ['/girard/visit-history', 'Riwayat kunjungan saya'],
   ['/girard/schedule', 'Jadwal kunjungan'], ['/girard/visit/:scheduleId', 'Detail kunjungan'],
   ['/girard/customer/:id', 'Detail pelanggan Sales'], ['/girard/outlet/:id', 'Detail outlet'],
-  ['/girard/my-sales', 'Ringkasan penjualan saya'], ['/girard/my-orders', 'Riwayat pesanan saya'],
+  ['/girard/targets', 'Target Penjualan'], ['/girard/my-sales', 'Ringkasan penjualan saya'], ['/girard/my-orders', 'Jadwal kunjungan'],
   ['/girard/my-visits', 'Kunjungan saya'], ['/girard/team', 'Tim Sales'],
   ['/girard/dashboard', 'Dashboard Sales'], ['/girard/my-customers', 'Pelanggan saya'],
   ['/girard/customers', 'Daftar pelanggan Sales'], ['/girard/managers', 'Manajer Sales'],
@@ -93,7 +93,7 @@ export default function App() {
   if (loading) {
     return (
       <MainContent className="min-h-screen flex items-center justify-center px-4">
-        <Notice tone="info" title="Memuat..." />
+        <LoadingState title="Memuat..." shape="form" className="w-full max-w-sm" />
       </MainContent>
     )
   }
@@ -168,9 +168,11 @@ export default function App() {
       <Route path="/girard/outlet/:id" element={
         <ProtectedRoute allowedRoles={GIRARD_ROLES}><OutletDetail /></ProtectedRoute>
       } />
+      <Route path="/girard/targets" element={<ProtectedRoute allowedRoles={GIRARD_ROLES}><SalesTargets /></ProtectedRoute>} />
       <Route path="/girard/my-sales" element={<ProtectedRoute allowedRoles={['sales_person']}><MySalesSummary /></ProtectedRoute>} />
+      {/* Retired legacy history: old bookmarks return to the current Sales workspace. */}
       <Route path="/girard/my-orders" element={
-        <ProtectedRoute allowedRoles={GIRARD_ROLES}><MyOrders /></ProtectedRoute>
+        <ProtectedRoute allowedRoles={GIRARD_ROLES}><Navigate to="/girard/schedule" replace /></ProtectedRoute>
       } />
       
       {/* Girard — manager and above */}

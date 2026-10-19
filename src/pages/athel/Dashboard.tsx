@@ -1,3 +1,5 @@
+import { useAuth } from '../../lib/AuthContext'
+import { DashboardSkeleton, DashboardChartsSkeleton } from '../../components/ui/LoadingSkeletons'
 import { PO_STATUS_LABELS } from '../../lib/orderPresentation'
 import { formatDisplayDate } from '../../lib/displayDate'
 import { calendarDateKey } from '../../lib/calendarDate'
@@ -80,14 +82,23 @@ export default function AthelDashboard() {
   const [status, setStatus] = useState<FilterStatus>('all')
   const [fulfillment, setFulfillment] = useState<FulfillmentFilter>('all')
 
-  const { data, isLoading, isError, isFetching, fetchStatus, refetch } = useQuery({
-    queryKey: ['athel_dashboard', startDate, endDate, status, fulfillment],
-    queryFn: ({ signal }) => fetchDashboardData(startDate, endDate, status, fulfillment, signal),
+  const { profile } = useAuth()
+  const identity = `${profile?.id ?? ''}:${profile?.role ?? ''}`
+  const { data: result, isLoading, isError, isFetching, fetchStatus, refetch } = useQuery({
+    queryKey: ['athel_dashboard', startDate, endDate, status, fulfillment, identity],
+    queryFn: async ({ signal }) => ({
+      ...await fetchDashboardData(startDate, endDate, status, fulfillment, signal),
+      displayFilters: { startDate, endDate, status, fulfillment },
+    }),
+    enabled: !!profile?.id,
+    placeholderData: (previous, previousQuery) => previousQuery?.queryKey[5] === identity ? previous : undefined,
   })
 
-  const rollingStart = data?.monthlySeries[0]?.key ? `${data.monthlySeries[0].key}-01` : startDate
-  const selectedPOPeriod = `${formatDisplayDate(startDate)} – ${formatDisplayDate(endDate)}`
-  const sourcePeriod = `${formatDisplayDate(startDate < rollingStart ? startDate : rollingStart)} – ${formatDisplayDate(endDate)}`
+  const data = result
+  const shown = result?.displayFilters ?? { startDate, endDate, status, fulfillment }
+  const rollingStart = data?.monthlySeries[0]?.key ? `${data.monthlySeries[0].key}-01` : shown.startDate
+  const selectedPOPeriod = `${formatDisplayDate(shown.startDate)} – ${formatDisplayDate(shown.endDate)}`
+  const sourcePeriod = `${formatDisplayDate(shown.startDate < rollingStart ? shown.startDate : rollingStart)} – ${formatDisplayDate(shown.endDate)}`
 
   return (
     <div className="min-h-screen bg-brand-canvas">
@@ -108,13 +119,15 @@ export default function AthelDashboard() {
         </FilterBar>
       </div>
       <div className="px-4 py-6 md:px-8 space-y-4">
-        {!isError && (isLoading || !data) && <Notice tone="info" title={fetchStatus === 'paused' ? 'Dashboard Pengadaan tertunda. Menunggu koneksi…' : 'Memuat dashboard Pengadaan...'} />}
+        <p role="status" aria-live="polite" aria-atomic="true" className="min-h-5 text-sm text-brand-secondary">
+          {isError ? '' : !data ? (fetchStatus === 'paused' ? 'Dashboard Pengadaan tertunda. Menunggu koneksi…' : 'Memuat dashboard Pengadaan...') : (isFetching || fetchStatus === 'paused') ? (fetchStatus === 'paused' ? 'Pembaruan dashboard tertunda. Menunggu koneksi; hasil terakhir tetap ditampilkan.' : 'Memperbarui dashboard… Menampilkan hasil terakhir sampai selesai.') : ''}
+        </p>
+        {!isError && !data && <DashboardSkeleton />}
         {isError && <Notice tone="error" title="Gagal memuat dashboard." actions={<Button variant="secondary" onClick={() => { void refetch() }}>Coba lagi</Button>} />}
-        {!isError && data && (isFetching || fetchStatus === 'paused') && <Notice tone="info" title={fetchStatus === 'paused' ? 'Pembaruan dashboard tertunda. Menunggu koneksi; hasil terakhir tetap ditampilkan.' : 'Memperbarui dashboard… Menampilkan hasil terakhir sampai selesai.'} />}
         {!isLoading && !isError && data && (
-          <div className="space-y-6">
+          <div className="space-y-6 ui-results" aria-busy={isFetching || fetchStatus === 'paused'}>
             <section aria-label="Cakupan ringkasan PO" className="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-600">
-              <p>Tanggal PO: {formatDisplayDate(startDate)} – {formatDisplayDate(endDate)} · {({ all: 'Semua status', ...PO_STATUS_LABELS })[status]} · {({ all: 'Semua pengiriman', undelivered: 'Belum terkirim', partial: 'Terkirim sebagian', complete: 'Terkirim penuh' })[fulfillment]}</p>
+              <p>Tanggal PO: {formatDisplayDate(shown.startDate)} – {formatDisplayDate(shown.endDate)} · {({ all: 'Semua status', ...PO_STATUS_LABELS })[shown.status]} · {({ all: 'Semua pengiriman', undelivered: 'Belum terkirim', partial: 'Terkirim sebagian', complete: 'Terkirim penuh' })[shown.fulfillment]}</p>
               <p className="mt-1">Khusus PO sesuai izin akun. Nilai terkirim mencakup SJ yang tidak dibatalkan untuk PO terpilih, termasuk pengiriman di luar rentang tanggal PO. Nilai uang dalam rupiah; juta = 1.000.000 dan miliar = 1.000.000.000.</p>
             </section>
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -142,8 +155,8 @@ export default function AthelDashboard() {
 
             <p className="text-sm text-gray-600">PO selesai: {data.metrics.completedPOCount} dari {data.metrics.totalPOCount} PO pada filter ini.</p>
 
-            <Suspense fallback={<div role="status" className="rounded-2xl border border-slate-200 bg-white p-12 text-center text-sm text-slate-500">Memuat grafik...</div>}>
-              <DashboardCharts key={`${startDate}:${endDate}:${status}:${fulfillment}`} data={data} sourcePeriod={sourcePeriod} selectedPOPeriod={selectedPOPeriod} />
+            <Suspense fallback={<><span role="status" className="sr-only">Memuat grafik...</span><DashboardChartsSkeleton /></>}>
+              <DashboardCharts key={`${shown.startDate}:${shown.endDate}:${shown.status}:${shown.fulfillment}`} data={data} sourcePeriod={sourcePeriod} selectedPOPeriod={selectedPOPeriod} />
             </Suspense>
 
             <div className="grid gap-6 xl:grid-cols-2">

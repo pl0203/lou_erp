@@ -1,3 +1,4 @@
+import { LoadingState } from '../ui/LoadingState'
 import { CORevisionAttachment } from './COEvidenceAttachment';
 import { useState } from 'react';
 import { isCOAuthorityError } from './COReportWorkspace';
@@ -26,5 +27,5 @@ export default function COReportRevisionEvidence({ customerId, month, customerVe
             throw error;
         }
     });
-    return <Section title={`Bukti revisi ${isEffective ? 'efektif' : 'historis'} ${revisionId}`} className="space-y-3"><p className="text-[13px] mb-4">Baris dan alokasi asli yang tersimpan, termasuk baris nol tanpa alokasi. {isEffective ? 'Revisi ini masih efektif.' : 'Bukan versi efektif saat ini.'}</p>{read.isError ? <COFailure error={read.error} retry={() => void read.refetch()}/> : !read.data ? <p role="status">Memuat bukti revisi…</p> : <COMonthlySalesGrid rows={read.data.rows as COReportRow[]} entries={{}} editable={false} disabled={read.isFetching} onChange={() => { }} page={page} total={read.data.total} onPage={setPage} allocation={() => <COAllocationDetails customerId={customerId} month={month} customerVersion={customerVersion} revisionId={revisionId} onAuthorityFailure={onAuthorityFailure}/>}/>}<CORevisionAttachment customerId={customerId} revisionId={revisionId} onAuthorityFailure={onAuthorityFailure}/></Section>;
+    return <Section title={`Bukti revisi ${isEffective ? 'efektif' : 'historis'} ${revisionId}`} className="space-y-3"><p className="text-[13px] mb-4">Baris dan alokasi asli yang tersimpan, termasuk baris nol tanpa alokasi. {isEffective ? 'Revisi ini masih efektif.' : 'Bukan versi efektif saat ini.'}</p>{read.isError ? <COFailure error={read.error} retry={() => void read.refetch()}/> : !read.data ? <LoadingState title="Memuat bukti revisi…" shape="compact" /> : <COMonthlySalesGrid rows={read.data.rows as COReportRow[]} entries={{}} editable={false} disabled={read.isFetching} onChange={() => { }} page={page} total={read.data.total} onPage={setPage} allocation={() => <COAllocationDetails customerId={customerId} month={month} customerVersion={customerVersion} revisionId={revisionId} onAuthorityFailure={onAuthorityFailure}/>}/>}<CORevisionAttachment customerId={customerId} revisionId={revisionId} onAuthorityFailure={onAuthorityFailure}/></Section>;
 }

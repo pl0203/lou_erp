@@ -1,3 +1,4 @@
+import { LoadingState } from './ui/LoadingState'
 import { Button } from './ui/Button'
 import { ActionLink } from './ui/ActionLink'
 import { Section } from './ui/Section'
@@ -32,7 +33,7 @@ export default function VisitRequestStatus({ requestId }: { requestId: string })
   return <Section id={`visit-request-${requestId}`} title="Status permintaan yang dipilih">
     {!valid ? <EmptyState title="Permintaan tidak ditemukan atau Anda tidak memiliki akses." />
       : query.isError ? <Notice tone="error" title="Status permintaan belum tersedia." actions={<Button size="compact" variant="secondary" onClick={() => query.refetch()}>Coba lagi status permintaan</Button>} />
-      : query.isPending ? <Notice tone="info" title="Memuat status permintaan..." />
+      : query.isPending ? <LoadingState title="Memuat status permintaan..." shape="compact" />
       : !query.data ? <EmptyState title="Permintaan tidak ditemukan atau Anda tidak memiliki akses." />
       : <>
         <p className="font-semibold text-gray-900">{query.data.customers?.name ?? 'Nama pelanggan belum tersedia'}</p>

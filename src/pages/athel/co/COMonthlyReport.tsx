@@ -1,3 +1,4 @@
+import { LoadingState } from '../../../components/ui/LoadingState'
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useBeforeSignOut } from '../../../lib/AuthContext';
@@ -113,7 +114,7 @@ function ReportReady({ customerId, month, revision }: {
     if (work.denied)
         return <COFailure error={work.authorityError} retry={work.retryAuthority}/>;
     if (!work.accepted)
-        return work.root.isError ? <COFailure error={work.root.error} retry={() => void work.root.refetch()}/> : <p role="status">Memuat laporan pelanggan…</p>;
+        return work.root.isError ? <COFailure error={work.root.error} retry={() => void work.root.refetch()}/> : <LoadingState title="Memuat laporan pelanggan…" shape="list" />;
     const sourceGeneration = work.generation;
     const rejectChildAuthority = (error: unknown) => {
         if (work.isGenerationCurrent(sourceGeneration)) work.setError(error);

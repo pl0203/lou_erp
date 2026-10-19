@@ -25,10 +25,11 @@ export function summarizePOAudit(entry: AuditEntry): string {
     notes: 'mengubah catatan PO',
     expected_delivery_date: 'mengubah tanggal kedaluwarsa PO',
     sj_date_returned: 'mengubah tanggal SJ kembali',
+    sj_date_received: 'mengubah tanggal SJ diterima toko',
   }
   const action = actions[entry.field_changed]
   if (!action) return `${actor} memperbarui data PO. Rincian asli tersedia di detail teknis.`
-  if (['expected_delivery_date', 'sj_date_returned'].includes(entry.field_changed)) {
+  if (['expected_delivery_date', 'sj_date_returned', 'sj_date_received'].includes(entry.field_changed)) {
     return `${actor} ${action}: ${formatDisplayDate(entry.old_value)} → ${formatDisplayDate(entry.new_value)}.`
   }
   return `${actor} ${action}.`

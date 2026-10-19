@@ -37,7 +37,8 @@ export function InlineTargetEditor({ recordId, currentTarget, canEdit, targetEdi
     </Field>
     <Button onClick={() => targetEditors.save(draft.token)} pending={draft.pending}>Simpan target</Button>
     <Button variant="quiet" onClick={() => targetEditors.cancel(draft.token)} disabled={draft.pending}>Batal</Button>
-    {draft.error && <p role="alert" className="basis-full text-sm text-red-700">Penyimpanan target mengalami kendala. Coba simpan lagi atau pilih Batal.</p>}
+    {targetEditors.unresolved && <p role="status" className="basis-full text-sm text-brand-secondary">Hasil target belum terkonfirmasi. Gunakan Periksa hasil; jangan simpan ulang.</p>}
+    {draft.error && !targetEditors.unresolved && <p role="alert" className="basis-full text-sm text-red-700">Penyimpanan target mengalami kendala. Coba simpan lagi atau pilih Batal.</p>}
   </div>
 
   return <Button size="compact" variant="quiet" className="w-full" disabled={targetEditors.busy}

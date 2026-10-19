@@ -1,3 +1,4 @@
+import { LoadingState } from '../../../components/ui/LoadingState'
 import { PageHeader } from '../../../components/ui/PageHeader';
 import { SummaryList } from '../../../components/ui/SummaryList';
 import { ActionLink } from '../../../components/ui/ActionLink';
@@ -57,7 +58,7 @@ function CODetailOwner() {
     if (query.isError && (!query.data || authorityDenied.current))
         return <COFailure error={query.error} retry={() => void query.refetch()}/>;
     if (!query.data)
-        return <p role="status">Memuat CO…</p>;
+        return <LoadingState title="Memuat CO…" shape="detail" />;
     return <DetailReady onAuthorityFailure={rejectAuthority} key={actor.scope} co={query.data.co as COOrderRecord} allowed={query.data.allowed_operations} blockers={query.data.close_blockers} reload={() => void query.refetch()} refreshing={query.isFetching || query.isError} readError={query.isError ? query.error : null}/>;
 }
 function DetailReady({ co, allowed, blockers, reload, refreshing, readError, onAuthorityFailure }: {
@@ -234,7 +235,7 @@ export function COHistorySection({ co, section, title, parent = null, renderRow,
         }
     });
     useEffect(() => setPage(1), [co.id, co.co_version, co.customer_version, parent]);
-    return <COCard title={title}>{section === 'audit' && <p className="mb-3 text-base text-brand-secondary">Perubahan yang terkait CO ini serta laporan seluruh pelanggan. Laporan pelanggan dapat mendahului pembuatan CO ini. Identitas aktor lengkap tersedia pada detail teknis.</p>}{query.isError ? <COFailure error={query.error} retry={() => void query.refetch()}/> : query.isPending ? <p role="status">Memuat riwayat…</p> : <>
+    return <COCard title={title}>{section === 'audit' && <p className="mb-3 text-base text-brand-secondary">Perubahan yang terkait CO ini serta laporan seluruh pelanggan. Laporan pelanggan dapat mendahului pembuatan CO ini. Identitas aktor lengkap tersedia pada detail teknis.</p>}{query.isError ? <COFailure error={query.error} retry={() => void query.refetch()}/> : query.isPending ? <LoadingState title="Memuat riwayat…" shape="list" /> : <>
         <div className="divide-y divide-gray-100">{query.data?.rows.map((r: Record<string, any>) => <div className="py-3 text-base break-words" key={r.id}>{renderRow(r)}</div>)}</div>{query.data?.rows.length === 0 && <p className="text-base text-brand-secondary">Belum ada catatan.</p>}<COPagination page={page} total={query.data?.total ?? '0'} pending={query.isFetching} onPage={setPage}/>
         </>}</COCard>;
 }

@@ -2,6 +2,7 @@ import { Notice } from '../../../components/ui/Feedback'
 import { Button } from '../../../components/ui/Button'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { canConfigureLeaveCalendar } from '../../../lib/leave/contracts'
 import type { LeaveContext, LeaveResult, Page, Recovery } from '../../../lib/leave/contracts'
 import type { LeaveAdminTarget } from '../../../lib/leave/adminContracts'
 import type { LeaveMemberSetup } from '../../../lib/leave/setupContracts'
@@ -22,9 +23,9 @@ import type { LeaveReadState } from './LeaveRequestForm'
 type PanelProps={actorId:string;context:LeaveContext;target:LeaveAdminTarget;readState:LeaveReadState;onDirtyChange:(dirty:boolean)=>void}
 type CommandTransport<C>={send:(command:C)=>Promise<LeaveResult>;hasUnresolved:()=>boolean;reconcile:()=>Promise<Recovery>;acknowledgeRecovered:()=>void}
 /** The existing canonical transports own identity, retry fences and minimal recovery storage. */
-export function useAdminCommand<C>({actorId,context,formScope,readState,fresh,draftDirty,onDirtyChange,makeTransport,onConfirmed,onReceipt}:{actorId:string;context:LeaveContext;formScope:string;readState:LeaveReadState;fresh:boolean;draftDirty:boolean;onDirtyChange:(dirty:boolean)=>void;makeTransport:(authorize:()=>Promise<void>)=>CommandTransport<C>;onConfirmed:()=>Promise<unknown>;onReceipt?:()=>void}){
+export function useAdminCommand<C>({actorId,context,formScope,readState,fresh,draftDirty,onDirtyChange,makeTransport,onConfirmed,onReceipt,authority='member'}:{authority?:'member'|'calendar';actorId:string;context:LeaveContext;formScope:string;readState:LeaveReadState;fresh:boolean;draftDirty:boolean;onDirtyChange:(dirty:boolean)=>void;makeTransport:(authorize:()=>Promise<void>)=>CommandTransport<C>;onConfirmed:()=>Promise<unknown>;onReceipt?:()=>void}){
  const client=useQueryClient(),[recovery,setRecovery]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),working=useRef(false),alive=useRef(true)
- const transport=useMemo(()=>makeTransport(()=>runLeaveInteraction(client,actorId,context.scopeVersion,live=>{if(!alive.current||live.memberKind==='director')throw new Error('Akses pengaturan berubah.')})),[actorId,context.scopeVersion,formScope,client])
+ const transport=useMemo(()=>makeTransport(()=>runLeaveInteraction(client,actorId,context.scopeVersion,live=>{if(!alive.current||(authority==='calendar'?!canConfigureLeaveCalendar(live):live.memberKind==='director'))throw new Error('Akses pengaturan berubah.')})),[actorId,context.scopeVersion,formScope,client,authority])
  useEffect(()=>{alive.current=true;setRecovery(transport.hasUnresolved());return()=>{alive.current=false}},[transport])
  useSetupUnsaved(recovery)
  useEffect(()=>{onDirtyChange(draftDirty||recovery);return()=>onDirtyChange(false)},[draftDirty,recovery,onDirtyChange])

@@ -1,3 +1,4 @@
+import { LoadingState } from '../../components/ui/LoadingState'
 import { Button } from '../../components/ui/Button'
 import { ActionLink } from '../../components/ui/ActionLink'
 import { MainContent } from '../../components/ui/MainContent'
@@ -139,7 +140,7 @@ function DailyScheduleContent() {
       <FilterBar label="Tanggal jadwal saya" className="mx-4 my-3 md:mx-8"><Field id="daily-visit-date" label="Lihat tanggal kunjungan">{control => <input {...control} type="date" value={selectedDate} onChange={e => { if (e.target.value) setSelectedDate(e.target.value) }} />}</Field></FilterBar>
       {/* Day tabs */}
       <div className="bg-white border-b border-gray-100 px-4 md:px-8">
-        <div className="flex gap-1 overflow-x-auto">
+        <div className="flex items-start gap-1 overflow-x-auto">
           {dates.map((date, i) => {
             const daySchedules = allSchedules?.filter(s => s.scheduled_date === date) ?? []
             const isSelected = selectedDate === date
@@ -149,7 +150,7 @@ function DailyScheduleContent() {
                 variant="quiet"
                 aria-pressed={isSelected}
                 onClick={() => setSelectedDate(date)}
-                className={`flex flex-col items-center border-b-2 transition-colors whitespace-nowrap ${
+                className={`flex-none w-max max-w-none flex flex-col items-center border-b-2 transition-colors whitespace-nowrap ${
                   isSelected
                     ? 'border-brand-primary text-brand-primary underline decoration-brand-primary underline-offset-4'
                     : 'border-transparent text-brand-secondary hover:text-gray-700'
@@ -173,7 +174,7 @@ function DailyScheduleContent() {
         {profile?.id && <PendingVisitRequests actorId={profile.id} date={selectedDate} />}
         {showProposal && <VisitProposalForm key={`${proposalSchedule?.id ?? 'new'}:${proposalRevision}`} source={proposalSchedule ?? undefined} onSubmitted={setRequestReceipt} onDirtyChange={setProposalDirty} confirmDiscard={unsaved.confirmDiscard} onDone={() => { setProposalDirty(false); setShowProposal(false) }} />}
 
-        {isLoading && <Notice tone="info" title="Memuat jadwal Anda..." />}
+        {isLoading && <LoadingState title="Memuat jadwal Anda..." shape="list" />}
         {isError && <Notice tone="error" title="Gagal memuat jadwal. Data belum dapat ditampilkan." actions={<Button size="compact" variant="secondary" onClick={() => refetch()}>Coba lagi</Button>} />}
         {!isLoading && !isError && schedules.length === 0 && <EmptyState title={`Tidak ada kunjungan dijadwalkan untuk ${visitDateLabel(selectedDate)}.`}><p>Periksa kembali nanti atau hubungi manajer Anda.</p></EmptyState>}
 
@@ -313,3 +314,4 @@ function DailyScheduleContent() {
     </div>
   )
 }
+

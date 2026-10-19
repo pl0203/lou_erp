@@ -105,7 +105,7 @@ test.each(['sales_person', 'sales_manager'])('%s retains its Sales operational l
   state.role = role; mount(<GirardNav />, '/girard/schedule')
   expect(screen.getByRole('link', { name: 'Promosi' }).getAttribute('href')).toBe('/girard/promotions')
   expect(screen.getByRole('link', { name: 'Riwayat Kunjungan Saya' }).getAttribute('href')).toBe('/girard/visit-history')
-  expect(screen.getByRole('link', { name: 'Riwayat Pesanan' }).getAttribute('href')).toBe('/girard/my-orders')
+  expect(screen.queryByRole('link', { name: 'Riwayat Pesanan' })).toBeNull()
 })
 
 test('mobile drawer closes with Escape and returns focus to its opener', () => {

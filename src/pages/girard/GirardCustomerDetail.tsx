@@ -1,3 +1,4 @@
+import { LoadingState } from '../../components/ui/LoadingState'
 import { Button } from '../../components/ui/Button'
 import { MainContent } from '../../components/ui/MainContent'
 import { PageHeader } from '../../components/ui/PageHeader'
@@ -62,7 +63,7 @@ function CustomerDetailView({ id, identity, enabled }: { id?: string; identity: 
     return (
       <div className="min-h-screen bg-brand-canvas">
         <GirardNav />
-        <MainContent className="p-4 md:p-8"><Notice tone="info" title="Memuat pelanggan..." /></MainContent>
+        <MainContent className="p-4 md:p-8"><LoadingState title="Memuat pelanggan..." shape="detail" /></MainContent>
       </div>
     )
   }

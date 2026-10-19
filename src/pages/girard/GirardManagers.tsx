@@ -1,6 +1,7 @@
+import { LoadingState } from '../../components/ui/LoadingState'
 import { PageHeader } from '../../components/ui/PageHeader'
 import { ActionLink } from '../../components/ui/ActionLink'
-import { EmptyState, Notice } from '../../components/ui/Feedback'
+import { EmptyState } from '../../components/ui/Feedback'
 import { RecordList } from '../../components/ui/RecordList'
 import { SummaryList } from '../../components/ui/SummaryList'
 import { MainContent } from '../../components/ui/MainContent'
@@ -78,7 +79,7 @@ export default function GirardManagers() {
 
       <div className="px-4 md:px-8 py-6">
         {isLoading && (
-          <Notice tone="info" title="Memuat..." />
+          <LoadingState title="Memuat..." shape="list" />
         )}
 
         {!isLoading && managers?.length === 0 && (

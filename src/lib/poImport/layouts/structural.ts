@@ -86,9 +86,8 @@ export function headerFields(p: ParsedPO, page: PageText, pages: PageText[] = [p
         p.issues.push(issue('orderDate', 'invalid-date', 'Tanggal sumber tidak valid.'));
     if (p.expiry.raw && !p.expiry.value)
         p.issues.push(issue('expiry', 'invalid-date', 'Tanggal expiry sumber tidak valid.'));
-    if (!p.currency.value)
-        p.issues.push(issue('currency', 'currency-unknown', 'Mata uang tidak tertulis; pastikan harga menggunakan IDR.'));
-    else if (p.currency.value !== 'IDR')
+    // This Indonesia-only business uses IDR when no currency is printed. Keep source evidence unchanged.
+    if (p.currency.value && p.currency.value !== 'IDR')
         p.issues.push(issue('currency', 'foreign-currency', 'Harga mata uang asing tidak dapat dikonversi otomatis.', true));
     for (const [key, value] of Object.entries({ poNumber: p.poNumber, buyer: p.buyer, orderDate: p.orderDate })) {
         if (!value.raw)

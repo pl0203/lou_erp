@@ -1,3 +1,4 @@
+import { LoadingState } from '../ui/LoadingState'
 import { useEffect, useId, useRef, useState } from 'react';
 import { coKeys } from '../../lib/co/queryKeys';
 import { completeCORead, fetchCOReport, fetchCOReportRows } from '../../lib/co/rpc';
@@ -409,6 +410,6 @@ export function COReportFields({ work, allocation }: {
             { label: 'Tanggal diterima', value: work.meta.received_date ? <time dateTime={work.meta.received_date}>{formatDisplayDate(work.meta.received_date)}</time> : '—' },
             { label: 'Catatan laporan', value: work.meta.notes || '—' },
         ]}/>}
-    {work.rowsRead.isError && <COFailure error={work.rowsRead.error} retry={() => void work.rowsRead.refetch()}/>} {work.rowsRead.data ? <COMonthlySalesGrid rows={work.rows} entries={work.entries} editable={work.editing} disabled={work.frozen || work.rowsRead.isFetching} onChange={work.editRow} page={work.page} total={work.header!.row_count} onPage={work.setPage} allocation={allocation}/> : !work.rowsRead.isError && <p role="status">Memuat baris laporan…</p>}
+    {work.rowsRead.isError && <COFailure error={work.rowsRead.error} retry={() => void work.rowsRead.refetch()}/>} {work.rowsRead.data ? <COMonthlySalesGrid rows={work.rows} entries={work.entries} editable={work.editing} disabled={work.frozen || work.rowsRead.isFetching} onChange={work.editRow} page={work.page} total={work.header!.row_count} onPage={work.setPage} allocation={allocation}/> : !work.rowsRead.isError && <LoadingState title="Memuat baris laporan…" shape="compact" />}
     {work.header && <p className="mt-4 text-sm">{work.header.entered_count} dari {work.header.row_count} baris tersimpan terisi · {work.header.missing_count} belum diisi</p>}{work.error && <COFailure error={work.error}/>} {work.stale && <Notice tone="warning" title="Versi atau sumber berubah. Isian tetap disimpan di editor; perbarui sumber dan tinjau kembali."/>}</Section>;
 }

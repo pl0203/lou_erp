@@ -1,3 +1,4 @@
+import { LoadingState } from '../../components/ui/LoadingState'
 import { PageHeader } from '../../components/ui/PageHeader'
 import { Button } from '../../components/ui/Button'
 import { Field } from '../../components/ui/Field'
@@ -81,7 +82,7 @@ export default function GirardTeam() {
         </FilterBar>
         {isError && <Notice tone="error" title="Data tim tidak tersedia." actions={<Button size="compact" variant="secondary" onClick={() => { void refetchTeam(); if (teamIds.length) void refetchActivity() }}>Coba lagi</Button>} />}
         {!isError && isLoading && (
-          <Notice tone="info" title="Memuat data tim..." />
+          <LoadingState title="Memuat data tim..." shape="list" />
         )}
 
         {!isError && !isLoading && team?.length === 0 && (

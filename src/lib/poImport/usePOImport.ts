@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Customer, FormDraft, Issue, LocalDocument, ParsedPO, Product, Progress, ReviewDecision } from './contracts'
 import { parsePODocument } from './parse'
-import { matchPODraft, skuKey } from './matching'
+import { matchPODraft } from './matching'
 import { preparePOFormDraft, isFinancialReviewIssue } from './review'
 import { initialReviewNotes } from './reviewNotes'
 
@@ -29,13 +29,15 @@ const readFailureMessage = (error: unknown) => {
   const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : ''
   return (Object.hasOwn(readFailureMessages, code) ? readFailureMessages[code] : null) ?? 'Dokumen tidak dapat dibaca. Gunakan satu PDF (maksimal 5 halaman), JPEG, PNG, atau WebP statis hingga 10 MB; atau isi PO manual.'
 }
-const catalogKey = (context: ImportContext) => JSON.stringify([context.customers.map(c => [c.id, c.name, c.pricing_tier]), context.products.map(p => [p.id, p.name, p.sku, p.size, p.harga_pokok, p.luar_kota, p.dalam_kota, p.depo_bangunan])])
+const catalogKey = (context: ImportContext) => JSON.stringify([[...context.customers].sort((a, b) => a.id.localeCompare(b.id)).map(c => [c.id, c.name, c.pricing_tier]), [...context.products].sort((a, b) => a.id.localeCompare(b.id)).map(p => [p.id, p.name, p.sku, p.size, p.harga_pokok, p.luar_kota, p.dalam_kota, p.depo_bangunan])])
 function initialDecision(po: ParsedPO, context: ImportContext): ReviewDecision {
   const matches = matchPODraft(po, context.customers, context.products)
-  return { customerId: matches.customerIds.length === 1 ? matches.customerIds[0] : '', poNumber: po.poNumber.value ?? '', orderDate: po.orderDate.value ?? '', expiry: po.expiry.value ?? '', notes: initialReviewNotes(po), idrConfirmed: false, acknowledgedIssueIds: [], rows: Object.fromEntries(po.rows.map(row => {
-    const candidates = matches.productIdsByRow[row.id] ?? []
-    const suggested = candidates.length === 1 ? context.products.find(p => p.id === candidates[0]) : undefined
-    const product = suggested && row.sku.value && skuKey(row.sku.value) === skuKey(suggested.sku) && !row.issues.some(issue => issue.code === 'source-sku-review') ? suggested : undefined
+  return { customerId: matches.customerIds.length === 1 ? matches.customerIds[0] : '', poNumber: po.poNumber.value ?? '', orderDate: po.orderDate.value ?? '', expiry: po.expiry.value ?? '', notes: initialReviewNotes(po), acknowledgedIssueIds: [], rows: Object.fromEntries(po.rows.map(row => {
+    const exactIds = matches.exactSkuIdsByRow[row.id] ?? []
+    // Fuzzy/name candidates cannot defeat a unique trusted exact code, or resolve
+    // an exact-code collision. Existing buyer-code provenance still requires choice.
+    const product = exactIds.length === 1 && !row.issues.some(issue => issue.code === 'source-sku-review')
+      ? context.products.find(p => p.id === exactIds[0]) : undefined
     return [row.id, { productId: product?.id ?? null, manual: false, sku: product?.sku ?? row.sku.value ?? row.sku.raw, name: product?.name ?? row.name.value ?? row.name.raw, quantity: row.quantity.value ?? '', unitPrice: row.unitPrice.value, unitConfirmed: false }]
   })) }
 }
@@ -48,8 +50,12 @@ export function usePOImport(context: ImportContext, onApply: ImportApply, onDirt
   const job = useRef<{ controller: AbortController; timer: ReturnType<typeof setTimeout> } | null>(null)
   const heldDocument = useRef<LocalDocument | null>(null)
   const mounted = useRef(true)
-  const key = catalogKey(context)
-  const live = useRef({ ...context, key })
+  const observedKey = catalogKey(context)
+  const live = useRef({ ...context, key: observedKey })
+  // Unavailable options during a refresh are not an authoritative empty catalogue.
+  // Keep the review binding until current options return; disabled still fences
+  // editing/Apply and invalidates every pending acceptance via contextVersion.
+  const key = context.disabled && live.current.actorKey === context.actorKey ? live.current.key : observedKey
   if (live.current.key !== key || live.current.actorKey !== context.actorKey || live.current.disabled !== context.disabled) contextVersion.current++
   live.current = { ...context, key }
   const release = () => {
@@ -79,7 +85,7 @@ export function usePOImport(context: ImportContext, onApply: ImportApply, onDirt
   const start = async (file: File) => {
     if (live.current.disabled || !live.current.actorKey) return
     generation.current++; revision.current++; release()
-    const id = generation.current, actor = live.current.actorKey, catalog = live.current.key
+    const id = generation.current, actor = live.current.actorKey, catalog = live.current.key, sourceContext = live.current
     const controller = new AbortController()
     setState({ ...empty(), phase: 'reading', progress: { stage: 'loading', page: 0, pages: 0 } })
     const isCurrent = () => mounted.current && id === generation.current && actor === live.current.actorKey && catalog === live.current.key && !controller.signal.aborted
@@ -95,10 +101,12 @@ export function usePOImport(context: ImportContext, onApply: ImportApply, onDirt
       const document = await readPODocument(file, { signal: controller.signal, onProgress: progress => {
         if (isCurrent()) setState(prev => ({ ...prev, progress }))
       } })
-      if (!isCurrent() || live.current.disabled) { document.dispose(); if (isCurrent()) { release(); setState({ ...empty(), phase: 'error', error: 'Katalog sedang diperbarui. Coba impor kembali setelah selesai.' }) }; return }
+      if (!isCurrent()) { document.dispose(); return }
       heldDocument.current = document
       const parsed = parsePODocument(document.pages)
-      const decision = initialDecision(parsed, live.current)
+      // A completed local read can wait for catalogue verification without losing
+      // its document. These suggestions cannot be applied while unavailable.
+      const decision = initialDecision(parsed, live.current.disabled ? sourceContext : live.current)
       clearTimeout(timer); job.current = null
       setState({ ...empty(), phase: 'review', document, parsed, decision })
     } catch (error) {

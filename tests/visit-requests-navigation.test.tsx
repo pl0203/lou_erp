@@ -4,6 +4,8 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import GirardNav from '../src/components/GirardNav'
 import AppNavigation from '../src/components/AppNavigation'
 
+vi.mock('../src/lib/visitRequestBadge', () => ({ usePendingVisitReviewCount: () => undefined }))
+
 const state = vi.hoisted(() => ({ role: 'executive' }))
 vi.mock('../src/lib/AuthContext', () => ({ useAuth: () => ({ profile: { id: 'actor', role: state.role, full_name: 'Example User' }, signOut: vi.fn() }) }))
 beforeEach(() => { localStorage.clear(); state.role = 'executive' })
@@ -39,3 +41,4 @@ test.each((['athel', 'girard', 'ihr'] as const).flatMap(module => ['expanded', '
  expect(option.getAttribute('href')).toBe({ athel: '/athel/po', girard: '/girard/schedule', ihr: '/ihr/users' }[module])
  expect(icon?.innerHTML).toBe(option.querySelector('svg')?.innerHTML)
 })
+

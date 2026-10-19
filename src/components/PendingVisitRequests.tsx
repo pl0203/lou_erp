@@ -1,3 +1,4 @@
+import { LoadingState } from './ui/LoadingState'
 import { Button } from './ui/Button'
 import { ActionLink } from './ui/ActionLink'
 import { Section } from './ui/Section'
@@ -8,7 +9,7 @@ import { readCompleteQuery } from '../lib/reads/completeQuery'
 import { visitDateLabel } from '../lib/visitUsability'
 export default function PendingVisitRequests({ actorId, date }: { actorId: string; date: string }) {
   const pending = useQuery({ queryKey: ['own_pending_visit_requests', actorId, date], queryFn: ({ signal }) => readCompleteQuery((offset, limit) => supabase.from('visit_requests').select('id', { count: 'exact' }).eq('requester_id', actorId).eq('scheduled_date', date).eq('status', 'pending').order('id').range(offset, offset + limit - 1), row => row.id, signal), enabled: !!actorId })
-  if (pending.isPending) return <Notice tone="info" title="Memuat status permintaan kunjungan..." />
+  if (pending.isPending) return <LoadingState title="Memuat status permintaan kunjungan..." shape="compact" />
   if (pending.isError) return <Notice tone="error" title="Status permintaan belum tersedia." actions={<Button size="compact" variant="secondary" onClick={() => pending.refetch()}>Coba lagi status permintaan</Button>} />
   if (!pending.data?.length) return null
   return <Section title={`${pending.data.length} permintaan menunggu persetujuan`}>

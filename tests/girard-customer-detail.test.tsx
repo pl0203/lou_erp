@@ -6,7 +6,7 @@ import { Link, MemoryRouter, Route, Routes } from 'react-router-dom'
 const state = vi.hoisted(() => ({
   actor: 'sales-a', role: 'sales_person', customerMissing: false, customerError: false,
   visitError: false, orderError: false, evidenceError: false, scheduleError: false, deliveryError: false, photoError: false,
-  empty: false, noSchedule: false, noEvidence: false, emptyEvidence: false, customerGate: null as Promise<void> | null,
+  expectedDeliveryDate: '2026-10-08' as string | null, empty: false, noSchedule: false, noEvidence: false, emptyEvidence: false, customerGate: null as Promise<void> | null,
   visitGate: null as Promise<void> | null, evidenceGate: null as Promise<void> | null, photoGate: null as Promise<void> | null,
   evidenceRequests: [] as string[], deliveryRequests: [] as string[], photoRequests: [] as string[],
 }))
@@ -39,7 +39,7 @@ vi.mock('../src/lib/supabase', () => ({ supabase: {
             await state.visitGate
             return resolve({ data: state.empty ? [] : Array.from({ length: 11 }, (_, i) => ({ id: `visit-${customerId}-${i}`, checked_in_at: '2026-10-01T10:00:00Z', users: { full_name: `Rep ${actor} ${i}` } })).slice(offset, last + 1), count: state.empty ? 0 : 11, error: state.visitError ? new Error('private backend error') : null })
           }
-          if (table === 'purchase_orders') return resolve({ data: state.empty ? [] : Array.from({ length: 21 }, (_, i) => ({ id: `po-${customerId}-${i}`, po_number: `PO ${customerId} ${i}`, status: 'in_progress', total_value: 1200000, order_date: '2026-10-01', expected_delivery_date: '2026-10-08' })).slice(offset, last + 1), count: state.empty ? 0 : 21, error: state.orderError ? new Error('private backend error') : null })
+          if (table === 'purchase_orders') return resolve({ data: state.empty ? [] : Array.from({ length: 21 }, (_, i) => ({ id: `po-${customerId}-${i}`, po_number: `PO ${customerId} ${i}`, status: 'in_progress', total_value: 1200000, order_date: '2026-10-01', expected_delivery_date: state.expectedDeliveryDate })).slice(offset, last + 1), count: state.empty ? 0 : 21, error: state.orderError ? new Error('private backend error') : null })
           if (table === 'surat_jalan') {
             state.deliveryRequests.push(filters.purchase_order_id)
             return resolve({ data: state.empty ? [] : Array.from({ length: 21 }, (_, i) => ({ id: `sj-${i}`, sj_number: `SJ ${filters.purchase_order_id} ${i}`, sj_date: '2026-10-02', sj_date_received: '2026-10-03', sj_date_returned: '2026-10-04', voided_at: i === 0 ? '2026-10-02T00:00:00Z' : null, void_reason: i === 0 ? 'Correction' : null })).slice(offset, last + 1), count: state.empty ? 0 : 21, error: state.deliveryError ? new Error('private backend error') : null })
@@ -64,7 +64,7 @@ function mount() {
 }
 function deferred() { let resolve!: () => void; const promise = new Promise<void>(done => { resolve = done }); return { promise, resolve } }
 beforeEach(() => {
-  Object.assign(state, { actor: 'sales-a', role: 'sales_person', customerMissing: false, customerError: false, visitError: false, orderError: false, evidenceError: false, scheduleError: false, deliveryError: false, photoError: false, empty: false, noSchedule: false, noEvidence: false, emptyEvidence: false, customerGate: null, visitGate: null, evidenceGate: null, photoGate: null, evidenceRequests: [], deliveryRequests: [], photoRequests: [] })
+  Object.assign(state, { actor: 'sales-a', role: 'sales_person', customerMissing: false, customerError: false, visitError: false, orderError: false, evidenceError: false, scheduleError: false, deliveryError: false, photoError: false, expectedDeliveryDate: '2026-10-08', empty: false, noSchedule: false, noEvidence: false, emptyEvidence: false, customerGate: null, visitGate: null, evidenceGate: null, photoGate: null, evidenceRequests: [], deliveryRequests: [], photoRequests: [] })
 })
 afterEach(() => { cleanup(); clients.splice(0).forEach(client => client.clear()) })
 
@@ -126,6 +126,19 @@ test('orders expand paged SJ history inline, including void and received/returne
   const region = screen.getByRole('region', { name: 'Riwayat pengiriman PO a 0' })
   fireEvent.click(within(region).getByRole('button', { name: 'Berikutnya' })); expect(await screen.findByText('SJ po-a-0 20')).toBeTruthy()
   expect(document.querySelector('a[href^="/athel"]')).toBeNull()
+})
+test.each(['2026-10-08', null])('order history omits the misleading delivery plan for expiry %s without losing order or SJ details', async expectedDeliveryDate => {
+  state.expectedDeliveryDate = expectedDeliveryDate
+  mount(); await screen.findByText('Customer a'); fireEvent.click(screen.getByRole('button', { name: 'Pesanan' })); await screen.findByText('PO a 0')
+  expect(screen.queryAllByText(/Rencana pengiriman/i)).toHaveLength(0)
+  expect(screen.queryByText(/Tanggal Kedaluwarsa PO/i)).toBeNull()
+  expect(screen.queryAllByText('8 Oktober 2026')).toHaveLength(0)
+  const order = screen.getByText('PO a 0').closest('article')!
+  expect(within(order).getByText('Dalam Proses')).toBeTruthy()
+  expect(within(order).getByText('Rp 1.200.000')).toBeTruthy()
+  expect(within(order).getByText('Tanggal PO: 1 Oktober 2026')).toBeTruthy()
+  fireEvent.click(within(order).getByRole('button', { name: 'Lihat pengiriman / SJ' }))
+  expect(await screen.findByRole('region', { name: 'Riwayat pengiriman PO a 0' })).toBeTruthy()
 })
 test('orders error is retryable and never shown as no orders', async () => {
   state.orderError = true; mount(); await screen.findByText('Customer a'); fireEvent.click(screen.getByRole('button', { name: 'Pesanan' }))

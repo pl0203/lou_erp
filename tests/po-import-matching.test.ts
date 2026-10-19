@@ -11,7 +11,7 @@ function ready(input=pricedIndent()) {
  const parsed=parsePODocument(input)
  const catalog=parsed.rows.map((r,i)=>({...makeProduct(`product-${i}`,r.sku.value||`ERP-${i}`,r.name.value!),luar_kota:r.unitPrice.value===null?120000:Number(r.unitPrice.value)}))
  const cs=[{...customers[0],name:parsed.buyer.value!},customers[1]]
- const decision:ReviewDecision={customerId:'buyer',poNumber:parsed.poNumber.value!,orderDate:parsed.orderDate.value!||'2028-04-11',expiry:'',notes:parsed.notes,idrConfirmed:true,acknowledgedIssueIds:parsed.issues.filter(i=>!i.blocking).map(i=>i.id),rows:Object.fromEntries(parsed.rows.map((r,i)=>[r.id,{productId:catalog[i].id,manual:false,sku:catalog[i].sku,name:catalog[i].name,quantity:r.quantity.value || '1',unitPrice:r.unitPrice.value,unitConfirmed:true}]))}
+ const decision:ReviewDecision={customerId:'buyer',poNumber:parsed.poNumber.value!,orderDate:parsed.orderDate.value!||'2028-04-11',expiry:'',notes:parsed.notes,acknowledgedIssueIds:parsed.issues.filter(i=>!i.blocking).map(i=>i.id),rows:Object.fromEntries(parsed.rows.map((r,i)=>[r.id,{productId:catalog[i].id,manual:false,sku:catalog[i].sku,name:catalog[i].name,quantity:r.quantity.value || '1',unitPrice:r.unitPrice.value,unitConfirmed:true}]))}
  decision.acknowledgedIssueIds.push(...preparePOFormDraft(parsed,decision,cs,catalog).issues.filter(isFinancialReviewIssue).map(i=>i.id))
  return {parsed,catalog,cs,decision,run:()=>preparePOFormDraft(parsed,decision,cs,catalog)}
 }
@@ -25,7 +25,7 @@ test('only names collapse whitespace; SKU punctuation and leading zeros are sign
  expect(matchPODraft(x.parsed,x.cs,products).productIdsByRow[x.parsed.rows[0].id]).toEqual(['exact','name'])
 })
 test('exact customer/product collisions remain multiple candidates for review',()=>{
- const x=ready();expect(matchPODraft(x.parsed,[...x.cs,{...x.cs[0],id:'collision'}],[...x.catalog,{...x.catalog[0],id:'collision'}])).toMatchObject({customerIds:['buyer','collision'],productIdsByRow:{[x.parsed.rows[0].id]:['product-0','collision']}})
+ const x=ready();expect(matchPODraft(x.parsed,[...x.cs,{...x.cs[0],id:'collision'}],[...x.catalog,{...x.catalog[0],id:'collision'}])).toMatchObject({customerIds:['buyer','collision'],exactSkuIdsByRow:{[x.parsed.rows[0].id]:['collision','product-0']},productIdsByRow:{[x.parsed.rows[0].id]:['collision','product-0']}})
 })
 test('barcode evidence cannot automatically identify a catalog product',()=>{
  const x=ready(unpricedIndent());const products=[makeProduct('bar',x.parsed.rows[0].barcode.value!,'different')]
@@ -42,11 +42,11 @@ test('stale catalog name or SKU cannot be silently substituted',()=>{
  const x=ready();x.catalog[0].sku='NEW-SKU';expect(x.run().draft).toBeNull()
  const y=ready();y.catalog[0].name='Renamed catalog item';expect(y.run().draft).toBeNull()
 })
-test('explicitly reviewed source prices persist and current catalog differences are warnings',()=>{
- const x=ready();x.catalog[0].luar_kota=98765;expect(x.run().draft).toBeNull();acknowledgeFinance(x);const result=x.run();expect(result.draft!.lineItems[0].unit_price).toBe(120000);expect(result.issues.some(i=>i.code==='catalog-price-difference')).toBe(true)
+test('explicitly reviewed source prices persist without obsolete catalogue comparisons',()=>{
+ const x=ready();x.catalog[0].luar_kota=98765;acknowledgeFinance(x);const result=x.run();expect(result.draft!.lineItems[0].unit_price).toBe(120000);expect(result.issues.some(i=>i.code==='catalog-price-difference')).toBe(false)
 })
 test('missing selected-tier catalog price never substitutes a different tier',()=>{
- const x=ready();x.cs[0].pricing_tier='dalam_kota';expect(x.run().draft).toBeNull();acknowledgeFinance(x);const result=x.run();expect(result.draft!.lineItems[0].unit_price).toBe(120000);expect(result.issues.some(i=>i.code==='catalog-price-missing')).toBe(true)
+ const x=ready();x.cs[0].pricing_tier='dalam_kota';acknowledgeFinance(x);const result=x.run();expect(result.draft!.lineItems[0].unit_price).toBe(120000);expect(result.issues.some(i=>i.code==='catalog-price-missing')).toBe(false)
 })
 test('acknowledged blank price applies NaN, and ordinary Save validation still rejects it',()=>{
  const x=ready(unpricedIndent());const first=x.parsed.rows[0]
@@ -66,9 +66,14 @@ test('zero selected-tier catalog value remains valid and is never considered mis
  const x=ready();x.cs[0].pricing_tier='harga_pokok';x.decision.rows[x.parsed.rows[0].id].unitPrice='0';x.decision.acknowledgedIssueIds.push(`${x.parsed.rows[0].id}:zero-price`)
  expect(x.run().issues.some(i=>i.field===`rows.${x.parsed.rows[0].id}.unitPrice` && i.code==='catalog-price-missing')).toBe(false)
 })
-test('manual row is explicit, retains user reviewed name and SKU, and needs no catalog creation',()=>{
+test('manual import escape is refused even with complete reviewed values',()=>{
  const x=ready();x.decision.rows[x.parsed.rows[0].id]={productId:null,manual:true,sku:'MANUAL-007',name:'User reviewed trim',quantity:'3',unitPrice:'12.34',unitConfirmed:true}
- acknowledgeFinance(x);const result=x.run();expect(result.draft!.lineItems[0]).toMatchObject({product_id:null,sku:'MANUAL-007',product_name:'User reviewed trim',quantity:3,unit_price:12.34})
+ acknowledgeFinance(x);expect(x.run().draft).toBeNull()
+})
+test('a choice removed from enabled import options cannot be applied or suggested',()=>{
+ const x=ready();const removed=x.catalog.shift()!
+ expect(matchPODraft(x.parsed,x.cs,x.catalog).productIdsByRow[x.parsed.rows[0].id]).not.toContain(removed.id)
+ expect(x.run().draft).toBeNull()
 })
 test('missing product mapping cannot become an implicit manual row',()=>{
  const x=ready();x.decision.rows[x.parsed.rows[0].id].productId=null;expect(x.run().draft).toBeNull()
@@ -91,9 +96,9 @@ test('reviewed positive integer quantity required; no fractional or unit convers
 test('reviewed money stays canonical and honors existing precision and maximum rules',()=>{
  for(const raw of ['-1','1e3','1,234','12.001','Infinity','1000000000000']){const x=ready();x.decision.rows[x.parsed.rows[0].id].unitPrice=raw;expect(x.run().draft).toBeNull()}
 })
-test('implicit currency needs explicit IDR confirmation; foreign source blocks conversion',()=>{
- const x=ready();x.decision.idrConfirmed=false;expect(x.run().draft).toBeNull()
- x.parsed.currency={raw:'USD',value:'USD',page:1};x.decision.idrConfirmed=true;expect(x.run().draft).toBeNull()
+test('implicit currency defaults to IDR; explicit foreign source still blocks conversion',()=>{
+ const x=ready();expect(x.run().draft).not.toBeNull()
+ x.parsed.currency={raw:'USD',value:'USD',page:1};expect(x.run().draft).toBeNull()
 })
 test('expiry maps only to expectedDelivery, never to payment terms or delivery date',()=>{
  const x=ready(photoGrid());x.decision.expiry='2028-01-20';expect(x.run().draft!.expectedDelivery).toBe('2028-01-20')
@@ -127,9 +132,9 @@ test('coincidental exact buyer source code is a suggestion without ERP identity 
 test('barcode-only buyer document also labels source code evidence as unproven',()=>{
  const x=ready(unpricedIndent());expect(x.parsed.rows.every(r=>r.sku.value===null && r.issues.some(i=>i.code==='source-sku-review'))).toBe(true)
 })
-test('foreign price-column evidence blocks an IDR-confirmed reviewed draft',()=>{
+test('foreign price-column evidence blocks a reviewed IDR-business draft',()=>{
  const input=pricedIndent();input[0].tokens.find(t=>t.text==='Harga')!.text='Harga (USD)'
- const x=ready(input);expect(x.decision.idrConfirmed).toBe(true);expect(x.run().draft).toBeNull()
+ const x=ready(input);expect(x.run().draft).toBeNull()
 })
 test('a lost photo item cannot be applied by correcting merged fields and acknowledging all issues',()=>{
  const input=photoGrid();input[0].tokens=input[0].tokens.filter(t=>!((t.text==='3' && t.x===108) || t.text==='000710003' || t.text==='880010003'))
@@ -163,17 +168,18 @@ test('source tax and total differences require meaningful financial acknowledgem
  expect(result.draft).toBeNull();expect(result.issues.filter(i=>['tax-review','total-mismatch'].includes(i.code)).every(i=>i.blocking)).toBe(true)
  acknowledgeFinance(x);expect(x.run().draft).not.toBeNull()
 })
-test('new catalog warning must be shown and acknowledged before Apply',()=>{
- const x=ready();x.catalog[0].luar_kota=98765;const result=x.run();const warning=result.issues.find(i=>i.code==='catalog-price-difference')!
- expect(result.draft).toBeNull();expect(warning.blocking).toBe(true)
- acknowledgeFinance(x);expect(x.run().draft!.lineItems[0].unit_price).toBe(120000)
+test('catalogue prices are not a review requirement when the document price is valid',()=>{
+ const x=ready();x.catalog[0].luar_kota=98765;acknowledgeFinance(x);const result=x.run();
+ expect(result.issues.some(i=>i.code.startsWith('catalog-price'))).toBe(false)
+ expect(result.draft!.lineItems[0].unit_price).toBe(120000)
 })
-test('financial acknowledgement is bound to the current catalog amounts and customer tier',()=>{
+
+test('financial review binds reviewed values rather than unused catalogue tier amounts',()=>{
  const x=ready();acknowledgeFinance(x);expect(x.run().draft).not.toBeNull()
- const oldIds=[...x.decision.acknowledgedIssueIds];x.catalog[0].luar_kota=98765;const newIds=x.run().issues.filter(i=>financialCodes.includes(i.code)).map(i=>i.id)
- expect(x.run().draft).toBeNull();expect(newIds.some(id=>!oldIds.includes(id))).toBe(true)
- acknowledgeFinance(x);expect(x.run().draft).not.toBeNull();x.cs[0].pricing_tier='dalam_kota';expect(x.run().draft).toBeNull()
+ x.catalog[0].luar_kota=98765;x.cs[0].pricing_tier='dalam_kota'
+ expect(x.run().draft).not.toBeNull();expect(x.run().draft!.lineItems[0].unit_price).toBe(120000)
 })
+
 test('reviewed quantities recompute total warnings and invalidate prior financial acknowledgement',()=>{
  const x=ready();acknowledgeFinance(x);expect(x.run().draft).not.toBeNull()
  x.decision.rows[x.parsed.rows[0].id].quantity='9';const result=x.run();expect(result.draft).toBeNull();expect(result.issues.some(i=>i.code==='total-mismatch' && i.blocking)).toBe(true)

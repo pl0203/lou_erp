@@ -1,30 +1,33 @@
-import React from 'react'
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
-const state = vi.hoisted(() => ({ query: null as any, urls: [] as URL[] }))
-vi.mock('../../src/lib/procurementAccess', () => ({ useProcurementAccess: () => ({ready:true,capabilities:{customer_create:true,customer_edit:true,customer_delete:false,product_create:true,product_edit:true,product_delete:true},require:()=>{}}) }))
+const state = vi.hoisted(() => ({ requests: [] as { url: URL; body: any }[] }))
+vi.mock('../../src/lib/procurementAccess', () => ({ useProcurementAccess: () => ({ ready: false, capabilities: {}, require: () => {} }) }))
+vi.mock('../../src/lib/AuthContext', () => ({ useAuth: () => ({ user: { id: '11111111-1111-4111-8111-111111111111' }, profile: { id: '11111111-1111-4111-8111-111111111111', role: 'sales_person', is_active: true }, loading: false, error: null }) }))
 vi.mock('../../src/components/AthelNav', () => ({ default: () => null }))
-vi.mock('@tanstack/react-query', () => ({ useQuery: (options: any) => { state.query = options.queryFn; return { isLoading: true } }, useQueryClient: () => ({}), useMutation: () => ({}) }))
 vi.mock('../../src/lib/supabase', async () => {
   const { createClient } = await import('@supabase/supabase-js')
   return { supabase: createClient('https://example.invalid', 'synthetic-test-key', {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-    global: { fetch: async input => { state.urls.push(new URL(String(input))); return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json', 'Content-Range': '*/0' } }) } },
+    global: { fetch: async (input, init) => {
+      const body = JSON.parse(String(init?.body)), url = new URL(String(input)); state.requests.push({ url, body })
+      return new Response(JSON.stringify({ version: 1, actor_id: '11111111-1111-4111-8111-111111111111', role: 'sales_person', kind: body.p_kind,
+        purpose: body.p_purpose, status: body.p_status, search: body.p_search, page: body.p_page, page_size: body.p_page_size, total_count: '0', rows: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    } },
   }) }
 })
 import CustomerList from '../../src/pages/athel/CustomerList'
 import ProductList from '../../src/pages/athel/ProductList'
-beforeEach(() => { state.urls = []; vi.useFakeTimers() })
-afterEach(() => { cleanup(); vi.useRealTimers() })
-for (const [table, Page] of [['customers', CustomerList], ['products', ProductList]] as const) test(`${table} page uses stable ties and a literal server-side search`, async () => {
-  render(<Page />)
+let client: QueryClient
+beforeEach(() => { state.requests = []; client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }) })
+afterEach(() => { cleanup(); client.clear() })
+for (const [kind, Page] of [['customer', CustomerList], ['product', ProductList]] as const) test(`${kind} page passes literal search and stable catalogue contract to the validated RPC`, async () => {
+  render(<QueryClientProvider client={client}><Page /></QueryClientProvider>)
   fireEvent.change(screen.getByRole('textbox'), { target: { value: 'a%,x*"' } })
-  await act(async () => { await vi.advanceTimersByTimeAsync(300) })
-  const data = await state.query({ signal: new AbortController().signal })
-  expect(data.total).toBe(0)
-  expect(state.urls).toHaveLength(1)
-  expect(state.urls[0].pathname.endsWith(`/${table}`)).toBe(true)
-  expect(state.urls[0].searchParams.get('order')).toBe('name.asc,id.asc')
-  expect(state.urls[0].searchParams.get('or')).toContain('name.imatch."***=')
-  expect(state.urls[0].searchParams.get('limit')).toBe('10')
+  await waitFor(() => expect(state.requests.some(request => request.body.p_search === 'a%,x*"')).toBe(true))
+  const request = state.requests.at(-1)!
+  expect(request.url.pathname).toBe('/rest/v1/rpc/pilot_catalog_page_v1')
+  expect(request.url.searchParams.has('or')).toBe(false)
+  expect(request.body).toEqual({ p_kind: kind, p_purpose: 'catalogue', p_status: 'all', p_search: 'a%,x*"', p_page: 1, p_page_size: 10 })
+  expect(screen.getByText(kind === 'customer' ? '0 pelanggan' : '0 barang')).toBeTruthy()
 })

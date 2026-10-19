@@ -1,3 +1,4 @@
+import { LoadingState } from '../../../components/ui/LoadingState'
 import { FormActions } from '../../../components/ui/FormActions'
 import { Notice, EmptyState } from '../../../components/ui/Feedback'
 import { Button } from '../../../components/ui/Button'
@@ -86,10 +87,10 @@ function BalanceHistoryPanel({actorId,scopeVersion,accountId,year,version,readSt
  const denied=authority?.interaction===interaction&&authority.status==='denied'
  const pending=!ready||history.isPending||history.isFetching
  const retry=()=>setAttempt(attempt+1)
- if(readState!=='ready')return <section aria-label="Riwayat saldo"><p role="status" className="ui-notice ui-notice--info">Memeriksa akses riwayat...</p></section>
+ if(readState!=='ready')return <section aria-label="Riwayat saldo"><LoadingState title="Memeriksa akses riwayat..." shape="compact" className="ui-notice ui-notice--info" /></section>
  return <section aria-label="Riwayat saldo" className="ui-section space-y-3">
   <h2 className="font-semibold">Riwayat saldo {year}</h2>
-  {denied?<div role="alert" className="ui-notice ui-notice--error"><p>Akses riwayat belum dapat dikonfirmasi. Muat ulang sebelum melanjutkan.</p><Button size="compact" type="button" onClick={retry} variant="secondary">Coba lagi</Button></div>:pending?<p role="status" className="ui-notice ui-notice--info">Memuat riwayat...</p>:history.isError?<div role="alert" className="ui-notice ui-notice--error"><p>Riwayat belum dapat dimuat.</p><Button size="compact" type="button" onClick={retry} variant="secondary">Coba lagi</Button></div>:history.data&&<>
+  {denied?<div role="alert" className="ui-notice ui-notice--error"><p>Akses riwayat belum dapat dikonfirmasi. Muat ulang sebelum melanjutkan.</p><Button size="compact" type="button" onClick={retry} variant="secondary">Coba lagi</Button></div>:pending?<LoadingState title="Memuat riwayat..." shape="list" className="ui-notice ui-notice--info" />:history.isError?<div role="alert" className="ui-notice ui-notice--error"><p>Riwayat belum dapat dimuat.</p><Button size="compact" type="button" onClick={retry} variant="secondary">Coba lagi</Button></div>:history.data&&<>
    {!history.data.rows.length&&<EmptyState title="Belum ada entri."/>}
    <ul className="space-y-3">{history.data.rows.map(entry=><li key={entry.id} className="border-b pb-2"><p>{entry.date} · {labels[entry.kind]}</p><dl className="flex flex-wrap gap-4"><div><dt>Jatah</dt><dd>{formatSignedLeaveMinutes(entry.allowanceDelta)}</dd></div><div><dt>Reservasi</dt><dd>{formatSignedLeaveMinutes(entry.reservedDelta)}</dd></div><div><dt>Pemakaian</dt><dd>{formatSignedLeaveMinutes(entry.usedDelta)}</dd></div></dl></li>)}</ul>
    <FormActions ><Button size="compact" type="button" disabled={!cursors.length} onClick={()=>{setBefore(cursors.at(-1)!);setCursors(cursors.slice(0,-1))}} variant="quiet">Lebih baru</Button><Button size="compact" type="button" disabled={history.data.nextBefore===null} onClick={()=>{setCursors([...cursors,before]);setBefore(history.data.nextBefore)}} variant="quiet">Lebih lama</Button></FormActions>

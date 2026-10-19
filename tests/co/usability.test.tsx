@@ -86,14 +86,12 @@ test('audit summarizes the actor and customer reporting scope with readable UTC 
     expect(screen.getByRole('button', { name: 'Lihat perubahan' })).toBeTruthy();
 });
 
-test('manual item help explains customer reuse and the absence of an automatic global catalog entry', async () => {
+test('new-item guidance requires active catalogue selection while retaining old manual history', async () => {
     mount(<COForm mode="create"/>, '/athel/co/new');
     await chooseCustomer();
-    const button = screen.getByRole('button', { name: 'Tambah barang manual' });
-    const help = document.getElementById(button.getAttribute('aria-describedby')!);
-    expect(help?.textContent).toMatch(/identitas SKU pelanggan/);
-    expect(help?.textContent).toMatch(/CO berikutnya untuk pelanggan yang sama/);
-    expect(help?.textContent).toMatch(/tidak otomatis.*katalog produk/i);
+    expect(screen.queryByRole('button', { name: 'Tambah barang manual' })).toBeNull();
+    expect(screen.getByText(/Barang baru wajib dipilih dari katalog aktif/)).toBeTruthy();
+    expect(screen.getByText(/Barang manual lama tetap tersimpan/)).toBeTruthy();
 });
 
 test.each([
@@ -212,3 +210,4 @@ test('safely abandoned reconciliation shows a terminal result without an unresol
     expect(screen.queryByRole('button', { name: 'Pulihkan hasil penyimpanan' })).toBeNull();
     expect(unresolved).toBe(false);
 });
+

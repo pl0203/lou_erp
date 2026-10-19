@@ -1,19 +1,25 @@
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useNavigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { RESPONSE_EXAMPLES } from '../scalability/response-examples'
 
-const state = vi.hoisted(() => ({ actor: 'actor', role: 'executive', readGate: null as Promise<void> | null, reads: [] as { kind: string; actor: string; role: string; month: string; page: number }[], target: '200.00' as string | null, writeError: false, readError: false, authGate: null as Promise<void> | null, writeGate: null as Promise<void> | null, writes: [] as any[], getUser: vi.fn(), retry: vi.fn() }))
+const state = vi.hoisted(() => ({ actor: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role: 'executive', readGate: null as Promise<void> | null, reads: [] as { kind: string; actor: string; role: string; month: string; page: number }[], target: '200.00' as string | null, writeError: false, readError: false, authGate: null as Promise<void> | null, writeGate: null as Promise<void> | null, writes: [] as any[], getUser: vi.fn(), retry: vi.fn() }))
 vi.mock('../../src/components/GirardNav', () => ({ default: () => <nav aria-label="Navigasi modul">Sales</nav> }))
 vi.mock('../../src/components/sales/SalesMetricSummary', () => ({ SalesMetricsPanel: () => <p>Metrik Sales terpisah</p> }))
-vi.mock('../../src/lib/AuthContext', () => ({ useAuth: () => ({ profile: { id: state.actor, role: state.role } }) }))
+vi.mock('../../src/lib/AuthContext', () => ({ useAuth: () => ({ user: { id: state.actor }, profile: { id: state.actor, role: state.role, is_active: true }, loading: false, error: null }) }))
 vi.mock('../../src/lib/reads/reports', () => ({
   fetchEarliestSalesPerformanceMonth: async () => '2026-09',
   fetchCustomerPerformancePage: async (actor: string, role: string, month: string, page: number) => { state.retry(); state.reads.push({ kind: 'customer', actor, role, month, page }); await state.readGate; if (state.readError) throw new Error('read unavailable'); return { ...RESPONSE_EXAMPLES.pilot_customer_performance_v1, page, page_size: 2, total: 4, items: ['A', 'B'].map((letter, index) => ({ ...RESPONSE_EXAMPLES.pilot_customer_performance_v1.items[0], id: `customer-${letter}`, name: `Synthetic customer ${letter}`, sales_target: index === 0 ? state.target : '200.00' })) } },
   fetchSalesPerformancePage: async (actor: string, role: string, month: string, page: number) => { state.retry(); state.reads.push({ kind: 'sales', actor, role, month, page }); await state.readGate; if (state.readError) throw new Error('read unavailable'); return { ...RESPONSE_EXAMPLES.pilot_sales_performance_v1, page, page_size: 2, total: 4, items: ['A', 'B'].map((letter, index) => ({ ...RESPONSE_EXAMPLES.pilot_sales_performance_v1.items[0], id: `sales-${letter}`, full_name: `Synthetic salesperson ${letter}`, sales_target: index === 0 ? state.target : '200.00' })) } },
 }))
 vi.mock('../../src/lib/supabase', () => ({ supabase: {
+  supabaseUrl: 'https://legacy-target.example.invalid', rest: { url: 'https://legacy-target.example.invalid/rest/v1', schemaName: 'public' },
+  rpc: async (name: string) => {
+    if (name !== 'pilot_customer_target_write_access_v1') throw new Error(`Unexpected target RPC ${name}`)
+    if (!['sales_head', 'executive'].includes(state.role)) return { data: null, error: { code: '42501' } }
+    return { data: { version: 1, actor_id: state.actor, mode: 'legacy' }, error: null }
+  },
   auth: { getUser: async () => { state.getUser(); await state.authGate; return { data: { user: { id: state.actor } } } } },
   from: (table: string) => ({ upsert: async (payload: any, options: any) => { state.writes.push({ table, payload, options }); const error = state.writeError ? new Error('save unavailable') : null; await state.writeGate; return { error } } }),
 } }))
@@ -23,17 +29,24 @@ import { PerformanceActivityContent } from '../../src/pages/girard/GirardPerform
 import GirardDashboard from '../../src/pages/girard/GirardDashboard'
 
 const clients: QueryClient[] = []
-beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-12T12:00:00Z')); state.actor = 'actor'; state.role = 'executive'; state.readGate = null; state.reads = []; state.target = '200.00'; state.writeError = false; state.readError = false; state.authGate = null; state.writeGate = null; state.writes = []; state.getUser.mockReset(); state.retry.mockReset() })
+beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-12T12:00:00Z')); state.actor = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'; state.role = 'executive'; state.readGate = null; state.reads = []; state.target = '200.00'; state.writeError = false; state.readError = false; state.authGate = null; state.writeGate = null; state.writes = []; state.getUser.mockReset(); state.retry.mockReset() })
 afterEach(() => { cleanup(); clients.splice(0).forEach(client => client.clear()); vi.useRealTimers(); vi.unstubAllGlobals() })
 let currentView: ReturnType<typeof render>
-const dashboard = (client: QueryClient) => <QueryClientProvider client={client}><MemoryRouter><GirardDashboard /></MemoryRouter></QueryClientProvider>
+// Navigation is mocked to isolate editor lifetime. Drive the real router using
+// the sidebar's destinations instead of reviving removed in-page view buttons.
+let navigateDashboard: ReturnType<typeof useNavigate>
+function DashboardRouteDriver() { navigateDashboard = useNavigate(); return null }
+async function navigateToPanel(kind: 'customer' | 'sales') {
+  await act(async () => { await navigateDashboard(`/girard/dashboard?tab=${kind === 'sales' ? 'team' : 'customers'}`) })
+}
+const dashboard = (client: QueryClient) => <QueryClientProvider client={client}><MemoryRouter initialEntries={['/girard/dashboard?tab=customers']}><DashboardRouteDriver /><GirardDashboard /></MemoryRouter></QueryClientProvider>
 function mount() { const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } }); clients.push(client); currentView = render(dashboard(client)); return currentView }
 const family = (kind: 'customer' | 'sales') => kind === 'customer' ? 'customer_performance' : 'performance'
-const readKey = (kind: 'customer' | 'sales', actor = 'actor', role = 'executive', month = '2026-10', page = 1) => [family(kind), `${actor}:${role}`, { yearMonth: month }, page]
+const readKey = (kind: 'customer' | 'sales', actor = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role = 'executive', month = '2026-10', page = 1) => [family(kind), `${actor}:${role}`, { yearMonth: month }, page]
 const regionName = (kind: 'customer' | 'sales') => kind === 'sales' ? 'Tabel aktivitas tim' : 'Tabel aktivitas pelanggan'
 async function panel(kind: 'customer' | 'sales') {
   mount()
-  if (kind === 'sales') fireEvent.click(screen.getByRole('button', { name: 'Performa Tim Sales' }))
+  if (kind === 'sales') await navigateToPanel(kind)
   return screen.findByRole('region', { name: kind === 'sales' ? 'Tabel aktivitas tim' : 'Tabel aktivitas pelanggan' })
 }
 function openers() { return screen.getAllByRole('button', { name: /^(?:Rp |\+ Atur target)/ }) as HTMLButtonElement[] }
@@ -157,7 +170,7 @@ for (const kind of ['customer', 'sales'] as const) {
     activate(openers()[1]); expect(screen.getAllByRole('spinbutton')).toHaveLength(1)
     expect((screen.getByRole('spinbutton') as HTMLInputElement).value).toBe('200.00')
     expect(state.writes).toHaveLength(1)
-    expect(state.writes[0]).toMatchObject({ table: kind === 'customer' ? 'customer_targets' : 'sales_targets', payload: { [kind === 'customer' ? 'customer_id' : 'user_id']: `${kind}-A`, year_month: '2026-10', target_value: 100, set_by: 'actor' }, options: { onConflict: kind === 'customer' ? 'customer_id,year_month' : 'user_id,year_month' } })
+    expect(state.writes[0]).toMatchObject({ table: kind === 'customer' ? 'customer_targets' : 'sales_targets', payload: { [kind === 'customer' ? 'customer_id' : 'user_id']: `${kind}-A`, year_month: '2026-10', target_value: 100, set_by: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }, options: { onConflict: kind === 'customer' ? 'customer_id,year_month' : 'user_id,year_month' } })
   })
 
   for (const owner of ['desktop', 'mobile'] as const) for (const next of ['retry', 'cancel'] as const) test(`${kind} ${owner} failed save retains its typed draft and lock but permits ${next}`, async () => {
@@ -193,7 +206,7 @@ for (const kind of ['customer', 'sales'] as const) {
     await panel(kind); const client = clients.at(-1)!; const invalidation = vi.spyOn(client, 'invalidateQueries')
     activate(openers()[0]); const oldInput = screen.getByRole('spinbutton')
     fireEvent.keyDown(oldInput, { key: 'Enter' }); await waitFor(() => expect(state.writes).toHaveLength(1))
-    const nextActor = change === 'actor' ? 'replacement' : 'actor'
+    const nextActor = change === 'actor' ? 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' : 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
     const nextRole = change === 'role' ? 'sales_head' : 'executive'
     const nextMonth = change === 'month' ? '2026-09' : '2026-10'
     const nextPage = change === 'page' ? 2 : 1
@@ -261,16 +274,16 @@ for (const kind of ['customer', 'sales'] as const) {
     fireEvent.click(screen.getByRole('button', { name: 'Batal' })); expect(openers().every(button => !button.disabled)).toBe(true)
   })
 
-  test(`${kind} tab unmount releases the panel and an old save cannot unlock its newer same-scope editor`, async () => {
+  test(`${kind} sidebar-route unmount releases the panel and an old save cannot unlock its newer same-scope editor`, async () => {
     const write = deferred(); state.writeGate = write.promise
     await panel(kind); const client = clients.at(-1)!; const invalidation = vi.spyOn(client, 'invalidateQueries')
     activate(openers()[0]); fireEvent.keyDown(screen.getByRole('spinbutton'), { key: 'Enter' })
     await waitFor(() => expect(state.writes).toHaveLength(1))
-    fireEvent.click(screen.getByRole('button', { name: kind === 'customer' ? 'Performa Tim Sales' : 'Performa Pelanggan' }))
+    await navigateToPanel(kind === 'customer' ? 'sales' : 'customer')
     await screen.findByRole('region', { name: regionName(kind === 'customer' ? 'sales' : 'customer') })
     expect(openers().every(button => !button.disabled)).toBe(true)
     activate(openers()[0]); expect(screen.getByRole('spinbutton')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: kind === 'customer' ? 'Performa Pelanggan' : 'Performa Tim Sales' }))
+    await navigateToPanel(kind)
     await screen.findByRole('region', { name: regionName(kind) }); expect(openers().every(button => !button.disabled)).toBe(true)
     activate(openers()[1]); const input = screen.getByRole('spinbutton') as HTMLInputElement
     fireEvent.change(input, { target: { value: '999' } })

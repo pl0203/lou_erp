@@ -1,3 +1,4 @@
+import { LoadingState } from '../ui/LoadingState'
 import { useId } from 'react'
 import { Button } from '../ui/Button'
 import { Field } from '../ui/Field'
@@ -104,7 +105,7 @@ export function SalesMetricsPanel({group='customer'}: {group?: SalesMetricGroup}
       {directory.isError && leadership && <Notice tone="error" title="Daftar manajer tidak tersedia."
         actions={<Button size="compact" variant="secondary" onClick={() => void directory.refetch()}>Muat ulang daftar manajer</Button>} />}
       {read.manager&&<p className="text-[13px] text-brand-secondary">Dibatasi ke manajer terpilih, tetap dalam cakupan akun yang diizinkan.</p>}
-      {read.unavailable ? <Notice tone="error" title="Data atau daftar bulan metrik Sales tidak tersedia." actions={<Button size="compact" variant="secondary" onClick={read.refresh}>Coba lagi</Button>} /> : !data ? <Notice tone="info" title="Memuat metrik Sales..." /> : <>
+      {read.unavailable ? <Notice tone="error" title="Data atau daftar bulan metrik Sales tidak tersedia." actions={<Button size="compact" variant="secondary" onClick={read.refresh}>Coba lagi</Button>} /> : !data ? <LoadingState title="Memuat metrik Sales..." shape="dashboard" /> : <>
         <SalesMetricSummary summary={data.summary} orderType={read.orderType} noMonths={noMetricMonths} period={read.from === read.through ? salesMonthLabel(read.from) : `${salesMonthLabel(read.from)} – ${salesMonthLabel(read.through)}`} scope={`${({own:'sendiri',team:'tim',leadership:'pimpinan'} as const)[data.scope]}${read.manager ? ' · manajer terpilih, sesuai izin akun' : ''}`}/>
         <section aria-label={group==='person'?'Kontribusi per orang':'Metrik per pelanggan'} className="space-y-4">
           <h2 className="font-semibold text-brand-primary">{group==='person'?'Kontribusi per orang':'Metrik per pelanggan'}</h2>

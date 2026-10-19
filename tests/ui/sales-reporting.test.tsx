@@ -72,7 +72,7 @@ function mount(Page: ComponentType, path = '/girard/test', seed?: (client: Query
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } }); clients.push(client)
   seed?.(client)
   const router = createMemoryRouter([{ path: '*', element: <Page /> }], { initialEntries: [path] }); routers.push(router)
-  return { client, ...render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>) }
+  return { client, router, ...render(<QueryClientProvider client={client}><RouterProvider router={router} /></QueryClientProvider>) }
 }
 function expectMain() {
   const mains = screen.getAllByRole('main'); expect(mains).toHaveLength(1)
@@ -87,9 +87,8 @@ const routeMatrix = [
   ['/girard/managers', 'Manajer', ['sales_head', 'executive']],
   ['/girard/team', 'Tim Saya', ['sales_manager', 'sales_head', 'executive']],
   ['/girard/my-customers', 'Pelanggan Saya', ['sales_manager', 'sales_head', 'executive']],
-  ['/girard/my-orders', 'Riwayat Pesanan Saya', ['sales_person', 'sales_manager', 'sales_head', 'executive']],
   ['/girard/my-sales', 'Penjualan Saya', ['sales_person']],
-  ['/girard/dashboard', 'Dashboard', ['sales_manager', 'sales_head', 'executive']],
+  ['/girard/dashboard', 'Performa Toko', ['sales_manager', 'sales_head', 'executive']],
   ['/girard/promotions', 'Promosi', ['sales_person', 'sales_manager', 'sales_head', 'executive']],
 ] as const
 for (const role of ['sales_person', 'sales_manager', 'sales_head', 'executive']) for (const [path, title, roles] of routeMatrix) test(`${role} retains existing reporting access for ${path}`, async () => {
@@ -188,7 +187,7 @@ test('customer directory search is explicitly labelled and retains real detail l
 test('customer edit dialog labels native controls and returns focus without changing assignment data', async () => {
   mount(GirardCustomers); const opener = (await screen.findAllByRole('button', { name: 'Ubah' }))[0]; opener.focus(); fireEvent.click(opener)
   const dialog = screen.getByRole('dialog', { name: 'Ubah Penugasan Pelanggan' })
-  const tier = within(dialog).getByLabelText('Tier Harga'); expect(tier.tagName).toBe('SELECT'); expect(tier.id).toBeTruthy()
+  expect(within(dialog).queryByLabelText('Tier Harga')).toBeNull()
   expect(within(dialog).getByLabelText('Frekuensi Kunjungan').id).toBeTruthy(); expect(within(dialog).getByLabelText('Penanggung Jawab Toko').id).toBeTruthy()
   fireEvent.click(within(dialog).getByRole('button', { name: 'Batal' })); expect(screen.queryByRole('dialog')).toBeNull(); expect(document.activeElement).toBe(opener)
   expect(state.fixture.tables.customer_manager_assignments[0].version).toBe(1)
@@ -254,13 +253,16 @@ test('personal order selected border follows status switches and leaves siblings
     for (const button of buttons) expect(button.classList.contains('border-brand-primary')).toBe(button === chosen)
   }
 })
-test('dashboard selected border follows view switches and leaves its sibling unmarked', async () => {
-  mount(GirardDashboard); const filter = await screen.findByRole('region', { name: 'Tampilan dashboard' })
-  const buttons = ['Performa Pelanggan', 'Performa Tim Sales'].map(name => within(filter).getByRole('button', { name }))
-  for (const chosen of [buttons[0], buttons[1], buttons[0]]) {
-    fireEvent.click(chosen)
-    await waitFor(() => expect(chosen.getAttribute('aria-pressed')).toBe('true'))
-    for (const button of buttons) expect(button.classList.contains('border-brand-primary')).toBe(button === chosen)
+test('dashboard follows sidebar destinations without duplicate in-page view controls', async () => {
+  // This reporting harness mocks navigation. Dedicated navigation tests cover
+  // the real sidebar's selected-link styling; these URLs retain page coverage.
+  const { router } = mount(GirardDashboard, '/girard/dashboard?tab=customers')
+  for (const tab of ['customers', 'team', 'customers']) {
+    await act(async () => { await router.navigate(`/girard/dashboard?tab=${tab}`) })
+    expect(await screen.findByRole('heading', { name: tab === 'team' ? 'Performa Tim' : 'Performa Toko', exact: true })).toBeTruthy()
+    expect(router.state.location.search).toBe(`?tab=${tab}`)
+    expect(screen.queryByRole('region', { name: 'Tampilan dashboard' })).toBeNull()
+    for (const name of ['Performa Toko', 'Performa Tim']) expect(screen.queryByRole('button', { name, exact: true })).toBeNull()
   }
 })
 test('team directory uses a labelled date filter, semantic cards and matching UTC/date drilldowns', async () => {

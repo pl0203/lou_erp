@@ -1,3 +1,4 @@
+import { LoadingState } from './ui/LoadingState'
 import { useState } from 'react'
 import { Button } from './ui/Button'
 import { Notice } from './ui/Feedback'
@@ -16,6 +17,6 @@ export default function PromotionImage({ promotion }: { promotion: ActivePromoti
   })
   if (!actorKey || !promotion.image_path) return <p className="text-[13px] text-brand-secondary">Gambar belum tersedia</p>
   if (image.isError || image.fetchStatus === 'idle' && image.data && failedImage === image.data) return <Notice tone="info" title="Gambar belum dapat dimuat." actions={<Button variant="secondary" onClick={() => { setFailedImage(null); void image.refetch() }}>Coba gambar lagi</Button>} />
-  if (!image.data || image.fetchStatus !== 'idle') return <p role="status" className="text-[13px] text-brand-secondary">Memuat gambar…</p>
+  if (!image.data || image.fetchStatus !== 'idle') return <LoadingState title="Memuat gambar…" shape="compact" className="text-[13px] text-brand-secondary" />
   return <img src={image.data.url} alt={`Promosi ${promotion.product_name}`} onError={() => setFailedImage(image.data ?? null)} className="h-32 w-full rounded-lg bg-brand-canvas object-contain" />
 }
