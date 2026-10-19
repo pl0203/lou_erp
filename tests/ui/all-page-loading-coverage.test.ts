@@ -40,7 +40,7 @@ function consumers() {
   }
   return { result, invalidParents }
 }
-test('all 102 loading surfaces retain exact branch predicates, including the reviewed shared SJ date mode', () => {
+test('all original loading guards and the reviewed calendar additions retain exact predicates', () => {
   const { result } = consumers()
   const identity = result.filter(row => row.file === 'src/pages/athel/Promotions.tsx' && row.title === 'Memuat identitas…')
   expect(identity).toEqual([{ file: 'src/pages/athel/Promotions.tsx', title: 'Memuat identitas…', guards: ['if !actorKey', 'loading ? true'] }])
@@ -48,10 +48,18 @@ test('all 102 loading surfaces retain exact branch predicates, including the rev
   const sorted = (rows: Guard[]) => rows.map(row => JSON.stringify(row)).sort()
   expect(original).toHaveLength(102)
   // Keep the e484 fixture immutable. The separately reviewed SJ feature shares
-  // received/returned date state; only this one exact presentation guard changes.
+  // received/returned date state; the Week/Month calendar renames range to period.
   const oldDate = original.filter(row => row.file === 'src/pages/athel/PODetail.tsx' && row.title === 'Memuat SJ dan versi PO terbaru…')
   expect(oldDate).toEqual([{ file: 'src/pages/athel/PODetail.tsx', title: 'Memuat SJ dan versi PO terbaru…', guards: ['returnedTarget &&', "returnedReview?.status === 'loading' &&"] }])
-  const expected = original.map(row => oldDate.includes(row) ? { ...row, guards: ['dateTarget &&', "dateReview?.status === 'loading' &&"] } : row)
+  const oldCalendar = original.filter(row => row.file === 'src/pages/ihr/leave/TeamLeaveCalendar.tsx' && row.title === 'Memuat kalender...')
+  expect(oldCalendar).toEqual([{ file: 'src/pages/ihr/leave/TeamLeaveCalendar.tsx', title: 'Memuat kalender...', guards: ["readState==='pending'||access.isFetching ? false", "readState==='error'||access.isError ? false", '!access.available ? false', '!access.data?.calendarAudiences.length ? false', '!authorized ? false', '!range ? false', 'calendar.isFetching||calendar.isPending ? true'] }])
+  const expected = original.map(row => oldDate.includes(row) ? { ...row, guards: ['dateTarget &&', "dateReview?.status === 'loading' &&"] } : oldCalendar.includes(row) ? { ...row, guards: row.guards.map(guard => guard === '!range ? false' ? '!period ? false' : guard) } : row)
+  // The new continuation editor has two explicit authority/loading boundaries.
+  // Enumerate them rather than excluding the component from global coverage.
+  expected.push(
+    { file: 'src/pages/ihr/leave/LeaveRosterContinuations.tsx', title: 'Memeriksa akses perpanjangan roster...', guards: ['if !authorityReady'] },
+    { file: 'src/pages/ihr/leave/LeaveRosterContinuations.tsx', title: 'Memuat perpanjangan kelompok...', guards: ['if !query.available', 'query.isError||!query.isFetching ? false'] },
+  )
   expect(sorted(rest)).toEqual(sorted(expected))
 })
 test('block loading surfaces never nest in inline/table controls or duplicate a live status region', () => {

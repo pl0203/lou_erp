@@ -25,8 +25,12 @@ type Base = { expectedVersion: number; reason: string }
 export type LeaveSetupCommand = Base & (
  | { operation: 'set_member'; employeeId: UUID; memberKind: 'employee' | 'manager' | 'director'; active: boolean; employmentStart: DateKey | null; eligibilityDate: DateKey | null; calendarId: UUID | null }
  | { operation: 'set_approver'; employeeId: UUID; approverId: UUID | null; effectiveFrom: DateKey | null; effectiveUntil: DateKey | null; replaceAssignmentId: UUID | null }
- | { operation: 'set_group_membership'; employeeId: UUID; groupId: UUID; effectiveFrom: DateKey; effectiveUntil: DateKey | null; replaceMembershipId: UUID | null }
+ | { operation: 'set_group_membership'; continuationFingerprint?:string; employeeId: UUID; groupId: UUID; effectiveFrom: DateKey; effectiveUntil: DateKey | null; replaceMembershipId: UUID | null }
  | ({operation:'save_calendar_version';previewFingerprint:string}&CalendarDraft)
  | ({ operation: 'publish_roster'; previewFingerprint: string } & RosterPreviewInput)
 )
 export type LeaveSetupSend = (command: LeaveSetupCommand) => Promise<LeaveResult>
+
+/** Schedule-only continuation. The group and interval are supplied by the server, not editable. */
+export type RosterContinuation={continuationFingerprint:string;employeeId:UUID;employeeName:string;memberVersion:number;groupId:UUID;groupName:string;effectiveFrom:DateKey;effectiveUntil:DateKey}
+export type RosterContinuationPage={calendarId:UUID;scopeVersion:string;rows:RosterContinuation[];total:number;page:number;pageSize:number}

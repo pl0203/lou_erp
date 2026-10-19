@@ -24,7 +24,8 @@ function parseContext(value: unknown): LeaveContext {
   const capNames = ['request', 'approve', 'configure', 'adjust', 'readPrivate', 'manageAccess'] as const
   const sourceCaps = value.capabilities as Record<string, unknown>
   if (!capNames.every(key => typeof sourceCaps[key] === 'boolean')) invalid()
-  const capabilities = Object.fromEntries(capNames.map(key => [key, sourceCaps[key]])) as LeaveContext['capabilities']
+  if (sourceCaps.calendarConfigure !== undefined && typeof sourceCaps.calendarConfigure !== 'boolean') invalid()
+  const capabilities = {...Object.fromEntries(capNames.map(key => [key, sourceCaps[key]])), ...(sourceCaps.calendarConfigure === undefined ? {} : {calendarConfigure: sourceCaps.calendarConfigure})} as LeaveContext['capabilities']
   const blockers: SetupBlocker[] = (value.setup.blockers as unknown[]).map(row => {
     if (!object(row) || typeof row.code !== 'string' || typeof row.message !== 'string' || (row.field !== undefined && typeof row.field !== 'string')) invalid()
     return { code: row.code, message: row.message, ...(row.field === undefined ? {} : { field: row.field as string }) }

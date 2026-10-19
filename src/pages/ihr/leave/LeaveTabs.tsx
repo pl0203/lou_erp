@@ -4,8 +4,10 @@ import { Button } from '../../../components/ui/Button'
 import { useContext, useEffect, useRef, useState } from 'react'
 import { UNSAFE_DataRouterContext, UNSAFE_LocationContext } from 'react-router-dom'
 import { useAuth } from '../../../lib/AuthContext'
-import { useLeaveReadAccess } from '../../../lib/leave/useLeaveReads'
+import { useTeamCalendarAccess } from '../../../lib/leave/useTeamCalendar'
+import { canConfigureLeaveCalendar } from '../../../lib/leave/contracts'
 import type { LeaveContext } from '../../../lib/leave/contracts'
+import LeaveAdminRotaPanel from './LeaveAdminRotaPanel'
 import DirectorLeaveOverview from './DirectorLeaveOverview'
 import MyLeave from './MyLeave'
 import AssignedApprovalInbox from './AssignedApprovalInbox'
@@ -14,7 +16,7 @@ import LeaveApprovalBadge from './LeaveApprovalBadge'
 import LeaveAdministration from './LeaveAdministration'
 import { discardLeaveDraftMessage, NavigationGuard } from './LeaveRequestForm'
 import type { LeaveReadState } from './LeaveRequestForm'
-/** Capabilities come from current server context; application roles grant no leave access. */
+/** Capabilities come from current server context; client-side roles never grant leave access. */
 export default function LeaveTabs({ context, readState='ready', onDirtyChange }: { context: LeaveContext; readState?:LeaveReadState; onDirtyChange?:(dirty:boolean)=>void }) {
   const { user } = useAuth()
   return user ? <Tabs key={user.id} actorId={user.id} context={context} readState={readState} onDirtyChange={onDirtyChange}/> : null
@@ -30,14 +32,15 @@ function Tabs({actorId,context,readState,onDirtyChange}:{actorId:string;context:
   const personal=caps.request&&(context.memberKind==='employee'||context.memberKind==='manager')
   const approver=caps.approve&&(context.memberKind==='manager'||context.memberKind==='director')
   const admin=context.memberKind!=='director'&&(caps.configure||caps.adjust||caps.readPrivate||caps.manageAccess)
-  const access=useLeaveReadAccess(actorId,context,!personal&&!approver)
+  const calendarSettings=canConfigureLeaveCalendar(context)
+  const access=useTeamCalendarAccess(actorId,context,!personal&&!approver)
   const calendarGrant=useRef({scope:context.scopeVersion,allowed:false})
   if(calendarGrant.current.scope!==context.scopeVersion)calendarGrant.current={scope:context.scopeVersion,allowed:false}
   if(access.data)calendarGrant.current.allowed=access.data.calendarAudiences.length>0
   if(access.isError)calendarGrant.current.allowed=false
   const oversight=context.memberKind==='director'
   const calendar=oversight||context.memberKind==='employee'||context.memberKind==='manager'||approver||calendarGrant.current.allowed
-  const tabs=[...(personal?[{id:'mine',label:'Ajukan Cuti'}]:[]),...(approver?[{id:'approvals',label:'Persetujuan'}]:[]),...(calendar?[{id:'calendar',label:'Kalender'}]:[]),...(oversight?[{id:'overview',label:'Ringkasan Cuti'}]:[]),...(admin?[{id:'settings',label:'Pengaturan'}]:[])]
+  const tabs=[...(personal?[{id:'mine',label:'Ajukan Cuti'}]:[]),...(approver?[{id:'approvals',label:'Persetujuan'}]:[]),...(calendar?[{id:'calendar',label:'Kalender'}]:[]),...(oversight?[{id:'overview',label:'Ringkasan Cuti'}]:[]),...(admin||calendarSettings?[{id:'settings',label:'Pengaturan'}]:[])]
   const active=tabs.some(tab=>tab.id===selected)?selected:personal?'mine':approver?'approvals':admin?'settings':tabs[0]?.id
   // A module/home navigation is explicit even when its pathname is unchanged.
   // The router owns discard confirmation; keep an in-flight decision's owner
@@ -76,7 +79,7 @@ function Tabs({actorId,context,readState,onDirtyChange}:{actorId:string;context:
       {active==='approvals'&&<AssignedApprovalInbox actorId={actorId} context={context} readState={readState} onDirtyChange={setDirty} onBusyChange={setApprovalBusy}/>}
       {active==='calendar'&&<TeamLeaveCalendar actorId={actorId} context={context} readState={readState}/>}
       {active==='overview'&&<DirectorLeaveOverview actorId={actorId} context={context} readState={readState}/>}
-      {active==='settings'&&<LeaveAdministration actorId={actorId} context={context} readState={readState} onDirtyChange={setDirty}/>}
+      {active==='settings'&&(admin?<LeaveAdministration actorId={actorId} context={context} readState={readState} onDirtyChange={setDirty}/>:<LeaveAdminRotaPanel actorId={actorId} context={context} readState={readState} onDirtyChange={setDirty}/>)}
     </div>
   </section>
 }
