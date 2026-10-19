@@ -1,0 +1,259 @@
+{
+  "version": 1,
+  "repository": "pl0203/lou_erp",
+  "dependency": "0aacac6cb03027f9e24281eefcc233537d636099",
+  "files": [
+    {
+      "path": "package-lock.json",
+      "sha": "1d38422028b5432b5b48ecf782d1238fb11c8567",
+      "sha256": "943d730df0724f7e85c7bd4aaff707911bfa92ca4426a264bb91bd4cd972578d",
+      "bytes": 141750
+    },
+    {
+      "path": "package.json",
+      "sha": "eebda2f358053faeb86c9c30c2f38e0ceff9a028",
+      "sha256": "a00509f8a767578d265c292ccc78ee6d0319da729e673571549bbc9f2860d7f3",
+      "bytes": 1222
+    },
+    {
+      "path": "public/brand/padiwan-logo.svg",
+      "sha": "3af2e081af5896ca30472faac804c60229509910",
+      "sha256": "d70b22924c44f0dcb7ef5ef0909fdcf34b129750bccf9af9c95315548f2242bb",
+      "bytes": 3887
+    },
+    {
+      "path": "public/brand/padiwan-mark.svg",
+      "sha": "813eaa0d27ffc5ed483969e3aea8776e1cbede31",
+      "sha256": "7c0afbfb856b058aeb2c7b40878ec0f2566bd4f6bf6295d1171da1848be09397",
+      "bytes": 1171
+    },
+    {
+      "path": "public/fonts/plus-jakarta-sans/OFL.txt",
+      "sha": "ea69b0ca12a02556c436680ea0a159efb7a748fa",
+      "sha256": "995c7199cab65954f545996326755daee7b63cc6b42b06c13da1f9502ab08a99",
+      "bytes": 4402
+    },
+    {
+      "path": "public/fonts/plus-jakarta-sans/PlusJakartaSans-Italic-Variable.ttf",
+      "sha": "82b042caaaf271beb9e3cbd95ba4741a3d5b8926",
+      "sha256": "9529eb888668b6a3c6dd75b6341a2fc5263fb6c9e788822e6117c29dd9e8b115",
+      "bytes": 183188
+    },
+    {
+      "path": "public/fonts/plus-jakarta-sans/PlusJakartaSans-Variable.ttf",
+      "sha": "0cb13a998ed525ba226d911b10d6c4c4f923a961",
+      "sha256": "89b3fb38aa0d275d7a731d0d817a4f1622b316b4d7fbdedcf02ee9099ff68bc8",
+      "bytes": 176288
+    },
+    {
+      "path": "public/fonts/plus-jakarta-sans/README.md",
+      "sha": "84addabbc8afbf73a13d6b4c7f12306073356edd",
+      "sha256": "8373ba132d26be7c2705b358549fe76d2912c67405b106865e9a4cab00c61d4f",
+      "bytes": 1697
+    },
+    {
+      "path": "src/App.tsx",
+      "sha": "ed8f82749849522b2a2f3b3f0c761e2205594476",
+      "sha256": "c14f499e46ac695f2270322cb54dd4b4af384469193bdba9b20097c504e882d0",
+      "bytes": 11926
+    },
+    {
+      "path": "src/components/AppNavigation.tsx",
+      "sha": "92cc8a2228d478d55b3a52197764c3dc6d032722",
+      "sha256": "bcccc7587c963f3ca40d34d66fb3a70259e28b55b7f468136844a8227a524251",
+      "bytes": 14886
+    },
+    {
+      "path": "src/components/BrandLogo.tsx",
+      "sha": "b07932d461822fc92645258825d0bf597ab27a29",
+      "sha256": "0052a33e66cb35879223870ea4ce6312a55baa2327652d48555d73a16c520907",
+      "bytes": 606
+    },
+    {
+      "path": "src/components/IHRNav.tsx",
+      "sha": "ab8c4766a9997309a45308a4958934634d9dda54",
+      "sha256": "c7ebadfa2833167ffc4cb349df77f8e3570ea1edb6e85489f350840778c3006c",
+      "bytes": 1004
+    },
+    {
+      "path": "src/components/NavigationIcon.tsx",
+      "sha": "ea6a08a22b2358d63151094fb445afd379100b36",
+      "sha256": "2cd448a65b4716399ac613fc9ccdae2d18658b2a9c23545c3941a6cde052a599",
+      "bytes": 2256
+    },
+    {
+      "path": "src/components/navigation.css",
+      "sha": "e1820212d4e102918e60b6947c1d7500af636a95",
+      "sha256": "5ed36c131fd7815ea96619516f51fc52701d926feb282fe5bceb7e547ab6507a",
+      "bytes": 9314
+    },
+    {
+      "path": "src/components/navigationModules.ts",
+      "sha": "eb3423bae0cd5e63158d7ee17245110ebb9a9bdb",
+      "sha256": "1e93dbe12e35caa09c51921d041cf47a306a66ef9db0964b758bec85416f6c96",
+      "bytes": 1930
+    },
+    {
+      "path": "src/components/ui/ActionLink.tsx",
+      "sha": "69faec4bbf216dd7502d2fb1c573d930186a50dd",
+      "sha256": "c3e658148ae8ff3d7b1a62df3a9ec7fa3d0992fcf47d79486f4c0159817ac4f1",
+      "bytes": 460
+    },
+    {
+      "path": "src/components/ui/Button.tsx",
+      "sha": "e2428b938e10e384e75b4f0a8fc1c66a102dbaaf",
+      "sha256": "12b01b059ed1ee02b0a0f341b58ca8fbca9fba1766030a6d33c2194c418368ed",
+      "bytes": 2025
+    },
+    {
+      "path": "src/components/ui/Dialog.tsx",
+      "sha": "b4214103ad27de376492dbd922364a359ebe3b7b",
+      "sha256": "a02853c77b2681875a95e23a6f2d89d05118bc989198da5f3506178bc66773a0",
+      "bytes": 4232
+    },
+    {
+      "path": "src/components/ui/Feedback.tsx",
+      "sha": "e5b0d8e362c90aed10339918ae13f801be9d9274",
+      "sha256": "e06414f680ae98ec22317e0698034344914d22681fb9e6d057927990131edc66",
+      "bytes": 1603
+    },
+    {
+      "path": "src/components/ui/Field.tsx",
+      "sha": "a45b63f4f87c7967fb3486b24221c05ad24721c2",
+      "sha256": "6c5e28a095a6aedee1f4e84896d4c598bf11cb50c6a1ce2db55b458d77719d0f",
+      "bytes": 1011
+    },
+    {
+      "path": "src/components/ui/FormActions.tsx",
+      "sha": "9a0fcbebc5aec3f4b590a83f3ba715e6cd97105f",
+      "sha256": "d63b07f174253e64d5ab8b36cee35e35a183f3048db6349a20bdd996ba07d4c2",
+      "bytes": 251
+    },
+    {
+      "path": "src/components/ui/LoadingState.tsx",
+      "sha": "70f6d0db97342f8be1c2cb16ece44aaf8d29bf9e",
+      "sha256": "5d10759f258c69be162a5bafabe940d4893d44db14384c716175255ea56d5d7b",
+      "bytes": 1621
+    },
+    {
+      "path": "src/components/ui/MainContent.tsx",
+      "sha": "491befede787093279bf6a8ee06150fb6090d003",
+      "sha256": "d365d46c7435c26967d89b36f8134c5b1241ac9d5027606986c8fa058035df3c",
+      "bytes": 442
+    },
+    {
+      "path": "src/components/ui/PageHeader.tsx",
+      "sha": "88ce5f54242bdf41f06b7c04c1f31243ed76a9c1",
+      "sha256": "e9782a298224f36bad22a2cc3ef007c594e6385ccf8b5d91093c318d5d9ff44c",
+      "bytes": 675
+    },
+    {
+      "path": "src/index.css",
+      "sha": "1c8bd59a1f9c8aaeb85b5985fb6a06e66869b417",
+      "sha256": "9412752a7f6aa72a169adfbd08d17977e8b1f8b444e93e0a8f1329408d9165d4",
+      "bytes": 2315
+    },
+    {
+      "path": "src/lib/employees/contracts.ts",
+      "sha": "f34f713e572a6f9cb6e8c46f0e1707539a0377e6",
+      "sha256": "b9ddbcf649602a01f1430d698565200e873f38adc5b9a2e0faa8c872f4f74e2e",
+      "bytes": 16898
+    },
+    {
+      "path": "src/lib/employees/queryKeys.ts",
+      "sha": "b91dd6681e57dcd1c2bc4c30e8d79af79e05b31c",
+      "sha256": "1a333eec41ac5da53e7240554652a33317c59910eeb0db72ce137c76c19b802d",
+      "bytes": 3980
+    },
+    {
+      "path": "src/lib/employees/rpc.ts",
+      "sha": "5f1d271ec3141b31089e90d383a7ba5ff3071ec5",
+      "sha256": "12e66b77ec5d70e9d9a472e437855956b434a4d72a35e8c955a92119512eb9e4",
+      "bytes": 6946
+    },
+    {
+      "path": "src/lib/employees/useEmployeeCommand.ts",
+      "sha": "3e0f8089e23401c1b211c2fa7fe63896fe38a926",
+      "sha256": "dfba857c1e0acddb9e0c74bb3d2b13f80663da66e769ce581ce6e330916bb24a",
+      "bytes": 10929
+    },
+    {
+      "path": "src/lib/employees/useEmployeeContext.ts",
+      "sha": "4b92d86890131b7e9ab6625cb8b4c5a91e5c1609",
+      "sha256": "57d579f313de20dfe9588ec9f9622fe6bc800d4b00a2675ca960d757da08c263",
+      "bytes": 11800
+    },
+    {
+      "path": "src/lib/employees/useEmployeeNavigationGuard.ts",
+      "sha": "e54efa9fcdb61f1266ca3d2e1b247a0177a40ffe",
+      "sha256": "37537f96a722ddd81a7e507053dba2f4903d767c02a23149c95ca20e47e90311",
+      "bytes": 834
+    },
+    {
+      "path": "src/lib/employees/useEmployeeReads.ts",
+      "sha": "00792fad8a4fe61721b3bbfb8786542070621837",
+      "sha256": "4d29ba26c55c9cd23f51442cd31c295524b2fe187b5c85ba5a21fe6241dbb60b",
+      "bytes": 4149
+    },
+    {
+      "path": "src/lib/useUnsavedChanges.tsx",
+      "sha": "8d68766cf945c518e20d4ba4d94c1b0d79cb4571",
+      "sha256": "9ed1aee442a1a4b5db46a48f0cc98dd14e07eb67e346302177c81d65357ee561",
+      "bytes": 4895
+    },
+    {
+      "path": "src/pages/ihr/employees/EmployeeAccountLink.tsx",
+      "sha": "14c7d0399c7cf574ef53d90f8df4151e0d15b54a",
+      "sha256": "c971b3111e7b0a7bb68bcb363297d6ed5813373ccfe58b6e9fa2cffd01d3b236",
+      "bytes": 3485
+    },
+    {
+      "path": "src/pages/ihr/employees/EmployeeAuditTimeline.tsx",
+      "sha": "d2bf92d3dd184313dc81ff757a3f62714ab489de",
+      "sha256": "992fc40badfb1333481f1adf9fad727e053db9aa41bfb1b17302d5d86f072ef2",
+      "bytes": 1869
+    },
+    {
+      "path": "src/pages/ihr/employees/EmployeeDetail.tsx",
+      "sha": "84dfe07867b8e9892159a1a5d93e88af6b282c1e",
+      "sha256": "6b39d10d620d0de6af5668a4f8b374ce3c80e41de93f8cf2a70f1e0101444aab",
+      "bytes": 4533
+    },
+    {
+      "path": "src/pages/ihr/employees/EmployeeEditor.tsx",
+      "sha": "37e5ccbdff2801bebcafa0b9877155701041684b",
+      "sha256": "fe63fcec6e86594bed72530e927421432989ebb291b04ae3b5a8af316bd7105e",
+      "bytes": 11284
+    },
+    {
+      "path": "src/pages/ihr/employees/EmployeeList.tsx",
+      "sha": "058aa23d85939d745220be1f80937e7cdc37ac31",
+      "sha256": "bbd39f6de2a95cef4930c44e6edf8e804c424665767a8c61219f82ed54f733bb",
+      "bytes": 2760
+    },
+    {
+      "path": "src/pages/ihr/employees/EmployeeReportingEditor.tsx",
+      "sha": "1cf3989dcd8eea652c713c681aa12a4f973eed44",
+      "sha256": "c57c3876f742e7e5c4043675e7d280b9458df2aeb0a544b59b5277203428cb80",
+      "bytes": 9871
+    },
+    {
+      "path": "src/pages/ihr/employees/EmployeeUI.tsx",
+      "sha": "6fdb8e7cce847d655e92c1800bab65bd5e830dac",
+      "sha256": "f40e90f75842d65d3390cb049ed602fb52562bb544a431cbf840031dcf6b195a",
+      "bytes": 15568
+    },
+    {
+      "path": "src/pages/ihr/employees/employee.css",
+      "sha": "6f87d4e0a7dadb379c05cb88f5ddb4d6e9b3bfd0",
+      "sha256": "a795276e05cfe4d161658a2134feb7846bc12d77766b8b2c1b52bddbb7cdf002",
+      "bytes": 6203
+    },
+    {
+      "path": "src/styles/ui.css",
+      "sha": "370204d9595c0057c51e6b3811bd6e6a91d0becc",
+      "sha256": "daf141feb7a632bf1789b599bdd5c4fe6193f932804b804273077bd88907347c",
+      "bytes": 14873
+    }
+  ]
+}

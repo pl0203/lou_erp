@@ -2,6 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "git": {
     "deploymentEnabled": {
+      "feat/employee-foundation-20261019": false,
       "fix/pilot-database": true,
       "fix/po-admin-director": false,
       "fix/pilot-scale-sql": false,

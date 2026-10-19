@@ -44,7 +44,7 @@ export function verifyCatalogueReadBundle(repoRoot,env) {
  assert.deepEqual(report.identity.ci,{
   repository:env.GITHUB_REPOSITORY,workflow:env.GITHUB_WORKFLOW,workflowRef:env.GITHUB_WORKFLOW_REF,job:'catalogue-baseline',
   event:env.GITHUB_EVENT_NAME,ref:env.GITHUB_REF,eventSha:env.GITHUB_SHA,runId:env.GITHUB_RUN_ID,runAttempt:env.GITHUB_RUN_ATTEMPT,
-  headRef:'feat/catalogue-mutations-20261014',baseRef:'fix/pilot-database',
+  headRef:env.CATALOGUE_CI_HEAD_REF,baseRef:'fix/pilot-database',
  });
  assert.match(report.session.backendPid,/^[1-9][0-9]*$/);assert.match(report.session.transactionId,/^[1-9][0-9]*$/);
  assert.equal(report.sqlOutputSha256,sha(payload));

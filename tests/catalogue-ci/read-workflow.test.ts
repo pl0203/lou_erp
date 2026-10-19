@@ -1,9 +1,11 @@
 // @vitest-environment node
 import { expect, test } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { normalizeEmployeeCiAddition } from './workflow-budget.mjs'
 import { cataloguePublicSourcePaths } from '../../scripts/catalogue-capture-source.mjs'
 import { readProofBoundPaths } from '../../scripts/catalogue-read-proof.mjs'
-const workflow = readFileSync('.github/workflows/pilot-safety.yml', 'utf8')
+// Remove only the exact separately asserted HR blocker before historical stage checks.
+const workflow = normalizeEmployeeCiAddition(readFileSync('.github/workflows/pilot-safety.yml', 'utf8'))
 const [synthetic, baseline] = workflow.split('  catalogue-baseline:')
 test('independent producer orders consumer without suppressing original safety job', () => {
  expect(synthetic).toContain('    needs: catalogue-baseline\n    if: ${{ always() }}')

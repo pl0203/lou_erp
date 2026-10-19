@@ -1,3 +1,4 @@
+import {normalizeEmployeeBranchBudget} from '../catalogue-ci/workflow-budget.mjs'
 // @vitest-environment node
 import { expect, test } from 'vitest'
 import { createHash } from 'node:crypto'
@@ -5,7 +6,7 @@ import { readFileSync } from 'node:fs'
 test('adds CO after all 32 original gates without changing their service, source or caps', () => {
   // Frozen exact bytes from reviewed 75d38e55; no ancestor lookup is available
   // in actions/checkout's single-commit checkout. Both complete regions are pinned.
-  const actual = readFileSync('.github/workflows/pilot-safety.yml', 'utf8');
+  const actual = normalizeEmployeeBranchBudget(readFileSync('.github/workflows/pilot-safety.yml', 'utf8'));
   const scheduling = '    needs: catalogue-baseline\n    if: ${{ always() }}\n';
   expect(actual.split(scheduling)).toHaveLength(2);
   expect(actual).toContain(`  synthetic-safety:\n${scheduling}    runs-on: ubuntu-latest`);

@@ -13,7 +13,7 @@ This document describes the unpublished UI-only motion extension of the approved
 - HR private views still hide data while authority is checked. PO/dashboard retained results keep their existing labels; this retention is not generalized to HR or approval screens.
 - The motion-only delta changes no library/auth/query/transaction code, database migrations, permissions, deployment configuration, packages or lockfiles. The separate SJ feature's source changes and unexecuted migration remain independently frozen and documented; no hosted state is changed by this combined review.
 
-## Route coverage: 38 actual paths
+## Route coverage: 43 actual paths (38 historical plus five employee routes)
 
 Every active page below owns `MainContent` directly or through COLayout and receives shared mounted-content/control polish. The retired order-history URL now redirects to the Sales schedule. Sources are relative to `src/`. Shapes describe the changed loading presentation, not a new blocking condition.
 
@@ -56,6 +56,11 @@ Every active page below owns `MainContent` directly or through COLayout and rece
 | `/girard/customers` | `pages/girard/GirardCustomers` | Customer list; separate assignment/editor errors intact |
 | `/girard/managers` | `pages/girard/GirardManagers` | Manager list loading |
 | `/ihr/users` | `pages/ihr/UserManagement` | Directory list; waiting-for-connection title and explanation preserved |
+| `/ihr/employees` | `pages/ihr/employees/EmployeeList` and `EmployeeUI` | Authority-gated directory; desktop rows and mobile cards |
+| `/ihr/employees/new` | `pages/ihr/employees/EmployeeEditor` and `EmployeeUI` | Authority-gated form; preview, pending and uncertain-result recovery preserve the owned draft |
+| `/ihr/employees/:employeeId` | `pages/ihr/employees/EmployeeDetail` and `EmployeeUI` | Authority-gated detail, account/quarantine and audit states |
+| `/ihr/employees/:employeeId/edit` | `pages/ihr/employees/EmployeeEditor` and `EmployeeUI` | Authority-gated edit form; no keyed whole-page remount |
+| `/ihr/employees/:employeeId/reporting` | `pages/ihr/employees/EmployeeReportingEditor` and `EmployeeUI` | Authority-gated dated reporting form with preview and recovery |
 | `/ihr/leave` | `pages/ihr/LeaveManagement` and panels below | Context/access check and all eligible existing nested read states |
 
 `/`, `*`, and the retired `/girard/my-orders` compatibility URL are immediate redirects. The last retains its existing Sales-role authentication boundary. App's initial authentication boundary and ProtectedRoute's defensive fallback also use LoadingState. There is still one semantic main landmark.
@@ -80,10 +85,12 @@ Existing quiet reads are deliberately not turned into new blocking branches: cre
 
 ## Automated evidence and limits
 
-- The existing route inventory independently tests all 38 paths and six roles, account/role mismatch, inactive/missing identity, public routes and CO main ownership.
+- The historical route inventory independently tests all 38 original paths and six roles, account/role mismatch, inactive/missing identity, public routes and CO main ownership.
 - New tests assert exact branch signatures for all 102 preexisting loading consumers plus the identity-loading split, with one explicit integration mapping from the old returned-date state to the separately reviewed shared received/returned-date state. The original e484 fixture remains unchanged. They also check valid block placement, single status/aria-hidden decoration, immediate completion, draft/focus continuity, no route timers/keys, and all new animation declarations actually nested in the no-preference media branch.
 - Existing application regressions cover errors, retry, concurrency, recovery, repeated actions, dialogs, navigation and private HR boundaries. The package's verification receipt records final aggregate counts separately.
 - The current catalogue-browser source manifest is rebound to the reviewed UI bytes and includes LoadingState. Its allowlisted build is checked separately. Historical demo manifests/snapshots and the iHR SQL-source manifest remain immutable.
 - Native browser visual/accessibility/device QA is NOT RUN in this restricted execution environment. jsdom/source tests cannot certify actual pixel geometry, scroll behavior, measured frame smoothness, touch target rendering or OS Reduce Motion integration. No screenshots or measured speed gains are claimed.
 
 The combined review candidate includes the separately reviewed SJ received-date change. The motion delta over its frozen PODetail is only one import and three loading-render replacements; ownership/concurrency guards and all shared date-mode labels are preserved. The combined tests are recorded in the package receipt. Staging publication and backend migration execution still require separate approval.
+
+The employee foundation adds exactly five routes and two shared EmployeeUI loading signatures without changing the original 102-branch fixture or its predicates. Its separately scoped synthetic native-browser evidence uses the actual employee components with mocked auth/RPC and source-bound viewport captures; it does not certify the historical whole-app browser scope above. Local reduced-motion runtime remains unverified. See `employee-foundation-verification.md` for the bounded evidence and limitations.

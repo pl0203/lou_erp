@@ -105,6 +105,7 @@ export const cataloguePublicSourcePaths=[
  'tests/catalogue/fixtures/authority-observed-grants.json',
  'tests/catalogue-ci/foundation-red.node.mjs',
  'tests/catalogue-ci/failfast.node.mjs',
+ 'tests/catalogue-ci/workflow-budget.mjs',
  'tests/database/catalogue-failfast/core.mjs',
  'tests/database/catalogue-failfast/core.node.mjs',
  'tests/database/catalogue-failfast/output.node.mjs',

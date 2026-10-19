@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { readFileSync, existsSync } from 'node:fs'
 import { dirname, resolve, relative } from 'node:path'
 import ts from 'typescript'
@@ -50,9 +51,14 @@ vi.mock('../../src/pages/girard/GirardDashboard', () => ({ default: () => <p dat
 vi.mock('../../src/pages/girard/ManagerCustomers', () => ({ default: () => <p data-testid="route-leaf">ManagerCustomers</p> }))
 vi.mock('../../src/pages/girard/GirardCustomers', () => ({ default: () => <p data-testid="route-leaf">GirardCustomers</p> }))
 vi.mock('../../src/pages/girard/GirardManagers', () => ({ default: () => <p data-testid="route-leaf">GirardManagers</p> }))
+vi.mock('../../src/pages/ihr/employees/EmployeeList', () => ({ default: () => <p data-testid="route-leaf">EmployeeList</p> }))
+vi.mock('../../src/pages/ihr/employees/EmployeeDetail', () => ({ default: () => <p data-testid="route-leaf">EmployeeDetail</p> }))
+vi.mock('../../src/pages/ihr/employees/EmployeeEditor', () => ({ default: () => <p data-testid="route-leaf">EmployeeEditor</p> }))
+vi.mock('../../src/pages/ihr/employees/EmployeeReportingEditor', () => ({ default: () => <p data-testid="route-leaf">EmployeeReportingEditor</p> }))
 vi.mock('../../src/pages/ihr/UserManagement', () => ({ default: () => <p data-testid="route-leaf">UserManagement</p> }))
 vi.mock('../../src/pages/ihr/LeaveManagement', () => ({ default: () => <p data-testid="route-leaf">LeaveManagement</p> }))
 
+vi.mock('../../src/lib/supabase', () => ({ supabase: { rpc: vi.fn(), from: () => ({ select: () => ({ eq: async () => ({count:0,error:null}) }) }) } }))
 import App from '../../src/App'
 import { roleHome } from '../../src/components/navigationModules'
 
@@ -101,6 +107,11 @@ const PAGES: Page[] = [
   { path: '/girard/my-customers', roles: MANAGERS, leaf: 'ManagerCustomers' },
   { path: '/girard/customers', roles: HEADS, leaf: 'GirardCustomers' },
   { path: '/girard/managers', roles: HEADS, leaf: 'GirardManagers' },
+  { path: '/ihr/employees', roles: E, leaf: 'EmployeeList' },
+  { path: '/ihr/employees/new', roles: E, leaf: 'EmployeeEditor' },
+  { path: '/ihr/employees/:employeeId', roles: E, leaf: 'EmployeeDetail' },
+  { path: '/ihr/employees/:employeeId/edit', roles: E, leaf: 'EmployeeEditor' },
+  { path: '/ihr/employees/:employeeId/reporting', roles: E, leaf: 'EmployeeReportingEditor' },
   { path: '/ihr/users', roles: E, leaf: 'UserManagement' },
   { path: '/ihr/leave', roles: ROLES, leaf: 'LeaveManagement' },
 ]
@@ -113,9 +124,9 @@ beforeEach(() => {
 afterEach(cleanup)
 function LocationProbe() { return <output data-testid="route-location">{useLocation().pathname}</output> }
 function actualPath(pattern: string) {
-  return pattern.replace(':customerId', 'synthetic-customer').replace(':scheduleId', 'synthetic-schedule').replace(':month', '2026-10').replace(':id', 'synthetic-record').replace('*', 'synthetic-stock')
+  return pattern.replace(':employeeId', 'synthetic-employee').replace(':customerId', 'synthetic-customer').replace(':scheduleId', 'synthetic-schedule').replace(':month', '2026-10').replace(':id', 'synthetic-record').replace('*', 'synthetic-stock')
 }
-function mount(path: string) { return render(<MemoryRouter initialEntries={[path]}><App /><LocationProbe /></MemoryRouter>) }
+function mount(path: string) { return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}><MemoryRouter initialEntries={[path]}><App /><LocationProbe /></MemoryRouter></QueryClientProvider>) }
 function expectedLeaf(page: Page, role: Role) { return page.leaf === 'schedule' ? role === 'sales_person' ? 'DailySchedule' : 'ManagerSchedule' : page.leaf }
 
 for (const page of PAGES) {
@@ -159,7 +170,7 @@ test.each(MANAGERS)('personal own-visits document title matches its scope for %s
   expect(screen.getByTestId('route-leaf').textContent).toBe('MyVisits')
   expect(document.title).toBe('Kunjungan saya | Padiwan')
 })
-test.each(['/', '/unmatched-synthetic-route'])('%s still redirects to login outside the 37-page inventory', path => {
+test.each(['/', '/unmatched-synthetic-route'])('%s still redirects to login outside the 43-page inventory', path => {
   mount(path)
   expect(screen.getByTestId('route-location').textContent).toBe('/login')
   expect(screen.getByTestId('route-leaf').textContent).toBe('Login')
@@ -295,7 +306,7 @@ function elements(inspect: (source: ts.SourceFile, node: Opening) => void) {
   for (const source of reachableSources()) visit(source, node => { if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) inspect(source, node) })
 }
 
-test('real App declares exactly the approved 38 patterns and inherited outer gates', () => {
+test('real App declares exactly the approved 43 patterns and inherited outer gates', () => {
   const source = sourceAt('src/App.tsx'), arrays = new Map<string, string[]>()
   for (const statement of source.statements) if (ts.isVariableStatement(statement)) for (const declaration of statement.declarationList.declarations) {
     if (declaration.initializer && ts.isArrayLiteralExpression(declaration.initializer) && declaration.initializer.elements.every(ts.isStringLiteral)) arrays.set(declaration.name.getText(source), declaration.initializer.elements.map(element => (element as ts.StringLiteral).text))
@@ -333,9 +344,9 @@ test('real App declares exactly the approved 38 patterns and inherited outer gat
     ts.forEachChild(node, child => collect(child, parent, inherited))
   }
   collect(source)
-  expect(PAGES).toHaveLength(38)
+  expect(PAGES).toHaveLength(43)
   expect(pages.map(page => page.path).sort()).toEqual(PAGES.map(page => page.path).sort())
-  expect(new Set(pages.map(page => page.path)).size).toBe(38)
+  expect(new Set(pages.map(page => page.path)).size).toBe(43)
   for (const page of PAGES) {
     const actual = pages.find(candidate => candidate.path === page.path)!
     expect(actual.roles === null ? null : [...actual.roles].sort(), page.path).toEqual(page.roles === null ? null : [...page.roles].sort())

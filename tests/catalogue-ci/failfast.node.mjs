@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { assertEmployeeJobBudgets, normalizeEmployeeCiAddition } from './workflow-budget.mjs';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -94,7 +95,7 @@ test('CLI accepts no switches and exposes only constant failure output',()=>{
  }
 });
 test('workflow adds only a fixed post-capture probe and separately scoped generic result upload',()=>{
- const workflow=readFileSync(join(root,'.github/workflows/pilot-safety.yml'),'utf8');const split=workflow.indexOf('\n  catalogue-baseline:');
+ const workflow=normalizeEmployeeCiAddition(readFileSync(join(root,'.github/workflows/pilot-safety.yml'),'utf8'));const split=workflow.indexOf('\n  catalogue-baseline:');
  // Preserve the historical application/CO prefix; separately pin both reviewed additions.
  const scheduling='    needs: catalogue-baseline\n    if: ${{ always() }}\n';
  assert.equal(workflow.split(scheduling).length,2);
@@ -111,7 +112,11 @@ test('workflow adds only a fixed post-capture probe and separately scoped generi
  assert.equal(sha(receivedRegion),'eb6c3d02339aa38c41e742303ebcf3b87ae63557d302b0478d1a566bca3eccc9');
  assert.equal(workflow.split(receivedRegion).length,2);
  assert.ok(workflow.includes('          done\n'+receivedRegion+'      - name: Preserve final CO evidence'));
- const prefix=workflow.slice(0,split).replace(scheduling,'').replace(browserRegion,'').replace(receivedRegion,'');
+ // Normalize only the separately tested, exact employee branch/budget extension.
+ const employeeHead="(github.event.pull_request.head.ref == 'feat/catalogue-mutations-20261014' || github.event.pull_request.head.ref == 'feat/employee-foundation-20261019')";
+ assert.equal(workflow.split(employeeHead).length,5);
+ assertEmployeeJobBudgets(workflow);
+ const prefix=workflow.slice(0,split).replace(scheduling,'').replace(browserRegion,'').replace(receivedRegion,'').replaceAll(employeeHead,"github.event.pull_request.head.ref == 'feat/catalogue-mutations-20261014'").replace('timeout-minutes: 45','timeout-minutes: 20');
  const decoderStart=prefix.indexOf('      - name: Bind independent read decoder source');
  const commentStart=prefix.indexOf('  # Independent of synthetic-safety:');
  assert.ok(decoderStart>0&&commentStart>decoderStart);

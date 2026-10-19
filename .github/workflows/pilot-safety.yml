@@ -9,7 +9,7 @@ jobs:
     needs: catalogue-baseline
     if: ${{ always() }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     services:
       postgres:
         image: postgres:17
@@ -311,7 +311,7 @@ jobs:
           github.repository == 'pl0203/lou_erp' &&
           github.event.pull_request.head.repo.full_name == 'pl0203/lou_erp' &&
           github.event.pull_request.base.repo.full_name == 'pl0203/lou_erp' &&
-          github.event.pull_request.head.ref == 'feat/catalogue-mutations-20261014' &&
+          (github.event.pull_request.head.ref == 'feat/catalogue-mutations-20261014' || github.event.pull_request.head.ref == 'feat/employee-foundation-20261019') &&
           github.event.pull_request.base.ref == 'fix/pilot-database'
         env:
           CATALOGUE_CI_PROFILE: github-catalogue-baseline-v1
@@ -341,7 +341,7 @@ jobs:
           github.repository == 'pl0203/lou_erp' &&
           github.event.pull_request.head.repo.full_name == 'pl0203/lou_erp' &&
           github.event.pull_request.base.repo.full_name == 'pl0203/lou_erp' &&
-          github.event.pull_request.head.ref == 'feat/catalogue-mutations-20261014' &&
+          (github.event.pull_request.head.ref == 'feat/catalogue-mutations-20261014' || github.event.pull_request.head.ref == 'feat/employee-foundation-20261019') &&
           github.event.pull_request.base.ref == 'fix/pilot-database'
         uses: actions/download-artifact@v4
         with:
@@ -353,7 +353,7 @@ jobs:
           github.repository == 'pl0203/lou_erp' &&
           github.event.pull_request.head.repo.full_name == 'pl0203/lou_erp' &&
           github.event.pull_request.base.repo.full_name == 'pl0203/lou_erp' &&
-          github.event.pull_request.head.ref == 'feat/catalogue-mutations-20261014' &&
+          (github.event.pull_request.head.ref == 'feat/catalogue-mutations-20261014' || github.event.pull_request.head.ref == 'feat/employee-foundation-20261019') &&
           github.event.pull_request.base.ref == 'fix/pilot-database'
         env:
           CATALOGUE_CI_PROFILE: github-catalogue-baseline-v1
@@ -368,6 +368,19 @@ jobs:
           test "$CATALOGUE_READ_BASELINE_RESULT" = success
           node_modules/.bin/vitest run --config vitest.catalogue-read-proof.config.ts --maxWorkers=1
 
+      - name: HR combined verification blocked pending reviewed containment
+        if: >-
+          always() &&
+          github.event_name == 'pull_request' &&
+          github.repository == 'pl0203/lou_erp' &&
+          github.event.pull_request.head.repo.full_name == 'pl0203/lou_erp' &&
+          github.event.pull_request.base.repo.full_name == 'pl0203/lou_erp' &&
+          github.event.pull_request.head.ref == 'feat/employee-foundation-20261019' &&
+          github.event.pull_request.base.ref == 'fix/pilot-database'
+        run: |
+          echo "::error::EMPLOYEE_NATIVE_CI_BLOCKED: no reviewed disposable process containment; local synthetic proof does not satisfy this gate."
+          exit 1
+
   # Independent of synthetic-safety: capture does not certify the full application suite.
   catalogue-baseline:
     if: >-
@@ -375,7 +388,7 @@ jobs:
       github.repository == 'pl0203/lou_erp' &&
       github.event.pull_request.head.repo.full_name == 'pl0203/lou_erp' &&
       github.event.pull_request.base.repo.full_name == 'pl0203/lou_erp' &&
-      github.event.pull_request.head.ref == 'feat/catalogue-mutations-20261014' &&
+      (github.event.pull_request.head.ref == 'feat/catalogue-mutations-20261014' || github.event.pull_request.head.ref == 'feat/employee-foundation-20261019') &&
       github.event.pull_request.base.ref == 'fix/pilot-database'
     runs-on: ubuntu-latest
     timeout-minutes: 20

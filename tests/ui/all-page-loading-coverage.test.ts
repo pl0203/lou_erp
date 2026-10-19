@@ -40,7 +40,7 @@ function consumers() {
   }
   return { result, invalidParents }
 }
-test('all original loading guards and the reviewed calendar additions retain exact predicates', () => {
+test('all original loading guards and the reviewed calendar and employee additions retain exact predicates', () => {
   const { result } = consumers()
   const identity = result.filter(row => row.file === 'src/pages/athel/Promotions.tsx' && row.title === 'Memuat identitas…')
   expect(identity).toEqual([{ file: 'src/pages/athel/Promotions.tsx', title: 'Memuat identitas…', guards: ['if !actorKey', 'loading ? true'] }])
@@ -59,6 +59,11 @@ test('all original loading guards and the reviewed calendar additions retain exa
   expected.push(
     { file: 'src/pages/ihr/leave/LeaveRosterContinuations.tsx', title: 'Memeriksa akses perpanjangan roster...', guards: ['if !authorityReady'] },
     { file: 'src/pages/ihr/leave/LeaveRosterContinuations.tsx', title: 'Memuat perpanjangan kelompok...', guards: ['if !query.available', 'query.isError||!query.isFetching ? false'] },
+  )
+  // Exact employee boundaries are additive; every historical predicate remains pinned.
+  expected.push(
+    { file: 'src/pages/ihr/employees/EmployeeUI.tsx', title: 'Akses belum dapat dikonfirmasi', guards: ['if !state.authorityReady'] },
+    { file: 'src/pages/ihr/employees/EmployeeUI.tsx', title: '{loading}', guards: [] },
   )
   expect(sorted(rest)).toEqual(sorted(expected))
 })
@@ -82,7 +87,10 @@ test('review inventory covers every registered page exactly once and explains st
   const paths = [...titles.matchAll(/\['([^']+)'\s*,/g)].map(match => match[1]).sort()
   const document = readFileSync('docs/all-page-motion-coverage.md', 'utf8')
   const documented = [...document.matchAll(/^\| `([^`]+)` \|/gm)].map(match => match[1]).sort()
-  expect(paths).toHaveLength(38)
+  const employeePaths = ['/ihr/employees', '/ihr/employees/new', '/ihr/employees/:employeeId', '/ihr/employees/:employeeId/edit', '/ihr/employees/:employeeId/reporting'].sort()
+  expect(paths.filter(path => path.startsWith('/ihr/employees'))).toEqual(employeePaths)
+  expect(paths.filter(path => !employeePaths.includes(path))).toHaveLength(38)
+  expect(paths).toHaveLength(43)
   expect(documented).toEqual(paths)
   expect(document).toContain('Native browser visual/accessibility/device QA is NOT RUN')
   expect(document).toContain('Existing quiet reads are deliberately not turned into new blocking branches')

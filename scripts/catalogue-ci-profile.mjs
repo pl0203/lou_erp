@@ -12,9 +12,10 @@ export function catalogueCiConnection(env,source) {
  assert.equal(source?.clean,true,'CI requires clean source')
  for(const key of ['commit','tree'])assert.match(source[key]??'',/^[a-f0-9]{40}$/,'Verified source identity required')
  assert.match(source.candidate??'',/^[a-f0-9]{64}$/,'Candidate byte digest required')
+ assert.ok(['feat/catalogue-mutations-20261014','feat/employee-foundation-20261019'].includes(env.CATALOGUE_CI_HEAD_REF),'Exact reviewed head required')
  const fixed={CI:'true',GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:'pl0203/lou_erp',GITHUB_WORKFLOW:'Pilot safety checks',GITHUB_JOB:'catalogue-baseline',
   GITHUB_EVENT_NAME:'pull_request',CATALOGUE_CI_PROFILE:profile,CATALOGUE_CI_HEAD_REPOSITORY:'pl0203/lou_erp',CATALOGUE_CI_BASE_REPOSITORY:'pl0203/lou_erp',
-  CATALOGUE_CI_HEAD_REF:'feat/catalogue-mutations-20261014',CATALOGUE_CI_BASE_REF:'fix/pilot-database',
+  CATALOGUE_CI_BASE_REF:'fix/pilot-database',
   CATALOGUE_CI_SOURCE_SHA:source.commit,CATALOGUE_CI_CANDIDATE_SHA256:source.candidate,
   PGHOST:'127.0.0.1',PGPORT:'5432',PGUSER:'postgres',PGDATABASE:'pilot_test',PGPASSWORD:'synthetic-ci-only'}
  for(const [key,value] of Object.entries(fixed))assert.equal(env[key],value,`Fixed catalogue CI context required: ${key}`)

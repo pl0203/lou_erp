@@ -44,6 +44,11 @@ import MyVisits from './pages/girard/MyVisits'
 import GirardDashboard from './pages/girard/GirardDashboard'
 import Promotions from './pages/girard/Promotions'
 
+import { useEmployeeIdentityBoundary } from './lib/employees/useEmployeeContext'
+import EmployeeList from './pages/ihr/employees/EmployeeList'
+import EmployeeDetail from './pages/ihr/employees/EmployeeDetail'
+import EmployeeEditor from './pages/ihr/employees/EmployeeEditor'
+import EmployeeReportingEditor from './pages/ihr/employees/EmployeeReportingEditor'
 import UserManagement from './pages/ihr/UserManagement'
 import LeaveManagement from './pages/ihr/LeaveManagement'
 
@@ -62,6 +67,8 @@ function RoleBasedSchedule() {
 }
 
 const routeTitles: [string, string][] = [
+  ['/ihr/employees/new', 'Tambah karyawan'], ['/ihr/employees/:employeeId/edit', 'Ubah karyawan'],
+  ['/ihr/employees/:employeeId/reporting', 'Atasan pelaporan'], ['/ihr/employees/:employeeId', 'Detail karyawan'], ['/ihr/employees', 'Data karyawan'],
   ['/login', 'Masuk'], ['/forgot-password', 'Reset kata sandi'], ['/reset-password', 'Buat kata sandi baru'],
   ['/landing', 'Pilih sistem'], ['/athel/dashboard', 'Dashboard Procurement'],
   ['/athel/po/new', 'Buat purchase order'], ['/athel/po/:id/edit', 'Ubah purchase order'],
@@ -83,6 +90,7 @@ const routeTitles: [string, string][] = [
 ]
 
 export default function App() {
+  useEmployeeIdentityBoundary()
   const { loading } = useAuth()
   const { pathname } = useLocation()
   useEffect(() => {
@@ -207,6 +215,12 @@ export default function App() {
       <Route path="/ihr/leave" element={
         <ProtectedRoute><LeaveManagement /></ProtectedRoute>
       } />
+
+      <Route path="/ihr/employees" element={<ProtectedRoute allowedRoles={EXECUTIVE_ONLY}><EmployeeList /></ProtectedRoute>} />
+      <Route path="/ihr/employees/new" element={<ProtectedRoute allowedRoles={EXECUTIVE_ONLY}><EmployeeEditor /></ProtectedRoute>} />
+      <Route path="/ihr/employees/:employeeId" element={<ProtectedRoute allowedRoles={EXECUTIVE_ONLY}><EmployeeDetail /></ProtectedRoute>} />
+      <Route path="/ihr/employees/:employeeId/edit" element={<ProtectedRoute allowedRoles={EXECUTIVE_ONLY}><EmployeeEditor /></ProtectedRoute>} />
+      <Route path="/ihr/employees/:employeeId/reporting" element={<ProtectedRoute allowedRoles={EXECUTIVE_ONLY}><EmployeeReportingEditor /></ProtectedRoute>} />
 
       {/* Default */}
       <Route path="/" element={<Navigate to="/login" replace />} />

@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { existsSync, readFileSync } from 'node:fs'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
@@ -6,7 +7,7 @@ import { MemoryRouter } from 'react-router-dom'
 const auth = vi.hoisted(() => ({ profile: null as null | { role: string; full_name: string } }))
 vi.mock('../src/lib/supabase', () => ({ supabase: { auth: {} } }))
 vi.mock('../src/lib/AuthContext', () => ({ useAuth: () => ({ ...auth, loading: false, signOut: vi.fn() }) }))
-vi.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: 2 }) }))
+vi.mock('@tanstack/react-query', async original => ({ ...await original<typeof import('@tanstack/react-query')>(), useQuery: () => ({ data: 2 }) }))
 import Login from '../src/pages/Login'
 import Landing from '../src/pages/Landing'
 import AthelNav from '../src/components/AthelNav'
@@ -135,7 +136,7 @@ test.each([
   { Component: IHRNav, route: '/ihr/leave', active: 'Manajemen Cuti', module: 'HR' },
 ])('$module navigation has a readable active cue without changing the link', ({ Component, route, active, module }) => {
   auth.profile = { role: 'executive', full_name: 'Theme Reviewer' }
-  render(<MemoryRouter initialEntries={[route]}><Component /></MemoryRouter>)
+  render(<QueryClientProvider client={new QueryClient()}><MemoryRouter initialEntries={[route]}><Component /></MemoryRouter></QueryClientProvider>)
   const links = screen.getAllByRole('link', { name: active })
   for (const link of links) {
     expect(link.getAttribute('href')).toBe(route)

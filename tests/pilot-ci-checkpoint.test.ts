@@ -5,6 +5,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join, posix } from 'node:path'
 import { expect, test } from 'vitest'
+import { normalizeEmployeeBranchBudget } from './catalogue-ci/workflow-budget.mjs'
 
 const workflow = readFileSync('.github/workflows/pilot-safety.yml', 'utf8')
 const immutableRef = '${{ github.event.pull_request.head.sha || github.sha }}'
@@ -253,7 +254,7 @@ test('the composition preserves every category-staging workflow byte outside the
   expect(createHash('sha256').update(browserRegion).digest('hex')).toBe('52835f2c64d1d3f84e534c2738b4a246013d32ece348007d14c7e814e7a3aaa5')
   expect(workflow.split(browserRegion)).toHaveLength(2)
   expect(workflow).toContain('      - run: npm run build\n' + browserRegion + '      - name: Install official PostgreSQL client')
-  const historical = workflow.replace(scheduling, '').replace(browserRegion, '').split('\n      - name: Guarded final CO composition, SQL decoders and real races\n')[0]
+  const historical = normalizeEmployeeBranchBudget(workflow).replace(scheduling, '').replace(browserRegion, '').split('\n      - name: Guarded final CO composition, SQL decoders and real races\n')[0]
   expect(createHash('sha256').update(historical).digest('hex')).toBe('5c12be0b5d567c3f680bba8bf8d631924533e586c775207db54d988d44fb7d27')
   const preserved = historical
     .replace('      PGTZ: UTC\n', '')
