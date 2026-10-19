@@ -5,7 +5,7 @@ import { EmptyState } from '../ui/Feedback'
 import type { DashboardMetric, DashboardRow } from '../../lib/salesDashboard/contracts'
 import { dashboardMonthLabel, metricDefinition, metricValueText } from '../../lib/salesDashboard/definitions'
 import { DashboardDefinitions, DashboardListFilters, DashboardTrend, DashboardMetricSelect, DashboardPagination, MonthControl, QualityNote, RowMetricDetails, TargetDisplay, VisitContext, dashboardCard, dashboardLink, disclosureClass, type DashboardViewProps } from './MySalesDashboardShared'
-export type TeamSalesDashboardProps = DashboardViewProps & { metric: DashboardMetric; onMetric: (metric: DashboardMetric) => void }
+export type TeamSalesDashboardProps = DashboardViewProps & { showHeading?: boolean; metric: DashboardMetric; onMetric: (metric: DashboardMetric) => void }
 function PeopleList({ rows, metric, month }: { rows: DashboardRow[]; metric: DashboardMetric; month: string }) {
   const definition = metricDefinition(metric)
   return <>
@@ -14,12 +14,12 @@ function PeopleList({ rows, metric, month }: { rows: DashboardRow[]; metric: Das
   </>
 }
 /** Presentation-only V6 view. No client-side personnel ranking or monetary aggregation. */
-export function TeamSalesDashboard({ data, month, search, metric, onMonth, onSearch, onMetric, onPage, onRefresh, onSearchCommit, sort = 'name', attention = 'all', onSort, onAttention, pending = false }: TeamSalesDashboardProps) {
+export function TeamSalesDashboard({ data, month, search, metric, onMonth, onSearch, onMetric, onPage, onRefresh, onSearchCommit, sort = 'name', attention = 'all', onSort, onAttention, pending = false, showHeading = true }: TeamSalesDashboardProps) {
   const searchId = useId(), definition = metricDefinition(metric), leadership = data.scope === 'leadership'
   const groups = new Map<string, { name: string; rows: DashboardRow[] }>()
   for (const row of data.items) { const key = row.managerId ?? 'unverified'; const group = groups.get(key) ?? { name: row.managerName ? `Tim ${row.managerName}` : 'Hierarki belum terverifikasi', rows: [] }; group.rows.push(row); groups.set(key, group) }
   return <div className="min-w-0 space-y-7 [overflow-wrap:anywhere]">
-    <header><h1 className="text-2xl font-bold text-brand-primary sm:text-3xl">Performa Tim</h1><p className="mt-1 text-sm text-brand-secondary">{leadership ? 'Cakupan pimpinan · dikelompokkan per manajer' : 'Tim saya · roster bulan terpilih dan portofolio pribadi yang terverifikasi'} · {data.total} orang dalam hasil</p></header>
+    <header>{showHeading && <h1 className="text-2xl font-bold text-brand-primary sm:text-3xl">Performa Tim</h1>}<p className="mt-1 text-sm text-brand-secondary">{leadership ? 'Cakupan pimpinan · dikelompokkan per manajer' : 'Tim saya · roster bulan terpilih dan portofolio pribadi yang terverifikasi'} · {data.total} orang dalam hasil</p></header>
     <div className="grid min-w-0 items-end gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)]"><MonthControl month={month} onMonth={onMonth} pending={pending} /><DashboardMetricSelect metric={metric} onMetric={onMetric} /><p className="py-2 text-sm text-brand-secondary">{dashboardMonthLabel(data.month)} · {data.provisional ? 'Sementara' : 'Bulan penuh'}</p></div>
     <section aria-label="Perlu ditindaklanjuti" className="min-w-0 space-y-3"><h2 className="text-xl font-semibold text-brand-primary">Perlu ditindaklanjuti</h2><div className="grid min-w-0 gap-3 md:grid-cols-3">
       <article className={dashboardCard}><p className="text-sm text-brand-secondary">Permintaan kunjungan</p><p className="mt-2 text-lg font-semibold text-brand-primary">{data.activity.pendingRequests === null ? 'Periksa antrean permintaan' : `${data.activity.pendingRequests} menunggu`}</p><p className="mt-1 text-[13px] text-brand-secondary">Semua tanggal · cakupan tim saat ini{data.activity.pendingRequests === null ? ' · ringkasan jumlah belum tersedia' : ''}</p><Link className={`${dashboardLink} mt-2`} to="/girard/visit-requests">Tinjau permintaan →</Link></article>

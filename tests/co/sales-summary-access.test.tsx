@@ -55,9 +55,9 @@ test('current verified role must agree with server scope before figures can be l
   mount(<App/>);await screen.findByRole('alert');expect(screen.queryByText('Rp 720.000')).toBeNull()
 })
 
-test('actual Dashboard tab wiring keeps customer and person groups and independently labelled activity',async()=>{
+test('actual Dashboard sidebar wiring keeps customer and person groups and independently labelled activity',async()=>{
   role('sales_manager');mount(<App/>,'/girard/dashboard');await screen.findByRole('region',{name:'Ringkasan seluruh hasil'});expect(metricsCalls().at(-1)?.args.p_group_by).toBe('customer')
-  fireEvent.click(screen.getByRole('button',{name:'Performa Tim'}));await screen.findByRole('region',{name:'Kontribusi per orang'});expect(metricsCalls().at(-1)?.args.p_group_by).toBe('person');expect(screen.getByRole('heading',{name:'Aktivitas dan Target Tim'})).toBeTruthy()
+  fireEvent.click(screen.getByRole('link',{name:'Performa Tim'}));await screen.findByRole('region',{name:'Kontribusi per orang'});expect(metricsCalls().at(-1)?.args.p_group_by).toBe('person');expect(screen.getByRole('heading',{name:'Aktivitas dan Target Tim'})).toBeTruthy()
 })
 
 test('forged own manager filter stays an intersecting RPC argument and cannot relabel scope',async()=>{

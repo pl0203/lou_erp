@@ -1,5 +1,5 @@
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useNavigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { RESPONSE_EXAMPLES } from '../scalability/response-examples'
@@ -32,14 +32,21 @@ const clients: QueryClient[] = []
 beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-10-12T12:00:00Z')); state.actor = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'; state.role = 'executive'; state.readGate = null; state.reads = []; state.target = '200.00'; state.writeError = false; state.readError = false; state.authGate = null; state.writeGate = null; state.writes = []; state.getUser.mockReset(); state.retry.mockReset() })
 afterEach(() => { cleanup(); clients.splice(0).forEach(client => client.clear()); vi.useRealTimers(); vi.unstubAllGlobals() })
 let currentView: ReturnType<typeof render>
-const dashboard = (client: QueryClient) => <QueryClientProvider client={client}><MemoryRouter><GirardDashboard /></MemoryRouter></QueryClientProvider>
+// Navigation is mocked to isolate editor lifetime. Drive the real router using
+// the sidebar's destinations instead of reviving removed in-page view buttons.
+let navigateDashboard: ReturnType<typeof useNavigate>
+function DashboardRouteDriver() { navigateDashboard = useNavigate(); return null }
+async function navigateToPanel(kind: 'customer' | 'sales') {
+  await act(async () => { await navigateDashboard(`/girard/dashboard?tab=${kind === 'sales' ? 'team' : 'customers'}`) })
+}
+const dashboard = (client: QueryClient) => <QueryClientProvider client={client}><MemoryRouter initialEntries={['/girard/dashboard?tab=customers']}><DashboardRouteDriver /><GirardDashboard /></MemoryRouter></QueryClientProvider>
 function mount() { const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } }); clients.push(client); currentView = render(dashboard(client)); return currentView }
 const family = (kind: 'customer' | 'sales') => kind === 'customer' ? 'customer_performance' : 'performance'
 const readKey = (kind: 'customer' | 'sales', actor = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role = 'executive', month = '2026-10', page = 1) => [family(kind), `${actor}:${role}`, { yearMonth: month }, page]
 const regionName = (kind: 'customer' | 'sales') => kind === 'sales' ? 'Tabel aktivitas tim' : 'Tabel aktivitas pelanggan'
 async function panel(kind: 'customer' | 'sales') {
   mount()
-  if (kind === 'sales') fireEvent.click(screen.getByRole('button', { name: 'Performa Tim' }))
+  if (kind === 'sales') await navigateToPanel(kind)
   return screen.findByRole('region', { name: kind === 'sales' ? 'Tabel aktivitas tim' : 'Tabel aktivitas pelanggan' })
 }
 function openers() { return screen.getAllByRole('button', { name: /^(?:Rp |\+ Atur target)/ }) as HTMLButtonElement[] }
@@ -267,16 +274,16 @@ for (const kind of ['customer', 'sales'] as const) {
     fireEvent.click(screen.getByRole('button', { name: 'Batal' })); expect(openers().every(button => !button.disabled)).toBe(true)
   })
 
-  test(`${kind} tab unmount releases the panel and an old save cannot unlock its newer same-scope editor`, async () => {
+  test(`${kind} sidebar-route unmount releases the panel and an old save cannot unlock its newer same-scope editor`, async () => {
     const write = deferred(); state.writeGate = write.promise
     await panel(kind); const client = clients.at(-1)!; const invalidation = vi.spyOn(client, 'invalidateQueries')
     activate(openers()[0]); fireEvent.keyDown(screen.getByRole('spinbutton'), { key: 'Enter' })
     await waitFor(() => expect(state.writes).toHaveLength(1))
-    fireEvent.click(screen.getByRole('button', { name: kind === 'customer' ? 'Performa Tim' : 'Performa Toko' }))
+    await navigateToPanel(kind === 'customer' ? 'sales' : 'customer')
     await screen.findByRole('region', { name: regionName(kind === 'customer' ? 'sales' : 'customer') })
     expect(openers().every(button => !button.disabled)).toBe(true)
     activate(openers()[0]); expect(screen.getByRole('spinbutton')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: kind === 'customer' ? 'Performa Toko' : 'Performa Tim' }))
+    await navigateToPanel(kind)
     await screen.findByRole('region', { name: regionName(kind) }); expect(openers().every(button => !button.disabled)).toBe(true)
     activate(openers()[1]); const input = screen.getByRole('spinbutton') as HTMLInputElement
     fireEvent.change(input, { target: { value: '999' } })

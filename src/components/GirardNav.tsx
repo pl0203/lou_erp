@@ -1,3 +1,4 @@
+import { matchPath, useLocation } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
 import { usePendingVisitReviewCount } from '../lib/visitRequestBadge'
 import AppNavigation from './AppNavigation'
@@ -40,6 +41,13 @@ const ROLE_LINKS: Record<string, NavigationLink[]> = {
 
 export default function GirardNav() {
   const { profile } = useAuth()
+  const location = useLocation()
+  const dashboardHref = (tab: 'team' | 'customers') => {
+    // The sidebar replaces the old in-page switcher without discarding its filters.
+    const search = new URLSearchParams(matchPath({ path: '/girard/dashboard', end: true }, location.pathname) ? location.search : '')
+    search.set('tab', tab)
+    return `/girard/dashboard?${search}`
+  }
   const pendingReviews = usePendingVisitReviewCount(profile?.id, profile?.role)
   const roleLinks = profile ? (ROLE_LINKS[profile.role] ?? []).map(link =>
     link.to === '/girard/visit-requests' ? { ...link, badge: pendingReviews } : link
@@ -51,8 +59,8 @@ export default function GirardNav() {
   const dashboard: NavigationGroup = {
     id: 'sales-dashboard', label: 'Dashboard', icon: 'dashboard', children: [
       ...(['sales_manager', 'sales_head', 'executive'].includes(profile?.role ?? '') ? [
-        { to: '/girard/dashboard?tab=team', label: 'Performa Tim', icon: 'people' as const, activeSearch: { key: 'tab', value: 'team', fallback: dashboardFeatureEnabled ? 'team' : 'customers', allowed: ['team', 'customers'] } },
-        { to: '/girard/dashboard?tab=customers', label: 'Performa Toko', icon: 'customers' as const, activeSearch: { key: 'tab', value: 'customers', fallback: dashboardFeatureEnabled ? 'team' : 'customers', allowed: ['team', 'customers'] } },
+        { to: dashboardHref('team'), label: 'Performa Tim', icon: 'people' as const, activeSearch: { key: 'tab', value: 'team', fallback: dashboardFeatureEnabled ? 'team' : 'customers', allowed: ['team', 'customers'] } },
+        { to: dashboardHref('customers'), label: 'Performa Toko', icon: 'customers' as const, activeSearch: { key: 'tab', value: 'customers', fallback: dashboardFeatureEnabled ? 'team' : 'customers', allowed: ['team', 'customers'] } },
       ] : []),
       { to: '/girard/targets', label: 'Target Penjualan', icon: 'sales' },
     ],

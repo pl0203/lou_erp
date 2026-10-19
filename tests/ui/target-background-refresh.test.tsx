@@ -1,6 +1,6 @@
 import { StrictMode } from 'react'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useNavigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider, focusManager, onlineManager } from '@tanstack/react-query'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { RESPONSE_EXAMPLES } from '../scalability/response-examples'
@@ -68,8 +68,14 @@ afterEach(() => {
 const family = (kind: Kind) => kind === 'customer' ? 'customer_performance' : 'performance'
 const readKey = (kind: Kind) => [family(kind), 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa:executive', { yearMonth: '2026-10' }, 1]
 const regionName = (kind: Kind) => kind === 'customer' ? 'Tabel aktivitas pelanggan' : 'Tabel aktivitas tim'
-const panelName = (kind: Kind) => kind === 'customer' ? 'Performa Toko' : 'Performa Tim'
-const dashboard = (client: QueryClient) => <StrictMode><QueryClientProvider client={client}><MemoryRouter><GirardDashboard /></MemoryRouter></QueryClientProvider></StrictMode>
+// Navigation is mocked to isolate editor lifetime. Drive the real router using
+// the sidebar's destinations instead of reviving removed in-page view buttons.
+let navigateDashboard: ReturnType<typeof useNavigate>
+function DashboardRouteDriver() { navigateDashboard = useNavigate(); return null }
+async function navigateToPanel(kind: 'customer' | 'sales') {
+  await act(async () => { await navigateDashboard(`/girard/dashboard?tab=${kind === 'sales' ? 'team' : 'customers'}`) })
+}
+const dashboard = (client: QueryClient) => <StrictMode><QueryClientProvider client={client}><MemoryRouter initialEntries={['/girard/dashboard?tab=customers']}><DashboardRouteDriver /><GirardDashboard /></MemoryRouter></QueryClientProvider></StrictMode>
 async function mount(kind: Kind, terminalError = false) {
   // Match src/main.tsx: default retry/focus/reconnect/staleness behavior. Only
   // terminal-error tests disable retries to reach that terminal state promptly.
@@ -77,7 +83,7 @@ async function mount(kind: Kind, terminalError = false) {
   if (terminalError) client.setQueryDefaults([family(kind)], { retry: false })
   clients.push(client)
   const view = render(dashboard(client))
-  if (kind === 'sales') fireEvent.click(screen.getByRole('button', { name: panelName(kind) }))
+  if (kind === 'sales') await navigateToPanel(kind)
   await screen.findByRole('region', { name: regionName(kind) })
   return { client, view }
 }
@@ -246,7 +252,7 @@ for (const kind of ['customer', 'sales'] as const) {
     } else if (change === 'month') {
       fireEvent.change(screen.getByLabelText(kind === 'customer' ? 'Bulan aktivitas pelanggan' : 'Bulan performa sales'), { target: { value: '2026-09' } })
     } else if (change === 'tab') {
-      fireEvent.click(screen.getByRole('button', { name: panelName(kind === 'customer' ? 'sales' : 'customer') }))
+      await navigateToPanel(kind === 'customer' ? 'sales' : 'customer')
     } else {
       // Page controls are correctly masked during revalidation. First let the
       // same-scope read finish, then exercise the real next-page action.
@@ -256,7 +262,7 @@ for (const kind of ['customer', 'sales'] as const) {
     await act(async () => read.resolve())
     if (change === 'tab') {
       await screen.findByRole('region', { name: regionName(kind === 'customer' ? 'sales' : 'customer') })
-      fireEvent.click(screen.getByRole('button', { name: panelName(kind) }))
+      await navigateToPanel(kind)
     }
     await screen.findByRole('region', { name: regionName(kind) })
     expect(screen.queryByRole('spinbutton')).toBeNull()

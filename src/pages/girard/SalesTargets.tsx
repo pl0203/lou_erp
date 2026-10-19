@@ -21,11 +21,13 @@ export default function SalesTargets({ transport: injected }: { transport?: Targ
   useEffect(() => { if (!verified) clearTargetDrafts() }, [verified, user?.id, profile?.role])
   useBeforeSignOut(signal => protection.confirmDiscardDecision({ signal, message: 'Draf belum disimpan. Keluar akan menghapus isian sementara. Simpan draf terlebih dahulu bila ingin melanjutkan nanti.' }), `${user?.id}:${profile?.role}`)
   return <div className="min-h-screen bg-brand-canvas"><GirardNav />
-    <MainContent className="space-y-6 px-4 py-6 md:px-8">
-      <PageHeader title="Target Penjualan" description="Target bulanan dengan dasar historis dan persetujuan yang terpisah." />
+    <MainContent>
+      <PageHeader title="Target Penjualan" description="Target bulanan dengan dasar historis dan persetujuan yang terpisah." className="bg-white border-b border-brand-divider px-4 md:px-8 py-5" />
+      <div className="space-y-6 px-4 py-6 md:px-8">
       {verified ? <TargetWizard actor={{ id: profile.id, role: profile.role, active: true }} teams={profile.role === 'sales_manager' ? [{ managerId: profile.id, name: `Tim ${profile.full_name}` }] : []} transport={transport} initialPlanId={search.get('plan') ?? undefined} refreshKey={planRefresh} onDirtyChange={setDirty} onPlanSaved={plan => { setInboxRefresh(value => value + 1); const next = new URLSearchParams(search); next.set('plan', plan.id); setSearch(next, { replace: true }) }} /> : <LoadingState title="Memeriksa akses akun…" shape="compact" />}
       {verified && <TargetPlanInbox key={`${user.id}:${profile.role}`} actor={{ id: profile.id, role: profile.role, active: true }} transport={transport} refreshKey={inboxRefresh} onOpen={planId => { setPlanRefresh(value => value + 1); const next = new URLSearchParams(search); next.set('plan', planId); setSearch(next) }} />}
       {protection.dialog}
+      </div>
     </MainContent>
   </div>
 }

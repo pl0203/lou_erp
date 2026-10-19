@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from 'react'
 import { afterEach,expect,it,vi } from 'vitest'
-import { render,screen,cleanup,fireEvent } from '@testing-library/react'
+import { render,screen,cleanup,fireEvent,within } from '@testing-library/react'
 const mocks=vi.hoisted(()=>({read:vi.fn()}))
 vi.mock('../src/lib/leave/useLeaveReads',()=>({useAuthorizedLeaveRead:mocks.read}))
 vi.mock('../src/lib/leave/directorRpc',()=>({fetchDirectorRequests:vi.fn()}))
@@ -14,7 +14,7 @@ const row={id:'a',sequence:9,employeeId:'b',employeeName:'Test staff',startDate:
 afterEach(()=>{cleanup();mocks.read.mockReset()})
 it('shows read-only all-active overview even without approval assignments',()=>{
  mocks.read.mockReturnValue({available:true,data:{rows:[row],nextBefore:null}})
- render(<Overview actorId="director" context={context}/>);expect(screen.getByText('Test staff')).toBeTruthy();expect(screen.getByText('Penyetuju permohonan: Assigned manager')).toBeTruthy()
+ render(<Overview actorId="director" context={context}/>);expect(screen.getByText('Test staff')).toBeTruthy();expect(screen.getByRole('columnheader',{name:'Penyetuju permohonan'})).toBeTruthy();expect(within(screen.getByRole('row',{name:/Test staff/})).getByRole('cell',{name:'Assigned manager'})).toBeTruthy()
  expect(screen.queryByRole('button',{name:/Setujui|Tolak|Tinjau/})).toBeNull()
  expect(mocks.read.mock.calls[0][5]({memberKind:'employee'})).toBe(false)
 })
