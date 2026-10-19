@@ -72,6 +72,10 @@ test('preserves all 81 immutable protected hashes and four migration bytes in a 
 })
 
 test.each([
+  ['src/lib/leave/contracts.ts', 'contracts.ts.snapshot'],
+  ['src/lib/leave/rpc.ts', 'rpc.ts.snapshot'],
+  ['src/lib/leave/setupContracts.ts', 'setupContracts.ts.snapshot'],
+  ['src/lib/leave/setupRpc.ts', 'setupRpc.ts.snapshot'],
   ['src/lib/AuthContext.tsx', 'AuthContext.tsx.snapshot'],
   ['src/pages/ForgotPassword.tsx', 'ForgotPassword.tsx.snapshot'],
   ['src/lib/leave/readContracts.ts', 'readContracts.ts.snapshot'],
@@ -92,6 +96,10 @@ test.each([
 })
 
 test.each([
+  ['src/lib/leave/contracts.ts', 'contracts.ts.snapshot'],
+  ['src/lib/leave/rpc.ts', 'rpc.ts.snapshot'],
+  ['src/lib/leave/setupContracts.ts', 'setupContracts.ts.snapshot'],
+  ['src/lib/leave/setupRpc.ts', 'setupRpc.ts.snapshot'],
   ['src/lib/AuthContext.tsx', 'AuthContext.tsx.snapshot'],
   ['src/pages/ForgotPassword.tsx', 'ForgotPassword.tsx.snapshot'],
   ['src/lib/leave/readContracts.ts', 'readContracts.ts.snapshot'],

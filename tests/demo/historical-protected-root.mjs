@@ -5,6 +5,8 @@
 // independently match the same immutable old manifest hashes.
 // Four leave-reader snapshots are exact bytes from reviewed baseline
 // 5a37760e664e87dbb7be3dd1cf26e01468cefe27 and match the immutable pins.
+// Four leave-configuration snapshots are exact public bytes from reviewed baseline
+// ef8a6cf209d8520af58ddcea7f13e759193b4367 and match the immutable pins.
 // No Git lookup, hash regeneration, arbitrary fallback, network or DB activity.
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
@@ -16,6 +18,10 @@ import { DEMO_MIGRATIONS } from '../../scripts/build-demo-rollout.mjs'
 
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url))
 const snapshots = new Map([
+  ['src/lib/leave/contracts.ts', 'contracts.ts.snapshot'],
+  ['src/lib/leave/rpc.ts', 'rpc.ts.snapshot'],
+  ['src/lib/leave/setupContracts.ts', 'setupContracts.ts.snapshot'],
+  ['src/lib/leave/setupRpc.ts', 'setupRpc.ts.snapshot'],
   ['src/lib/leave/readContracts.ts', 'readContracts.ts.snapshot'],
   ['src/lib/leave/readQueryKeys.ts', 'readQueryKeys.ts.snapshot'],
   ['src/lib/leave/readRpc.ts', 'readRpc.ts.snapshot'],
