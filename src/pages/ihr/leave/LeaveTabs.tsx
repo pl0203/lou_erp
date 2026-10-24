@@ -4,6 +4,8 @@ import { Button } from '../../../components/ui/Button'
 import { useContext, useEffect, useRef, useState } from 'react'
 import { UNSAFE_DataRouterContext, UNSAFE_LocationContext } from 'react-router-dom'
 import { useAuth } from '../../../lib/AuthContext'
+import { useQueryClient } from '@tanstack/react-query'
+import { useLeaveDisplayAuthority } from '../../../lib/leave/useLeaveContext'
 import { useLeaveReadAccess } from '../../../lib/leave/useLeaveReads'
 import type { LeaveContext } from '../../../lib/leave/contracts'
 import DirectorLeaveOverview from './DirectorLeaveOverview'
@@ -20,7 +22,10 @@ export default function LeaveTabs({ context, readState='ready', onDirtyChange }:
   return user ? <Tabs key={user.id} actorId={user.id} context={context} readState={readState} onDirtyChange={onDirtyChange}/> : null
 }
 function Tabs({actorId,context,readState,onDirtyChange}:{actorId:string;context:LeaveContext;readState:LeaveReadState;onDirtyChange?:(dirty:boolean)=>void}) {
-  const [selected, setSelected] = useState(''), [dirty,setDirty]=useState(false)
+  const displayAuthority=useLeaveDisplayAuthority(useQueryClient(),actorId)
+ const navigationReady=readState==='ready'&&!displayAuthority.refreshing
+ const currentNavigationReady=useRef(navigationReady);currentNavigationReady.current=navigationReady
+ const [selected, setSelected] = useState(''), [dirty,setDirty]=useState(false)
   const [approvalBusy,setApprovalBusy]=useState(false)
   useEffect(()=>{onDirtyChange?.(dirty);return()=>onDirtyChange?.(false)},[dirty,onDirtyChange])
   const router=useContext(UNSAFE_DataRouterContext), caps=context.capabilities
@@ -49,7 +54,7 @@ function Tabs({actorId,context,readState,onDirtyChange}:{actorId:string;context:
     if(active!=='mine')setDirty(false)
     setSelected('mine')
   },[location?.key,location?.search,personal,readState,approvalBusy,active])
-  function select(id:string){if(id!==active&&(!dirty||window.confirm(discardLeaveDraftMessage))){
+  function select(id:string){if(!currentNavigationReady.current)return;if(id!==active&&(!dirty||window.confirm(discardLeaveDraftMessage))){
     // A later explicit tab choice supersedes any home intent waiting on a decision.
     if(location)handledIntent.current=location.key
     setDirty(false);setSelected(id)
@@ -61,14 +66,15 @@ function Tabs({actorId,context,readState,onDirtyChange}:{actorId:string;context:
     {/* Own request/history already owns its router guard. The other selected editor
         owns exactly one central guard, even while its controls are suspended. */}
     {router&&active!=='mine'&&<NavigationGuard dirty={dirty}/>}
-    <div hidden={readState!=='ready'} role="tablist" aria-label="Manajemen cuti" className="flex flex-wrap gap-2 rounded-[14px] border border-brand-divider bg-white p-2">
-      {tabs.map((tab,index)=><button key={tab.id} id={`leave-tab-${tab.id}`} type="button" role="tab" aria-label={tab.label} aria-selected={tab.id===active} tabIndex={tab.id===active?0:-1}
+    <div hidden={readState!=='ready'&&readState!=='refreshing'} role="tablist" aria-label="Manajemen cuti" className="flex flex-wrap gap-2 rounded-[14px] border border-brand-divider bg-white p-2">
+      {tabs.map((tab,index)=><button key={tab.id} id={`leave-tab-${tab.id}`} type="button" disabled={!navigationReady} role="tab" aria-label={tab.label} aria-selected={tab.id===active} tabIndex={tab.id===active?0:-1}
         aria-controls={`leave-panel-${tab.id}`} onClick={()=>select(tab.id)} onKeyDown={event=>{
+          if(!currentNavigationReady.current){event.preventDefault();return}
           const direction=event.key==='ArrowRight'?1:event.key==='ArrowLeft'?-1:0
           const next=event.key==='Home'?tabs[0]:event.key==='End'?tabs.at(-1):direction?tabs[(index+direction+tabs.length)%tabs.length]:undefined
           if(next){event.preventDefault();document.getElementById(`leave-tab-${next.id}`)?.focus()}
         }} className={`ui-action ui-action--quiet ui-action--compact shrink-0 ${tab.id===active?'border-brand-primary bg-brand-tint text-brand-primary underline decoration-brand-primary underline-offset-4':''}`}>
-        {tab.label}{tab.id==='approvals'&&<span className="ml-2"><LeaveApprovalBadge actorId={actorId} context={context}/></span>}
+        {tab.label}{tab.id==='approvals'&&<span className="ml-2"><LeaveApprovalBadge actorId={actorId} context={context} readState={readState}/></span>}
       </button>)}
     </div>
     <div id={`leave-panel-${active}`} role="tabpanel" aria-labelledby={`leave-tab-${active}`} className="min-w-0 pt-5 text-base text-brand-secondary">

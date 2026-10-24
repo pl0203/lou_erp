@@ -1,19 +1,25 @@
-import {useCallback,useLayoutEffect,useRef,useSyncExternalStore} from 'react'
+import {useCallback,useLayoutEffect,useSyncExternalStore} from 'react'
 import {QueryObserver,useQuery,useQueryClient} from '@tanstack/react-query'
 import type {QueryClient} from '@tanstack/react-query'
 import {useAuth} from '../AuthContext'
 import {EmployeeError} from './contracts'
 import type {EmployeeContext,UUID} from './contracts'
 import {fetchEmployeeContext,normalizeEmployeeError} from './rpc'
+import {createHRDisplayLease,runBoundedHRCheck,type HRDisplayLease} from '../hr/revalidation'
 import {clearEmployeeRecovery,purgeForeignEmployeeRecovery,employeeKeys,EMPLOYEE_BACKEND,removeEmployeeQueries} from './queryKeys'
 
-type AuthoritySnapshot=Readonly<{actorId:UUID|null;backend:string;attempt:number;ready:boolean;scopeVersion:string|null;draftGeneration:number;denied:boolean}>
-type Authority={snapshot:AuthoritySnapshot;completed:WeakMap<EmployeeContext,number>;listeners:Set<()=>void>;observers:number;detach?:()=>void;releaseQuery?:()=>void}
+type AuthoritySnapshot=Readonly<{actorId:UUID|null;backend:string;attempt:number;ready:boolean;scopeVersion:string|null;draftGeneration:number;denied:boolean;displayEpoch:number;displayAllowed:boolean;refreshing:boolean}>
+type Authority={snapshot:AuthoritySnapshot;completed:WeakMap<EmployeeContext,number>;listeners:Set<()=>void>;observers:number;displayContext?:EmployeeContext;profileRef?:unknown;displayLease:ReturnType<typeof createHRDisplayLease>;detach?:()=>void;releaseQuery?:()=>void}
 /** Completion evidence stays weak; the finite feature lease owns listeners and its query observer. */
 const authorities=new WeakMap<QueryClient,Authority>()
 function authority(client:QueryClient):Authority {
  let state=authorities.get(client)
- if(!state){state={snapshot:{actorId:null,backend:EMPLOYEE_BACKEND,attempt:0,ready:false,scopeVersion:null,draftGeneration:0,denied:false},completed:new WeakMap(),listeners:new Set(),observers:0};authorities.set(client,state)}
+ if(!state){state={snapshot:{actorId:null,backend:EMPLOYEE_BACKEND,attempt:0,ready:false,scopeVersion:null,draftGeneration:0,denied:false,displayEpoch:0,displayAllowed:false,refreshing:false},completed:new WeakMap(),listeners:new Set(),observers:0,displayLease:null!};const owned=state;state.displayLease=createHRDisplayLease(()=>{suspendEmployeeAuthority(client);void client.cancelQueries({queryKey:employeeKeys.context(owned.snapshot.actorId??'signed-out')})},refreshing=>publish(owned,{refreshing}));authorities.set(client,state)
+  client.getQueryCache().subscribe(event=>{
+   const key=event.query.queryKey,now=owned.snapshot
+   if(event.type==='removed'&&key[0]==='employees'&&key[1]===now.backend&&key[2]===now.actorId&&key[3]==='context')suspendEmployeeAuthority(client)
+  })
+ }
  return state
 }
 function publish(state:Authority,patch:Partial<AuthoritySnapshot>) {state.snapshot={...state.snapshot,...patch};state.listeners.forEach(listener=>listener())}
@@ -25,16 +31,18 @@ export function synchronizeEmployeeIdentity(client:QueryClient,actor:UUID|null,b
   if(denied&&!old.denied)suspendEmployeeAuthority(client,true)
   return
  }
+ state.displayLease.invalidateDisplayEpisode();state.displayContext=undefined;state.profileRef=undefined
  purgeRecovery(old.actorId,old.backend)
  purgeForeignEmployeeRecovery(actor,backend)
- publish(state,{actorId:actor,backend,attempt:old.attempt+1,ready:false,scopeVersion:null,draftGeneration:old.draftGeneration+1,denied})
+ publish(state,{actorId:actor,backend,attempt:old.attempt+1,ready:false,scopeVersion:null,draftGeneration:old.draftGeneration+1,denied,displayEpoch:old.displayEpoch+1,displayAllowed:false,refreshing:false})
  removeEmployeeQueries(client,key=>key[1]!==backend||key[2]!==actor)
 }
 export function getEmployeeAuthority(client:QueryClient) {return authority(client).snapshot}
 export function suspendEmployeeAuthority(client:QueryClient,denied=false) {
  const state=authority(client),old=state.snapshot
+ state.displayLease.invalidateDisplayEpisode();state.displayContext=undefined
  if(denied)purgeRecovery(old.actorId,old.backend)
- publish(state,{attempt:old.attempt+1,ready:false,denied:denied||old.denied,draftGeneration:old.draftGeneration+(denied&&!old.denied?1:0)})
+ publish(state,{attempt:old.attempt+1,ready:false,denied:denied||old.denied,displayEpoch:old.displayEpoch+1,displayAllowed:false,refreshing:false,draftGeneration:old.draftGeneration+(denied&&!old.denied?1:0)})
  removeEmployeeQueries(client,key=>key[3]==='private')
 }
 function current(client:QueryClient,actor:UUID,attempt:number,scope?:string) {
@@ -47,17 +55,21 @@ function contextOptions(client:QueryClient,actor:UUID) {return {
  queryFn:async({signal}:{signal:AbortSignal})=>{
   const state=authority(client)
   if(state.snapshot.actorId!==actor||state.snapshot.backend!==EMPLOYEE_BACKEND)throw new EmployeeError('denied')
-  suspendEmployeeAuthority(client)
+  const episode=state.displayLease.beginContext()
+  publish(state,{attempt:state.snapshot.attempt+1,ready:false})
+  removeEmployeeQueries(client,key=>key[3]==='private')
   const attempt=state.snapshot.attempt
   const interrupt=()=>{if(current(client,actor,attempt))suspendEmployeeAuthority(client)}
   signal.addEventListener('abort',interrupt,{once:true})
   try {
-   const result=await fetchEmployeeContext(signal)
+   const result=await runBoundedHRCheck(signal,fetchEmployeeContext,()=>{if(current(client,actor,attempt))suspendEmployeeAuthority(client)})
    if(signal.aborted||!current(client,actor,attempt))throw new EmployeeError('transport','CANCELLED')
    assertActor(result,actor)
    if(!result.canMaintainBasic){suspendEmployeeAuthority(client,true);return result}
-   state.completed.set(result,attempt)
-   publish(state,{ready:true,scopeVersion:result.scopeVersion,denied:false})
+   if(state.displayContext&&state.displayContext.scopeVersion!==result.scopeVersion){state.displayLease.invalidateDisplayEpisode();state.displayContext=undefined;publish(state,{displayAllowed:false,displayEpoch:state.snapshot.displayEpoch+1})}
+   state.completed.set(result,attempt);state.displayContext=state.observers>0?result:undefined
+   publish(state,{ready:true,scopeVersion:result.scopeVersion,denied:false,displayAllowed:state.observers>0})
+   state.displayLease.completeContext(episode.id)
    return result
   }catch(error){
    if(current(client,actor,attempt))suspendEmployeeAuthority(client,normalizeEmployeeError(error).kind==='denied')
@@ -83,7 +95,7 @@ function subscribeFeature(client:QueryClient,actor:UUID) {
   void client.fetchQuery(contextOptions(client,actor)).catch(()=>{})
  }
  return ()=>{if(--state.observers===0){
-  state.detach?.();state.detach=undefined
+  state.detach?.();state.detach=undefined;state.profileRef=undefined
   void client.cancelQueries({queryKey:employeeKeys.context(actor)})
   suspendEmployeeAuthority(client)
   state.releaseQuery?.();state.releaseQuery=undefined
@@ -94,14 +106,10 @@ export function useEmployeeContext() {
  const state=authority(client)
  const subscribe=useCallback((listener:()=>void)=>{state.listeners.add(listener);return()=>{state.listeners.delete(listener)}},[state])
  const snapshot=useSyncExternalStore(subscribe,()=>state.snapshot,()=>state.snapshot)
- const previousProfile=useRef({actor,profile})
  useLayoutEffect(()=>{
-  const previous=previousProfile.current;previousProfile.current={actor,profile}
-  if(actor&&previous.actor===actor&&previous.profile!==profile){
-   void client.cancelQueries({queryKey:employeeKeys.context(actor)})
-   void client.fetchQuery(contextOptions(client,actor)).catch(()=>{})
-  }
- },[client,actor,profile])
+  const previous=state.profileRef;state.profileRef=profile
+  if(actor&&previous!==undefined&&previous!==profile)void client.fetchQuery(contextOptions(client,actor)).catch(()=>{})
+ },[client,actor,profile,state])
  // Context observers never own fetching. Entry, explicit interactions and lifecycle
  // events do, so a conditional child cannot invalidate the parent that mounted it.
  const query=useQuery({...contextOptions(client,actor??'signed-out'),enabled:false,refetchOnWindowFocus:false,refetchOnReconnect:false})
@@ -111,7 +119,8 @@ export function useEmployeeContext() {
   return client.fetchQuery(contextOptions(client,actor))
  },[client,actor])
  const authorityReady=state.observers>0&&!!actor&&snapshot.actorId===actor&&snapshot.backend===EMPLOYEE_BACKEND&&snapshot.ready&&query.isSuccess&&!query.isFetching&&!!query.data&&state.completed.get(query.data)===snapshot.attempt
- return {context:authorityReady?query.data:undefined,authorityReady,authorityDenied:snapshot.actorId===actor&&snapshot.backend===EMPLOYEE_BACKEND&&snapshot.denied,authorityPending:query.isFetching,refresh,error:query.error?normalizeEmployeeError(query.error):null,draftGeneration:snapshot.draftGeneration,authorityRevision:snapshot.attempt,actorId:actor,scopeVersion:authorityReady?snapshot.scopeVersion:null}
+ const displayAllowed=state.observers>0&&!!actor&&snapshot.actorId===actor&&snapshot.backend===EMPLOYEE_BACKEND&&snapshot.displayAllowed&&!snapshot.denied
+ return {displayLease:state.displayLease as HRDisplayLease,displayAllowed,displayEpoch:snapshot.displayEpoch,displayContext:displayAllowed?state.displayContext:undefined,displayScopeVersion:displayAllowed?state.displayContext?.scopeVersion??null:null,refreshing:snapshot.refreshing,context:authorityReady?query.data:undefined,authorityReady,authorityDenied:snapshot.actorId===actor&&snapshot.backend===EMPLOYEE_BACKEND&&snapshot.denied,authorityPending:query.isFetching,refresh,error:query.error?normalizeEmployeeError(query.error):null,draftGeneration:snapshot.draftGeneration,authorityRevision:snapshot.attempt,actorId:actor,scopeVersion:authorityReady?snapshot.scopeVersion:null}
 }
 function authorityChanged(client:QueryClient,actor:UUID) {
  const now=authority(client).snapshot

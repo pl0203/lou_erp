@@ -20,9 +20,9 @@ export const roleLabels: Record<string,string> = {executive:'Director',po_admin:
 export const characterCount = (value:string|null,limit:number) => `${Array.from((value??'').trim()).length} / ${limit} karakter`
 export const characterError = (value:string|null,limit:number) => Array.from((value??'').trim()).length>limit?`Maksimal ${limit} karakter. Isian Anda tidak dipotong.`:undefined
 export const dateLabel = (value?:string|null) => value || 'Belum dikonfirmasi'
-export function EmployeeShell({title,description,actions,children,ready=true,draftGeneration=0}:{title:ReactNode;description?:ReactNode;actions?:ReactNode;children:ReactNode;ready?:boolean;draftGeneration?:number}) {
- // Protected controls leave the DOM during suspension. Keep only a focus locator,
- // not their node/value, and restore it after a completed read (never after revocation).
+export function EmployeeShell({title,description,actions,children,ready=true,displayReady=ready,refreshing=false,draftGeneration=0}:{title:ReactNode;description?:ReactNode;actions?:ReactNode;children:ReactNode;ready?:boolean;displayReady?:boolean;refreshing?:boolean;draftGeneration?:number}) {
+ // Eligible refreshes retain native nodes/selection. On uncertainty the protected
+ // subtree still leaves the DOM; retain only a focus locator for explicit recovery.
  const focus=useRef<{id:string;label:string;tag:string}|null>(null),suspended=useRef(false)
  useLayoutEffect(()=>{focus.current=null},[draftGeneration])
  useLayoutEffect(()=>{
@@ -34,7 +34,7 @@ export function EmployeeShell({title,description,actions,children,ready=true,dra
   const target=locator.id?document.getElementById(locator.id):Array.from(document.querySelectorAll<HTMLElement>('#main-content button, #main-content a')).find(node=>node.tagName===locator.tag&&(node.getAttribute('aria-label')||node.textContent)===locator.label)
   target?.focus({preventScroll:true})
  },[ready])
- return <div className="min-h-screen bg-gray-50"><IHRNav/><MainContent className="employee-page" onFocusCapture={event=>{if(ready&&event.target instanceof HTMLElement)focus.current={id:event.target.id,label:event.target.getAttribute('aria-label')||event.target.textContent||'',tag:event.target.tagName}}}><PageHeader title={title} description={description} actions={actions}/>{children}</MainContent></div>
+ return <div className="min-h-screen bg-gray-50"><IHRNav/><MainContent className="employee-page" onFocusCapture={event=>{if(ready&&event.target instanceof HTMLElement)focus.current={id:event.target.id,label:event.target.getAttribute('aria-label')||event.target.textContent||'',tag:event.target.tagName}}}><PageHeader title={title} description={description} actions={actions}/>{refreshing&&displayReady&&<p role="status" className="employee-support">Memeriksa akses…</p>}{children}</MainContent></div>
 }
 export function RecordedStatus({status}:{status:EmployeeStatus}) {return <StatusBadge tone={status==='active'?'success':status==='ended'?'warning':'neutral'}>{statusLabels[status]}</StatusBadge>}
 type ReadState = {authorityReady:boolean;authorityDenied:boolean;error:EmployeeError|null;refresh:()=>Promise<unknown>}
@@ -48,9 +48,9 @@ export function EmployeeReadState({state,loading='Memuat data karyawan…'}:{sta
 export function TimezoneNotice({timezone}:{timezone:string|null|undefined}) {
  return timezone ? <p className="employee-support">Tanggal menggunakan zona waktu perusahaan: {timezone}.</p> : <Notice tone="info" title="Zona waktu perusahaan belum dikonfirmasi">Data dasar tanpa tanggal tetap dapat disimpan. Minta pemilik sistem mengonfirmasi zona waktu sebelum mencatat perubahan bertanggal.</Notice>
 }
-export function Pagination({page,total,pageSize=25,onPage,audit=false}:{page:number;total:number;pageSize?:number;onPage:(page:number)=>void;audit?:boolean}) {
+export function Pagination({page,total,pageSize=25,onPage,audit=false,disabled=false}:{page:number;total:number;pageSize?:number;onPage:(page:number)=>void;audit?:boolean;disabled?:boolean}) {
  const pages=Math.max(1,Math.ceil(total/pageSize)),prefix=audit?'Halaman audit':'Halaman'
- return <nav className="employee-pagination" aria-label={audit?'Halaman riwayat perubahan':'Halaman hasil'}><Button variant="secondary" disabled={page<=1} onClick={()=>onPage(page-1)} aria-label={`${prefix} sebelumnya`}>Sebelumnya</Button><span aria-live="polite">{page} dari {pages} · {total} hasil</span><Button variant="secondary" disabled={page>=pages} onClick={()=>onPage(page+1)} aria-label={`${prefix} berikutnya`}>Berikutnya</Button></nav>
+ return <nav className="employee-pagination" aria-label={audit?'Halaman riwayat perubahan':'Halaman hasil'}><Button variant="secondary" disabled={disabled||page<=1} onClick={()=>{if(!disabled)onPage(page-1)}} aria-label={`${prefix} sebelumnya`}>Sebelumnya</Button><span aria-live="polite">{page} dari {pages} · {total} hasil</span><Button variant="secondary" disabled={disabled||page>=pages} onClick={()=>{if(!disabled)onPage(page+1)}} aria-label={`${prefix} berikutnya`}>Berikutnya</Button></nav>
 }
 export function TechnicalDetails({children}:{children:ReactNode}) {return <details className="employee-technical"><summary className="min-h-[var(--ui-control-size)]">Detail teknis</summary>{children}</details>}
 export function ReportingTimeline({intervals,names={}}:{intervals:Partial<ReportingInterval>[];names?:Record<string,string>}) {
@@ -60,7 +60,7 @@ export function ReportingTimeline({intervals,names={}}:{intervals:Partial<Report
 /** Read only the employees referenced by a visible timeline, never prefetch the directory. */
 export function EmployeeName({employeeId}:{employeeId:string}) {
  const read=useEmployeeDetail(employeeId)
- return <Link className="employee-text-link" to={`/ihr/employees/${employeeId}`}>{read.authorityReady&&read.data?read.data.fields.name:'Nama atasan belum dapat dikonfirmasi'}</Link>
+ return <Link aria-disabled={!read.data||undefined} tabIndex={read.data?undefined:-1} onClick={event=>{if(!read.data)event.preventDefault()}} className="employee-text-link" to={`/ihr/employees/${employeeId}`}>{read.displayData?read.displayData.fields.name:'Nama atasan belum dapat dikonfirmasi'}</Link>
 }
 export function Snapshot({value,names={}}:{value:EmployeeSnapshot;names?:Record<string,string>}) {
  const labels={name:'Nama lengkap',employeeNumber:'Nomor karyawan',jobTitle:'Jabatan',team:'Tim',recordedStatus:'Status tercatat'}
@@ -69,8 +69,11 @@ export function Snapshot({value,names={}}:{value:EmployeeSnapshot;names?:Record<
 }
 export function ChangeReview({before,after,names}:{before:EmployeeSnapshot;after:EmployeeSnapshot;names?:Record<string,string>}) {return <div className="employee-comparison"><section><h3>Sebelum</h3><Snapshot value={before} names={names}/></section><section><h3>Sesudah</h3><Snapshot value={after} names={names}/></section></div>}
 
-/** One command and one navigation guard per mounted editor. Form state belongs to its screen. */
-export function useEmployeeEditorActions(id:string|undefined, proposalFor:(employeeId:string)=>EmployeeProposal|null, dirty:boolean, reviewEligible:boolean) {
+/** One command and one navigation guard per mounted editor. Form state belongs to its screen.
+ * actionReady is the strict target-read receipt, separate from durable draft/review
+ * eligibility: preview itself rechecks authority, so pending is not a draft edit.
+ */
+export function useEmployeeEditorActions(id:string|undefined, proposalFor:(employeeId:string)=>EmployeeProposal|null, dirty:boolean, reviewEligible:boolean,actionReady=true) {
  const command=useEmployeeCommand(id),navigate=useNavigate()
  const proposal=command.employeeId?proposalFor(command.employeeId):null
  const [validation,setValidation]=useState(''),[reviewing,setReviewing]=useState(false),[reviewed,setReviewed]=useState<{key:string;revision:number}|null>(null)
@@ -85,15 +88,15 @@ export function useEmployeeEditorActions(id:string|undefined, proposalFor:(emplo
  // transition retires approval, including false -> true and edit -> revert.
  useLayoutEffect(()=>{reviewRevision.current++;setReviewed(null)},[key,reviewEligible,command.draftGeneration,id])
  useLayoutEffect(()=>{if(validation||command.error)errorRef.current?.focus()},[validation,command.error,command.authorityReady])
- const visiblePreview=reviewEligible&&reviewed?.key===key&&reviewed.revision===reviewRevision.current?command.previewResult:null
- const latest=useRef({key,proposal,reviewEligible,reviewed,visiblePreview})
- latest.current={key,proposal,reviewEligible,reviewed,visiblePreview}
+ const visiblePreview=actionReady&&command.authorityReady&&reviewEligible&&reviewed?.key===key&&reviewed.revision===reviewRevision.current?command.previewResult:null
+ const latest=useRef({key,proposal,reviewEligible,reviewed,visiblePreview,actionReady:actionReady&&command.authorityReady})
+ latest.current={key,proposal,reviewEligible,reviewed,visiblePreview,actionReady:actionReady&&command.authorityReady}
  useLayoutEffect(()=>{if(visiblePreview)reviewRef.current?.focus()},[visiblePreview])
  useEffect(()=>{
   if(command.receipt)guard.runWithoutPrompt(()=>navigate(`/ihr/employees/${command.receipt!.employeeId}`,{replace:true,state:{employeeSaved:true}}))
  },[command.receipt,navigate])
  async function review(problem:string) {
-  if(inFlight.current)return
+  if(inFlight.current||!command.authorityReady||!latest.current.actionReady||!latest.current.reviewEligible)return
   setValidation(problem);setReviewed(null)
   if(problem||!proposal||!reviewEligible||!latest.current.reviewEligible||latest.current.key!==key)return
   inFlight.current=true;setReviewing(true);const captured={key,revision:reviewRevision.current}
@@ -102,7 +105,7 @@ export function useEmployeeEditorActions(id:string|undefined, proposalFor:(emplo
  return {command,guard,validation,errorRef,reviewRef,reviewing,visiblePreview,reviewProposal:visiblePreview?proposal:null,review,submit:()=>{
   const current=latest.current
   // Retained callbacks cannot reuse a retired approval or submit a later review.
-  if(!mounted.current||!current.reviewEligible||!current.proposal||!current.visiblePreview||!reviewed||current.reviewed!==reviewed||current.key!==key||reviewed.revision!==reviewRevision.current)return
+  if(!mounted.current||!current.actionReady||!current.reviewEligible||!current.proposal||!current.visiblePreview||!reviewed||current.reviewed!==reviewed||current.key!==key||reviewed.revision!==reviewRevision.current)return
   void command.submit(current.proposal)
  },cancel:()=>guard.confirmDiscard(()=>navigate(id?`/ihr/employees/${id}`:'/ihr/employees'))}
 }
@@ -114,7 +117,7 @@ export function EditorFeedback({actions}:{actions:EditorActions}) {
 export function EditorReview({actions,names}:{actions:EditorActions;names?:Record<string,string>}) {
  const preview=actions.visiblePreview
  if(!preview)return null
- return <section className="employee-panel employee-review"><h2 ref={actions.reviewRef} tabIndex={-1}>Tinjau sebelum menyimpan</h2>{preview.action==='quarantine_account_link'&&<Notice tone="warning" title="Karantina tautan akun">Tautan seumur hidup tetap disimpan dan tidak dapat dialihkan. Login tidak berubah.</Notice>}<ChangeReview before={preview.before} after={preview.after} names={names}/><dl className="employee-summary"><div><dt>Alasan perubahan</dt><dd>{actions.reviewProposal?.reason}</dd></div><div><dt>Tanggal berlaku</dt><dd>{dateLabel(actions.reviewProposal?.effectiveDate)}</dd></div>{actions.reviewProposal?.sourceReference&&<div><dt>Sumber perubahan</dt><dd>{actions.reviewProposal.sourceReference}</dd></div>}</dl><p className="employee-support">Hanya perubahan yang ditampilkan ini yang disimpan. Login, akses operasional, dan data cuti tidak berubah.</p><FormActions><Button onClick={actions.submit} pending={actions.command.phase==='submitting'}>Simpan perubahan</Button></FormActions></section>
+ return <section className="employee-panel employee-review"><h2 ref={actions.reviewRef} tabIndex={-1}>Tinjau sebelum menyimpan</h2>{preview.action==='quarantine_account_link'&&<Notice tone="warning" title="Karantina tautan akun">Tautan seumur hidup tetap disimpan dan tidak dapat dialihkan. Login tidak berubah.</Notice>}<ChangeReview before={preview.before} after={preview.after} names={names}/><dl className="employee-summary"><div><dt>Alasan perubahan</dt><dd>{actions.reviewProposal?.reason}</dd></div><div><dt>Tanggal berlaku</dt><dd>{dateLabel(actions.reviewProposal?.effectiveDate)}</dd></div>{actions.reviewProposal?.sourceReference&&<div><dt>Sumber perubahan</dt><dd>{actions.reviewProposal.sourceReference}</dd></div>}</dl><p className="employee-support">Hanya perubahan yang ditampilkan ini yang disimpan. Login, akses operasional, dan data cuti tidak berubah.</p><FormActions><Button disabled={!actions.command.authorityReady} onClick={actions.submit} pending={actions.command.phase==='submitting'}>Simpan perubahan</Button></FormActions></section>
 }
 export function OperationRecovery({actions}:{actions:EditorActions}) {
  const {command}=actions,[confirm,setConfirm]=useState(false),trigger=useRef<HTMLElement|null>(null),fallback=useRef<HTMLHeadingElement>(null)
@@ -122,6 +125,6 @@ export function OperationRecovery({actions}:{actions:EditorActions}) {
  if(command.phase==='completed')return <Notice tone="success" title="Perubahan sudah tersimpan">Membuka hasil yang sudah dikonfirmasi. Jangan membuat penyimpanan baru.</Notice>
  if(!command.recoveryEmployeeId&&!pending&&command.phase!=='blocked')return null
  if(command.phase==='blocked')return <Notice tone="warning" title="Penyimpanan belum tersedia">Periksa akses atau penyimpanan pemulihan pada browser. Jangan menghapus operasi lama untuk mengirim pengganti.</Notice>
- return <section className="employee-panel"><h2 ref={fallback} tabIndex={-1}>{pending?'Memastikan hasil penyimpanan…':'Hasil penyimpanan belum pasti'}</h2><p>Jangan buat perubahan pengganti. Periksa operasi yang sama, atau batalkan secara terkonfirmasi jika belum tersimpan. Keluar dari halaman tidak membatalkan permintaan.</p><FormActions><Button pending={pending} onClick={()=>void command.checkOutcome()}>Periksa hasil</Button>{command.canRetryUnknown&&<Button variant="secondary" disabled={pending} onClick={()=>void command.retryUnknown()}>Kirim ulang operasi yang sama</Button>}<Button variant="danger-quiet" disabled={pending} onClick={event=>{trigger.current=event.currentTarget;setConfirm(true)}}>Batalkan operasi lama</Button></FormActions>{confirm&&<Dialog labelledBy="employee-abandon-title" pending={pending} returnFocus={trigger.current} fallbackFocus={()=>fallback.current} onClose={()=>setConfirm(false)}><h2 id="employee-abandon-title">Batalkan operasi lama?</h2><p>Server hanya membatalkan operasi yang belum tersimpan. Jika ternyata sudah tersimpan, hasil asli akan dibuka. Data karyawan yang sudah tersimpan tidak dihapus.</p><FormActions><Button variant="secondary" onClick={()=>setConfirm(false)}>Kembali</Button><Button variant="danger" pending={pending} onClick={async()=>{await command.abandonUnknown();setConfirm(false)}}>Konfirmasi pembatalan</Button></FormActions></Dialog>}</section>
+ return <section className="employee-panel"><h2 ref={fallback} tabIndex={-1}>{pending?'Memastikan hasil penyimpanan…':'Hasil penyimpanan belum pasti'}</h2><p>Jangan buat perubahan pengganti. Periksa operasi yang sama, atau batalkan secara terkonfirmasi jika belum tersimpan. Keluar dari halaman tidak membatalkan permintaan.</p><FormActions><Button disabled={!command.authorityReady} pending={pending} onClick={()=>{if(command.authorityReady)void command.checkOutcome()}}>Periksa hasil</Button>{command.canRetryUnknown&&<Button variant="secondary" disabled={pending||!command.authorityReady} onClick={()=>{if(command.authorityReady)void command.retryUnknown()}}>Kirim ulang operasi yang sama</Button>}<Button variant="danger-quiet" disabled={pending||!command.authorityReady} onClick={event=>{if(!command.authorityReady)return;trigger.current=event.currentTarget;setConfirm(true)}}>Batalkan operasi lama</Button></FormActions>{confirm&&<Dialog labelledBy="employee-abandon-title" pending={pending} returnFocus={trigger.current} fallbackFocus={()=>fallback.current} onClose={()=>setConfirm(false)}><h2 id="employee-abandon-title">Batalkan operasi lama?</h2><p>Server hanya membatalkan operasi yang belum tersimpan. Jika ternyata sudah tersimpan, hasil asli akan dibuka. Data karyawan yang sudah tersimpan tidak dihapus.</p><FormActions><Button variant="secondary" onClick={()=>setConfirm(false)}>Kembali</Button><Button variant="danger" disabled={!command.authorityReady} pending={pending} onClick={async()=>{if(!command.authorityReady)return;await command.abandonUnknown();setConfirm(false)}}>Konfirmasi pembatalan</Button></FormActions></Dialog>}</section>
 }
 export { EmptyState }

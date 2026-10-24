@@ -1,3 +1,4 @@
+import type { LeaveReadState } from './LeaveRequestForm'
 import { LoadingState } from '../../../components/ui/LoadingState'
 import { RecordList } from '../../../components/ui/RecordList'
 import { Notice, EmptyState } from '../../../components/ui/Feedback'
@@ -7,9 +8,11 @@ import { useId, useEffect, useRef, useState  } from 'react'
 import type { LeaveContext } from '../../../lib/leave/contracts'
 import { parseCalendarRange } from '../../../lib/leave/readContracts'
 import type { CalendarAudience, CalendarRange } from '../../../lib/leave/readContracts'
+import { useQueryClient } from '@tanstack/react-query'
+import { useLeaveDisplayAuthority } from '../../../lib/leave/useLeaveContext'
 import { useLeaveCalendar, useLeaveReadAccess } from '../../../lib/leave/useLeaveReads'
 import { formatLeaveMinutes } from '../../../lib/leave/formatMinutes'
-type Props={actorId:string;context:LeaveContext;readState?:'ready'|'pending'|'error'}
+type Props={actorId:string;context:LeaveContext;readState?:LeaveReadState}
 const audienceLabels:Record<CalendarAudience,string>={own:'Cuti saya',assigned_team:'Tim yang ditugaskan',granted:'Akses kalender yang diberikan',director_all:'Seluruh karyawan'}
 export default function TeamLeaveCalendar(props:Props){
  return <CalendarPanel key={`${props.actorId}:${props.context.scopeVersion}`} {...props}/>
@@ -27,12 +30,20 @@ function CalendarPanel({actorId,context,readState='ready'}:Props){
  // completed audience gate during that refresh; display still needs live proof.
  const readEnabled=completedAudience.current?.audience===audience&&completedAudience.current.allowed
  const calendar=useLeaveCalendar(actorId,context,range??{from:'',to:''},audience,!!readEnabled&&!!range)
- const controls=readState==='ready'&&access.available&&!!access.data?.calendarAudiences.length
+ const shownAccess=(readState==='ready'||readState==='refreshing')?access.displayData:undefined
+ const shownCalendar=shownAccess?.calendarAudiences.includes(audience)?calendar.displayData:undefined
+ const displayAuthority=useLeaveDisplayAuthority(useQueryClient(),actorId)
+ // A fresh access receipt can recover from a removed audience without requiring
+ // a receipt for the now-inaccessible old calendar. Pending episodes still block.
+ const audienceControls=readState==='ready'&&access.available&&!!access.data?.calendarAudiences.length&&!displayAuthority.refreshing
+ const currentAudience=useRef({ready:audienceControls,audiences:access.data?.calendarAudiences});currentAudience.current={ready:audienceControls,audiences:access.data?.calendarAudiences}
+ const controls=audienceControls&&(!range||calendar.available&&calendar.isCurrent())
+ const actionReady=useRef(false);actionReady.current=!!controls&&authorized
  useEffect(()=>{
   if(!range&&access.data?.defaultRange){setRange(access.data.defaultRange);setFrom(access.data.defaultRange.from);setTo(access.data.defaultRange.to)}
  },[range,access.data?.defaultRange])
  function apply(event:React.FormEvent){
-  event.preventDefault();if(!controls||!authorized)return
+  event.preventDefault();if(!actionReady.current||!access.isCurrent()||range&&!calendar.isCurrent())return
   try{setRange(parseCalendarRange({from,to}));setManual(true);setError('')}catch{setError('Pilih rentang tanggal yang valid, paling lama 93 hari termasuk kedua tanggal.')}
  }
  return <section aria-label="Kalender tim" className="ui-section space-y-4">
@@ -41,9 +52,9 @@ function CalendarPanel({actorId,context,readState='ready'}:Props){
   <p className="text-base text-brand-secondary">Hanya cuti disetujui dan pembatalan yang masih menunggu keputusan. Sebagian jadwal menunjukkan menit cuti; waktu mulai dan selesai tidak dicatat.</p>
   <p className="text-base text-brand-secondary">Label seluruh jadwal mengacu pada kapasitas jadwal saat cuti disetujui. Kalender ini tidak memastikan cakupan petugas.</p>
   <form onSubmit={apply} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1.3fr_1fr_1fr_auto]">
-   <Field id={`${fieldId}-1`} label="Cakupan kalender">{control=><select {...control} aria-label="Cakupan kalender" value={audience} disabled={!controls} onChange={e=>{if(controls){setAudience(e.target.value as CalendarAudience);if(!manual){setRange(null);setFrom('');setTo('')}}}} >
-    {controls&&!authorized&&<option value={audience} disabled>Cakupan belum tersedia</option>}
-    {(access.data?.calendarAudiences??[audience]).map(value=><option key={value} value={value}>{audienceLabels[value]}</option>)}
+   <Field id={`${fieldId}-1`} label="Cakupan kalender">{control=><select {...control} aria-label="Cakupan kalender" value={audience} disabled={!audienceControls} onChange={e=>{if(currentAudience.current.ready&&access.isCurrent()&&currentAudience.current.audiences?.includes(e.target.value as CalendarAudience)){setAudience(e.target.value as CalendarAudience);if(!manual){setRange(null);setFrom('');setTo('')}}}} >
+    {audienceControls&&!authorized&&<option value={audience} disabled>Cakupan belum tersedia</option>}
+    {(shownAccess?.calendarAudiences??[audience]).map(value=><option key={value} value={value}>{audienceLabels[value]}</option>)}
    </select>}</Field>
    <Field id={`${fieldId}-2`} label="Dari">{control=><input {...control} aria-label="Dari tanggal" type="date" value={from} disabled={!controls||!authorized} onChange={e=>setFrom(e.target.value)} />}</Field>
    <Field id={`${fieldId}-3`} label="Sampai">{control=><input {...control} aria-label="Sampai tanggal" type="date" value={to} disabled={!controls||!authorized} onChange={e=>setTo(e.target.value)} />}</Field>
@@ -51,18 +62,18 @@ function CalendarPanel({actorId,context,readState='ready'}:Props){
   </form>
   {error&&<Notice tone="error" title={<> {error} </>}/>}
   {access.available&&authorized&&access.data?.defaultRange===null&&<p role="status" className="ui-notice ui-notice--info">Zona waktu perusahaan belum dikonfirmasi atau berbeda untuk cakupan ini. Pilih rentang tanggal secara manual; tanggal ditampilkan sesuai permohonan.</p>}
-  {readState==='pending'||access.isFetching?<LoadingState title="Memeriksa akses kalender..." shape="compact" className="ui-notice ui-notice--info" />:
+  {!shownCalendar&&(readState==='pending'||readState==='refreshing'||access.isFetching)?<LoadingState title="Memeriksa akses kalender..." shape="compact" className="ui-notice ui-notice--info" />:
    readState==='error'||access.isError?<div role="alert" className="ui-notice ui-notice--error"><p>Akses kalender belum dapat dikonfirmasi.</p><Button size="compact" type="button" onClick={()=>void access.refetch()} variant="secondary">Coba lagi</Button></div>:
-   !access.available?<div role="status" className="ui-notice ui-notice--info"><p>Akses kalender belum tersedia.</p><Button size="compact" type="button" onClick={()=>void access.refetch()} variant="secondary">Muat ulang akses kalender</Button></div>:
-   !access.data?.calendarAudiences.length?<EmptyState title="Belum ada akses kalender yang diberikan."/>:
-   !authorized?<p>Cakupan kalender ini belum tersedia. Pilih cakupan yang diberikan.</p>:
+   !shownAccess?<div role="status" className="ui-notice ui-notice--info"><p>Akses kalender belum tersedia.</p><Button size="compact" type="button" onClick={()=>void access.refetch()} variant="secondary">Muat ulang akses kalender</Button></div>:
+   !shownAccess.calendarAudiences.length?<EmptyState title="Belum ada akses kalender yang diberikan."/>:
+   !shownAccess.calendarAudiences.includes(audience)?<p>Cakupan kalender ini belum tersedia. Pilih cakupan yang diberikan.</p>:
    !range?<p>Pilih rentang tanggal paling lama 93 hari.</p>:
-   calendar.isFetching||calendar.isPending?<LoadingState title="Memuat kalender..." shape="list" className="ui-notice ui-notice--info" />:
+   !shownCalendar&&(calendar.isFetching||calendar.isPending)?<LoadingState title="Memuat kalender..." shape="list" className="ui-notice ui-notice--info" />:
    calendar.isError?<div role="alert" className="ui-notice ui-notice--error"><p>Kalender belum dapat dimuat.</p><Button size="compact" type="button" onClick={()=>void calendar.refetch()} variant="secondary">Coba lagi</Button></div>:
-   calendar.available&&calendar.data?<>
-    {!calendar.data.length&&<EmptyState title="Tidak ada cuti disetujui pada rentang ini."/>}
-    {!!calendar.data.length&&<h3 className="border-t border-brand-divider pt-4 font-semibold text-brand-primary">Agenda cuti</h3>}
-    <RecordList aria-label="Agenda cuti"  label="Agenda cuti">{calendar.data.map(row=><li key={`${row.employeeId}:${row.date}`} className="flex flex-col gap-3 rounded-[14px] border border-brand-divider bg-brand-canvas p-4 sm:flex-row sm:items-center">
+   shownCalendar?<>
+    {!shownCalendar.length&&<EmptyState title="Tidak ada cuti disetujui pada rentang ini."/>}
+    {!!shownCalendar.length&&<h3 className="border-t border-brand-divider pt-4 font-semibold text-brand-primary">Agenda cuti</h3>}
+    <RecordList aria-label="Agenda cuti"  label="Agenda cuti">{shownCalendar.map(row=><li key={`${row.employeeId}:${row.date}`} className="flex flex-col gap-3 rounded-[14px] border border-brand-divider bg-brand-canvas p-4 sm:flex-row sm:items-center">
      <time dateTime={row.date} className="shrink-0 self-start rounded-[10px] bg-white px-3 py-2 text-[13px] font-semibold text-brand-secondary shadow-sm">{row.date}</time><div className="min-w-0 flex-1"><p className="font-medium text-brand-primary">{row.employeeName}</p><p className="mt-1 text-[13px] text-brand-secondary">{row.availabilityLabel==='full_scheduled_absence'?'Seluruh jadwal asal':'Sebagian jadwal'}</p></div><span className="font-semibold text-brand-primary">{formatLeaveMinutes(row.approvedMinutes)}</span>
     </li>)}</RecordList>
    </>:<div role="status" className="ui-notice ui-notice--info"><p>Kalender belum tersedia.</p><Button size="compact" type="button" onClick={()=>void calendar.refetch()} variant="secondary">Muat ulang kalender</Button></div>}

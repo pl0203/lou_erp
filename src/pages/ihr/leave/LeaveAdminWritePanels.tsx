@@ -23,6 +23,7 @@ type PanelProps={actorId:string;context:LeaveContext;target:LeaveAdminTarget;rea
 type CommandTransport<C>={send:(command:C)=>Promise<LeaveResult>;hasUnresolved:()=>boolean;reconcile:()=>Promise<Recovery>;acknowledgeRecovered:()=>void}
 /** The existing canonical transports own identity, retry fences and minimal recovery storage. */
 export function useAdminCommand<C>({actorId,context,formScope,readState,fresh,draftDirty,onDirtyChange,makeTransport,onConfirmed,onReceipt}:{actorId:string;context:LeaveContext;formScope:string;readState:LeaveReadState;fresh:boolean;draftDirty:boolean;onDirtyChange:(dirty:boolean)=>void;makeTransport:(authorize:()=>Promise<void>)=>CommandTransport<C>;onConfirmed:()=>Promise<unknown>;onReceipt?:()=>void}){
+ const actionReady=useRef({fresh,readState});actionReady.current={fresh,readState}
  const client=useQueryClient(),[recovery,setRecovery]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),working=useRef(false),alive=useRef(true)
  const transport=useMemo(()=>makeTransport(()=>runLeaveInteraction(client,actorId,context.scopeVersion,live=>{if(!alive.current||live.memberKind==='director')throw new Error('Akses pengaturan berubah.')})),[actorId,context.scopeVersion,formScope,client])
  useEffect(()=>{alive.current=true;setRecovery(transport.hasUnresolved());return()=>{alive.current=false}},[transport])
@@ -30,13 +31,13 @@ export function useAdminCommand<C>({actorId,context,formScope,readState,fresh,dr
  useEffect(()=>{onDirtyChange(draftDirty||recovery);return()=>onDirtyChange(false)},[draftDirty,recovery,onDirtyChange])
  async function complete(){await invalidateRequestCaches(client);if(alive.current)await onConfirmed()}
  async function send(command:C){
-  if(working.current||!fresh||recovery||readState!=='ready')throw new Error('Akses pengaturan belum dikonfirmasi.')
+  if(working.current||!alive.current||!actionReady.current.fresh||recovery||actionReady.current.readState!=='ready')throw new Error('Akses pengaturan belum dikonfirmasi.')
   working.current=true;setBusy(true);setError('')
   try{const result=await transport.send(command);if(alive.current)onReceipt?.();await complete();return result}
   finally{working.current=false;if(alive.current){setBusy(false);setRecovery(transport.hasUnresolved())}}
  }
  async function recover(){
-  if(working.current||readState!=='ready')return;working.current=true;setBusy(true);setError('')
+  if(working.current||!alive.current||actionReady.current.readState!=='ready')return;working.current=true;setBusy(true);setError('')
   try{const result=await transport.reconcile();if(!alive.current)return;if(result.state==='committed')transport.acknowledgeRecovered();setRecovery(false);await complete()}
   catch{if(alive.current)setError('Hasil perubahan belum pasti. Periksa akses lalu pulihkan kembali.')}
   finally{working.current=false;if(alive.current)setBusy(false)}
@@ -69,7 +70,7 @@ export function LeaveAdminMemberPanel({actorId,context,target,readState,onDirtyC
  const command=useAdminCommand({actorId,context,formScope:`member:${target.id}`,readState,fresh,draftDirty:dirty,onDirtyChange,makeTransport:authorize=>createLeaveSetupTransport({actorId,backendScope:LEAVE_BACKEND,formScope:`member:${target.id}`,storage:()=>localStorage,authorize}),onReceipt:continuity.onReceipt,onConfirmed:continuity.wait})
  const data=denied?undefined:query.data??(last.current.scope===context.scopeVersion||continuity.retaining?last.current.data:undefined)
  return <div className="space-y-4">{command.recoveryUI}
-  {data&&<LeavePeopleSettings key={continuity.key} actorId={actorId} member={data.member} approvers={data.approvers} calendars={data.write.memberOptions?.calendars??[]} groups={data.write.memberOptions?.groups??[]} impacts={data.member.impacts??{available:false,pendingCount:null,approvedCount:null}} send={command.send} authorityReady={continuity.ready&&!command.recovery} onDirtyChange={setDirty} onSaved={continuity.onSaved}/>}
+  {data&&<LeavePeopleSettings key={continuity.key} actorId={actorId} member={data.member} approvers={data.approvers} calendars={data.write.memberOptions?.calendars??[]} groups={data.write.memberOptions?.groups??[]} impacts={data.member.impacts??{available:false,pendingCount:null,approvedCount:null}} send={command.send} authorityReady={continuity.ready&&!command.recovery} displayReady={(readState==='ready'||readState==='refreshing')&&!!query.displayData&&!command.recovery} refreshing={!fresh} onDirtyChange={setDirty} onSaved={continuity.onSaved}/>}
   {fresh&&data?.write.memberOptions?.state!=='available'&&<p role="status" className="ui-notice ui-notice--info">Lajur kalender anggota belum ditetapkan. Pilihan kalender memerlukan penyiapan yang berwenang.</p>}
   {readState==='ready'&&!fresh&&<div role={query.isError?'alert':'status'}><p>Data pengaturan anggota belum dapat dikonfirmasi.</p><Button size="compact" type="button" onClick={()=>void query.refetch()} variant="secondary">Muat ulang anggota terpilih</Button></div>}
  </div>
@@ -78,11 +79,12 @@ export function LeaveAdminBalancePanel({actorId,context,target,readState,onDirty
  const [dirty,setDirty]=useState(false)
  const query=useAuthorizedLeaveRead(actorId,context,leaveKeys.private(actorId,context.scopeVersion,'admin','balance-write',target.id),signal=>fetchLeaveAdminWriteContext(target.id,context.scopeVersion,signal),target.capabilities.configure||target.capabilities.adjust,live=>live.memberKind!=='director'&&(live.capabilities.configure||live.capabilities.adjust))
  const fresh=readState==='ready'&&query.available
- const last=useRef<typeof query.data>(undefined);if(query.data)last.current=query.data
+ const denied=query.isError&&query.error.message===leaveErrorMessage({code:'42501'})
+ const last=useRef<typeof query.data>(undefined);if(denied)last.current=undefined;else if(query.data)last.current=query.data
  const command=useAdminCommand({actorId,context,formScope:`balance:${target.id}`,readState,fresh,draftDirty:dirty,onDirtyChange,makeTransport:authorize=>createLeaveBalanceTransport({actorId,backendScope:LEAVE_BACKEND,formScope:`balance:${target.id}`,storage:()=>localStorage,authorize}),onConfirmed:()=>query.refetch()})
- const data=query.data??last.current
+ const data=denied?undefined:query.data??last.current
  return <div className="space-y-4">{command.recoveryUI}
-  {data&&<LeaveBalanceSettings key={data.authorityKey} actorId={actorId} employeeId={target.id} currentPeriod={data.balance.currentPeriod} accountMetadata={data.balance.account??undefined} canConfigure={data.capabilities.configure} canAdjust={data.capabilities.adjust} send={command.send} authorityReady={fresh&&!command.recovery} onDirtyChange={setDirty}/>}
+  {data&&<LeaveBalanceSettings key={data.authorityKey} actorId={actorId} employeeId={target.id} currentPeriod={data.balance.currentPeriod} accountMetadata={data.balance.account??undefined} canConfigure={data.capabilities.configure} canAdjust={data.capabilities.adjust} send={command.send} authorityReady={fresh&&!command.recovery} displayReady={(readState==='ready'||readState==='refreshing')&&!!query.displayData&&!command.recovery} refreshing={!fresh} onDirtyChange={setDirty}/>}
   {readState==='ready'&&!fresh&&<div role={query.isError?'alert':'status'}><p>Konteks perubahan saldo belum dapat dikonfirmasi.</p><Button size="compact" type="button" onClick={()=>void query.refetch()} variant="secondary">Muat ulang konteks saldo</Button></div>}
  </div>
 }

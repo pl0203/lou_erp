@@ -15,7 +15,7 @@ import { useSetupUnsaved } from './useSetupUnsaved'
 /** Only return after completed target reads and current active-actor authorization. */
 export type AdminRefreshResult={employeeId:string;scopeVersion:string}
 export type LeaveAdminSettingsProps={
- actorId:string;employeeId:string;scopeVersion:string;dataScopeVersion:string;authorityKey:string;authorityReady:boolean
+ actorId:string;employeeId:string;scopeVersion:string;dataScopeVersion:string;authorityKey:string;authorityReady:boolean;displayReady?:boolean;refreshing?:boolean
  canConfigure:boolean;canManageAccess:boolean;canReadPrivate:boolean
  settings?:LeaveAdminSettingsData;access?:LeaveAdminAccessData;requests?:LeaveAdminRequest[]
  send:LeaveAdminSend;onRefresh:()=>Promise<AdminRefreshResult|void>;onDirtyChange?:(dirty:boolean)=>void;onClose?:()=>void
@@ -32,7 +32,7 @@ export default function LeaveAdminSettings(props:LeaveAdminSettingsProps){
 }
 function AdminEditor(props:LeaveAdminSettingsProps){
  const fieldId=useId()
- const {actorId,employeeId,scopeVersion,dataScopeVersion,authorityReady,canConfigure,canManageAccess,canReadPrivate,settings,access,requests=[],send,onRefresh,onDirtyChange,onClose}=props
+ const {actorId,employeeId,scopeVersion,dataScopeVersion,authorityReady,displayReady=authorityReady,refreshing=false,canConfigure,canManageAccess,canReadPrivate,settings,access,requests=[],send,onRefresh,onDirtyChange,onClose}=props
  const [draft,setDraft]=useState(initial),[baseline,setBaseline]=useState(()=>baselineFor(initial())),[observedScope,setObservedScope]=useState(scopeVersion)
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[saved,setSaved]=useState(''),[waitingContinuity,setWaitingContinuity]=useState(false)
  const inFlight=useRef(false),ownRefresh=useRef(false),live=useRef(true),errorRef=useRef<HTMLParagraphElement>(null)
@@ -46,12 +46,13 @@ function AdminEditor(props:LeaveAdminSettingsProps){
  useEffect(()=>{if(error)errorRef.current?.focus()},[error])
  const fresh=authorityReady&&dataScopeVersion===scopeVersion&&observedScope===scopeVersion&&!waitingContinuity
  const own=actorId===employeeId,disabled=busy||own||!fresh
+ const actionReady=useRef(false);actionReady.current=!disabled&&live.current
  const allowed=canConfigure||canManageAccess
- function change<K extends Section>(key:K,value:Draft[K]){setDraft(d=>({...d,[key]:value}));setSaved('')}
+ function change<K extends Section>(key:K,value:Draft[K]){if(!actionReady.current)return;setDraft(d=>({...d,[key]:value}));setSaved('')}
  function reason(section:Section){return <Field id={`${fieldId}-1-${section}`} label={<>Alasan {section}</>}>{control=><textarea {...control} aria-label={`Alasan ${section}`} maxLength={1000}  disabled={disabled} value={draft.reasons[section]} onChange={e=>{setDraft(d=>({...d,reasons:{...d.reasons,[section]:e.target.value}}));setSaved('')}}/>}</Field>}
- function close(){if(!dirty||window.confirm('Buang isian pengaturan yang belum disimpan?'))onClose?.()}
+ function close(){if(!actionReady.current)return;if(!dirty||window.confirm('Buang isian pengaturan yang belum disimpan?'))onClose?.()}
  async function save(section:Section,command:LeaveAdminCommand){
-  if(inFlight.current||disabled)return
+  if(inFlight.current||!actionReady.current||!live.current)return
   try{toAdminPayload(command)}catch{setError('Periksa isian, pilihan yang belum dikonfirmasi dan alasan perubahan.');return}
   inFlight.current=true;ownRefresh.current=true;setBusy(true);setError('');setSaved('')
   let receipt:AdminReceipt
@@ -70,10 +71,10 @@ function AdminEditor(props:LeaveAdminSettingsProps){
   finally{if(live.current){setWaitingContinuity(false);setBusy(false)}inFlight.current=false;ownRefresh.current=false}
  }
  if(!allowed)return <p role="status" className="ui-notice ui-notice--info">Akses pengaturan tidak tersedia.</p>
- if(!fresh)return <LoadingState title="Memeriksa kembali akses dan lingkup anggota…" shape="compact" className="ui-notice ui-notice--info" />
+ if(!displayReady||dataScopeVersion!==scopeVersion||observedScope!==scopeVersion||waitingContinuity)return <LoadingState title="Memeriksa kembali akses dan lingkup anggota…" shape="compact" className="ui-notice ui-notice--info" />
  const validSettings=canConfigure&&settings?.employeeId===employeeId&&settings.authorityKey===props.authorityKey,validAccess=canManageAccess&&access?.employeeId===employeeId&&access.authorityKey===props.authorityKey
  return <div className="space-y-5" aria-label="Administrasi cuti" onKeyDown={e=>{if(e.key==='Escape'&&onClose){e.preventDefault();close()}}}>
-  <h2 className="text-lg font-semibold">Pengaturan cuti dengan izin khusus</h2>
+  {refreshing&&<p role="status">Memeriksa akses…</p>}<h2 className="text-lg font-semibold">Pengaturan cuti dengan izin khusus</h2>
   {own&&<p>Administrator lain harus mengubah kelayakan, jatah, izin atau penugasan Anda.</p>}
   {validSettings&&<><section aria-label="Kesiapan pengaturan" className="rounded-[14px] border p-4"><h3 className="font-semibold">Kesiapan penggunaan</h3>{settings.readiness.ready?<p>Seluruh prasyarat server telah diverifikasi.</p>:<ul className="list-disc pl-5">{settings.readiness.blockers.map(b=><li key={b.code}>{b.message}</li>)}</ul>}<LeaveSetupImpacts impacts={settings.impacts}/></section>
   <section className="ui-section space-y-3"><LeavePolicyFields value={draft.policy} onChange={p=>change('policy',p)} disabled={disabled}/>{reason('policy')}<Button type="button" variant="primary" disabled={disabled||!draft.reasons.policy.trim()} onClick={()=>void save('policy',{operation:'save_policy_version',employeeId,expectedVersion:settings.memberVersion,reason:draft.reasons.policy,policy:draft.policy})}>Simpan versi kebijakan</Button></section>
@@ -85,6 +86,6 @@ function AdminEditor(props:LeaveAdminSettingsProps){
   {validAccess&&<section className="ui-section space-y-3"><LeaveAccessSettings actorId={actorId} data={access} manifestId={draft.access.manifest} onManifest={manifest=>change('access',{...draft.access,manifest})} grantId={draft.access.grant} onGrant={grant=>change('access',{...draft.access,grant})} disabled={disabled}/>{reason('access')}<FormActions ><Button type="button" variant="primary" disabled={disabled||!draft.access.manifest||!draft.reasons.access.trim()} onClick={()=>void save('access',{operation:'grant_leave_access',manifestId:draft.access.manifest,expectedVersion:0,reason:draft.reasons.access})}>Terapkan manifest izin</Button><Button type="button" variant="danger" disabled={disabled||!draft.access.grant||!draft.reasons.access.trim()} onClick={()=>{const g=access.grants.find(g=>g.id===draft.access.grant);if(g)void save('access',{operation:'revoke_leave_access',grantId:g.id,expectedVersion:g.version,reason:draft.reasons.access})}}>Cabut izin terpilih</Button></FormActions></section>}
   {canManageAccess&&!validAccess&&<p role="status" className="ui-notice ui-notice--info">Pengelolaan izin memerlukan manifest bootstrap eksternal dan lingkup anggota yang terverifikasi.</p>}
   {error&&<p role="alert" tabIndex={-1} ref={errorRef} className="ui-notice ui-notice--error">{error}</p>}{saved&&<p role="status" className="ui-notice ui-notice--info">{saved}</p>}
-  {onClose&&<Button size="compact" type="button" variant="quiet" disabled={busy} onClick={close}>Tutup pengaturan</Button>}
+  {onClose&&<Button size="compact" type="button" variant="quiet" disabled={busy||!fresh} onClick={close}>Tutup pengaturan</Button>}
  </div>
 }

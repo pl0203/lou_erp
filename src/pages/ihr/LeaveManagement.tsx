@@ -8,6 +8,7 @@ import { leaveErrorMessage } from '../../lib/leave/rpc'
 import { useLeaveContext } from '../../lib/leave/useLeaveContext'
 import LeaveSetupStatus from './leave/LeaveSetupStatus'
 import LeaveTabs from './leave/LeaveTabs'
+import type { LeaveReadState } from './leave/LeaveRequestForm'
 import { discardLeaveDraftMessage } from './leave/LeaveRequestForm'
 import { MainContent } from '../../components/ui/MainContent'
 import { PageHeader } from '../../components/ui/PageHeader'
@@ -17,7 +18,8 @@ export default function LeaveManagement() {
   const context = useLeaveContext(), client=useQueryClient(), interrupted=useRef(false)
   const { user, profile, loading } = useAuth()
   const identity = !loading && user && profile?.is_active && profile.id === user.id ? user.id : null
-  const readState = context.isFetching || context.isPending || context.authorityPending ? 'pending' : context.authorityReady ? 'ready' : 'error'
+  const displayContext=context.displayContext
+  const readState:LeaveReadState = context.isFetching || context.isPending || context.authorityPending ? (displayContext?'refreshing':'pending') : context.authorityReady ? 'ready' : 'error'
   // The accepted context adapter strips raw diagnostics; this is its exact 42501
   // denial message. Explicit denial must destroy retained input, unlike transport failure.
   const denied = context.isError && context.error.message === leaveErrorMessage({code:'42501'})
@@ -35,14 +37,15 @@ export default function LeaveManagement() {
   return <div className="min-h-screen bg-brand-canvas">
     <IHRNav beforeSignOut={()=>!dirty||window.confirm(discardLeaveDraftMessage)} />
     <MainContent className="mx-auto max-w-5xl space-y-5 px-4 py-6 sm:py-8 md:px-8">
-      <PageHeader title={context.data?.capabilities.request&&['employee','manager'].includes(context.data.memberKind??'')?'Ajukan Cuti':'Manajemen Cuti'} />
+      <PageHeader title={displayContext?.capabilities.request&&['employee','manager'].includes(displayContext.memberKind??'')?'Ajukan Cuti':'Manajemen Cuti'} />
+      {readState==='refreshing'&&<p role="status" className="text-base text-brand-secondary">Memeriksa akses cuti…</p>}
       {readState === 'pending' || !identity ? <LoadingState title="Memuat akses cuti..." shape="compact" /> : readState === 'error' ?
         <div role="alert" ref={errorPanel} tabIndex={-1} className="ui-notice ui-notice--error"><p>Akses cuti belum dapat dikonfirmasi. Silakan coba lagi.</p><Button size="compact" variant="secondary" onClick={() => void context.refetch()} className="mt-2">Coba lagi</Button></div> : null}
       {/* Keep only the same actor/scope's ephemeral owner through read failures. Its
           protected UI is suspended until the shared authority read succeeds again. */}
       {identity && !denied && context.data && <>
-        {readState === 'ready' && <LeaveSetupStatus context={context.data} />}
-        <LeaveTabs key={identity} context={context.data} readState={readState} onDirtyChange={setDirty} />
+        {displayContext && <LeaveSetupStatus context={displayContext} />}
+        <LeaveTabs key={identity} context={displayContext??context.data} readState={readState} onDirtyChange={setDirty} />
       </>}
     </MainContent>
   </div>

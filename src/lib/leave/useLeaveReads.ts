@@ -7,13 +7,15 @@ import type { ApprovalCountFilter, CalendarAudience, CalendarRange } from './rea
 import { fetchLeaveApprovalCounts, fetchLeaveCalendar, fetchLeaveReadAccess } from './readRpc'
 import { leaveReadKeys } from './readQueryKeys'
 import { synchronizeLeaveIdentity } from './queryKeys'
-import { runLeaveInteraction } from './useLeaveContext'
+import {runBoundedHRCheck} from '../hr/revalidation'
+import {useHRDisplayContinuity,useHRDisplayOwner} from '../hr/useHRDisplayContinuity'
+import { runLeaveInteraction,useLeaveDisplayAuthority } from './useLeaveContext'
 export { approvalCountForFilter } from './readContracts'
 export { invalidateLeaveReads } from './readQueryKeys'
-type ReadProof={attempt:number;state:'unvalidated'|'pending'|'ready';revision:number;completed:WeakMap<object,number>;listeners:Set<()=>void>}
+type ReadProof={attempt:number;state:'unvalidated'|'pending'|'ready';revision:number;completed:WeakMap<object,number>;listeners:Set<()=>void>;terminal:boolean}
 type ClientProofs={reads:Map<string,ReadProof>;authority:Map<string,ReadProof>}
 const clientProofs=new WeakMap<QueryClient,ClientProofs>()
-function newProof():ReadProof{return {attempt:0,state:'unvalidated',revision:0,completed:new WeakMap(),listeners:new Set()}}
+function newProof():ReadProof{return {attempt:0,state:'unvalidated',revision:0,completed:new WeakMap(),listeners:new Set(),terminal:false}}
 function publish(proof:ReadProof,state:ReadProof['state']){proof.state=state;proof.revision++;proof.listeners.forEach(listener=>listener())}
 /** Receipts contain only counters and weak references. Cache cancellation can restore
  * query state/data, but cannot restore either the read or authority completion proof. */
@@ -24,14 +26,17 @@ function proofsFor(client:QueryClient){
  client.getQueryCache().subscribe(event=>{
   const key=event.query.queryKey,authority=key[3]==='context'&&key[4]==='current'
   const proof=(authority?state.authority:state.reads).get(JSON.stringify(key));if(!proof)return
-  if(event.type==='removed'){publish(proof,'unvalidated');return}
+  if(event.type==='removed'){proof.terminal=true;publish(proof,'unvalidated');return}
   if(event.type!=='updated'||client.getQueryCache().find({queryKey:key,exact:true})!==event.query)return
   const action=event.action
   if(action.type==='fetch'){
    if(authority){proof.attempt++;publish(proof,'pending')}else publish(proof,'unvalidated')
-  }else if(action.type==='error'||action.type==='pause'||action.type==='invalidate')publish(proof,'unvalidated')
+  }else if(action.type==='error'||action.type==='pause'||action.type==='invalidate'){
+   if(action.type!=='invalidate')proof.terminal=true
+   publish(proof,'unvalidated')
+  }
   else if(action.type==='success'){
-   if(action.manual)publish(proof,'unvalidated')
+   if(action.manual){proof.terminal=true;publish(proof,'unvalidated')}
    else if(authority&&event.query.state.data&&typeof event.query.state.data==='object'){
     if(!proof.attempt)proof.attempt++
     proof.completed.set(event.query.state.data,proof.attempt);publish(proof,'ready')
@@ -52,29 +57,33 @@ function completed(proof:ReadProof,value:object|undefined){return !!value&&proof
 export function useAuthorizedLeaveRead<T extends object>(actorId:string,context:LeaveContext,key:readonly unknown[],read:(signal:AbortSignal)=>Promise<T>,enabled:boolean,authorize:(live:LeaveContext)=>boolean=()=>true){
  const client=useQueryClient(),{user,profile,loading}=useAuth()
  const identity=!loading&&user&&profile?.is_active&&profile.id===user.id?user.id:null
+ const displayAuthority=useLeaveDisplayAuthority(client,actorId)
+ const displayKey=JSON.stringify(key),owner=useHRDisplayOwner(displayAuthority.displayLease,displayKey,displayAuthority.displayEpoch)
  const allowed=enabled&&identity===actorId
  const {read:proof,authority,authorityKey}=scopedProof(client,key)
  const subscribe=useCallback((listener:()=>void)=>{proof.listeners.add(listener);authority.listeners.add(listener);return()=>{proof.listeners.delete(listener);authority.listeners.delete(listener)}},[proof,authority])
  useSyncExternalStore(subscribe,()=>proof.revision+authority.revision,()=>proof.revision+authority.revision)
  useLayoutEffect(()=>{synchronizeLeaveIdentity(client,identity)},[client,identity])
  const query=useQuery({queryKey:key,queryFn:async({signal})=>{
-  const attempt=++proof.attempt;publish(proof,'pending')
-  const interrupted=()=>{if(proof.attempt===attempt)publish(proof,'unvalidated')}
+  owner.begin()
+  const attempt=++proof.attempt;proof.terminal=false;publish(proof,'pending')
+  const interrupted=()=>{if(proof.attempt===attempt){proof.terminal=true;publish(proof,'unvalidated')}}
   signal.addEventListener('abort',interrupted,{once:true})
   try{
    signal.throwIfAborted();if(!allowed)throw new Error('Akses cuti tidak tersedia. Muat ulang.')
-   const result=await runLeaveInteraction(client,actorId,context.scopeVersion,live=>{
-    signal.throwIfAborted();if(!authorize(live))throw new Error('Akses cuti tidak tersedia. Muat ulang.')
-    return read(signal)
-   })
-   signal.throwIfAborted();proof.completed.set(result,attempt)
+   const result=await runBoundedHRCheck(signal,bounded=>runLeaveInteraction(client,actorId,context.scopeVersion,live=>{
+    bounded.throwIfAborted();if(!authorize(live))throw new Error('Akses cuti tidak tersedia. Muat ulang.')
+    return read(bounded)
+   }),interrupted)
+   signal.throwIfAborted()
+   proof.completed.set(result,attempt)
    if(proof.attempt===attempt)publish(proof,'ready')
    return result
   }catch(error){interrupted();throw error}finally{signal.removeEventListener('abort',interrupted)}
  },enabled:allowed,staleTime:0,retry:false,networkMode:'always',structuralSharing:false,refetchOnWindowFocus:false,
  refetchInterval:()=>allowed&&document.visibilityState==='visible'?60_000:false,refetchIntervalInBackground:false})
  useEffect(()=>{
-  const refresh=()=>{if(allowed&&document.visibilityState==='visible')void query.refetch()}
+  const refresh=()=>{if(allowed&&document.visibilityState==='visible')void query.refetch({cancelRefetch:false})}
   window.addEventListener('focus',refresh);document.addEventListener('visibilitychange',refresh)
   return()=>{window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',refresh)}
  },[allowed,query.refetch])
@@ -87,7 +96,14 @@ export function useAuthorizedLeaveRead<T extends object>(actorId:string,context:
    &&liveState?.status==='success'&&liveState.fetchStatus==='idle'&&completed(authority,live)&&live?.scopeVersion===context.scopeVersion&&authorize(live)
  }
  const available=allowed&&query.isSuccess&&query.fetchStatus==='idle'&&completed(proof,query.data)&&authorityReady
- return {...query,data:available?query.data:undefined,available,isCurrent}
+ const displayAllowed=allowed&&displayAuthority.displayAllowed
+ const terminalFailure=proof.terminal||query.isError
+ const display=useHRDisplayContinuity({key:displayKey,epoch:displayAuthority.displayEpoch,allowed:displayAllowed,validatedData:available?query.data:undefined,pending:displayAuthority.refreshing||query.isFetching,terminalFailure})
+ // A context-only check may restore the unchanged strict receipt. Lifecycle
+ // refetches instead keep available false through the actual child completion.
+ const episodeId=displayAuthority.displayLease.getDisplayEpisode()?.id
+ useLayoutEffect(()=>{if(!displayAllowed||terminalFailure||display.displayData===undefined)owner.eligible(false);else if(available)owner.settle(true,episodeId)},[owner,available,displayAllowed,terminalFailure,display.displayData,episodeId])
+ return {...query,...display,displayAllowed,data:available?query.data:undefined,available,isCurrent}
 }
 export function useLeaveReadAccess(actorId:string,context:LeaveContext,enabled=true,audience?:CalendarAudience){
  return useAuthorizedLeaveRead(actorId,context,leaveReadKeys.access(actorId,context.scopeVersion,audience),async signal=>{
