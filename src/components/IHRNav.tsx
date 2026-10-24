@@ -6,10 +6,11 @@ import type { NavigationLink } from './navigationModules'
 export default function IHRNav({ beforeSignOut }: { beforeSignOut?: () => boolean } = {}) {
   const { profile } = useAuth()
   const employees = useEmployeeContext()
+  const canSeeEmployees = employees.displayAllowed && employees.displayContext?.canMaintainBasic
+  const canSeeAccounts = profile?.role === 'executive'
   const personal = ['sales_person', 'sales_manager'].includes(profile?.role ?? '')
   const links: NavigationLink[] = [
-    ...(employees.displayAllowed && employees.displayContext?.canMaintainBasic ? [{ to: '/ihr/employees', label: 'Data Karyawan', icon: 'people' as const }] : []),
-    ...(profile?.role === 'executive' ? [{ to: '/ihr/users', label: 'Manajemen Pengguna', icon: 'people' as const }] : []),
+    ...(canSeeEmployees || canSeeAccounts ? [{ to: canSeeEmployees ? '/ihr/employees' : '/ihr/users', label: 'Karyawan', icon: 'people' as const, activePaths: ['/ihr/employees', '/ihr/users'] }] : []),
     { to: personal ? '/ihr/leave?tab=mine' : '/ihr/leave', label: personal ? 'Ajukan Cuti' : 'Manajemen Cuti', icon: 'leave' },
   ]
   return <AppNavigation module="ihr" links={links} beforeSignOut={beforeSignOut} />

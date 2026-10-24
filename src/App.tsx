@@ -1,3 +1,4 @@
+import HRRouteLease from './components/HRRouteLease'
 import { LoadingState } from './components/ui/LoadingState'
 import { Routes, Route, Navigate, matchPath, useLocation } from 'react-router-dom'
 import { useEffect } from 'react'
@@ -86,7 +87,7 @@ const routeTitles: [string, string][] = [
   ['/girard/my-visits', 'Kunjungan saya'], ['/girard/team', 'Tim Sales'],
   ['/girard/dashboard', 'Dashboard Sales'], ['/girard/my-customers', 'Pelanggan saya'],
   ['/girard/customers', 'Daftar pelanggan Sales'], ['/girard/managers', 'Manajer Sales'],
-  ['/girard/promotions', 'Promosi Sales'], ['/ihr/users', 'Manajemen pengguna'], ['/ihr/leave', 'Manajemen cuti'],
+  ['/girard/promotions', 'Promosi Sales'], ['/ihr/users', 'Akun & Akses'], ['/ihr/leave', 'Manajemen cuti'],
 ]
 
 export default function App() {
@@ -208,6 +209,8 @@ export default function App() {
         <ProtectedRoute allowedRoles={GIRARD_ROLES}><Promotions /></ProtectedRoute>
       } />
 
+      {/* Keep HR navigation authority mounted across sibling pages, not outside HR. */}
+      <Route element={<ProtectedRoute><HRRouteLease /></ProtectedRoute>}>
       {/* User administration stays executive-only; leave authority is server-controlled. */}
       <Route path="/ihr/users" element={
         <ProtectedRoute allowedRoles={EXECUTIVE_ONLY}><UserManagement /></ProtectedRoute>
@@ -221,6 +224,8 @@ export default function App() {
       <Route path="/ihr/employees/:employeeId" element={<ProtectedRoute allowedRoles={EXECUTIVE_ONLY}><EmployeeDetail /></ProtectedRoute>} />
       <Route path="/ihr/employees/:employeeId/edit" element={<ProtectedRoute allowedRoles={EXECUTIVE_ONLY}><EmployeeEditor /></ProtectedRoute>} />
       <Route path="/ihr/employees/:employeeId/reporting" element={<ProtectedRoute allowedRoles={EXECUTIVE_ONLY}><EmployeeReportingEditor /></ProtectedRoute>} />
+
+      </Route>
 
       {/* Default */}
       <Route path="/" element={<Navigate to="/login" replace />} />

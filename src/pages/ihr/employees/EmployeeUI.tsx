@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import KaryawanTabs from '../../../components/KaryawanTabs'
 import IHRNav from '../../../components/IHRNav'
 import { MainContent } from '../../../components/ui/MainContent'
 import { PageHeader } from '../../../components/ui/PageHeader'
@@ -34,7 +35,7 @@ export function EmployeeShell({title,description,actions,children,ready=true,dis
   const target=locator.id?document.getElementById(locator.id):Array.from(document.querySelectorAll<HTMLElement>('#main-content button, #main-content a')).find(node=>node.tagName===locator.tag&&(node.getAttribute('aria-label')||node.textContent)===locator.label)
   target?.focus({preventScroll:true})
  },[ready])
- return <div className="min-h-screen bg-gray-50"><IHRNav/><MainContent className="employee-page" onFocusCapture={event=>{if(ready&&event.target instanceof HTMLElement)focus.current={id:event.target.id,label:event.target.getAttribute('aria-label')||event.target.textContent||'',tag:event.target.tagName}}}><PageHeader title={title} description={description} actions={actions}/>{refreshing&&displayReady&&<p role="status" className="employee-support">Memeriksa akses…</p>}{children}</MainContent></div>
+ return <div className="min-h-screen bg-gray-50"><IHRNav/><MainContent className="employee-page" onFocusCapture={event=>{if(ready&&event.target instanceof HTMLElement)focus.current={id:event.target.id,label:event.target.getAttribute('aria-label')||event.target.textContent||'',tag:event.target.tagName}}}><KaryawanTabs/><PageHeader title={title} description={description} actions={actions}/>{refreshing&&displayReady&&<p role="status" className="employee-support">Memeriksa akses…</p>}{children}</MainContent></div>
 }
 export function RecordedStatus({status}:{status:EmployeeStatus}) {return <StatusBadge tone={status==='active'?'success':status==='ended'?'warning':'neutral'}>{statusLabels[status]}</StatusBadge>}
 type ReadState = {authorityReady:boolean;authorityDenied:boolean;error:EmployeeError|null;refresh:()=>Promise<unknown>}
@@ -46,7 +47,7 @@ export function EmployeeReadState({state,loading='Memuat data karyawan…'}:{sta
  return <LoadingState shape="detail" title={loading}/>
 }
 export function TimezoneNotice({timezone}:{timezone:string|null|undefined}) {
- return timezone ? <p className="employee-support">Tanggal menggunakan zona waktu perusahaan: {timezone}.</p> : <Notice tone="info" title="Zona waktu perusahaan belum dikonfirmasi">Data dasar tanpa tanggal tetap dapat disimpan. Minta pemilik sistem mengonfirmasi zona waktu sebelum mencatat perubahan bertanggal.</Notice>
+ return timezone ? <p className="employee-support">Tanggal menggunakan zona waktu perusahaan: {timezone}.</p> : null
 }
 export function Pagination({page,total,pageSize=25,onPage,audit=false,disabled=false}:{page:number;total:number;pageSize?:number;onPage:(page:number)=>void;audit?:boolean;disabled?:boolean}) {
  const pages=Math.max(1,Math.ceil(total/pageSize)),prefix=audit?'Halaman audit':'Halaman'

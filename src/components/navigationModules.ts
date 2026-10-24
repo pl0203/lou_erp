@@ -3,6 +3,7 @@ import type { NavigationIconName } from './NavigationIcon'
 export type NavigationModule = 'athel' | 'girard' | 'ihr' | 'home'
 export type NavigationLink = {
   to: string; label: string; icon: NavigationIconName; badge?: number
+  activePaths?: string[]
   activeSearch?: { key: string; value: string; fallback: string; allowed: string[] }
 }
 export type NavigationGroup = { id: string; label: string; icon: NavigationIconName; children: NavigationLink[] }

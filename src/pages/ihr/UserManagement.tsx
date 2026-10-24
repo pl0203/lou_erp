@@ -3,6 +3,7 @@ import { LoadingState } from '../../components/ui/LoadingState'
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
+import KaryawanTabs from '../../components/KaryawanTabs'
 import IHRNav from '../../components/IHRNav'
 import { Button } from '../../components/ui/Button'
 import { Dialog } from '../../components/ui/Dialog'
@@ -342,7 +343,8 @@ export default function UserManagement() {
     <div className="min-h-screen bg-brand-canvas">
       <IHRNav />
       <MainContent className="user-management-page px-4 md:px-8 py-6 max-w-6xl mx-auto space-y-4">
-        <PageHeader title="User Management" description={countDescription}
+        <KaryawanTabs />
+        <PageHeader title="Akun & Akses" description={countDescription}
           actions={<Button onClick={event => openCreate(event.currentTarget)}>+ Invite User</Button>} />
         <FilterBar label="Filter users">
           <Field id="user-search" label="Search users" className="w-full md:w-72">
