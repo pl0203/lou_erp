@@ -1,0 +1,61 @@
+/* Employee-only layout. Brand, typography, focus, buttons and 160ms motion use shared UI tokens. */
+.employee-page { max-width: 74rem; margin-inline: auto; padding: 1.5rem; display: grid; gap: 1.5rem; }
+.employee-page > *, .employee-panel > *, .employee-comparison > *, .employee-summary > div { min-width: 0; }
+.employee-page .ui-page-header { background: var(--color-brand-surface, white); }
+.employee-panel { background: var(--color-brand-surface, white); border: 1px solid var(--color-brand-control-border, #d1d5db); border-radius: .75rem; padding: 1.5rem; display: grid; gap: 1rem; }
+.employee-panel h2 { font-size: 1.125rem; font-weight: 650; line-height: 1.5; }
+.employee-panel h3 { font-size: 1rem; font-weight: 600; }
+.employee-support, .employee-summary dt { color: var(--color-brand-secondary, #4b5563); font-size: var(--ui-text-support, .875rem); }
+.employee-section-heading, .employee-sections, .employee-pagination, .employee-manager-choice { display: flex; align-items: center; flex-wrap: wrap; gap: .75rem; }
+.employee-section-heading { justify-content: space-between; }
+.employee-filters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(11rem, .35fr); gap: 1rem; }
+.employee-form-grid, .employee-summary, .employee-comparison { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1rem; }
+.employee-summary dt { margin-bottom: .25rem; }
+.employee-summary dd, .employee-panel p, .employee-panel li, .employee-technical { overflow-wrap: anywhere; }
+.employee-directory { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; background: var(--color-brand-surface, white); border: 1px solid var(--color-brand-control-border, #d1d5db); border-radius: .75rem; overflow: hidden; font-size: var(--ui-text-table, .875rem); }
+.employee-directory th, .employee-directory td { text-align: left; padding: 1rem; vertical-align: top; overflow-wrap: anywhere; border-bottom: 1px solid var(--color-brand-control-border, #d1d5db); }
+.employee-directory th { font-weight: 500; color: var(--color-brand-secondary, #4b5563); }
+.employee-directory tr:last-child td { border-bottom: 0; }
+.employee-name, .employee-text-link { color: var(--color-brand-primary, #1e3a5f); text-decoration: underline; text-underline-offset: 3px; }
+.employee-name { font-weight: 600; display: inline-block; padding-block: .5rem; }
+.employee-pagination { justify-content: center; font-size: var(--ui-text-support, .875rem); }
+.employee-editor { max-width: 58rem; }
+.employee-editor textarea { resize: vertical; }
+.employee-period { border: 1px solid var(--color-brand-control-border, #d1d5db); border-radius: .5rem; padding: 1rem; display: grid; gap: 1rem; }
+.employee-period legend { padding-inline: .5rem; font-weight: 600; }
+.employee-check { display: flex; align-items: center; gap: .75rem; min-height: 44px; }
+.employee-check input, .employee-choices input { flex-shrink: 0; width: 1.25rem; height: 1.25rem; accent-color: var(--color-brand-primary); }
+.employee-choices { display: grid; gap: .5rem; max-height: 22rem; overflow-y: auto; }
+.employee-choices > li { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .75rem; border: 1px solid var(--color-brand-control-border, #d1d5db); border-radius: .5rem; }
+.employee-choices label { display: flex; align-items: center; gap: .75rem; width: 100%; min-height: 44px; }
+.employee-choices label span { display: block; overflow-wrap: anywhere; }
+.employee-selection { padding: .75rem; border-radius: .5rem; background: var(--color-brand-tint, #f3f4f6); }
+.employee-comparison > section { padding: 1rem; border: 1px solid var(--color-brand-control-border, #d1d5db); border-radius: .5rem; }
+.employee-comparison .employee-summary { grid-template-columns: 1fr; margin-top: .75rem; }
+.employee-timeline, .employee-audit { display: grid; gap: 1rem; list-style: none; }
+.employee-timeline > li { border-left: 2px solid var(--color-brand-control-border, #d1d5db); padding-left: 1rem; }
+.employee-audit > li { border-bottom: 1px solid var(--color-brand-control-border, #d1d5db); padding-bottom: 1rem; display: grid; gap: .5rem; }
+.employee-audit-reason { font-weight: 500; }
+.employee-page summary, .employee-panel summary { cursor: pointer; min-height: 44px; padding-block: .625rem; color: var(--color-brand-primary); }
+.employee-review { border-color: var(--color-brand-primary); }
+.employee-page :is(a,input,textarea,select,summary,button):focus-visible, .employee-panel :is(a,input,summary,button):focus-visible { outline: 2px solid var(--color-brand-primary); outline-offset: 3px; }
+.employee-page :is(a,summary), .employee-choices > li { transition: background-color 160ms ease, border-color 160ms ease; }
+@media (max-width: 767px) {
+ .employee-page { padding: 1rem; gap: 1rem; }
+ .employee-panel { padding: 1rem; }
+ .employee-form-grid, .employee-summary, .employee-comparison, .employee-filters { grid-template-columns: 1fr; }
+ .employee-directory, .employee-directory tbody { display: block; border: 0; background: transparent; }
+ .employee-directory thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+ .employee-directory tr { display: grid; padding: 1rem; margin-bottom: .75rem; border: 1px solid var(--color-brand-control-border, #d1d5db); border-radius: .75rem; background: var(--color-brand-surface, white); }
+ .employee-directory td { display: grid; grid-template-columns: 5rem minmax(0,1fr); gap: .5rem; padding: .5rem 0; border: 0; }
+ .employee-directory td::before { content: attr(data-label); color: var(--color-brand-secondary); }
+ .employee-directory td:first-child { display: block; }
+ .employee-directory td:first-child::before { display: none; }
+ .employee-pagination { gap: .5rem; justify-content: space-between; }
+ .employee-pagination > span { text-align: center; flex: 1 1 100%; order: -1; }
+ .employee-sections .ui-action { flex: 1 1 auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+ .employee-page *, .employee-panel * { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+ .employee-page .ui-action:active, .employee-panel .ui-action:active { transform: none !important; }
+}
