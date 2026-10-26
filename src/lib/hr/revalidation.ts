@@ -17,7 +17,7 @@ export type HRDisplayEpisode=Readonly<{id:number;deadline:number}>
 /** Internal adapter contract, not action authority. Late children must not release
  * a newer episode: all completions carry their captured episode id. */
 export type HRDisplayLease={
- startDisplayEpisode:()=>HRDisplayEpisode
+ startDisplayEpisode:(owner?:symbol)=>HRDisplayEpisode
  registerDisplayOwner:(token:symbol)=>()=>void
  setDisplayOwnerEligible:(token:symbol,eligible:boolean)=>void
  setDisplayOwnerPending:(token:symbol,pending:boolean,episodeId:number)=>void
@@ -32,11 +32,13 @@ export function createHRDisplayLease(onTimeout:()=>void,onRefreshing:(refreshing
   clearTimeout(timer);timer=undefined;episode=undefined;onRefreshing(false)
  }
  const lease:HRDisplayLease={
-  startDisplayEpisode(){
+  startDisplayEpisode(ownerToken){
    if(episode)return episode
    episode={id:++sequence,deadline:Date.now()+HR_REVALIDATION_TIMEOUT_MS}
    const id=episode.id
-   for(const owner of owners.values())owner.pending=owner.eligible
+   // A late child read must not re-open completed sibling receipts. Context
+   // refreshes still mark every retained owner pending in beginContext.
+   if(ownerToken===undefined)for(const owner of owners.values())owner.pending=owner.eligible
    timer=setTimeout(()=>{if(episode?.id!==id)return;lease.invalidateDisplayEpisode();onTimeout()},HR_REVALIDATION_TIMEOUT_MS)
    onRefreshing(true)
    return episode
@@ -55,7 +57,13 @@ export function createHRDisplayLease(onTimeout:()=>void,onRefreshing:(refreshing
   },
  }
  return {...lease,
-  beginContext(){const value=lease.startDisplayEpisode();contextPending=true;return value},
+  beginContext(){
+   contextPending=true
+   // Context may join an already running individual read; keep its original
+   // deadline, but require fresh completion from every retained owner.
+   for(const owner of owners.values())owner.pending=owner.eligible
+   return lease.startDisplayEpisode()
+  },
   completeContext(id:number){if(episode?.id!==id)return;contextPending=false;finish()},
  }
 }

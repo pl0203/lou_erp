@@ -19,7 +19,7 @@ export function useHRDisplayOwner(lease:HRDisplayLease,key:string,epoch:number){
  const owner=useMemo(()=>({token:Symbol('hr-read-display')}),[lease,key,epoch])
  useLayoutEffect(()=>lease.registerDisplayOwner(owner.token),[lease,owner])
  return useMemo(()=>({
-  begin(){const episode=lease.startDisplayEpisode();lease.setDisplayOwnerPending(owner.token,true,episode.id);return episode.id},
+  begin(){const episode=lease.startDisplayEpisode(owner.token);lease.setDisplayOwnerPending(owner.token,true,episode.id);return episode.id},
   settle(eligible:boolean,episodeId:number|undefined){lease.setDisplayOwnerEligible(owner.token,eligible);if(episodeId!==undefined)lease.setDisplayOwnerPending(owner.token,false,episodeId)},
   eligible(eligible:boolean){lease.setDisplayOwnerEligible(owner.token,eligible)},
  }),[lease,owner])
