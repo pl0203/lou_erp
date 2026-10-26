@@ -15,11 +15,11 @@ type UserProfile = {
 }
 type AuthState = { user: User | null; profile: UserProfile | null; loading: boolean; error: string | null }
 export type BeforeSignOutGuard = (signal: AbortSignal) => boolean | Promise<boolean>
-type AuthContextType = AuthState & { signOut: () => Promise<boolean>; registerBeforeSignOut: (guard: BeforeSignOutGuard) => () => void }
+type AuthContextType = AuthState & { identityRevision: number; signOut: () => Promise<boolean>; registerBeforeSignOut: (guard: BeforeSignOutGuard) => () => void }
 type SignOutRegistration = { guard?: BeforeSignOutGuard; pending?: AbortController }
 function verifiedScope(state: AuthState) { return state.user && state.profile?.is_active && state.profile.id === state.user.id ? `${state.user.id}:${state.profile.role}` : '' }
 const emptyState: AuthState = { user: null, profile: null, loading: false, error: null }
-const AuthContext = createContext<AuthContextType>({ ...emptyState, loading: true, signOut: async () => false, registerBeforeSignOut: () => () => {} })
+const AuthContext = createContext<AuthContextType>({ ...emptyState, loading: true, identityRevision: 0, signOut: async () => false, registerBeforeSignOut: () => () => {} })
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({ ...emptyState, loading: true })
@@ -124,7 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void attempt.finally(() => { if (signingOut.current === attempt) signingOut.current = null }).catch(() => {})
     return attempt
   }, [publish, queryClient])
-  return <AuthContext.Provider value={{ ...state, signOut, registerBeforeSignOut }}>{children}</AuthContext.Provider>
+  return <AuthContext.Provider value={{ ...state, identityRevision: generation.current, signOut, registerBeforeSignOut }}>{children}</AuthContext.Provider>
 }
 export const useAuth = () => useContext(AuthContext)
 

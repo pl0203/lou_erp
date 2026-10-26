@@ -1,8 +1,7 @@
 import HRRouteLease from './components/HRRouteLease'
-import { LoadingState } from './components/ui/LoadingState'
+import SessionLoading from './components/SessionLoading'
 import { Routes, Route, Navigate, matchPath, useLocation } from 'react-router-dom'
 import { useEffect } from 'react'
-import { MainContent } from './components/ui/MainContent'
 import { useAuth } from './lib/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import COMonthlyReports from './pages/athel/co/COMonthlyReports'
@@ -99,13 +98,9 @@ export default function App() {
     document.title = title ? `${title} | Padiwan` : 'Padiwan'
   }, [pathname])
 
-  if (loading) {
-    return (
-      <MainContent className="min-h-screen flex items-center justify-center px-4">
-        <LoadingState title="Memuat..." shape="form" className="w-full max-w-sm" />
-      </MainContent>
-    )
-  }
+  // Keep the public login card mounted while its own sign-in is being verified.
+  // All private routes remain behind the unchanged authorization guards.
+  if (loading && !matchPath('/login', pathname)) return <SessionLoading />
 
   return (
     <Routes>

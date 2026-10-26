@@ -83,3 +83,8 @@
     outline-offset: 3px;
   }
 }
+
+/* Authentication stays in its real form, with a visible pending label. */
+.auth-login-submit.ui-button--pending > .ui-button__content { opacity: 1; }
+.auth-login-submit > .ui-action__pending { position: static; inset: auto; margin: 0; display: none; }
+.auth-login-submit.ui-button--pending > .ui-action__pending { display: block; }

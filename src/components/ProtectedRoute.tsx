@@ -1,4 +1,4 @@
-import { LoadingState } from './ui/LoadingState'
+import SessionLoading from './SessionLoading'
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
 import { roleHome } from './navigationModules'
@@ -11,13 +11,7 @@ type Props = {
 export default function ProtectedRoute({ children, allowedRoles }: Props) {
   const { user, profile, loading } = useAuth()
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <LoadingState title="Loading..." shape="compact" className="text-brand-secondary text-sm" />
-      </div>
-    )
-  }
+  if (loading) return <SessionLoading />
 
   if (!user || !profile || profile.id !== user.id || !profile.is_active) return <Navigate to="/login" replace />
 
