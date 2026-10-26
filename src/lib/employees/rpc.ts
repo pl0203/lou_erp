@@ -6,12 +6,14 @@ const known:Record<string,Record<string,EmployeeErrorKind>>={
  'P0002':{EMPLOYEE_NOT_FOUND:'invalid',ACCOUNT_NOT_FOUND:'invalid',MANAGER_NOT_FOUND:'invalid'},
  '40001':{VERSION_CONFLICT:'conflict',PREVIEW_CHANGED:'conflict'},
  '23505':{EMPLOYEE_EXISTS:'conflict',NUMBER_CLAIMED:'conflict',ACCOUNT_ALREADY_LINKED:'conflict',EMPLOYEE_ALREADY_LINKED:'conflict'},
- '55000':{WORKPLACE_TIMEZONE_UNCONFIRMED:'invalid',ACCOUNT_LINK_MISMATCH:'conflict',ACCOUNT_LINK_QUARANTINED:'conflict',OPERATION_ABANDONED:'conflict',REPORTING_HISTORY_CHANGE:'conflict',REPORTING_GRAPH_UNAVAILABLE:'invalid'},
+ '54000':{EMPLOYEE_NUMBER_EXHAUSTED:'invalid'},
+ '55000':{CLIENT_UPGRADE_REQUIRED:'conflict',EMPLOYEE_NUMBER_IMMUTABLE:'invalid',WORKPLACE_TIMEZONE_UNCONFIRMED:'invalid',ACCOUNT_LINK_MISMATCH:'conflict',ACCOUNT_LINK_QUARANTINED:'conflict',OPERATION_ABANDONED:'conflict',REPORTING_HISTORY_CHANGE:'conflict',REPORTING_GRAPH_UNAVAILABLE:'invalid'},
 }
 /** Never attach the original error, details, hint, response, or cause. */
 export function normalizeEmployeeError(error:unknown):EmployeeError {
  if(error instanceof EmployeeError)return error
  const row=error&&typeof error==='object'?error as Record<string,unknown>:{}
+ if(row.code==='42501'&&typeof row.message==='string'&&['SELF_DISABLE_FORBIDDEN','LAST_EXECUTIVE_REQUIRED','EMPLOYEE_ACCESS_RESTRICTED','ACCOUNT_LINK_IMMUTABLE'].includes(row.message))return new EmployeeError('invalid',row.message)
  if(row.code==='42501')return new EmployeeError('denied','DIRECTOR_REQUIRED')
  if(row.code==='P0002'&&row.message==='Employee not found')return new EmployeeError('invalid','EMPLOYEE_NOT_FOUND')
  if(row.code==='22023'&&['Invalid employee page input','Invalid employee status','Employee id required'].includes(row.message as string))return new EmployeeError('invalid','INVALID_INPUT')
@@ -37,12 +39,12 @@ function pageArgs(query:string,page:number,pageSize:number) {
 function checkedPage<T>(value:Page<T>,page:number,pageSize:number) {if(value.page!==page||value.pageSize!==pageSize)throw new EmployeeError('invalid','INVALID_RESPONSE');return value}
 export function fetchEmployeeContext(signal:AbortSignal) {return call('employee_context_v1',undefined,parseEmployeeContext,signal)}
 export async function fetchEmployeePage(query:string,status:EmployeeStatus|null,page:number,pageSize:number,signal:AbortSignal) {
- if(status!==null&&!['draft','active','ended'].includes(status))throw new EmployeeError('invalid','INVALID_INPUT')
- return call('employee_page_v1',{...pageArgs(query,page,pageSize),p_status:status},v=>checkedPage(parseEmployeePage(v),page,pageSize),signal)
+ if(status!==null&&!['draft','active','inactive','ended'].includes(status))throw new EmployeeError('invalid','INVALID_INPUT')
+ return call('employee_page_v2',{...pageArgs(query,page,pageSize),p_status:status},v=>checkedPage(parseEmployeePage(v),page,pageSize),signal)
 }
 export async function fetchEmployeeDetail(id:string,signal:AbortSignal) {
  const target=parseUUID(id)
- return call('employee_detail_v1',{p_employee_id:target},v=>{const result=parseEmployeeDetail(v);if(result.id!==target)throw new EmployeeError('invalid');return result},signal)
+ return call('employee_detail_v2',{p_employee_id:target},v=>{const result=parseEmployeeDetail(v);if(result.id!==target)throw new EmployeeError('invalid');return result},signal)
 }
 export async function fetchEmployeeAudit(id:string,page:number,pageSize:number,signal:AbortSignal) {
  const target=parseUUID(id),{p_page,p_page_size}=pageArgs('',page,pageSize)
@@ -54,7 +56,7 @@ export async function fetchEmployeeAccountCandidates(query:string,page:number,pa
 function proposalArgs(proposal:EmployeeProposal) {return {p_employee_id:proposal.employeeId,p_expected_version:proposal.expectedVersion,p_action:proposal.action,p_payload:proposal.payload,p_reason:proposal.reason,p_effective_date:proposal.effectiveDate,p_source_reference:proposal.sourceReference}}
 export async function previewEmployeeCommand(proposal:EmployeeProposal,signal:AbortSignal) {
  const normalized=normalizeEmployeeProposal(proposal)
- return call('employee_preview_v1',proposalArgs(normalized),v=>{
+ return call('employee_preview_v2',proposalArgs(normalized),v=>{
   const result=parseEmployeePreview(v)
   if(result.employeeId!==normalized.employeeId||result.expectedVersion!==normalized.expectedVersion||result.action!==normalized.action||JSON.stringify(result.normalizedPayload)!==JSON.stringify(normalized.payload))throw new EmployeeError('invalid')
   return result
@@ -63,7 +65,7 @@ export async function previewEmployeeCommand(proposal:EmployeeProposal,signal:Ab
 export async function executeEmployeeCommand(command:EmployeeCommand) {
  strictObject(command,['employeeId','expectedVersion','action','payload','reason','effectiveDate','sourceReference','operationId','previewFingerprint'])
  const {operationId,previewFingerprint,...proposal}=command,operation=parseUUID(operationId),normalized=normalizeEmployeeProposal(proposal)
- return call('employee_command_v1',{...proposalArgs(normalized),p_operation_id:operation,p_preview_fingerprint:parseFingerprint(previewFingerprint)},v=>{
+ return call('employee_command_v2',{...proposalArgs(normalized),p_operation_id:operation,p_preview_fingerprint:parseFingerprint(previewFingerprint)},v=>{
   const result=parseCommandResult(v)
   if(result.operationId!==operation||result.employeeId!==normalized.employeeId||result.version<1)throw new EmployeeError('invalid')
   return result

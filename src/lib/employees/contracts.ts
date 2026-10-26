@@ -1,8 +1,9 @@
 /** Strict public JSON boundary. No raw service payload or error is safe UI text. */
 export type UUID = string
 export type DateOnly = string
-export type EmployeeStatus = 'draft' | 'active' | 'ended'
-export type EmployeeFields = { name:string; employeeNumber:string|null; jobTitle:string|null; team:string|null; recordedStatus:EmployeeStatus }
+export type EmployeeStatus = 'draft' | 'active' | 'inactive' | 'ended'
+export type EmployeeBasicInput = {firstName:string;lastName:string|null;jobTitle:string|null;team:string|null;status:'active'|'inactive'}
+export type EmployeeFields = { firstName:string|null;lastName:string|null;name:string; employeeNumber:string|null; jobTitle:string|null; team:string|null; recordedStatus:EmployeeStatus }
 export type EpisodeInput = {startDate:DateOnly|null; endDate:DateOnly|null; sourceReference:string|null}
 export type ReportingInterval = {managerEmployeeId:UUID|null; from:DateOnly; until:DateOnly|null}
 export type ReportingInput = {mode:'schedule'|'correction'; intervals:ReportingInterval[]}
@@ -19,9 +20,9 @@ export type AccountCandidate = Pick<EmployeeAccount,'userId'|'displayName'|'emai
 export type EmployeeAction = 'create_employee'|'edit_employee'|'save_initial_episode'|'link_account'|'quarantine_account_link'|'save_reporting'
 export type EmployeeSnapshot = {fields?:Partial<EmployeeFields>;episode?:Partial<EpisodeInput>;account?:{userId?:UUID|null};reporting?:Partial<ReportingInterval>[]}
 export type EmployeeAuditEvent = {id:UUID;employeeId:UUID;actorId:UUID;actorName:string;recordedAt:string;effectiveDate:DateOnly|null;action:EmployeeAction;reason:string;sourceReference:string|null;before:EmployeeSnapshot;after:EmployeeSnapshot}
-type ActionPayload = {action:'create_employee'|'edit_employee';payload:EmployeeFields}|{action:'save_initial_episode';payload:EpisodeInput}|{action:'link_account'|'quarantine_account_link';payload:{userId:UUID}}|{action:'save_reporting';payload:ReportingInput}
+type ActionPayload = {action:'create_employee'|'edit_employee';payload:EmployeeBasicInput}|{action:'save_initial_episode';payload:EpisodeInput}|{action:'link_account'|'quarantine_account_link';payload:{userId:UUID}}|{action:'save_reporting';payload:ReportingInput}
 export type EmployeeProposal = {employeeId:UUID;expectedVersion:number;reason:string;effectiveDate:DateOnly|null;sourceReference:string|null} & ActionPayload
-export type EmployeePreview = {employeeId:UUID;expectedVersion:number;action:EmployeeAction;normalizedPayload:EmployeeFields|EpisodeInput|{userId:UUID}|ReportingInput;before:EmployeeSnapshot;after:EmployeeSnapshot;scopeVersion:string;timezone:string|null;previewFingerprint:string}
+export type EmployeePreview = {employeeId:UUID;expectedVersion:number;action:EmployeeAction;normalizedPayload:EmployeeBasicInput|EpisodeInput|{userId:UUID}|ReportingInput;before:EmployeeSnapshot;after:EmployeeSnapshot;scopeVersion:string;timezone:string|null;previewFingerprint:string}
 export type EmployeeCommand = EmployeeProposal & {operationId:UUID;previewFingerprint:string}
 export type CommandResult = {operationId:UUID;employeeId:UUID;version:number;auditEventId:UUID}
 export type OperationResult = {state:'absent'|'abandoned';result:null}|{state:'completed';result:CommandResult}
@@ -62,12 +63,17 @@ export function normalizeText(value:unknown,max:number,required=false):string|nu
  if(value===null&&!required)return null
  const result=text(value).trim();if(Array.from(result).length>max||(!result&&required))return invalid();return result||null
 }
-const fieldKeys=['name','employeeNumber','jobTitle','team','recordedStatus'] as const
+const fieldKeys=['firstName','lastName','name','employeeNumber','jobTitle','team','recordedStatus'] as const
 const episodeKeys=['startDate','endDate','sourceReference'] as const
 const intervalKeys=['managerEmployeeId','from','until'] as const
-function fields(value:unknown,normalize=false):EmployeeFields {
+/** Writable basics exclude immutable numbers and derived display names. */
+function fields(value:unknown):EmployeeFields {
  const row=strictObject(value,fieldKeys)
- return {name:normalize?normalizeText(row.name,160,true)!:nonempty(row.name,160),employeeNumber:normalize?normalizeText(row.employeeNumber,64):nullable(row.employeeNumber,v=>nonempty(v,64)),jobTitle:normalize?normalizeText(row.jobTitle,120):nullable(row.jobTitle,v=>nonempty(v,120)),team:normalize?normalizeText(row.team,120):nullable(row.team,v=>nonempty(v,120)),recordedStatus:choice(row.recordedStatus,['draft','active','ended'])}
+ return {firstName:nullable(row.firstName,v=>nonempty(v,160)),lastName:nullable(row.lastName,v=>nonempty(v,160)),name:nonempty(row.name,321),employeeNumber:nullable(row.employeeNumber,v=>nonempty(v,64)),jobTitle:nullable(row.jobTitle,v=>nonempty(v,120)),team:nullable(row.team,v=>nonempty(v,120)),recordedStatus:choice(row.recordedStatus,['draft','active','inactive','ended'])}
+}
+function basicInput(value:unknown,normalize=false):EmployeeBasicInput {
+ const row=strictObject(value,['firstName','lastName','jobTitle','team','status'])
+ return {firstName:normalize?normalizeText(row.firstName,160,true)!:nonempty(row.firstName,160),lastName:normalize?normalizeText(row.lastName,160):nullable(row.lastName,v=>nonempty(v,160)),jobTitle:normalize?normalizeText(row.jobTitle,120):nullable(row.jobTitle,v=>nonempty(v,120)),team:normalize?normalizeText(row.team,120):nullable(row.team,v=>nonempty(v,120)),status:choice(row.status,['active','inactive'])}
 }
 function episode(value:unknown,normalize=false):EpisodeInput {
  const row=strictObject(value,episodeKeys),result={startDate:nullable(row.startDate,parseDateOnly),endDate:nullable(row.endDate,parseDateOnly),sourceReference:normalize?normalizeText(row.sourceReference,500):nullable(row.sourceReference,v=>nonempty(v,500))}
@@ -79,7 +85,7 @@ function interval(value:unknown):ReportingInterval {
 }
 const actions:EmployeeAction[]=['create_employee','edit_employee','save_initial_episode','link_account','quarantine_account_link','save_reporting']
 function payload(action:EmployeeAction,value:unknown,normalize=false):EmployeePreview['normalizedPayload'] {
- if(action==='create_employee'||action==='edit_employee')return fields(value,normalize)
+ if(action==='create_employee'||action==='edit_employee')return basicInput(value,normalize)
  if(action==='save_initial_episode')return episode(value,normalize)
  if(action==='save_reporting') {const row=strictObject(value,['mode','intervals']);return {mode:choice(row.mode,['schedule','correction']),intervals:list(row.intervals,interval).sort((a,b)=>a.from.localeCompare(b.from))}}
  return {userId:parseUUID(strictObject(value,['userId']).userId)}
@@ -89,11 +95,13 @@ export function parseEmployeeSnapshot(value:unknown):EmployeeSnapshot {
  const row=strictObject(value,['fields','episode','account','reporting'],true),result:EmployeeSnapshot={}
  if(Object.hasOwn(row,'fields')) {
   const part=strictObject(row.fields,fieldKeys,true),out:Partial<EmployeeFields>={}
-  if(Object.hasOwn(part,'name'))out.name=nonempty(part.name,160)
+  if(Object.hasOwn(part,'firstName'))out.firstName=nullable(part.firstName,v=>nonempty(v,160))
+  if(Object.hasOwn(part,'lastName'))out.lastName=nullable(part.lastName,v=>nonempty(v,160))
+  if(Object.hasOwn(part,'name'))out.name=nonempty(part.name,321)
   if(Object.hasOwn(part,'employeeNumber'))out.employeeNumber=nullable(part.employeeNumber,v=>nonempty(v,64))
   if(Object.hasOwn(part,'jobTitle'))out.jobTitle=nullable(part.jobTitle,v=>nonempty(v,120))
   if(Object.hasOwn(part,'team'))out.team=nullable(part.team,v=>nonempty(v,120))
-  if(Object.hasOwn(part,'recordedStatus'))out.recordedStatus=choice(part.recordedStatus,['draft','active','ended'])
+  if(Object.hasOwn(part,'recordedStatus'))out.recordedStatus=choice(part.recordedStatus,['draft','active','inactive','ended'])
   result.fields=out
  }
  if(Object.hasOwn(row,'episode')) {
