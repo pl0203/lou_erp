@@ -75,12 +75,16 @@ export function runCoWorkspaceDb({ env = process.env, execute = execFileSync, so
   verify()
   process.stdout.write(evidenceOutput)
   process.stdout.write(output)
-  if (caseName === 'workspace-reads') {
+  // Posting assertions also exercise immutable per-revision import reads.
+  // Install their real additive dependency for all cases using that fixture.
+  if (caseName !== 'import-manifest') {
     const reads = readFileSync(new URL('../supabase/candidates/co-workspace-redesign/20261026101000_co_workspace_reads.sql', import.meta.url), 'utf8')
     assert.equal(reads.split('\n').filter(line => /^(BEGIN|COMMIT);\s*$/.test(line)).join(','), 'BEGIN;,COMMIT;', 'One whole workspace-read candidate transaction required')
     assert.ok(reads.trimEnd().endsWith('COMMIT;'), 'Terminal workspace-read COMMIT required')
     run(reads)
     verify()
+  }
+  if (caseName === 'workspace-reads') {
     // Reuse real posting setup inside its existing rolled-back transaction. The
     // read fixture is fixed source, not an arbitrary caller-supplied path or URL.
     const postingFixture = readFileSync(new URL('../tests/database/co/import-posting.sql', import.meta.url), 'utf8')

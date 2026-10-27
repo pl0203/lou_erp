@@ -26,7 +26,9 @@ BEGIN
  page:=public.pilot_co_reports_page_v2(c,month::text,'all',1,20);
  PERFORM co_test.assert(page->>'total'='1' AND jsonb_array_length(page->'rows')=1 AND page#>>'{rows,0,revision_id}'=latest::text AND page#>>'{rows,0,status}'='posted','posted plus work plus three revisions gives one effective row');
  PERFORM co_test.assert(public.pilot_co_reports_page_v2(c,month::text,'all',2,20)->>'total'='1' AND jsonb_array_length(public.pilot_co_reports_page_v2(c,month::text,'all',2,20)->'rows')=0,'out of range preserves full count');
- historical:=public.pilot_co_report_import_v1(c,month,original);effective:=public.pilot_co_report_import_v1(c,month,latest);
+ historical:=public.pilot_co_report_import_v1(c,month,original);
+ PERFORM co_test.assert(historical->>'source_filename'=(SELECT private.co_evidence_json_v1(e)->>'filename' FROM private.co_report_evidence l JOIN private.co_evidence e ON e.id=l.evidence_id AND e.customer_id=l.customer_id WHERE l.report_revision_id=original AND l.customer_id=c),'revision source filename is canonical linked evidence metadata');
+ effective:=public.pilot_co_report_import_v1(c,month,latest);
  PERFORM co_test.assert(historical->>'revision_id'=original::text AND historical->>'effective_revision_id'=latest::text,'explicit immutable revision bound separately from current');
  PERFORM co_test.assert(historical#>>'{manifest,input,extracted,sha256}'=repeat('a',64) AND effective#>>'{manifest,input,extracted,sha256}'=repeat('c',64),'historical bytes cannot be replaced with new source');
  PERFORM co_test.assert(historical#>>'{manifest,evidenceId}' IS DISTINCT FROM effective#>>'{manifest,evidenceId}','fresh Edit evidence identity');

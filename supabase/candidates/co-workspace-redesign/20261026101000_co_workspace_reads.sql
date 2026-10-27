@@ -46,7 +46,7 @@ BEGIN
  IF r.id IS NULL THEN RAISE EXCEPTION 'Invalid report revision' USING ERRCODE='22023'; END IF;
  SELECT * INTO h FROM private.co_report_heads WHERE id=r.head_id AND customer_id=p_customer_id;
  SELECT x.* INTO m FROM private.co_report_imports l JOIN private.co_import_manifests x ON x.id=l.import_id AND x.customer_id=l.customer_id WHERE l.report_revision_id=r.id AND l.report_head_id=h.id AND l.customer_id=p_customer_id;
- SELECT e.id,e.filename INTO selected_evidence,filename FROM private.co_report_evidence l JOIN private.co_evidence e ON e.id=l.evidence_id AND e.customer_id=l.customer_id WHERE l.report_revision_id=r.id AND l.report_head_id=h.id AND l.customer_id=p_customer_id;
+ SELECT e.id,private.co_evidence_json_v1(e)->>'filename' INTO selected_evidence,filename FROM private.co_report_evidence l JOIN private.co_evidence e ON e.id=l.evidence_id AND e.customer_id=l.customer_id WHERE l.report_revision_id=r.id AND l.report_head_id=h.id AND l.customer_id=p_customer_id;
  IF m.id IS NOT NULL AND (m.report_month<>p_month OR m.evidence_id IS DISTINCT FROM selected_evidence OR m.digest IS DISTINCT FROM private.co_manifest_digest_v1(m.canonical_json)) THEN RAISE EXCEPTION 'Immutable source binding mismatch' USING ERRCODE='55000'; END IF;
  RETURN jsonb_build_object('version','1','as_of',statement_timestamp(),'customer_id',p_customer_id,'report_month',p_month,'revision_id',r.id,'report_head_id',h.id,'effective_revision_id',h.current_revision_id,
  'manifest',m.canonical_json,'unit_declarations',coalesce(m.validation->'unitDeclarations','{}'::jsonb),'source_amount',m.validation->'sourceAmount','currency',m.validation->'currency','source_filename',filename,
