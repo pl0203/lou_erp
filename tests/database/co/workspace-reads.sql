@@ -233,15 +233,15 @@ BEGIN
   c:=co_test.monthly_customer('source-proposal-'||mode); source_draft:=NULL; primary_draft:=NULL; h:=NULL; original:=NULL;
   IF mode='post_sj' THEN
    l:=gen_random_uuid();receipt:=public.pilot_co_transaction_v1(gen_random_uuid(),'create_co',jsonb_build_object('customer_id',c,'expected_customer_version','1','co_number','A4-'||mode,'order_date',m,'lines',jsonb_build_array(jsonb_build_object('id',l,'sku','A4','product_name','A4','ordered_quantity',10,'unit_price','10'))));o:=(receipt->>'id')::uuid;
-   receipt:=public.pilot_co_transaction_v1(gen_random_uuid(),'save_sj_draft',jsonb_build_object('co_id',o,'expected_co_version','1','expected_customer_version',receipt->>'customer_version','sj_number','A4-SJ','sj_date',m,'lines',jsonb_build_array(jsonb_build_object('co_line_id',l,'quantity',10))));source_draft:=(receipt->>'id')::uuid;
-   op:='post_sj';core:=jsonb_build_object('draft_id',source_draft,'expected_draft_version',receipt->>'version','expected_co_version','1');
+   receipt:=public.pilot_co_transaction_v1(gen_random_uuid(),'save_sj_draft',jsonb_build_object('co_id',o,'expected_co_version',(SELECT version::text FROM private.co_orders WHERE id=o AND customer_id=c),'expected_customer_version',receipt->>'customer_version','sj_number','A4-SJ','sj_date',m,'lines',jsonb_build_array(jsonb_build_object('co_line_id',l,'quantity',10))));source_draft:=(receipt->>'id')::uuid;
+   op:='post_sj';core:=jsonb_build_object('draft_id',source_draft,'expected_draft_version',receipt->>'version','expected_co_version',(SELECT version::text FROM private.co_orders WHERE id=o AND customer_id=c));
   ELSE
    o:=co_test.monthly_delivery(c,'A4-'||mode,'A4',10,'10',m);SELECT id INTO l FROM private.co_order_lines WHERE co_id=o;SELECT id INTO b FROM private.co_stock_batches WHERE co_id=o;
    IF mode IN('replace_sj','void_sj') THEN
     SELECT id,current_revision_id,version::text INTO h,original,source_version FROM private.co_delivery_heads WHERE co_id=o;
-    op:='correct_sj';core:=jsonb_build_object('delivery_head_id',h,'original_revision_id',original,'expected_delivery_version',source_version,'expected_co_version','1','action',CASE mode WHEN 'replace_sj' THEN 'replace' ELSE 'void' END);
+    op:='correct_sj';core:=jsonb_build_object('delivery_head_id',h,'original_revision_id',original,'expected_delivery_version',source_version,'expected_co_version',(SELECT version::text FROM private.co_orders WHERE id=o AND customer_id=c),'action',CASE mode WHEN 'replace_sj' THEN 'replace' ELSE 'void' END);
     IF mode='replace_sj' THEN
-     receipt:=public.pilot_co_transaction_v1(gen_random_uuid(),'save_sj_draft',jsonb_build_object('co_id',o,'expected_co_version','1','expected_customer_version',(SELECT version::text FROM private.co_customer_state WHERE customer_id=c),'delivery_head_id',h,'original_revision_id',original,'expected_delivery_version',source_version,'sj_number','SJ-A4-'||mode,'sj_date',m,'lines',jsonb_build_array(jsonb_build_object('co_line_id',l,'quantity',8))));source_draft:=(receipt->>'id')::uuid;
+     receipt:=public.pilot_co_transaction_v1(gen_random_uuid(),'save_sj_draft',jsonb_build_object('co_id',o,'expected_co_version',(SELECT version::text FROM private.co_orders WHERE id=o AND customer_id=c),'expected_customer_version',(SELECT version::text FROM private.co_customer_state WHERE customer_id=c),'delivery_head_id',h,'original_revision_id',original,'expected_delivery_version',source_version,'sj_number','SJ-A4-'||mode,'sj_date',m,'lines',jsonb_build_array(jsonb_build_object('co_line_id',l,'quantity',8))));source_draft:=(receipt->>'id')::uuid;
      core:=core||jsonb_build_object('draft_id',source_draft,'expected_draft_version',receipt->>'version');
     END IF;
    ELSIF mode='report' THEN
@@ -397,8 +397,8 @@ BEGIN
  -- label source even if a rollback-only head-pointer probe points to the old one.
  SELECT id,current_revision_id,version::text INTO h,original,hv FROM private.co_delivery_heads WHERE co_id=first_co;
  SELECT id INTO l FROM private.co_order_lines WHERE co_id=first_co;
- saved:=public.pilot_co_transaction_v1(gen_random_uuid(),'save_sj_draft',jsonb_build_object('co_id',first_co,'expected_co_version','1','expected_customer_version',cv,'delivery_head_id',h,'original_revision_id',original,'expected_delivery_version',hv,'sj_number','A5-RETAINED-REPLACEMENT','sj_date',day,'lines',jsonb_build_array(jsonb_build_object('co_line_id',l,'quantity',1))));
- core:=jsonb_build_object('expected_customer_version',cv,'expected_co_version','1','delivery_head_id',h,'original_revision_id',original,'expected_delivery_version',hv,'action','replace','draft_id',saved->>'id','expected_draft_version',saved->>'version','reason','A5 retained source identity','completed_report_drafts','[]'::jsonb,'acknowledged_reopen_orders','[]'::jsonb);
+ saved:=public.pilot_co_transaction_v1(gen_random_uuid(),'save_sj_draft',jsonb_build_object('co_id',first_co,'expected_co_version',(SELECT version::text FROM private.co_orders WHERE id=first_co AND customer_id=c),'expected_customer_version',cv,'delivery_head_id',h,'original_revision_id',original,'expected_delivery_version',hv,'sj_number','A5-RETAINED-REPLACEMENT','sj_date',day,'lines',jsonb_build_array(jsonb_build_object('co_line_id',l,'quantity',1))));
+ core:=jsonb_build_object('expected_customer_version',cv,'expected_co_version',(SELECT version::text FROM private.co_orders WHERE id=first_co AND customer_id=c),'delivery_head_id',h,'original_revision_id',original,'expected_delivery_version',hv,'action','replace','draft_id',saved->>'id','expected_draft_version',saved->>'version','reason','A5 retained source identity','completed_report_drafts','[]'::jsonb,'acknowledged_reopen_orders','[]'::jsonb);
  PERFORM public.pilot_co_transaction_v1(gen_random_uuid(),'correct_sj',core||jsonb_build_object('preview_fingerprint',public.pilot_co_preview_v1('correct_sj',core)->>'preview_fingerprint'));
  SELECT current_revision_id INTO retained FROM private.co_delivery_heads WHERE id=h;SELECT version::text,effective_generation_id INTO cv,g FROM private.co_customer_state WHERE customer_id=c;
  -- A forward-only, rollback-only pointer probe: the new revision is deliberately
