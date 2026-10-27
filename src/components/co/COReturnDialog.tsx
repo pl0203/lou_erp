@@ -32,6 +32,8 @@ type Props = {
     customerId: string;
     customerVersion: string;
     selection?: COReturnSelection;
+    /** Retained legacy request only: never expose fresh draft/post actions. */
+    recoveryOnly?: boolean;
     resumeContext?: COSourceContext;
     /** Current resume read gate blocks new review, not original receipt recovery. */
     resumeBlocked?: boolean;
@@ -84,7 +86,7 @@ export default function COReturnDialog(props: Props) {
     return <ReturnEditor {...props} customerVersion={version} observedVersion={props.customerVersion} key={`${actor.scope}:${epoch.current}`} onAuthorityFailure={reject}/>;
 }
 function ReturnEditor({ customerId, customerVersion, observedVersion, selection, resumeContext, resumeBlocked=false, returnFocus, onClose, onSaved,
-    blocked = false, readFailure, onAuthorityFailure, requireActualDate = false }: Props & { observedVersion: string }) {
+    blocked = false, readFailure, onAuthorityFailure, requireActualDate = false, recoveryOnly = false }: Props & { observedVersion: string }) {
     const actor = useCOActor(`return:${customerId}:${JSON.stringify(selection)}`);
     const rawSender = useCOTransactionSender({ formScope: 'return', customerId, retainCommitted: true });
     const [version, setVersion] = useState(customerVersion);
@@ -186,7 +188,7 @@ function ReturnEditor({ customerId, customerVersion, observedVersion, selection,
     }, [read.data, read.error]);
     const parentStale = BigInt(observedVersion) > BigInt(version);
     const readonly = !!header && (header.consumed || header.target_kind === 'revision' && !action);
-    const frozen = pending || reviewPending || blocked || resumeBlocked || parentStale || read.isError || read.isFetching || stale || needsReview || !!confirmed || sender.hasUnresolved();
+    const frozen = recoveryOnly || pending || reviewPending || blocked || resumeBlocked || parentStale || read.isError || read.isFetching || stale || needsReview || !!confirmed || sender.hasUnresolved();
     function edit(patch: Partial<Form>) {
         if (frozen || readonly) return;
         generation.current++;
@@ -388,8 +390,8 @@ function ReturnEditor({ customerId, customerVersion, observedVersion, selection,
     if (!actor.enabled || denied.current) return null;
     return <>{unsaved.dialog}<Dialog labelledBy="co-return-title" pending={pending || reviewPending} onClose={dismiss} returnFocus={returnFocus} fallbackFocus={() => null}>
         <div className="space-y-4">
-            <h2 id="co-return-title" className="text-lg font-semibold">{action ? 'Koreksi retur barang' : 'Retur barang belum terjual'}</h2>
-            <p className="text-base">Satu retur pelanggan dapat mencakup beberapa CO. Draft tidak mengubah stok atau pendapatan. SJ Kembali hanya pengembalian dokumen.</p>
+            <h2 id="co-return-title" className="text-lg font-semibold">{recoveryOnly ? 'Pulihkan retur sebelumnya' : action ? 'Koreksi retur barang' : 'Retur barang belum terjual'}</h2>
+            <p className="text-base">{recoveryOnly ? 'Periksa hasil permintaan lama sebelum mencatat retur baru. Pemulihan tidak membuat retur kedua.' : 'Satu retur pelanggan dapat mencakup beberapa CO. Draft tidak mengubah stok atau pendapatan. SJ Kembali hanya pengembalian dokumen.'}</p>
             {readFailure}{error && <COFailure error={error}/>}
             <CORecoveryPanel confirmed={!!confirmed} pending={pending || reviewPending} sender={sender} current={() => current() && !pending && !reviewPending && !blocked} accept={recover}/>
             {confirmed && <div role="alert">
@@ -406,7 +408,7 @@ function ReturnEditor({ customerId, customerVersion, observedVersion, selection,
             {!loaded && !read.isError && <LoadingState title="Memuat seluruh sumber retur…" shape="compact" />}
             {read.isError && <COFailure error={read.error} retry={() => void read.refetch()}/>}
             {(stale || parentStale) && <p role="alert">Sumber berubah. Isian tetap disimpan; muat sumber terbaru dan periksa lagi.</p>}
-            {!resumeContext && loaded && !readonly && <Button variant="quiet" size="compact" disabled={pending || reviewPending || blocked || resumeBlocked || !!confirmed || sender.hasUnresolved()} onClick={() => void refresh()}>Muat sumber retur terbaru</Button>}
+            {!recoveryOnly && !resumeContext && loaded && !readonly && <Button variant="quiet" size="compact" disabled={pending || reviewPending || blocked || resumeBlocked || !!confirmed || sender.hasUnresolved()} onClick={() => void refresh()}>Muat sumber retur terbaru</Button>}
             {needsReview && <div role="alert"><p>Ketersediaan diperbarui. Pilihan lama belum disetujui ulang.</p>
                 <Button variant="quiet" size="compact" disabled={pending || blocked || resumeBlocked} onClick={() => { if(resumeBlocked)return; setNeedsReview(false); setReviewSource(null); }}>Saya sudah memeriksa sumber terbaru</Button></div>}
             {reviewSource ? <COCorrectionDialog embedded ownUnsaved={false} resumeContext={resumeContext} operation={resumeContext?.operation ?? (action ? 'correct_return' : 'post_return')}
@@ -415,7 +417,7 @@ function ReturnEditor({ customerId, customerVersion, observedVersion, selection,
                 confirmDiscard={message => unsaved.confirmDiscardDecision({ message })} onAuthorityFailure={failure}
                 onAccepted={async receipt => { setConfirmed(receipt); return canonical(receipt); }} onRecovered={recover}
                 onClose={() => unsaved.confirmDiscard(() => { if(resumeContext){onClose();return} setReviewSource(null); setReviewDirty(false); })}/>
-                : resumeContext ? <p>Usulan sumber asli tidak tersedia. Kembali ke sumber untuk memeriksa keadaan terkini.</p> : loaded && <>
+                : resumeContext ? <p>Usulan sumber asli tidak tersedia. Kembali ke sumber untuk memeriksa keadaan terkini.</p> : loaded && !recoveryOnly && <>
                     {header && <p className="text-[13px] break-all">{header.line_count} sumber tersimpan · {header.target_kind === 'draft' ? `Draft ${header.id} v${header.draft_version}` : `Revisi ${header.revision_id} v${header.head_version}`}{header.consumed ? ' · sudah diposting' : ''}</p>}
                     {readonly && <p>Riwayat retur tersimpan, hanya baca.{header?.is_void ? ' Retur dibatalkan.' : ''}</p>}
                     <fieldset disabled={frozen || readonly || action === 'void'} className="grid gap-3 sm:grid-cols-2">

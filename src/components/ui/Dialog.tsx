@@ -10,10 +10,22 @@ type Props = Omit<DialogHTMLAttributes<HTMLDialogElement>, 'children' | 'open' |
   fallbackFocus: () => HTMLElement | null
 }
 
-type DialogOwner = { node: HTMLDialogElement; focusInside: () => void }
+type DialogOwner = {
+  node: HTMLDialogElement
+  focusInside: () => void
+  restoreTarget: () => HTMLElement | null
+  previous: DialogOwner | undefined
+}
 // Mount order matches modal order. Only the topmost owner may contain focus.
 const owners: DialogOwner[] = []
 const activeOwner = () => owners.at(-1)
+const restorable = (element: HTMLElement | null): element is HTMLElement => {
+  if (!element?.isConnected || element.matches(':disabled')) return false
+  for (let ancestor: HTMLElement | null = element; ancestor; ancestor = ancestor.parentElement) {
+    if (ancestor.matches('[hidden], [inert], [aria-hidden="true"], [aria-disabled="true"]') || getComputedStyle(ancestor).display === 'none') return false
+  }
+  return !['hidden', 'collapse'].includes(getComputedStyle(element).visibility)
+}
 
 /** Mount only while open. The owner keeps dismissal and transaction decisions. */
 export function Dialog({ labelledBy, children, pending, onClose, returnFocus, fallbackFocus, className, ...props }: Props) {
@@ -31,7 +43,18 @@ export function Dialog({ labelledBy, children, pending, onClose, returnFocus, fa
   useEffect(() => {
     const node = dialog.current
     if (!node) return
-    const owner = { node, focusInside }
+    const prior = activeOwner()
+    const owner: DialogOwner = {
+      node, focusInside,
+      restoreTarget: () => {
+        if (restorable(returnFocus)) return returnFocus
+        const fallback = fallbackFocus()
+        return restorable(fallback) ? fallback : null
+      },
+      // Only inherit the owner containing our actual opener, not an unrelated
+      // overlapping modal. Keep this link when both owners unmount together.
+      previous: returnFocus && prior?.node.contains(returnFocus) ? prior : undefined,
+    }
     owners.push(owner)
     if (typeof node.showModal === 'function') { nativeModal.current = true; node.showModal() }
     else node.setAttribute('open', '')
@@ -45,7 +68,10 @@ export function Dialog({ labelledBy, children, pending, onClose, returnFocus, fa
       if (node.open && typeof node.close === 'function') node.close()
       else node.removeAttribute('open')
       if (!wasActive) return
-      const target = returnFocus?.isConnected ? returnFocus : fallbackFocus()
+      let target = owner.restoreTarget()
+      for (let previous = owner.previous; !target && previous; previous = previous.previous) {
+        target = previous.restoreTarget()
+      }
       const next = activeOwner()
       if (next && (!target || !next.node.contains(target))) next.focusInside()
       else target?.focus()
