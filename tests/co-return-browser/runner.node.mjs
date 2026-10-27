@@ -21,3 +21,7 @@ test('known CI identity rejects wrong repository, head branch and job before git
   assert.notEqual(result.status,0);assert.match(result.stderr,new RegExp('Fixed return native CI identity: '+field));
  }
 });
+test('fixture preserves production ES worker output for the legacy recovery import graph',async()=>{
+ const {default:config}=await import('./vite.config.mjs');
+ assert.equal(config.worker?.format,'es');
+});

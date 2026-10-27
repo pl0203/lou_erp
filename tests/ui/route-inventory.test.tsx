@@ -33,6 +33,7 @@ vi.mock('../../src/pages/athel/co/CODetail', () => ({ default: () => <p data-tes
 vi.mock('../../src/pages/athel/co/COMonthlyReports', () => ({ default: () => <p data-testid="route-leaf">COMonthlyReports</p> }))
 vi.mock('../../src/pages/athel/co/COMonthlyReport', () => ({ default: () => <p data-testid="route-leaf">COMonthlyReport</p> }))
 vi.mock('../../src/pages/athel/co/COCustomerStock', () => ({ default: () => <p data-testid="route-leaf">COCustomerStock</p> }))
+vi.mock('../../src/pages/athel/co/COStockReturns', () => ({ default: () => <p data-testid="route-leaf">COStockReturns</p> }))
 vi.mock('../../src/pages/girard/DailySchedule', () => ({ default: () => <p data-testid="route-leaf">DailySchedule</p> }))
 vi.mock('../../src/pages/girard/ManagerSchedule', () => ({ default: () => <p data-testid="route-leaf">ManagerSchedule</p> }))
 vi.mock('../../src/pages/girard/VisitRequests', () => ({ default: () => <p data-testid="route-leaf">VisitRequests</p> }))
@@ -91,6 +92,7 @@ const PAGES: Page[] = [
   { path: '/athel/co/reports', roles: CO, leaf: 'COMonthlyReports' },
   { path: '/athel/co/reports/:customerId/:month', roles: CO, leaf: 'COMonthlyReport' },
   { path: '/athel/co/stock/*', roles: CO, leaf: 'COCustomerStock' },
+  { path: '/athel/co/returns', roles: CO, leaf: 'COStockReturns' },
   { path: '/girard/schedule', roles: SALES, leaf: 'schedule' },
   { path: '/girard/visit-requests', roles: SALES, leaf: 'VisitRequests' },
   { path: '/girard/visit-history', roles: SALES, leaf: 'OwnVisitHistory' },
@@ -306,7 +308,7 @@ function elements(inspect: (source: ts.SourceFile, node: Opening) => void) {
   for (const source of reachableSources()) visit(source, node => { if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) inspect(source, node) })
 }
 
-test('real App declares exactly the approved 43 patterns and inherited outer gates', () => {
+test('real App declares exactly the approved 44 patterns and inherited outer gates', () => {
   const source = sourceAt('src/App.tsx'), arrays = new Map<string, string[]>()
   for (const statement of source.statements) if (ts.isVariableStatement(statement)) for (const declaration of statement.declarationList.declarations) {
     if (declaration.initializer && ts.isArrayLiteralExpression(declaration.initializer) && declaration.initializer.elements.every(ts.isStringLiteral)) arrays.set(declaration.name.getText(source), declaration.initializer.elements.map(element => (element as ts.StringLiteral).text))
@@ -344,9 +346,9 @@ test('real App declares exactly the approved 43 patterns and inherited outer gat
     ts.forEachChild(node, child => collect(child, parent, inherited))
   }
   collect(source)
-  expect(PAGES).toHaveLength(43)
+  expect(PAGES).toHaveLength(44)
   expect(pages.map(page => page.path).sort()).toEqual(PAGES.map(page => page.path).sort())
-  expect(new Set(pages.map(page => page.path)).size).toBe(43)
+  expect(new Set(pages.map(page => page.path)).size).toBe(44)
   for (const page of PAGES) {
     const actual = pages.find(candidate => candidate.path === page.path)!
     expect(actual.roles === null ? null : [...actual.roles].sort(), page.path).toEqual(page.roles === null ? null : [...page.roles].sort())

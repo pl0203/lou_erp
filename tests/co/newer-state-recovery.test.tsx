@@ -3,6 +3,10 @@ import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react
 import { expect, test } from 'vitest';
 import { customer, mountApp, stockFixture, wire, id } from './stock-ui-harness';
 import App from '../../src/App';
+import LegacyReturnProtocolOwner from './legacy-return-protocol-owner';
+// Legacy return recovery is tested through real protocol owners, not the removed
+// stock-page create action. Settlement continues through the actual app route.
+const protocolOwner = (kind: 'return' | 'settlement') => kind === 'return' ? <LegacyReturnProtocolOwner customerId={customer}/> : <App/>;
 const pending = () => Object.keys(localStorage).filter(key => key.startsWith('co-request:'));
 async function click(name: string) {
     const node = await screen.findByRole('button', { name });
@@ -12,7 +16,7 @@ const change = (label: string, value: string) => fireEvent.change(screen.getByLa
 async function begin(kind: 'return' | 'settlement', lost: boolean, sameTarget: boolean) {
     const s = stockFixture();
     const path = kind === 'return' ? `/athel/co/stock?customer=${customer}` : `/athel/co/${id(11)}`;
-    const owner = mountApp(<App/>, path);
+    const owner = mountApp(protocolOwner(kind), path);
     if (kind === 'settlement') await click('Actions');
     await click(kind === 'return' ? 'Retur barang belum terjual' : 'Selesaikan sisa belum dikirim');
     await screen.findByLabelText(kind === 'return' ? 'Jumlah retur SJ-1 Item 1' : 'Jumlah dibatalkan Item 1');
@@ -63,7 +67,7 @@ for (const kind of ['return', 'settlement'] as const) {
     test.each([[false, 'reload'], [true, 'reload'], [false, 'reopen'], [true, 'reopen']] as const)(`${kind}: committed state survives departure (lost=%s, %s)`, async (lost, departure) => {
         const { s, path, client } = await begin(kind, lost, true);
         const before = localStorage.getItem(pending()[0]);
-        if (departure === 'reload') { cleanup(); mountApp(<App/>, path); }
+        if (departure === 'reload') { cleanup(); mountApp(protocolOwner(kind), path); }
         else {
             await click(kind === 'return' ? 'Tutup retur' : 'Batal'); await click('Buang perubahan');
             await act(async () => { await client.invalidateQueries({ queryKey: ['co'] }); });
@@ -94,14 +98,15 @@ for (const kind of ['return', 'settlement'] as const) {
             ? new Promise(resolve => { release = async () => resolve(await base(name, args)); }) : base(name, args);
         await click(kind === 'return' ? 'Selesaikan konflik retur' : 'Selesaikan konflik penyelesaian'); await click('Buang perubahan');
         await waitFor(() => expect(release).toBeTypeOf('function'));
-        cleanup(); mountApp(<App/>, path); await screen.findByRole('heading', { name: kind === 'return' ? 'Stok Pelanggan' : 'CO-1' });
+        cleanup(); mountApp(protocolOwner(kind), path); if (kind === 'return') await screen.findByRole('table', { name: 'Stok pelanggan tercatat' });
+        else await screen.findByRole('heading', { name: 'CO-1' });
         await act(async () => release());
         expect(localStorage.getItem(key)).toBe(before); expect(screen.queryByDisplayValue('PRIVATE BEFORE RECOVERY')).toBeNull();
     });
 }
 
 test.each([false, true])('later return-head revision preserves original consumed-draft linkage (bad linkage=%s)', async badLinkage => {
-    const s = stockFixture(); mountApp(<App/>, `/athel/co/stock?customer=${customer}`);
+    const s = stockFixture(); mountApp(protocolOwner('return'), `/athel/co/stock?customer=${customer}`);
     await click('Retur barang belum terjual'); await screen.findByLabelText('Jumlah retur SJ-1 Item 1');
     change('Jumlah retur SJ-1 Item 1', '5'); change('Referensi retur', 'POST ORIGINAL');
     await click('Simpan Draft retur'); await click('Tinjau / post retur');

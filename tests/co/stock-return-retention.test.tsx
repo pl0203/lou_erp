@@ -2,7 +2,7 @@ import React from 'react';
 import { expect, test } from 'vitest';
 import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { customer, mount, mountApp, stockFixture, wire } from './stock-ui-harness';
-import App from '../../src/App';
+import LegacyReturnProtocolOwner from './legacy-return-protocol-owner';
 import CODetail from '../../src/pages/athel/co/CODetail';
 
 async function click(name: string) {
@@ -15,12 +15,13 @@ function change(name: string, value: string) {
 }
 const sourceReads = () => wire.rpc.mock.calls.filter(([name]) =>
     name === 'pilot_co_customer_stock_v2' || name === 'pilot_co_customer_batches_v1').length;
+// Exercise retained legacy source/review protocol, not the normal stock create route.
 async function reviewReturn(nested = false) {
     const state = stockFixture();
     if (nested) state.report.impacts.missing_month = [{
         report_month: '2026-09-01', reason: 'missing', head_id: null, coverage_through_date: null,
     }];
-    mountApp(<App />, `/athel/co/stock?customer=${customer}`);
+    mountApp(<LegacyReturnProtocolOwner customerId={customer}/>, `/athel/co/stock?customer=${customer}`);
     await click('Retur barang belum terjual');
     await screen.findByLabelText('Jumlah retur SJ-1 Item 1');
     change('Jumlah retur SJ-1 Item 1', '5');

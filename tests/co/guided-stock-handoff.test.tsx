@@ -1,4 +1,4 @@
-import { fireEvent, screen, within } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import { expect, test } from 'vitest';
 import { customer, id, mountApp, stockFixture } from './stock-ui-harness';
 import App from '../../src/App';
@@ -9,9 +9,13 @@ test('stock sale handoff carries selected customer without historical month and 
     const link = await screen.findByRole('link', { name: 'Catat penjualan' });
     expect(link.getAttribute('href')).toBe(`/athel/co/reports?customer=${customer}`);
     expect(link.classList.contains('ui-action--primary')).toBe(true);
-    const returns = screen.getByRole('group', { name: 'Pengembalian barang' });
-    expect(within(returns).getByRole('button', { name: 'Retur barang belum terjual' })).toBeTruthy();
-    expect(returns.contains(link)).toBe(false);
+    const returns = screen.getByRole('link', { name: 'Stock Return' });
+    // A separate workspace reauthorizes eligible customers; historical filters
+    // must not preselect or authorize a new return.
+    expect(returns.getAttribute('href')).toBe('/athel/co/returns');
+    expect(returns.classList.contains('ui-action--quiet')).toBe(true);
+    expect(returns).not.toBe(link);
+    expect(screen.queryByRole('button', { name: 'Retur barang belum terjual' })).toBeNull();
     await screen.findByRole('table',{name:'Stok pelanggan tercatat'});
     expect(screen.queryByText(/Total seluruh hasil filter/)).toBeNull();
     expect(screen.queryByText(/Barang diterima/)).toBeNull();

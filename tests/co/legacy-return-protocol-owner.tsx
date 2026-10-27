@@ -16,7 +16,7 @@ export default function LegacyReturnProtocolOwner({ customerId }: { customerId: 
     const location = useLocation();
     const filters: StockFilters = { customerId, sku: null, search: '', asOf: null, sort: 'sku', direction: 'asc', page: 1, pageSize: 25 };
     if (location.pathname !== '/athel/co/stock') return <App/>;
-    return <><AthelNav/><COSourceBoundary source="stock" check={options => fetchCOStockV2(filters, options)}><Owner filters={filters}/></COSourceBoundary></>;
+    return <><AthelNav/><main id="main-content"><COSourceBoundary source="stock" check={options => fetchCOStockV2(filters, options)}><Owner filters={filters}/></COSourceBoundary></main></>;
 }
 function Owner({ filters }: { filters: StockFilters }) {
     const actor = useCOActor(`stock:${JSON.stringify(filters)}`);

@@ -130,7 +130,7 @@ test('review inventory covers every registered page exactly once and explains st
   const paths = [...titles.matchAll(/\['([^']+)'\s*,/g)].map(match => match[1]).sort()
   const document = readFileSync('docs/all-page-motion-coverage.md', 'utf8')
   const documented = [...document.matchAll(/^\| `([^`]+)` \|/gm)].map(match => match[1]).sort()
-  expect(paths).toHaveLength(43)
+  expect(paths).toHaveLength(44)
   expect(documented).toEqual(paths)
   expect(document).toContain('Native browser visual/accessibility/device QA is NOT RUN')
   expect(document).toContain('Existing quiet reads are deliberately not turned into new blocking branches')

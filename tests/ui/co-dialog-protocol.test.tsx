@@ -3,6 +3,7 @@ import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { expect, test } from 'vitest';
 import { customer, mountApp, stockFixture, id } from '../co/stock-ui-harness';
 import App from '../../src/App';
+import LegacyReturnProtocolOwner from '../co/legacy-return-protocol-owner';
 
 async function click(name: string) {
     const button = await screen.findByRole('button', { name });
@@ -11,9 +12,9 @@ async function click(name: string) {
 }
 
 for (const kind of ['return', 'settlement'] as const) {
-    test(`${kind} shared native dialog preserves real sender pending dismissal and trigger focus`, async () => {
+    test(`${kind === 'return' ? 'retained legacy return protocol' : kind} shared native dialog preserves real sender pending dismissal and trigger focus`, async () => {
         const s = stockFixture();
-        mountApp(<App/>, kind === 'return' ? `/athel/co/stock?customer=${customer}` : `/athel/co/${id(11)}`);
+        mountApp(kind === 'return' ? <LegacyReturnProtocolOwner customerId={customer}/> : <App/>, kind === 'return' ? `/athel/co/stock?customer=${customer}` : `/athel/co/${id(11)}`);
         const toolbarTrigger = kind === 'settlement' ? await click('Actions') : null;
         const action = await click(kind === 'return' ? 'Retur barang belum terjual' : 'Selesaikan sisa belum dikirim');
         const trigger = toolbarTrigger ?? action;
@@ -52,8 +53,8 @@ for (const kind of ['return', 'settlement'] as const) {
     });
 }
 
-test('return review keeps one native dialog and shared correction fields inside an embedded section', async () => {
-    const s = stockFixture(); mountApp(<App/>, `/athel/co/stock?customer=${customer}`);
+test('retained legacy return protocol review keeps one native dialog and shared correction fields inside an embedded section', async () => {
+    const s = stockFixture(); mountApp(<LegacyReturnProtocolOwner customerId={customer}/>, `/athel/co/stock?customer=${customer}`);
     await click('Retur barang belum terjual');
     const quantity = await screen.findByLabelText('Jumlah retur SJ-1 Item 1');
     await waitFor(() => expect(quantity.matches(':disabled')).toBe(false));

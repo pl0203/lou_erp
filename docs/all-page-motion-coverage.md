@@ -19,7 +19,7 @@ The immutable 102-branch fixture is unchanged. `tests/ui/fixtures/hr-continuity-
 - HR private views still hide data while authority is checked. PO/dashboard retained results keep their existing labels; this retention is not generalized to HR or approval screens.
 - The motion-only delta changes no library/auth/query/transaction code, database migrations, permissions, deployment configuration, packages or lockfiles. The separate SJ feature's source changes and unexecuted migration remain independently frozen and documented; no hosted state is changed by this combined review.
 
-## Route coverage: 43 current paths (38 original + 5 employee routes)
+## Route coverage: 44 current paths (38 original + 5 employee routes + Stock Return)
 
 Every active page below owns `MainContent` directly or through COLayout and receives shared mounted-content/control polish. The retired order-history URL now redirects to the Sales schedule. Sources are relative to `src/`. Shapes describe the changed loading presentation, not a new blocking condition.
 
@@ -45,6 +45,7 @@ Every active page below owns `MainContent` directly or through COLayout and rece
 | `/athel/co/reports` | `pages/athel/co/COMonthlyReports` | Report list and compact period check |
 | `/athel/co/reports/:customerId/:month` | `pages/athel/co/COMonthlyReport` | Customer-report and nested workspace read states |
 | `/athel/co/stock/*` | `pages/athel/co/COCustomerStock` | Stock list and nested stock history |
+| `/athel/co/returns` | `pages/athel/co/COStockReturns` | Recorded return list, bounded customer/item reads and canonical recovery; quiet reads remain non-blocking |
 | `/girard/visit-requests` | `VisitRequestInbox`, `VisitRequestStatus` | List/selected-request status under existing identity/hash keys |
 | `/girard/visit-history` | `pages/girard/OwnVisitHistory` | History list and latest-record check |
 | `/girard/schedule` | `DailySchedule` or `ManagerSchedule` | Both role branches: schedule list loading |

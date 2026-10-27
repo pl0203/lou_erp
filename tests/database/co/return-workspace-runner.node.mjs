@@ -42,3 +42,18 @@ test('cross-server preflight includes transitive employee authority and schema',
  assert.match(sql,/p\.proname LIKE 'employee/);assert.match(sql,/c\.relname LIKE 'employee/);
  assert.doesNotMatch(sql,/proargdefaults::text/,'no raw internal expression OIDs in cross-server hash');
 });
+test('preflight never sends zero-dimensional empty ACLs to aclexplode',async()=>{
+ const {readFileSync}=await import('node:fs');const sql=readFileSync(new URL('./return-workspace-preflight.sql',import.meta.url),'utf8');
+ assert.doesNotMatch(sql,/aclexplode\(coalesce\(/,'unprotected empty ACL crashes PostgreSQL17');
+ assert.match(sql,/aclexplode\(NULLIF\(a\.attacl,'\{\}'::aclitem\[\]\)\)/,'column NULL/empty means no explicit grants, not table/function defaults');
+ assert.match(sql,/aclexplode\(NULLIF\(coalesce\(p\.proacl,acldefault\('f',p\.proowner\)\),'\{\}'::aclitem\[\]\)\)/);
+ assert.match(sql,/aclexplode\(NULLIF\(coalesce\(r\.relacl,acldefault/);
+});
+
+test('ACL normalization regression executes before the preflight and candidate',async()=>{
+ const {readFileSync}=await import('node:fs');const runner=readFileSync(new URL('../../../scripts/test-co-return-workspace-db.mjs',import.meta.url),'utf8');
+ assert.ok(runner.indexOf("read('tests/database/co/return-workspace-acl-normalization.sql')")<runner.indexOf("read('tests/database/co/return-workspace-preflight.sql')"));
+ assert.match(runner,/CO_RETURN_ACL_NORMALIZATION_PASSED/);
+ const sql=readFileSync(new URL('./return-workspace-acl-normalization.sql',import.meta.url),'utf8');
+ assert.match(sql,/BEGIN READ ONLY;/);assert.match(sql,/Explicit column grant or grant option lost/);assert.match(sql,/Empty object ACL incorrectly inherited defaults/);
+});

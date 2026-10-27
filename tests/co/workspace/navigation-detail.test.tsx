@@ -11,15 +11,15 @@ import { formatAuditTimestamp, formatDisplayDate } from '../../../src/lib/displa
 import { formatCOReportMonth } from '../../../src/lib/co/presentation';
 import * as auth from '../../../src/lib/AuthContext';
 
-const labels = ['Pesanan CO', 'Laporan Penjualan Bulanan', 'Stok Pelanggan'];
+const labels = ['Pesanan CO', 'Laporan Penjualan Bulanan', 'Stok Pelanggan', 'Stock Return'];
 function workspace(path: string) {
     vi.spyOn(navigation, 'default').mockImplementation(ActualNav);
     return mountRoutes([{ path: '/athel/co', element: <COLayout/>, children: [
         { index: true, element: <COOrders/> }, { path: 'reports/*', element: <p>Reports destination</p> },
-        { path: 'stock', element: <p>Stock destination</p> }, { path: ':id', element: <CODetail/> },
+        { path: 'stock', element: <p>Stock destination</p> }, { path: 'returns', element: <p>Return destination</p> }, { path: ':id', element: <CODetail/> },
     ] }], path);
 }
-test.each([['/athel/co', 'Pesanan CO'], ['/athel/co/reports/customer/2026-10-01?revision=old', 'Laporan Penjualan Bulanan'], ['/athel/co/stock?customer=x', 'Stok Pelanggan'], [`/athel/co/${ids.co}`, 'Pesanan CO']])('direct/refresh route %s selects only %s without top tabs', async (path, selected) => {
+test.each([['/athel/co', 'Pesanan CO'], ['/athel/co/reports/customer/2026-10-01?revision=old', 'Laporan Penjualan Bulanan'], ['/athel/co/stock?customer=x', 'Stok Pelanggan'], ['/athel/co/returns', 'Stock Return'], [`/athel/co/${ids.co}`, 'Pesanan CO']])('direct/refresh route %s selects only %s without top tabs', async (path, selected) => {
     workspace(path);
     const group = await screen.findByRole('group', { name: 'Submenu Consignment Order' });
     expect(within(group).getAllByRole('link').map(link => link.textContent)).toEqual(labels);

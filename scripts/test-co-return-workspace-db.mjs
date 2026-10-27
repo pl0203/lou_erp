@@ -35,6 +35,9 @@ export function runReturnWorkspace({env=process.env,execute=execFileSync,sourceI
  if(baselineName==='current')runWorkspaceCurrentBaseline({run,verify,read})
  const before=baselineName==='current'?run(WORKSPACE_CURRENT_AUTHORITY_SNAPSHOT).trim():null
  run(read('supabase/candidates/co-workspace-redesign/20261026100000_co_import_manifest.sql'));verify()
+ const normalization=run(read('tests/database/co/return-workspace-acl-normalization.sql'))
+ assert.equal(normalization.trim(),'CO_RETURN_ACL_NORMALIZATION_PASSED')
+ process.stdout.write(normalization)
  const preflightSql=read('tests/database/co/return-workspace-preflight.sql')
  const preflight=JSON.parse(run(preflightSql).trim())
  assert.match(preflight.attestation_sha256,/^[a-f0-9]{64}$/)

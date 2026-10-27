@@ -3,6 +3,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { expect, test } from 'vitest';
 import { customer, id, mountApp, stockFixture } from '../co/stock-ui-harness';
 import App from '../../src/App';
+import LegacyReturnProtocolOwner from '../co/legacy-return-protocol-owner';
 
 const variant = (node: HTMLElement, value: string) => expect(node.classList.contains(`ui-action--${value}`)).toBe(true);
 const click = async (name: string) => {
@@ -19,7 +20,9 @@ test('stock history uses quiet compact disclosure and uniform secondary source n
     variant(history, 'quiet'); expect(history.classList.contains('ui-action--compact')).toBe(true);
     variant(screen.getByRole('button', { name: 'Stok terkini' }), 'quiet');
     variant(screen.getByRole('link', { name: 'Catat penjualan' }), 'primary');
-    const returns = within(screen.getByRole('group', { name: 'Pengembalian barang' })).getByRole('button', { name: 'Retur barang belum terjual' });
+    const returns = screen.getByRole('link', { name: 'Stock Return', exact: true });
+    expect(returns.getAttribute('href')).toBe('/athel/co/returns');
+    expect(screen.queryByRole('button', { name: 'Retur barang belum terjual' })).toBeNull();
     variant(returns, 'quiet'); expect(returns.classList.contains('ui-action--compact')).toBe(true);
     fireEvent.click(history);
     const link = await screen.findByRole('link', { name: 'Lihat CO sumber' });
@@ -28,8 +31,8 @@ test('stock history uses quiet compact disclosure and uniform secondary source n
     expect(s.commands).toHaveLength(0);
 });
 
-test('return save, review, and apply each become the single existing progression emphasis', async () => {
-    const s = stockFixture(); mountApp(<App/>, `/athel/co/stock?customer=${customer}`);
+test('retained legacy return protocol save, review, and apply each have one progression emphasis', async () => {
+    const s = stockFixture(); mountApp(<LegacyReturnProtocolOwner customerId={customer}/>, `/athel/co/stock?customer=${customer}`);
     await click('Retur barang belum terjual');
     const quantity = await screen.findByLabelText('Jumlah retur SJ-1 Item 1');
     await waitFor(() => expect(quantity.matches(':disabled')).toBe(false));
