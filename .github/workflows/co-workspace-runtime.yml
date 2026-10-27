@@ -140,3 +140,106 @@ jobs:
       - name: Production build check
         if: ${{ !cancelled() && steps.native-dependencies.outcome == 'success' }}
         run: npm run build
+  stock-return-sql:
+    if: >-
+      github.repository == 'pl0203/lou_erp' &&
+      github.event.pull_request.head.repo.full_name == 'pl0203/lou_erp' &&
+      github.event.pull_request.head.ref == 'test/co-workspace-runtime-20261027'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        baseline: [legacy, current]
+    services:
+      postgres:
+        image: postgres:17.11
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic-ci-only
+          POSTGRES_DB: pilot_test
+        ports: ['5432:5432']
+        options: >-
+          --memory=2g --cpus=2 --log-driver=none
+          --health-cmd "pg_isready -U postgres -d pilot_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: synthetic-ci-only
+      PGDATABASE: pilot_test
+      PGTZ: UTC
+      CO_CI_PROFILE: github-co-return-workspace-v1
+      CO_CI_SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+      npm_config_update_notifier: 'false'
+      VITE_SUPABASE_URL: https://example.invalid
+      VITE_SUPABASE_ANON_KEY: synthetic-test-key
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify source and publication safety
+        run: node scripts/verify-co-public-ci.mjs
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.11.1'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+      - name: Provision marker in fresh job service
+        run: |
+          set -euo pipefail
+          psql -X --no-password -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE TABLE public.pilot_fixture_marker(purpose text PRIMARY KEY);
+          INSERT INTO public.pilot_fixture_marker VALUES ('disposable-pilot-ci');
+          SQL
+      - name: Execute Stock Return schema, ACL, rollback, behavior and real races
+        env:
+          FIXED_BASELINE: ${{ matrix.baseline }}
+        run: node scripts/test-co-return-workspace-db.mjs --case returns --baseline "$FIXED_BASELINE"
+  stock-return-native:
+    if: >-
+      github.repository == 'pl0203/lou_erp' &&
+      github.event.pull_request.head.repo.full_name == 'pl0203/lou_erp' &&
+      github.event.pull_request.head.ref == 'test/co-workspace-runtime-20261027'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      CO_CI_SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+      npm_config_update_notifier: 'false'
+      VITE_SUPABASE_URL: https://example.invalid
+      VITE_SUPABASE_ANON_KEY: synthetic-test-key
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify source and publication safety
+        run: node scripts/verify-co-public-ci.mjs
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.11.1'
+      - id: stock-return-dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Stock Return source contracts and synthetic component tests
+        run: >-
+          npx vitest run tests/co/return-workspace-contract.test.ts
+          tests/co/return-request.test.ts tests/co/return-form.test.ts
+          tests/co/return-workspace-ui.test.tsx tests/co/return-page.test.tsx
+          tests/co/return-ci-topology.test.ts tests/co/return-entry-routing.test.tsx
+          tests/co/return-legacy-recovery.test.ts tests/co/return-legacy-routing.test.tsx
+          tests/co-return-browser/boundary.test.ts
+          tests/co-return-browser/component.test.tsx --maxWorkers=1
+      - name: Stock Return native runner admission and cleanup guards
+        run: node --test tests/co-browser/cleanup.node.mjs tests/co-return-browser/runner.node.mjs
+      - name: Stock Return native Chrome page and multi-item modal
+        if: ${{ !cancelled() && steps.stock-return-dependencies.outcome == 'success' }}
+        timeout-minutes: 4
+        env:
+          CHROME_BINARY: /usr/bin/google-chrome
+        run: node tests/co-return-browser/run.mjs

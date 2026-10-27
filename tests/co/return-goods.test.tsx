@@ -2,7 +2,7 @@ import React from 'react';
 import { expect, test, vi } from 'vitest';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { customer, id, mount, mountApp, stockFixture, wire } from './stock-ui-harness';
-import App from '../../src/App';
+import LegacyReturnProtocolOwner from './legacy-return-protocol-owner';
 import COReturnDialog, { type COReturnSelection } from '../../src/components/co/COReturnDialog';
 
 // The user removed historical return sections from CO detail. These tests keep
@@ -11,9 +11,9 @@ function mountStoredReturn(s: any, selection: COReturnSelection) {
     return mount(<COReturnDialog customerId={customer} customerVersion={s.cv} selection={selection} returnFocus={null} onClose={() => {}}/>, `/athel/co/${s.co.id}`);
 }
 
-test('customer-wide return saves a draft without ledger effect then posts through shared review', async () => {
+test('legacy customer-wide return protocol saves a draft without ledger effect then posts through shared review', async () => {
     const s = stockFixture();
-    mountApp(<App />, `/athel/co/stock?customer=${customer}`);
+    mountApp(<LegacyReturnProtocolOwner customerId={customer}/>, `/athel/co/stock?customer=${customer}`);
     await click('Retur barang belum terjual');
     fireEvent.change(await screen.findByLabelText('Jumlah retur SJ-1 Item 1'), { target: { value: '5' } });
     expect((screen.getByLabelText('Tanggal retur') as HTMLInputElement).value).toBe(new Date().toISOString().slice(0, 10));
@@ -51,7 +51,7 @@ async function click(name: string) {
 const change = (name: string, value: string) => fireEvent.change(screen.getByLabelText(name), { target: { value } });
 async function openReturn(count = 2) {
     const state = stockFixture(count);
-    const view = mountApp(<App />, `/athel/co/stock?customer=${customer}`);
+    const view = mountApp(<LegacyReturnProtocolOwner customerId={customer}/>, `/athel/co/stock?customer=${customer}`);
     await click('Retur barang belum terjual');
     await screen.findByLabelText('Jumlah retur SJ-1 Item 1');
     return { state, ...view };
@@ -464,7 +464,7 @@ test('newer authoritative parent version freezes a retained return before stale 
 
 test('return owner readback success clears previous recovery warning and error', async () => {
   const s = stockFixture(2);
-  mountApp(<App/>, `/athel/co/stock?customer=${customer}`);
+  mountApp(<LegacyReturnProtocolOwner customerId={customer}/>, `/athel/co/stock?customer=${customer}`);
   await click('Retur barang belum terjual');
   await screen.findByLabelText('Jumlah retur SJ-1 Item 1');
   change('Jumlah retur SJ-1 Item 1','5');

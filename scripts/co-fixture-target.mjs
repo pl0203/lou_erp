@@ -15,6 +15,7 @@ export function coCiConnection(env, source) {
     const contexts = {
       'github-pilot-safety-v1': { GITHUB_WORKFLOW: 'Pilot safety checks', GITHUB_JOB: 'synthetic-safety' },
       'github-co-workspace-v1': { GITHUB_WORKFLOW: 'CO workspace runtime', GITHUB_JOB: 'workspace-sql' },
+      'github-co-return-workspace-v1': { GITHUB_WORKFLOW: 'CO workspace runtime', GITHUB_JOB: 'stock-return-sql' },
     }
     assert.ok(Object.hasOwn(contexts, env.CO_CI_PROFILE), 'Unknown CO fixture profile')
     assert.ok(source?.clean === true, 'CI requires a verified clean Git source')
@@ -47,7 +48,7 @@ export function coCiConnection(env, source) {
 // remains unchanged unless the complete dedicated hosted profile is selected.
 export function coWorkspaceConnection(env, source) {
   if (env.CO_CI_PROFILE !== undefined) {
-    assert.equal(env.CO_CI_PROFILE, 'github-co-workspace-v1', 'Dedicated workspace CI profile required')
+    assert.ok(['github-co-workspace-v1','github-co-return-workspace-v1'].includes(env.CO_CI_PROFILE), 'Dedicated workspace CI profile required')
   } else {
     for (const key of Object.keys(env)) {
       assert.ok(key !== 'CI' && !key.startsWith('CO_CI_') && !key.startsWith('GITHUB_'), `Workspace runner refuses CI context: ${key}`)

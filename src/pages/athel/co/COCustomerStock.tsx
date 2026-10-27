@@ -1,3 +1,5 @@
+import COReturnLegacyRecovery from '../../../components/co/COReturnLegacyRecovery';
+import {legacyReturnState} from '../../../lib/co/returnLegacyRecovery';
 import COSourceProposalResume from '../../../components/co/COSourceProposalResume';
 import { coSourceProposalRequest } from '../../../lib/co/workspaceReads';
 import { useRef, useState } from 'react';
@@ -11,7 +13,6 @@ import { CO_INPUT, COFailure, COFreshness, useCOActor, useCORead } from '../../.
 import COSourceBoundary from '../../../components/co/COSourceBoundary';
 import COStockTable from '../../../components/co/COStockTable';
 import COStockHistory from '../../../components/co/COStockHistory';
-import COReturnDialog from '../../../components/co/COReturnDialog';
 import { PageHeader } from '../../../components/ui/PageHeader';
 import { Button } from '../../../components/ui/Button';
 import { ActionLink } from '../../../components/ui/ActionLink';
@@ -42,9 +43,10 @@ function StockOwner() {
     const period = params.get('month') ?? '';
     const invalidMonth = !!period && !filters.asOf;
     const actor = useCOActor(`stock:${JSON.stringify(filters)}`);
-    const [returning, setReturning] = useState(false);
     const [error, setError] = useState('');
-    const trigger = useRef<HTMLElement | null>(null);
+    const [legacyOpen,setLegacyOpen]=useState(false),[,setLegacyTick]=useState(0);
+    const legacyTrigger=useRef<HTMLElement|null>(null);
+    let legacyState='absent';try{if(actor.enabled&&filters.customerId)legacyState=legacyReturnState(window.localStorage,actor.identity.actorId,filters.customerId);}catch{legacyState='malformed';}
     const movementTrigger = useRef<HTMLElement | null>(null);
     const directoryActor = useCOActor('stock-directory');
     const customers = useCORead(directoryActor, 'customers', {}, fetchCOCustomers);
@@ -58,7 +60,7 @@ function StockOwner() {
             if (value) url.set(key,value); else url.delete(key);
         }
         url.delete('stockKey'); url.delete('movementCustomer'); url.delete('movementPage');
-        setReturning(false); setParams(url);
+        setLegacyOpen(false); setParams(url);
     };
     const setFilter = (change: Partial<StockFilters>) => update({...filters,...change,page:1});
     const selectedName = result?.rows[0]?.customer_name ?? customers.data?.find(c => c.id === filters.customerId)?.name;
@@ -68,7 +70,6 @@ function StockOwner() {
     const movementValid = !!stockKey && !!movementCustomer && uuid.test(stockKey) && uuid.test(movementCustomer);
     const movementRow = result?.rows.find(row => row.customer_id === movementCustomer && row.stock_key_id === stockKey);
     const closeMovement = () => {const next=new URLSearchParams(params);next.delete('stockKey');next.delete('movementCustomer');next.delete('movementPage');setParams(next);};
-    const blocked = stock.isFetching || stock.isError || !result || !!filters.asOf;
     if (!actor.enabled) return null;
     return <div className="min-w-0 max-w-7xl mx-auto space-y-3">
         <PageHeader title="Stok Pelanggan" description={filters.customerId ? `${selectedName ?? 'Toko dipilih'} · stok seluruh CO pelanggan` : 'Stok seluruh CO · filter toko dan SKU dapat digabung.'}/>
@@ -82,7 +83,9 @@ function StockOwner() {
                 setError(''); setFilter({asOf:end});
             }}/>}</Field>
         </FilterBar>
-        <div className="flex flex-wrap items-center gap-3"><Button variant="quiet" size="compact" disabled={stock.isFetching || invalidMonth} onClick={() => void stock.refetch()}>Muat ulang stok</Button><Button variant="quiet" size="compact" onClick={() => {setError('');setFilter({asOf:null});}}>Stok terkini</Button>{filters.customerId && <><ActionLink variant="primary" size="compact" to={`/athel/co/reports?customer=${filters.customerId}`}>Catat penjualan</ActionLink><div role="group" aria-label="Pengembalian barang"><Button variant="quiet" size="compact" disabled={blocked} onClick={e => {trigger.current=e.currentTarget;setReturning(true);}}>Retur barang belum terjual</Button></div></>}</div>
+        <div className="flex flex-wrap items-center gap-3"><Button variant="quiet" size="compact" disabled={stock.isFetching || invalidMonth} onClick={() => void stock.refetch()}>Muat ulang stok</Button><Button variant="quiet" size="compact" onClick={() => {setError('');setFilter({asOf:null});}}>Stok terkini</Button>{filters.customerId && <><ActionLink variant="primary" size="compact" to={`/athel/co/reports?customer=${filters.customerId}`}>Catat penjualan</ActionLink><ActionLink variant="quiet" size="compact" to="/athel/co/returns">Stock Return</ActionLink></>}</div>
+        {legacyState!=='absent'&&legacyState!=='refused'&&<div className="co-return-recovery"><p>Permintaan retur lama belum selesai diverifikasi.</p><Button variant="secondary" onClick={e=>{legacyTrigger.current=e.currentTarget;setLegacyOpen(true);}}>Pulihkan retur sebelumnya</Button></div>}
+        {legacyOpen&&filters.customerId&&<COReturnLegacyRecovery customerId={filters.customerId} returnFocus={legacyTrigger.current} onClose={()=>setLegacyOpen(false)} onResolved={()=>{setLegacyTick(n=>n+1);void stock.refetch();}}/>}
         {invalidMonth && <COFailure error={new Error('Bulan stok tidak valid. Pilih bulan kalender.')}/>}
         {error && <COFailure error={new Error(error)}/>}
         {customers.isError && <COFailure error={customers.error} retry={() => void customers.refetch()}/>}
@@ -96,6 +99,6 @@ function StockOwner() {
         </> : null}
         {movementValid && !stock.isError && <COStockHistory key={`${actor.scope}:${movementCustomer}:${stockKey}`} customerId={movementCustomer} stockKeyId={stockKey} asOf={filters.asOf} blocked={stock.isFetching || !result} context={movementRow} customerName={customers.data?.find(c=>c.id===movementCustomer)?.name} onClose={closeMovement} returnFocus={movementTrigger.current} fallbackFocus={()=>document.getElementById('co-stock-sku-filter')} onAuthorityFailure={actor.rejectAuthority}/>}
 
-        {returning && result && filters.customerId && !filters.asOf && <COReturnDialog key={`${actor.scope}:return`} customerId={filters.customerId} customerVersion={result.customer_version!} returnFocus={trigger.current} onClose={() => setReturning(false)} blocked={blocked} readFailure={stock.isError ? <COFailure error={stock.error}/> : null} onAuthorityFailure={actor.rejectAuthority} onSaved={() => {void stock.refetch();}}/>}
+
     </div>;
 }

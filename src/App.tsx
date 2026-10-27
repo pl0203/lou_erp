@@ -7,6 +7,7 @@ import ProtectedRoute from './components/ProtectedRoute'
 import COMonthlyReports from './pages/athel/co/COMonthlyReports'
 import COMonthlyReport from './pages/athel/co/COMonthlyReport'
 import COCustomerStock from './pages/athel/co/COCustomerStock'
+import COStockReturns from './pages/athel/co/COStockReturns'
 import COLayout from './pages/athel/co/COLayout'
 import COOrders from './pages/athel/co/COOrders'
 import COForm from './pages/athel/co/COForm'
@@ -76,7 +77,7 @@ const routeTitles: [string, string][] = [
   ['/athel/customers', 'Daftar pelanggan Procurement'], ['/athel/products', 'Daftar barang'],
   ['/athel/sales-orders', 'Pesanan penjualan'], ['/athel/promotions', 'Promosi Procurement'],
   ['/athel/co/reports/:customerId/:month', 'Laporan konsinyasi bulanan'],
-  ['/athel/co/reports', 'Laporan konsinyasi'], ['/athel/co/stock/*', 'Stok konsinyasi'],
+  ['/athel/co/reports', 'Laporan konsinyasi'], ['/athel/co/stock/*', 'Stok konsinyasi'], ['/athel/co/returns', 'Stock Return'],
   ['/athel/co/new', 'Buat pesanan konsinyasi'], ['/athel/co/:id/edit', 'Ubah pesanan konsinyasi'],
   ['/athel/co/:id', 'Detail pesanan konsinyasi'], ['/athel/co', 'Pesanan konsinyasi'],
   ['/girard/visit-requests', 'Permintaan kunjungan'], ['/girard/visit-history', 'Riwayat kunjungan saya'],
@@ -151,6 +152,7 @@ export default function App() {
         <Route path="reports" element={<COMonthlyReports />} />
         <Route path="reports/:customerId/:month" element={<COMonthlyReport />} />
         <Route path="stock/*" element={<COCustomerStock />} />
+        <Route path="returns" element={<COStockReturns />} />
         <Route path=":id/edit" element={<COForm mode="edit" />} />
         <Route path=":id" element={<CODetail />} />
       </Route>
