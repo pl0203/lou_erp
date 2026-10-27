@@ -54,5 +54,12 @@ test('native diagnostics run before the slow aggregate without masking failures'
 
 test('native cleanup regressions must pass before hosted Chrome starts',()=>{
  const native=workflow.slice(workflow.indexOf('  native-runtime:'))
- expect(native).toContain('node --test tests/co-browser/cleanup.test.mjs\n          node tests/co-browser/run.mjs')
+ expect(native).toContain('node --test tests/co-browser/cleanup.node.mjs\n          node tests/co-browser/run.mjs')
+})
+
+
+test('native Node cleanup tests stay outside Vitest automatic discovery',()=>{
+ const files=readdirSync('tests/co-browser')
+ expect(files).toContain('cleanup.node.mjs')
+ expect(files.filter(name=>/\.(?:test|spec)\.[cm]?[jt]sx?$/.test(name))).toEqual([])
 })

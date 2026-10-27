@@ -342,7 +342,7 @@ BEGIN
 END $$;
 DO $legacy_effective_seed_acceptance$
 DECLARE c uuid:=co_test.monthly_customer('legacy-effective-seed'); m date:=(date_trunc('month',now())-interval '1 month')::date;
- h uuid; revision uuid; d uuid; k uuid; zero_key uuid; new_key uuid; p jsonb; receipt jsonb; before_state jsonb; before_draft jsonb; request uuid:=gen_random_uuid(); version_before bigint; correction jsonb; preview jsonb;
+ h uuid; revision uuid; d uuid; k uuid; zero_key uuid; new_key uuid; p jsonb; receipt jsonb; before_state jsonb; before_draft jsonb; request uuid:=gen_random_uuid(); version_before bigint; correction jsonb; preview jsonb; legacy_replay jsonb; legacy_generation uuid;
 BEGIN
  PERFORM co_test.monthly_delivery(c,'legacy-one','LEGACY',100,'100',m);
  PERFORM co_test.monthly_delivery(c,'legacy-zero','ZERO',100,'100',m);
@@ -356,6 +356,24 @@ BEGIN
  VALUES(h,c,1,(m+interval '1 month - 1 day')::date,false,'EFFECTIVE','Effective historical metadata',auth.uid()) RETURNING id INTO revision;
  INSERT INTO private.co_report_revision_lines(revision_id,head_id,customer_id,stock_key_id,sold_quantity) VALUES(revision,h,c,k,7),(revision,h,c,zero_key,0);
  UPDATE private.co_report_heads SET current_revision_id=revision WHERE id=h;
+ -- This retained historical fixture predates complete-row enforcement. Seed its
+ -- matching canonical ledger too; a head alone is deliberately rejected by the
+ -- unchanged effective-evidence guard. Do not label this incomplete legacy state
+ -- can_post or route it through a new publication command.
+ legacy_replay:=private.co_replay_v1(private.co_sources_v1(c));
+ PERFORM co_test.assert(jsonb_array_length(legacy_replay->'issues')=1 AND legacy_replay->'issues'->0->>'code'='CO_REPORT_INCOMPLETE' AND legacy_replay->'issues'->0->>'stock_key_id'=new_key::text,'only the intentional legacy omitted key is incomplete');
+ INSERT INTO private.co_replay_generations(customer_id,version,algorithm_version,created_by)
+ SELECT c,version+1,'synthetic-legacy-fifo-v1',auth.uid() FROM private.co_customer_state WHERE customer_id=c RETURNING id INTO legacy_generation;
+ INSERT INTO private.co_stock_movements(generation_id,customer_id,batch_id,stock_key_id,kind,quantity_delta,effective_date,delivery_revision_line_id,return_revision_line_id,report_revision_line_id)
+ SELECT legacy_generation,c,(x->>'batch_id')::uuid,(x->>'stock_key_id')::uuid,x->>'kind',(x->>'quantity_delta')::numeric,(x->>'effective_date')::date,
+  CASE WHEN x->>'kind'='delivery' THEN (x->>'line_ref')::uuid END,CASE WHEN x->>'kind'='return' THEN (x->>'line_ref')::uuid END,CASE WHEN x->>'kind'='sold' THEN (x->>'line_ref')::uuid END
+ FROM jsonb_array_elements(legacy_replay->'movements') x;
+ INSERT INTO private.co_sale_allocations(generation_id,customer_id,report_revision_id,report_revision_line_id,batch_id,stock_key_id,quantity,unit_price,sales_person_id_at_creation,sales_assignment_source_id,sales_attributed_at,sales_attribution_state)
+ SELECT legacy_generation,c,(x->>'report_ref')::uuid,(x->>'line_ref')::uuid,(x->>'batch_id')::uuid,(x->>'stock_key_id')::uuid,(x->>'quantity')::integer,(x->>'unit_price')::numeric,
+  (x->>'sales_person_id_at_creation')::uuid,(x->>'sales_assignment_source_id')::uuid,(x->>'sales_attributed_at')::timestamptz,x->>'sales_attribution_state'
+ FROM jsonb_array_elements(legacy_replay->'allocations') x;
+ UPDATE private.co_customer_state SET version=version+1,effective_generation_id=legacy_generation WHERE customer_id=c;
+ PERFORM co_test.assert(private.co_evidence_matches_v1(c,legacy_replay),'synthetic legacy evidence matches canonical source replay');
  d:=co_test.report_init(c,m);
  -- A stale pending input must not become the correction's initial value.
  PERFORM public.pilot_co_transaction_v1(gen_random_uuid(),'save_report_draft',co_test.report_input(d)||jsonb_build_object('action','upsert_lines','lines',jsonb_build_array(jsonb_build_object('stock_key_id',k,'sold_quantity',99),jsonb_build_object('stock_key_id',new_key,'sold_quantity',88))));

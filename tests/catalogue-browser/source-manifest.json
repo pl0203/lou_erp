@@ -191,15 +191,15 @@
     },
     {
       "path": "package.json",
-      "sha": "10ddc1bb932fde7abe71ec78ac7e52c159a9bd5d",
-      "sha256": "a5629bc296d4e250eb124059406e68fe6a48cd50f6bef864ad86a08202a9f98d",
-      "bytes": 1268
+      "sha": "6e86317036cbb9d47c53c5bc4997f3be46dcd595",
+      "sha256": "ed2e2787df9b98df2f6734c64aa955d3a8f838cf39a77cde7f2500357174a702",
+      "bytes": 1297
     },
     {
       "path": "package-lock.json",
-      "sha": "50e1cd0d8c159133c74ac8eb9e858f9f1bddbdb6",
-      "sha256": "384346a5ec2f13d15ee8a5ca274c0b94e90de301fe3b8b95caeebbea954291ca",
-      "bytes": 234738
+      "sha": "1ffcc624b57a9eef5ca835575fd5fb09c06816e9",
+      "sha256": "01599e3bfe88c61a9069b4b983d4dea2924bc82cbc1e26ac692470f425168eb3",
+      "bytes": 234771
     },
     {
       "path": "public/fonts/plus-jakarta-sans/PlusJakartaSans-Variable.ttf",
