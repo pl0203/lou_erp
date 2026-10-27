@@ -1,17 +1,33 @@
-import { useEffect, useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { LoadingState } from '../../components/ui/LoadingState'
+import { sendCatalogueForm } from '../../lib/catalogue/formCommands'
+import type { CatalogueTransactionSender } from '../../lib/catalogue/transactions'
+import { useCataloguePage } from '../../lib/catalogue/useCataloguePage'
+import type { CatalogueRow, CatalogueStatus } from '../../lib/catalogue/contracts'
+import { CatalogueStatusActions } from '../../components/catalogue/CatalogueStatusActions'
+import { CatalogueRecovery } from '../../components/catalogue/CatalogueRecovery'
+import type { CatalogueOwner } from '../../components/catalogue/CatalogueRecovery'
+import { useProcurementAccess } from '../../lib/procurementAccess'
+import { hasInvalidCustomerCategories } from '../../lib/customerCategoryRows'
+import CustomerCategorySelect from '../../components/CustomerCategorySelect'
+import ReadFailure from '../../components/ReadFailure'
+import { parseCustomerCategory, formatCustomerCategory, type CustomerCategory } from '../../lib/customerCategory'
+import { useEffect, useRef, useState } from 'react'
+import { useMutation } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
 import AthelNav from '../../components/AthelNav'
+import PaginationControls from '../../components/PaginationControls'
+import { Button } from '../../components/ui/Button'
+import { MainContent } from '../../components/ui/MainContent'
+import { PageHeader } from '../../components/ui/PageHeader'
+import { Field } from '../../components/ui/Field'
+import { FilterBar } from '../../components/ui/FilterBar'
+import { FormActions } from '../../components/ui/FormActions'
+import { Dialog } from '../../components/ui/Dialog'
+import { EmptyState, Notice, StatusBadge } from '../../components/ui/Feedback'
+import { RecordList } from '../../components/ui/RecordList'
+import { SummaryList } from '../../components/ui/SummaryList'
 
-type Customer = {
-  id: string
-  name: string
-  address: string | null
-  city: string | null
-  phone: string | null
-  email: string | null
-  pricing_tier: string
-}
+type Customer = CatalogueRow<'customer'>
 
 type CustomerForm = {
   name: string
@@ -19,12 +35,7 @@ type CustomerForm = {
   city: string
   phone: string
   email: string
-  pricing_tier: string
-}
-
-type CustomerListResponse = {
-  items: Customer[]
-  total: number
+  customer_category: CustomerCategory | null | ''
 }
 
 const EMPTY_FORM: CustomerForm = {
@@ -33,58 +44,22 @@ const EMPTY_FORM: CustomerForm = {
   city: '',
   phone: '',
   email: '',
-  pricing_tier: 'luar_kota',
-}
-
-const TIER_LABELS: Record<string, string> = {
-  harga_pokok:   'Harga Pokok',
-  luar_kota:     'Luar Kota',
-  dalam_kota:    'Dalam Kota',
-  depo_bangunan: 'Depo Bangunan',
+  customer_category: '',
 }
 
 const PAGE_SIZE = 10
 
-async function fetchCustomers(search: string, page: number): Promise<CustomerListResponse> {
-  const from = (page - 1) * PAGE_SIZE
-  const to = from + PAGE_SIZE - 1
-  const trimmedSearch = search.trim()
-
-  let query = supabase
-    .from('customers')
-    .select('id, name, address, city, phone, email, pricing_tier', { count: 'exact' })
-    .order('name')
-    .range(from, to)
-
-  if (trimmedSearch) {
-    query = query.or(`name.ilike.%${trimmedSearch}%,city.ilike.%${trimmedSearch}%`)
+async function saveCustomer(sender: CatalogueTransactionSender, form: CustomerForm, original: Customer | null) {
+  const category = parseCustomerCategory(form.customer_category, { allowUnclassified: original !== null })
+  const payload: Record<string, unknown> = {}
+  for (const key of ['name', 'address', 'city', 'phone', 'email'] as const) {
+    if (!original || form[key] !== (original[key] ?? '')) {
+      payload[key] = key === 'name' ? form[key].trim() : form[key].trim() || null
+    }
   }
-
-  const { data, error, count } = await query
-  if (error) throw error
-
-  return {
-    items: data ?? [],
-    total: count ?? 0,
-  }
-}
-
-async function saveCustomer(form: CustomerForm, editingId: string | null) {
-  const payload = {
-    name: form.name.trim(),
-    address: form.address.trim() || null,
-    city: form.city.trim() || null,
-    phone: form.phone.trim() || null,
-    email: form.email.trim() || null,
-    pricing_tier: form.pricing_tier,
-  }
-  if (editingId) {
-    const { error } = await supabase.from('customers').update(payload).eq('id', editingId)
-    if (error) throw error
-  } else {
-    const { error } = await supabase.from('customers').insert(payload)
-    if (error) throw error
-  }
+  if (!original) payload.pricing_tier = 'others' // Required legacy contract; never used to choose order prices.
+  if (!original || category !== original.customer_category) payload.customer_category = category
+  return sendCatalogueForm(sender, 'customer', payload, original)
 }
 
 async function deleteCustomer(id: string) {
@@ -93,14 +68,21 @@ async function deleteCustomer(id: string) {
 }
 
 export default function CustomerList() {
-  const queryClient = useQueryClient()
+  const access = useProcurementAccess()
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [originalCustomer, setOriginalCustomer] = useState<Customer | null>(null)
   const [form, setForm] = useState<CustomerForm>(EMPTY_FORM)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [page, setPage] = useState(1)
+  const [status, setStatus] = useState<CatalogueStatus>('all')
+  const mutationBusy = useRef(false)
+  const dialogTrigger = useRef<HTMLElement | null>(null)
+  const dialogCommitted = useRef(false)
+  const successFocus = useRef<HTMLDivElement>(null)
+  const restoreFocus = () => !dialogCommitted.current && dialogTrigger.current?.isConnected ? dialogTrigger.current : successFocus.current
 
   const handleSearch = (value: string) => {
     setSearch(value)
@@ -110,39 +92,86 @@ export default function CustomerList() {
 
   useEffect(() => {
     setPage(1)
-  }, [debouncedSearch])
+  }, [debouncedSearch, status])
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['athel_customers', debouncedSearch, page],
-    queryFn: () => fetchCustomers(debouncedSearch, page),
-    placeholderData: previousData => previousData,
-  })
+  const catalogue = useCataloguePage({ kind: 'customer', search: debouncedSearch, page, pageSize: PAGE_SIZE, status })
+  const { data, isFetching, isPlaceholderData, fetchStatus, isError: queryReadError, refetch } = catalogue
+  const formOwner = useRef<CatalogueOwner | null>(null)
+  useEffect(() => {
+    if (showForm && (formOwner.current !== catalogue.owner || !formOwner.current?.isCurrent())) {
+      setShowForm(false)
+      setEditingId(null)
+      setForm(EMPTY_FORM)
+    }
+  }, [showForm, catalogue.owner])
 
   const customers = data?.items ?? []
+  const readError = queryReadError || hasInvalidCustomerCategories(customers)
   const totalItems = data?.total ?? 0
-  const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE))
-  const startItem = totalItems === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
-  const endItem = totalItems === 0 ? 0 : Math.min(page * PAGE_SIZE, totalItems)
+
 
   const saveMutation = useMutation({
-    mutationFn: () => saveCustomer(form, editingId),
+    mutationFn: () => {
+      if (!catalogue.sender || formOwner.current !== catalogue.owner || !formOwner.current?.isCurrent() || !catalogue.commandsAvailable
+        || !catalogue.authority?.[originalCustomer ? 'customer_edit' : 'customer_create']) throw new Error('Kewenangan katalog belum terkonfirmasi.')
+      return saveCustomer(catalogue.sender, form, originalCustomer)
+    },
+    onSettled: async () => {
+      try { await catalogue.refresh() }
+      finally { mutationBusy.current = false }
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['athel_customers'] })
+      dialogCommitted.current = true
       setShowForm(false)
       setEditingId(null)
       setForm(EMPTY_FORM)
     },
   })
 
+  const directDelete = catalogue.authority?.customer_delete_mode === 'direct' && access.capabilities.customer_delete
   const deleteMutation = useMutation({
-    mutationFn: () => deleteCustomer(deleteId!),
+    mutationFn: () => {
+      if (!directDelete || !catalogue.owner?.isCurrent()) throw new Error('Kewenangan penghapusan belum terkonfirmasi.')
+      access.require('customer_delete'); return deleteCustomer(deleteId!)
+    },
+    onSettled: () => { mutationBusy.current = false },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['athel_customers'] })
+      dialogCommitted.current = true
+      void catalogue.refresh()
       setDeleteId(null)
     },
   })
 
-  const openEdit = (c: Customer) => {
+  const modalOpen = showForm || !!deleteId
+  const modalPending = saveMutation.isPending || deleteMutation.isPending
+  const formFrozen = modalPending || catalogue.unresolved
+  const formControls = useRef<HTMLDivElement>(null)
+  const wasUnresolved = useRef(false)
+  useEffect(() => {
+    if (showForm && !modalPending && !catalogue.busy && formOwner.current === catalogue.owner && formOwner.current?.isCurrent()
+      && (catalogue.unresolved || wasUnresolved.current)) {
+      // Frozen draft fields stay visible; recovery remains in this modal's focus trap.
+      formControls.current?.querySelector<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled)')?.focus()
+    }
+    wasUnresolved.current = catalogue.unresolved
+  }, [showForm, modalPending, catalogue.busy, catalogue.unresolved, catalogue.recoveryAvailable, catalogue.owner])
+  const confirmFormRecovery = () => {
+    catalogue.onConfirmed()
+    dialogCommitted.current = true
+    setShowForm(false); setEditingId(null); setForm(EMPTY_FORM); saveMutation.reset()
+  }
+  const abandonFormRequest = () => {
+    catalogue.onAbandoned()
+    // Keep the exact draft and original version. Never silently rebase or retry.
+    saveMutation.reset()
+  }
+
+  const openEdit = (c: Customer, trigger: HTMLElement) => {
+    if (!catalogue.commandsAvailable || !catalogue.authority?.customer_edit || mutationBusy.current || modalOpen || modalPending || catalogue.unresolved) return
+    dialogTrigger.current = trigger
+    dialogCommitted.current = false
+    saveMutation.reset()
+    setOriginalCustomer(c)
     setEditingId(c.id)
     setForm({
       name: c.name,
@@ -150,299 +179,101 @@ export default function CustomerList() {
       city: c.city ?? '',
       phone: c.phone ?? '',
       email: c.email ?? '',
-      pricing_tier: c.pricing_tier ?? 'luar_kota',
+      customer_category: c.customer_category,
     })
+    formOwner.current = catalogue.owner
     setShowForm(true)
   }
 
   const handleSave = () => {
+    if (!catalogue.commandsAvailable || !catalogue.authority?.[originalCustomer ? 'customer_edit' : 'customer_create'] || mutationBusy.current || modalPending || readError || catalogue.unresolved) return
     if (!form.name.trim()) return alert('Nama pelanggan wajib diisi.')
+    mutationBusy.current = true
     saveMutation.mutate()
+  }
+
+  const handleDelete = () => {
+    if (mutationBusy.current || modalPending || !directDelete || !deleteId) return
+    mutationBusy.current = true
+    deleteMutation.mutate()
   }
 
   const deleteTarget = customers.find(c => c.id === deleteId)
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <AthelNav />
-
-      <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900">Daftar Pelanggan</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{totalItems} pelanggan</p>
+  const closeForm = () => { if (!mutationBusy.current && !formFrozen) { setShowForm(false); setEditingId(null); setForm(EMPTY_FORM) } }
+  const openDelete = (c: Customer, trigger: HTMLElement) => {
+    if (!directDelete || mutationBusy.current || modalOpen || modalPending || catalogue.unresolved) return
+    dialogTrigger.current = trigger; dialogCommitted.current = false; deleteMutation.reset(); setDeleteId(c.id)
+  }
+  const rowActions = (c: Customer) => <div className="flex flex-wrap justify-end gap-2">
+    {catalogue.authority?.customer_edit && <Button variant="quiet" size="compact" disabled={!catalogue.commandsAvailable || modalOpen || modalPending || catalogue.unresolved} onClick={event => openEdit(c, event.currentTarget)}>Ubah</Button>}
+    {directDelete && <Button variant="danger-quiet" size="compact" disabled={modalOpen || modalPending || catalogue.unresolved} onClick={event => openDelete(c, event.currentTarget)}>Hapus</Button>}
+    {catalogue.owner && catalogue.sender ? <CatalogueStatusActions kind="customer" row={c} owner={catalogue.owner} sender={catalogue.sender} authority={catalogue.authority} commandsAvailable={catalogue.commandsAvailable} guardedDeleteAvailable={catalogue.guardedDeleteAvailable} fallbackFocus={() => successFocus.current} disabled={modalOpen || modalPending || catalogue.unresolved} /> : <StatusBadge tone={c.is_enabled ? 'success' : 'neutral'}>{c.is_enabled ? 'Aktif' : 'Nonaktif'}</StatusBadge>}
+  </div>
+  return <div className="min-h-screen bg-brand-canvas">
+    <AthelNav />
+    <MainContent>
+      <div inert={modalOpen} aria-hidden={modalOpen ? true : undefined}>
+        <div ref={successFocus} tabIndex={-1} className="bg-white border-b border-brand-divider px-4 md:px-8 py-5">
+          <PageHeader title="Daftar Pelanggan" description={data ? `${totalItems} pelanggan` : 'Jumlah pelanggan belum tersedia'} actions={catalogue.authority?.customer_create && <Button disabled={!catalogue.commandsAvailable || readError || modalOpen || modalPending || catalogue.unresolved} onClick={event => {
+            if (!catalogue.commandsAvailable || !catalogue.authority?.customer_create || mutationBusy.current || modalOpen || modalPending || catalogue.unresolved) return
+            dialogTrigger.current = event.currentTarget; dialogCommitted.current = false; saveMutation.reset(); setOriginalCustomer(null); setEditingId(null); setForm(EMPTY_FORM); formOwner.current = catalogue.owner; setShowForm(true)
+          }}>+ Tambah Pelanggan</Button>} />
         </div>
-        <button
-          onClick={() => { setEditingId(null); setForm(EMPTY_FORM); setShowForm(true) }}
-          className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-        >
-          + Tambah Pelanggan
-        </button>
-      </div>
+        <div className="px-4 md:px-8 py-4"><FilterBar label="Filter daftar pelanggan"><Field id="catalog-customer-search" label="Cari pelanggan" className="w-full sm:w-80">{control => <input {...control} type="text" placeholder="Cari pelanggan..." value={search} onChange={event => handleSearch(event.target.value)} />}</Field><Field id="catalog-customer-status" label="Status pelanggan">{control => <select {...control} value={status} onChange={event => setStatus(event.target.value as CatalogueStatus)}><option value="all">Semua status</option><option value="enabled">Aktif</option><option value="disabled">Nonaktif</option></select>}</Field></FilterBar></div>
+        <div className="px-4 md:px-8 pb-6 space-y-4">
+          {!showForm && catalogue.unresolved && !catalogue.busy && catalogue.owner && catalogue.sender && <CatalogueRecovery owner={catalogue.owner} sender={catalogue.sender} available={catalogue.recoveryAvailable} acceptCanonical={catalogue.acceptCanonical} acceptAbandoned={catalogue.acceptAbandoned} onConfirmed={catalogue.onConfirmed} onAbandoned={catalogue.onAbandoned} />}
 
-      <div className="px-4 md:px-8 py-4 bg-white border-b border-gray-100">
-        <input
-          type="text"
-          placeholder="Cari pelanggan..."
-          value={search}
-          onChange={e => handleSearch(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full sm:w-80 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-      </div>
-
-      <div className="px-4 md:px-8 py-6">
-        {isLoading && (
-          <div className="text-center text-gray-400 text-sm py-24">Memuat data pelanggan...</div>
-        )}
-
-        {!isLoading && (
-          <>
-            {/* Desktop table */}
-            <div className="hidden md:block bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 border-b border-gray-100">
-                    <th className="text-left px-5 py-3 font-medium text-gray-500">Nama Pelanggan</th>
-                    <th className="text-left px-5 py-3 font-medium text-gray-500">Kota</th>
-                    <th className="text-left px-5 py-3 font-medium text-gray-500">Telepon</th>
-                    <th className="text-left px-5 py-3 font-medium text-gray-500">Email</th>
-                    <th className="text-left px-5 py-3 font-medium text-gray-500">Tier Harga</th>
-                    <th className="text-right px-5 py-3 font-medium text-gray-500">Aksi</th>
-                  </tr>
-                </thead>
+          {readError && <ReadFailure onRetry={() => { void refetch() }} />}
+          {!readError && !data && <LoadingState title={fetchStatus === 'paused' ? 'Memuat data pelanggan tertunda. Menunggu koneksi…' : 'Memuat data pelanggan...'} shape="list" />}
+          {!readError && data && fetchStatus === 'paused' && <Notice tone="info" title="Pembaruan data pelanggan tertunda. Menunggu koneksi; hasil terakhir tetap ditampilkan." />}
+          {!readError && data && <>
+            <div role="region" aria-label="Daftar pelanggan" tabIndex={0} className="hidden md:block bg-white rounded-[14px] border border-brand-divider overflow-x-auto">
+              <table className="w-full min-w-[56rem] text-sm">
+                <thead><tr className="bg-brand-canvas border-b border-brand-divider">{['Nama Pelanggan', 'Kota', 'Telepon', 'Email', 'Kategori Pelanggan', 'Aksi'].map((label, index) => <th key={label} className={`px-5 py-3 font-medium text-brand-secondary ${index === 5 ? 'text-right' : 'text-left'}`}>{label}</th>)}</tr></thead>
                 <tbody>
-                  {customers.length === 0 && (
-                    <tr>
-                      <td colSpan={6} className="text-center text-gray-400 py-12">
-                        Tidak ada pelanggan ditemukan.
-                      </td>
-                    </tr>
-                  )}
-                  {customers.map(c => (
-                    <tr key={c.id} className="border-b border-gray-50 hover:bg-gray-50">
-                      <td className="px-5 py-4 font-medium text-gray-900">{c.name}</td>
-                      <td className="px-5 py-4 text-gray-600">{c.city ?? '—'}</td>
-                      <td className="px-5 py-4 text-gray-600">{c.phone ?? '—'}</td>
-                      <td className="px-5 py-4 text-gray-600">{c.email ?? '—'}</td>
-                      <td className="px-5 py-4">
-                        <span className="text-xs bg-blue-50 text-blue-700 px-2.5 py-0.5 rounded-full font-medium">
-                          {TIER_LABELS[c.pricing_tier] ?? c.pricing_tier}
-                        </span>
-                      </td>
-                      <td className="px-5 py-4 text-right">
-                        <button
-                          onClick={() => openEdit(c)}
-                          className="text-blue-600 hover:text-blue-800 text-xs font-medium mr-3"
-                        >
-                          Ubah
-                        </button>
-                        <button
-                          onClick={() => setDeleteId(c.id)}
-                          className="text-red-400 hover:text-red-600 text-xs font-medium"
-                        >
-                          Hapus
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {customers.length === 0 && <tr><td colSpan={6} className="p-4"><EmptyState title="Tidak ada pelanggan ditemukan." /></td></tr>}
+                  {customers.map(c => <tr key={c.id} className="border-b border-brand-divider">
+                    <td className="px-5 py-4 font-medium text-brand-primary [overflow-wrap:anywhere]">{c.name}</td>
+                    <td className="px-5 py-4 text-brand-secondary">{c.city ?? '—'}</td><td className="px-5 py-4 text-brand-secondary [overflow-wrap:anywhere]">{c.phone ?? '—'}</td><td className="px-5 py-4 text-brand-secondary [overflow-wrap:anywhere]">{c.email ?? '—'}</td>
+                    <td className="px-5 py-4">{formatCustomerCategory(c.customer_category)}</td><td className="px-5 py-4">{rowActions(c)}</td>
+                  </tr>)}
                 </tbody>
               </table>
             </div>
-
-            {/* Mobile cards */}
-            <div className="md:hidden space-y-3">
-              {customers.map(c => (
-                <div key={c.id} className="bg-white rounded-xl border border-gray-200 p-4">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-gray-900 text-sm">{c.name}</p>
-                      {c.city && <p className="text-xs text-gray-400 mt-0.5">{c.city}</p>}
-                    </div>
-                    <span className="text-xs bg-blue-50 text-blue-700 px-2.5 py-0.5 rounded-full font-medium ml-2 shrink-0">
-                      {TIER_LABELS[c.pricing_tier] ?? c.pricing_tier}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-xs mb-3">
-                    <div>
-                      <p className="text-gray-400">Telepon</p>
-                      <p className="text-gray-700 mt-0.5">{c.phone ?? '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-400">Email</p>
-                      <p className="text-gray-700 mt-0.5">{c.email ?? '—'}</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-2 pt-3 border-t border-gray-100">
-                    <button
-                      onClick={() => openEdit(c)}
-                      className="flex-1 text-center text-blue-600 text-xs font-medium py-2 rounded-lg bg-blue-50"
-                    >
-                      Ubah
-                    </button>
-                    <button
-                      onClick={() => setDeleteId(c.id)}
-                      className="flex-1 text-center text-red-500 text-xs font-medium py-2 rounded-lg bg-red-50"
-                    >
-                      Hapus
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {totalItems > 0 && (
-              <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-sm text-gray-500">
-                  Menampilkan {startItem}-{endItem} dari {totalItems} pelanggan
-                </p>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setPage(prev => Math.max(1, prev - 1))}
-                    disabled={page === 1}
-                    className="px-3 py-2 text-sm rounded-lg border border-gray-200 bg-white text-gray-700 disabled:text-gray-300 disabled:bg-gray-50 disabled:cursor-not-allowed"
-                  >
-                    Sebelumnya
-                  </button>
-                  <span className="text-sm text-gray-500 min-w-24 text-center">
-                    Halaman {page} / {totalPages}
-                  </span>
-                  <button
-                    onClick={() => setPage(prev => Math.min(totalPages, prev + 1))}
-                    disabled={page === totalPages}
-                    className="px-3 py-2 text-sm rounded-lg border border-gray-200 bg-white text-gray-700 disabled:text-gray-300 disabled:bg-gray-50 disabled:cursor-not-allowed"
-                  >
-                    Berikutnya
-                  </button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
+            <RecordList label="Daftar pelanggan seluler" className="md:hidden">
+              {customers.length === 0 && <li><EmptyState title="Tidak ada pelanggan ditemukan." /></li>}
+              {customers.map(c => <li key={c.id} className="bg-white rounded-[14px] border border-brand-divider p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3 mb-3"><div className="min-w-0 flex-1"><p className="font-semibold text-brand-primary [overflow-wrap:anywhere]">{c.name}</p>{c.city && <p className="text-[13px] text-brand-secondary mt-1">{c.city}</p>}</div></div>
+                <SummaryList items={[{ label: 'Kategori Pelanggan', value: formatCustomerCategory(c.customer_category) }, { label: 'Telepon', value: c.phone ?? '—' }, { label: 'Email', value: c.email ?? '—' }]} />
+                <div className="mt-4 border-t border-brand-divider pt-3">{rowActions(c)}</div>
+              </li>)}
+            </RecordList>
+            <PaginationControls page={page} total={totalItems} pageSize={PAGE_SIZE} pending={isFetching || isPlaceholderData || fetchStatus === 'paused'} onPageChange={setPage} />
+          </>}
+        </div>
       </div>
-
-      {/* Form modal */}
-      {showForm && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl w-full max-w-md shadow-xl max-h-[90vh] overflow-y-auto">
-            <div className="px-6 py-5 border-b border-gray-100">
-              <h3 className="text-base font-semibold text-gray-900">
-                {editingId ? 'Ubah Pelanggan' : 'Pelanggan Baru'}
-              </h3>
-            </div>
-            <div className="px-6 py-4 space-y-4">
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">Nama Pelanggan *</label>
-                <input
-                  type="text"
-                  value={form.name}
-                  onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
-                  placeholder="mis. Toko Bangunan Maju"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">Alamat</label>
-                <input
-                  type="text"
-                  value={form.address}
-                  onChange={e => setForm(p => ({ ...p, address: e.target.value }))}
-                  placeholder="mis. Jl. Sudirman No. 12"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">Kota</label>
-                <input
-                  type="text"
-                  value={form.city}
-                  onChange={e => setForm(p => ({ ...p, city: e.target.value }))}
-                  placeholder="mis. Jakarta"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">Telepon</label>
-                <input
-                  type="text"
-                  value={form.phone}
-                  onChange={e => setForm(p => ({ ...p, phone: e.target.value }))}
-                  placeholder="mis. 021-5551234"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">Email</label>
-                <input
-                  type="email"
-                  value={form.email}
-                  onChange={e => setForm(p => ({ ...p, email: e.target.value }))}
-                  placeholder="mis. toko@example.com"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">Tier Harga</label>
-                <select
-                  value={form.pricing_tier}
-                  onChange={e => setForm(p => ({ ...p, pricing_tier: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="harga_pokok">Harga Pokok</option>
-                  <option value="luar_kota">Luar Kota</option>
-                  <option value="dalam_kota">Dalam Kota</option>
-                  <option value="depo_bangunan">Depo Bangunan</option>
-                </select>
-              </div>
-            </div>
-            <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
-              <button
-                onClick={() => { setShowForm(false); setEditingId(null); setForm(EMPTY_FORM) }}
-                className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
-              >
-                Batal
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={saveMutation.isPending}
-                className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-              >
-                {saveMutation.isPending ? 'Menyimpan...' : 'Simpan'}
-              </button>
-            </div>
-            {saveMutation.isError && (
-              <p className="text-red-500 text-xs px-6 pb-4 text-right">
-                {(saveMutation.error as Error).message}
-              </p>
-            )}
-          </div>
+      {showForm && <Dialog labelledBy="catalog-customer-form-title" pending={formFrozen} onClose={closeForm} returnFocus={null} fallbackFocus={restoreFocus}>
+        <h2 id="catalog-customer-form-title" className="ui-dialog__title">{editingId ? 'Ubah Pelanggan' : 'Pelanggan Baru'}</h2>
+        <div ref={formControls} className="mt-4 space-y-4">
+          <fieldset disabled={formFrozen}><CustomerCategorySelect value={form.customer_category} allowUnclassified={originalCustomer?.customer_category === null} onChange={value => { if (!mutationBusy.current && !formFrozen) setForm(p => ({ ...p, customer_category: value })) }} /></fieldset>
+          <Field id="catalog-customer-name" label="Nama Pelanggan *">{control => <input {...control} type="text" value={form.name} disabled={formFrozen} onChange={event => { if (!mutationBusy.current && !formFrozen) setForm(p => ({ ...p, name: event.target.value })) }} placeholder="mis. Toko Bangunan Maju" />}</Field>
+          <Field id="catalog-customer-address" label="Alamat">{control => <input {...control} type="text" value={form.address} disabled={formFrozen} onChange={event => { if (!mutationBusy.current && !formFrozen) setForm(p => ({ ...p, address: event.target.value })) }} placeholder="mis. Jl. Sudirman No. 12" />}</Field>
+          <Field id="catalog-customer-city" label="Kota">{control => <input {...control} type="text" value={form.city} disabled={formFrozen} onChange={event => { if (!mutationBusy.current && !formFrozen) setForm(p => ({ ...p, city: event.target.value })) }} placeholder="mis. Jakarta" />}</Field>
+          <Field id="catalog-customer-phone" label="Telepon">{control => <input {...control} type="text" value={form.phone} disabled={formFrozen} onChange={event => { if (!mutationBusy.current && !formFrozen) setForm(p => ({ ...p, phone: event.target.value })) }} placeholder="mis. 021-5551234" />}</Field>
+          <Field id="catalog-customer-email" label="Email">{control => <input {...control} type="email" value={form.email} disabled={formFrozen} onChange={event => { if (!mutationBusy.current && !formFrozen) setForm(p => ({ ...p, email: event.target.value })) }} placeholder="mis. toko@example.com" />}</Field>
+          {readError && <ReadFailure onRetry={() => { void refetch() }} />}
+          {saveMutation.isError && <Notice tone="error" title={(saveMutation.error as Error).message} />}
+          {catalogue.unresolved && !modalPending && !catalogue.busy && catalogue.owner && catalogue.sender && <CatalogueRecovery owner={catalogue.owner} sender={catalogue.sender} available={catalogue.recoveryAvailable} acceptCanonical={catalogue.acceptCanonical} acceptAbandoned={catalogue.acceptAbandoned} onConfirmed={confirmFormRecovery} onAbandoned={abandonFormRequest} />}
+          <FormActions><Button variant="quiet" disabled={formFrozen} onClick={closeForm}>Batal</Button><Button pending={saveMutation.isPending} disabled={!catalogue.commandsAvailable || !catalogue.authority?.[originalCustomer ? 'customer_edit' : 'customer_create'] || formFrozen || readError} onClick={handleSave}>{saveMutation.isPending ? 'Menyimpan...' : 'Simpan'}</Button></FormActions>
         </div>
-      )}
-
-      {/* Delete confirmation */}
-      {deleteId && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-xl">
-            <h3 className="text-base font-semibold text-gray-900 mb-2">Hapus pelanggan ini?</h3>
-            <p className="text-sm text-gray-500 mb-5">
-              Apakah Anda yakin ingin menghapus <strong>{deleteTarget?.name}</strong>? Tindakan ini tidak dapat dibatalkan.
-            </p>
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setDeleteId(null)}
-                className="px-4 py-2 text-sm text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50"
-              >
-                Batal
-              </button>
-              <button
-                onClick={() => deleteMutation.mutate()}
-                disabled={deleteMutation.isPending}
-                className="px-4 py-2 text-sm font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
-              >
-                {deleteMutation.isPending ? 'Menghapus...' : 'Hapus'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
+      </Dialog>}
+      {deleteId && <Dialog labelledBy="catalog-customer-delete-title" pending={modalPending} onClose={() => { if (!mutationBusy.current && !modalPending) setDeleteId(null) }} returnFocus={null} fallbackFocus={restoreFocus}>
+        <h2 id="catalog-customer-delete-title" className="ui-dialog__title">Hapus pelanggan ini?</h2>
+        <p className="ui-dialog__description">Apakah Anda yakin ingin menghapus <strong>{deleteTarget?.name}</strong>? Tindakan ini tidak dapat dibatalkan.</p>
+        {deleteMutation.isError && <Notice tone="error" title={(deleteMutation.error as Error).message} className="mt-4" />}
+        <FormActions className="mt-5"><Button variant="quiet" disabled={modalPending} onClick={() => { if (!mutationBusy.current && !modalPending) setDeleteId(null) }}>Batal</Button><Button variant="danger" pending={deleteMutation.isPending} disabled={!directDelete || modalPending} onClick={handleDelete}>{deleteMutation.isPending ? 'Menghapus...' : 'Hapus'}</Button></FormActions>
+      </Dialog>}
+    </MainContent>
+  </div>
 }

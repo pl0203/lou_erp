@@ -1,0 +1,20 @@
+BEGIN;
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000003',true);
+DO $$DECLARE b jsonb; BEGIN
+ b:=public.pilot_sales_target_baseline_v1('2026-10-01','10000000-0000-4000-8000-000000000003');
+ PERFORM public.test_assert(jsonb_array_length(b->'people')=3,'canonical manager ownership is exclusive');
+ PERFORM public.test_assert((SELECT count(*) FROM jsonb_array_elements(b->'people')p CROSS JOIN LATERAL jsonb_array_elements(p->'customers')c)=3,'each canonical customer leaf counted once');
+ PERFORM public.test_assert(b->'warnings'?'INCOMPLETE_BASELINE_MANUAL_REVIEW','missing source coverage is manual review');
+ PERFORM public.test_assert((SELECT bool_and(cell->'baseline'='null'::jsonb) FROM jsonb_array_elements(b->'people')p CROSS JOIN LATERAL jsonb_array_elements(p->'customers')c CROSS JOIN LATERAL jsonb_array_elements(c->'cells')cell),'unattested source never turns missing into baseline zero');
+END$$;
+RESET ROLE;
+UPDATE public.users SET manager_id='10000000-0000-4000-8000-000000000003' WHERE id='10000000-0000-4000-8000-000000000002';
+SET LOCAL ROLE authenticated;
+SELECT public.test_rejected($q$SELECT public.pilot_sales_target_baseline_v1('2026-10-01','10000000-0000-4000-8000-000000000003')$q$,'hierarchy cycle fails closed');
+RESET ROLE;
+UPDATE public.users SET manager_id=NULL WHERE id='10000000-0000-4000-8000-000000000003';
+SET LOCAL ROLE authenticated;
+SELECT public.test_rejected($q$SELECT public.pilot_sales_target_baseline_v1('2026-10-01','10000000-0000-4000-8000-000000000003')$q$,'missing Head fails closed');
+ROLLBACK;
+SELECT 'PORTFOLIO_PASSED';

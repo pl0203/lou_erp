@@ -1,0 +1,15 @@
+{
+  "base": "4cb2ae4a78dad2592e267b82454399d5a759910d",
+  "baseTree": "76399cf028154e2b219b1712694a3b83167641f8",
+  "compilerSha256": "88ec522c2abbf1edf6d5fec1c503da9830ca237debf05b9b210faa034e022320",
+  "model": "po-import-v1",
+  "source": "Existing fictional syntheticImportManifest; fixed synthetic compiler-test controls",
+  "inputSha256": "c1dd62b951abaa957aba2bbf903f8c05c25bf97f465c4f1ef59307c5e614074e",
+  "outputSha256": "5b8efc9a5c61b6b2405bf9c060b0c8c242c258f1362d6159076ee8759c060bf9",
+  "baselineSha256": "4c0cbfbc071156c40616a7ca486b0f2e73a50cd4caf7f2ea1deb4d6b65af8b91",
+  "packetSha256": [
+    "29aaa91d943fc89f62898e31546d151213be4338dfe27a1f3a6bbca5a3f11622",
+    "2c97be43fdb465aee8b5c4157d60a9697d22bd7063daf3af5b00171594150672",
+    "6405dea9c9d899c4b74329963b204addd11d68fed242ae7aef4b008463055952"
+  ]
+}

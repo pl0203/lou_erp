@@ -1,0 +1,132 @@
+{
+  "columns": [
+    {
+      "acl": null,
+      "name": "id",
+      "type": "uuid",
+      "default": "gen_random_uuid()",
+      "notnull": true,
+      "identity": "",
+      "position": 1,
+      "generated": ""
+    },
+    {
+      "acl": null,
+      "name": "name",
+      "type": "text",
+      "default": null,
+      "notnull": true,
+      "identity": "",
+      "position": 2,
+      "generated": ""
+    },
+    {
+      "acl": null,
+      "name": "address",
+      "type": "text",
+      "default": null,
+      "notnull": false,
+      "identity": "",
+      "position": 3,
+      "generated": ""
+    },
+    {
+      "acl": null,
+      "name": "city",
+      "type": "text",
+      "default": null,
+      "notnull": false,
+      "identity": "",
+      "position": 4,
+      "generated": ""
+    },
+    {
+      "acl": null,
+      "name": "phone",
+      "type": "text",
+      "default": null,
+      "notnull": false,
+      "identity": "",
+      "position": 5,
+      "generated": ""
+    },
+    {
+      "acl": null,
+      "name": "email",
+      "type": "text",
+      "default": null,
+      "notnull": false,
+      "identity": "",
+      "position": 6,
+      "generated": ""
+    },
+    {
+      "acl": null,
+      "name": "pricing_tier",
+      "type": "public.pricing_tier",
+      "default": "'luar_kota'::public.pricing_tier",
+      "notnull": true,
+      "identity": "",
+      "position": 7,
+      "generated": ""
+    },
+    {
+      "acl": null,
+      "name": "visit_frequency_days",
+      "type": "integer",
+      "default": "7",
+      "notnull": true,
+      "identity": "",
+      "position": 8,
+      "generated": ""
+    },
+    {
+      "acl": null,
+      "name": "last_visit_date",
+      "type": "date",
+      "default": null,
+      "notnull": false,
+      "identity": "",
+      "position": 9,
+      "generated": ""
+    },
+    {
+      "acl": null,
+      "name": "created_at",
+      "type": "timestamp with time zone",
+      "default": "now()",
+      "notnull": false,
+      "identity": "",
+      "position": 10,
+      "generated": ""
+    }
+  ],
+  "relation": {
+    "acl": [
+      "authenticated=arw/postgres",
+      "postgres=arwdDxtm/postgres",
+      "service_role=arwdDxtm/postgres"
+    ],
+    "rls": true,
+    "kind": "r",
+    "owner": "postgres",
+    "force_rls": false,
+    "partition": false,
+    "inheritance": false
+  },
+  "current_user": "postgres",
+  "primary_keys": [
+    {
+      "kind": "p",
+      "name": "customers_pkey",
+      "columns": [
+        "id"
+      ],
+      "validated": true,
+      "definition": "PRIMARY KEY (id)"
+    }
+  ],
+  "has_dropped_attributes": false,
+  "category_attribute_present": false,
+  "category_constraint_present": false
+}

@@ -1,19 +1,52 @@
+import { LoadingState } from '../../components/ui/LoadingState'
+import { useEffect, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { leaveKeys } from '../../lib/leave/queryKeys'
 import IHRNav from '../../components/IHRNav'
-
+import { useAuth } from '../../lib/AuthContext'
+import { leaveErrorMessage } from '../../lib/leave/rpc'
+import { useLeaveContext } from '../../lib/leave/useLeaveContext'
+import LeaveSetupStatus from './leave/LeaveSetupStatus'
+import LeaveTabs from './leave/LeaveTabs'
+import type { LeaveReadState } from './leave/LeaveRequestForm'
+import { discardLeaveDraftMessage } from './leave/LeaveRequestForm'
+import { MainContent } from '../../components/ui/MainContent'
+import { PageHeader } from '../../components/ui/PageHeader'
+import { Button } from '../../components/ui/Button'
 export default function LeaveManagement() {
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <IHRNav />
-      <div className="flex flex-col items-center justify-center py-32 px-4">
-        <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
-          style={{ backgroundColor: '#fdf0eb' }}>
-          <span className="text-2xl">📅</span>
-        </div>
-        <h2 className="text-lg font-semibold text-gray-900 mb-2">Manajemen Cuti</h2>
-        <p className="text-sm text-gray-400 text-center max-w-xs">
-          Fitur manajemen cuti akan segera hadir. Anda akan dapat mengelola permohonan dan saldo cuti karyawan di sini.
-        </p>
-      </div>
-    </div>
-  )
+  const [dirty,setDirty]=useState(false)
+  const context = useLeaveContext(), client=useQueryClient(), interrupted=useRef(false)
+  const { user, profile, loading } = useAuth()
+  const identity = !loading && user && profile?.is_active && profile.id === user.id ? user.id : null
+  const displayContext=context.displayContext
+  const readState:LeaveReadState = context.isFetching || context.isPending || context.authorityPending ? (displayContext?'refreshing':'pending') : context.authorityReady ? 'ready' : 'error'
+  // The accepted context adapter strips raw diagnostics; this is its exact 42501
+  // denial message. Explicit denial must destroy retained input, unlike transport failure.
+  const denied = context.isError && context.error.message === leaveErrorMessage({code:'42501'})
+  // A cancelled authority fetch can leave joined private promises waiting on its
+  // reverted query. Cancel those attempts too; only a later genuine context
+  // completion may restart active readers. Ephemeral editor owners stay mounted.
+  useEffect(()=>{
+    if(!identity)return
+    const filter={queryKey:leaveKeys.identity(identity),predicate:(query:{queryKey:readonly unknown[]})=>query.queryKey[3]==='private'}
+    if(readState==='error'){interrupted.current=true;void client.cancelQueries(filter)}
+    else if(readState==='ready'&&interrupted.current){interrupted.current=false;void client.refetchQueries({...filter,type:'active'},{cancelRefetch:false})}
+  },[client,identity,readState])
+  const errorPanel = useRef<HTMLDivElement>(null)
+  useEffect(() => { if (readState === 'error') errorPanel.current?.focus() }, [readState])
+  return <div className="min-h-screen bg-brand-canvas">
+    <IHRNav beforeSignOut={()=>!dirty||window.confirm(discardLeaveDraftMessage)} />
+    <MainContent className="mx-auto max-w-5xl space-y-5 px-4 py-6 sm:py-8 md:px-8">
+      <PageHeader title={displayContext?.capabilities.request&&['employee','manager'].includes(displayContext.memberKind??'')?'Ajukan Cuti':'Manajemen Cuti'} />
+      {readState==='refreshing'&&<p role="status" className="text-base text-brand-secondary">Memeriksa akses cuti…</p>}
+      {readState === 'pending' || !identity ? <LoadingState title="Memuat akses cuti..." shape="compact" /> : readState === 'error' ?
+        <div role="alert" ref={errorPanel} tabIndex={-1} className="ui-notice ui-notice--error"><p>Akses cuti belum dapat dikonfirmasi. Silakan coba lagi.</p><Button size="compact" variant="secondary" onClick={() => void context.refetch()} className="mt-2">Coba lagi</Button></div> : null}
+      {/* Keep only the same actor/scope's ephemeral owner through read failures. Its
+          protected UI is suspended until the shared authority read succeeds again. */}
+      {identity && !denied && context.data && <>
+        {displayContext && <LeaveSetupStatus context={displayContext} />}
+        <LeaveTabs key={identity} context={displayContext??context.data} readState={readState} onDirtyChange={setDirty} />
+      </>}
+    </MainContent>
+  </div>
 }

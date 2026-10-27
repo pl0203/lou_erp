@@ -1,10 +1,29 @@
+import POLastPriceSuggestion from '../../components/POLastPriceSuggestion'
+import NewPOSalesPreview from '../../components/NewPOSalesPreview'
+import { Button } from '../../components/ui/Button'
+import { ActionLink } from '../../components/ui/ActionLink'
+import { MainContent } from '../../components/ui/MainContent'
+import { Field } from '../../components/ui/Field'
+import { FormActions } from '../../components/ui/FormActions'
+import PromoStockWarning, { usePromoStockSubmission } from '../../components/PromoStockWarning'
+import PODocumentImport from '../../components/poImport/PODocumentImport'
+import { useAuth } from '../../lib/AuthContext'
+import { POCustomerLookup, POProductLookup } from '../../components/POLookup'
+import { POLineItemsHeader, POLineRow } from '../../components/POLineItems'
+import { useCatalogueOrderOptions } from '../../lib/catalogue/useCatalogueOrderOptions'
+import ReadFailure from '../../components/ReadFailure'
+import TransactionRecovery from '../../components/TransactionRecovery'
+import { createTransactionSender, useTransactionSender } from '../../lib/orderTransactions'
+import type { TransactionSender } from '../../lib/orderTransactions'
+import { validateOrderLines } from '../../lib/orderValidation'
+import { hasOrderItemChanges, useUnsavedChanges } from '../../lib/useUnsavedChanges'
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useMutation, useQuery } from '@tanstack/react-query'
-import { supabase } from '../../lib/supabase'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import AthelNav from '../../components/AthelNav'
 
 type LineItem = {
+  _key?: string
   product_id: string | null
   product_name: string
   sku: string
@@ -12,22 +31,16 @@ type LineItem = {
   unit_price: number
 }
 
-type Customer = {
-  id: string
-  name: string
-  pricing_tier: string
-}
-
 type Product = {
   id: string
   name: string
   sku: string
   size: string | null
-  unit_price: number
-  harga_pokok: number
-  luar_kota: number
-  dalam_kota: number
-  depo_bangunan: number
+  unit_price: number | null
+  harga_pokok: number | null
+  luar_kota: number | null
+  dalam_kota: number | null
+  depo_bangunan: number | null
 }
 
 const EMPTY_LINE: LineItem = {
@@ -35,390 +48,352 @@ const EMPTY_LINE: LineItem = {
   product_name: '',
   sku: '',
   quantity: 1,
-  unit_price: 0,
+  unit_price: Number.NaN,
 }
 
-const TIER_LABELS: Record<string, string> = {
-  harga_pokok:   'Harga Pokok',
-  luar_kota:     'Luar Kota',
-  dalam_kota:    'Dalam Kota',
-  depo_bangunan: 'Depo Bangunan',
-}
+const newLine = (): LineItem => ({ ...EMPTY_LINE, _key: crypto.randomUUID() })
 
-async function fetchCustomers(): Promise<Customer[]> {
-  const { data, error } = await supabase
-    .from('customers')
-    .select('id, name, pricing_tier')
-    .order('name')
-  if (error) throw error
-  return data
-}
-
-async function fetchProducts(): Promise<Product[]> {
-  const { data, error } = await supabase
-    .from('products')
-    .select('id, name, sku, size, unit_price, harga_pokok, luar_kota, dalam_kota, depo_bangunan')
-    .order('name')
-  if (error) throw error
-  return data
-}
-
-async function createPO(payload: {
-  customer_id: string
-  po_number: string
-  order_date: string
-  expected_delivery_date: string
-  notes: string
-  lineItems: LineItem[]
-}) {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Tidak terautentikasi')
-
-  const { data: po, error: poError } = await supabase
-    .from('purchase_orders')
-    .insert({
-      customer_id: payload.customer_id,
-      created_by: user.id,
-      po_number: payload.po_number,
-      status: 'confirm',
-      order_date: payload.order_date,
-      expected_delivery_date: payload.expected_delivery_date || null,
-      notes: payload.notes || null,
-    })
-    .select()
-    .single()
-  if (poError) throw poError
-
-  const { error: lineError } = await supabase
-    .from('po_line_items')
-    .insert(
-      payload.lineItems.map(item => ({
-        purchase_order_id: po.id,
-        product_name: item.product_name,
-        sku: item.sku || null,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-      }))
-    )
-  if (lineError) throw lineError
-  return po
-}
-
-function SKULookup({
-  products,
-  onSelect,
-}: {
-  products: Product[]
-  onSelect: (p: Product) => void
-}) {
-  const [query, setQuery] = useState('')
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  const results = query.trim()
-    ? products.filter(p =>
-        p.sku.toLowerCase().includes(query.toLowerCase()) ||
-        p.name.toLowerCase().includes(query.toLowerCase())
-      ).slice(0, 6)
-    : []
-
-  const handleSelect = (p: Product) => {
-    onSelect(p)
-    setQuery('')
-    setOpen(false)
-  }
-
-  return (
-    <div className="relative" ref={ref}>
-      <input
-        type="text"
-        placeholder="Cari SKU atau nama barang..."
-        value={query}
-        onChange={e => { setQuery(e.target.value); setOpen(true) }}
-        onFocus={() => setOpen(true)}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
-        className="w-full border border-blue-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-blue-50"
-      />
-      {open && results.length > 0 && (
-        <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
-          {results.map(p => (
-            <button
-              key={p.id}
-              onMouseDown={() => handleSelect(p)}
-              className="w-full text-left px-4 py-2.5 hover:bg-blue-50 transition-colors border-b border-gray-50 last:border-0"
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="font-mono text-xs text-gray-400 uppercase mr-2">{p.sku}</span>
-                  <span className="text-sm text-gray-900">{p.name}</span>
-                  {p.size && <span className="text-xs text-gray-400 ml-1">({p.size})</span>}
-                </div>
-              </div>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
+export async function createPO(payload: {
+  customer_id: string; po_number: string; order_date: string; expected_delivery_date: string; notes: string; lineItems: LineItem[]; promo_stock_ack?: Record<string, unknown>
+}, send: TransactionSender = createTransactionSender()) {
+  validateOrderLines(payload.lineItems)
+  return send('create_po', {
+    customer_id: payload.customer_id, po_number: payload.po_number, order_date: payload.order_date,
+    expected_delivery_date: payload.expected_delivery_date || null, notes: payload.notes || null, items: payload.lineItems.map(({ _key, ...line }) => line),
+    ...(payload.promo_stock_ack ? { promo_stock_ack: payload.promo_stock_ack } : {}),
+  })
 }
 
 export default function PONew() {
   const navigate = useNavigate()
+  const { user, profile, loading: identityLoading, error: identityError } = useAuth()
+  const actorKey = !identityLoading && !identityError && user && profile?.id === user.id && profile.is_active && ['po_admin', 'executive'].includes(profile.role) ? `${user.id}:${profile.role}` : ''
+  const [importDirty, setImportDirty] = useState(false)
+  const queryClient = useQueryClient()
+  const sendTransaction = useTransactionSender('new-po')
   const [customerId, setCustomerId] = useState('')
   const [poNumber, setPoNumber] = useState('')
-  const [orderDate, setOrderDate] = useState(new Date().toISOString().split('T')[0])
+  const [initialOrderDate] = useState(() => new Date().toISOString().split('T')[0])
+  const [orderDate, setOrderDate] = useState(initialOrderDate)
   const [expectedDelivery, setExpectedDelivery] = useState('')
   const [notes, setNotes] = useState('')
-  const [lineItems, setLineItems] = useState<LineItem[]>([{ ...EMPTY_LINE }])
+  const [lineItems, setLineItems] = useState<LineItem[]>([])
+  const productSearch = useRef<HTMLInputElement>(null)
+  const stockTrigger = useRef<HTMLElement | null>(null)
+  const formFocus = useRef<HTMLDivElement>(null)
+  const quantityInputs = useRef<Record<string, HTMLInputElement | null>>({})
+  const nameInputs = useRef<Record<string, HTMLInputElement | null>>({})
+  const priceInputs = useRef<Record<string, HTMLInputElement | null>>({})
+  const pendingFocus = useRef<{ key: string; field: 'quantity' | 'name' } | null>(null)
+  const [entryNotice, setEntryNotice] = useState('')
+  const [entryError, setEntryError] = useState<{ key: string; message: string } | null>(null)
+  const itemsDirty = lineItems.length > 0 && hasOrderItemChanges(lineItems)
+  const formDirty = !!customerId || !!poNumber || !!expectedDelivery || !!notes || orderDate !== initialOrderDate || itemsDirty
+  const unsaved = useUnsavedChanges(formDirty || importDirty)
 
-  const { data: customers } = useQuery({ queryKey: ['customers'], queryFn: fetchCustomers })
-  const { data: products } = useQuery({ queryKey: ['products'], queryFn: fetchProducts })
+  const customerOptions = useCatalogueOrderOptions('customer', 'enabled-for-order')
+  const productOptions = useCatalogueOrderOptions('product', 'enabled-for-order')
+  const { data: customers, isError: customerReadError, isFetching: customersFetching, refetch: retryCustomers } = customerOptions
+  const { data: products, isError: productReadError, isFetching: productsFetching, refetch: retryProducts } = productOptions
+
+  // Rendered choices are display-only. Admission reads the live owner-bound query state.
+  const readCurrentCatalogue = () => {
+    const customers = customerOptions.getCurrentData(), products = productOptions.getCurrentData()
+    if (!customers || !products) throw new Error('Pilihan katalog belum siap. Tunggu pemuatan atau coba lagi.')
+    return { customers, products }
+  }
+  const assertCatalogueDraft = (draft: { customer_id: string; lineItems: Pick<LineItem, 'product_id' | 'product_name' | 'sku'>[] }) => {
+    const catalogue = readCurrentCatalogue()
+    const customer = catalogue.customers.find(row => row.id === draft.customer_id && row.is_enabled)
+    if (!customer) throw new Error('Pilih pelanggan aktif terlebih dahulu.')
+    for (const item of draft.lineItems) {
+      const product = catalogue.products.find(row => row.id === item.product_id && row.is_enabled)
+      if (!product || product.sku !== item.sku || product.name !== item.product_name) throw new Error('Pilih ulang barang dari katalog aktif.')
+    }
+    return { ...catalogue, customer }
+  }
+  // Match the importer's review context without replacing document prices.
+  const importCatalogueKey = (currentCustomers: typeof customers, currentProducts: typeof products) => JSON.stringify([
+    currentCustomers?.map(customer => [customer.id, customer.name, customer.pricing_tier]),
+    currentProducts?.map(product => [product.id, product.name, product.sku, product.size, product.harga_pokok, product.luar_kota, product.dalam_kota, product.depo_bangunan]),
+  ])
+  const importCatalogueSnapshot = importCatalogueKey(customers, products)
+  type Submission = Parameters<typeof createPO>[0] & { catalogueAdmission: string }
+  // The stock-warning hook clones drafts. Only this opaque key is cloned; the
+  // origin-bound getters stay in memory and are never added to the RPC payload.
+  const catalogueAdmission = useRef<{ key: string; assert: typeof assertCatalogueDraft } | null>(null)
+
+  const onCommitted = (po: { id: string }) => {
+    queryClient.invalidateQueries()
+    unsaved.runWithoutPrompt(() => navigate(`/athel/po/${po.id}`))
+  }
 
   const mutation = useMutation({
-    mutationFn: createPO,
-    onSuccess: po => navigate(`/athel/po/${po.id}`),
+    mutationFn: (payload: Submission) => {
+      const admission = catalogueAdmission.current
+      if (!admission || admission.key !== payload.catalogueAdmission) throw new Error('Pilihan katalog berubah. Periksa kembali formulir.')
+      admission.assert(payload)
+      return createPO(payload, sendTransaction)
+    },
+    onSuccess: onCommitted,
   })
 
-  // Get selected customer's pricing tier
-  const selectedCustomer = customers?.find(c => c.id === customerId)
-  const pricingTier = selectedCustomer?.pricing_tier ?? 'luar_kota'
+  const stockSubmission = usePromoStockSubmission((draft: Submission) => mutation.mutateAsync(draft))
+  const formLocked = mutation.isPending
+  const submissionStarting = useRef(false)
 
-  const updateLine = (index: number, field: keyof LineItem, value: string | number | null) => {
+  const selectedCustomer = customers?.find(c => c.id === customerId)
+  const priceSuggestionLive = useRef({ actorKey, customerId, lineItems, blocked: false })
+  priceSuggestionLive.current = { actorKey, customerId, lineItems,
+    blocked: formLocked || customerReadError || productReadError || customersFetching || productsFetching || !customers || !products }
+  const useSuggestedPrice = (captured: LineItem, price: number) => {
+    const live = priceSuggestionLive.current
+    if (!actorKey || live.actorKey !== actorKey || live.customerId !== customerId || live.blocked || submissionStarting.current) return
+    // Recheck current, authorized catalogue state even before query observers repaint.
+    try { assertCatalogueDraft({ customer_id: customerId, lineItems: [captured] }) } catch { return }
+    setLineItems(previous => {
+      const current = priceSuggestionLive.current
+      if (current.actorKey !== actorKey || current.customerId !== customerId || current.blocked || submissionStarting.current) return previous
+      return previous.map(line => line._key === captured._key && line.product_id === captured.product_id && line.sku === captured.sku && Object.is(line.unit_price, captured.unit_price)
+        ? { ...line, unit_price: price } : line)
+    })
+  }
+
+  const updateLine = (index: number, field: keyof LineItem, value: string | number) => {
+    if (field !== 'quantity' && field !== 'unit_price') return
     setLineItems(prev => prev.map((item, i) => i === index ? { ...item, [field]: value } : item))
   }
 
-  const fillFromProduct = (index: number, product: Product) => {
-    const price = (product[pricingTier as keyof Product] as number) || product.unit_price
-    setLineItems(prev => prev.map((item, i) =>
-      i === index
-        ? { ...item, product_id: product.id, product_name: product.name, sku: product.sku, unit_price: price }
-        : item
-    ))
+  const removeLine = (index: number) => {
+    setLineItems(prev => prev.filter((_, i) => i !== index))
   }
 
-  const addLine = () => setLineItems(prev => [...prev, { ...EMPTY_LINE }])
-  const removeLine = (index: number) => {
-    if (lineItems.length === 1) return
-    setLineItems(prev => prev.filter((_, i) => i !== index))
+  const focusQuantity = (key: string) => {
+    const input = quantityInputs.current[key]
+    if (input) { input.focus(); input.select(); input.scrollIntoView?.({ block: 'nearest' }) }
+    else pendingFocus.current = { key, field: 'quantity' }
+  }
+  const addProduct = (selected: Product) => {
+    let product: Product
+    try {
+      const catalogue = assertCatalogueDraft({ customer_id: customerId, lineItems: [{ product_id: selected.id, product_name: selected.name, sku: selected.sku }] })
+      product = catalogue.products.find(row => row.id === selected.id)!
+    } catch (error) { setEntryNotice((error as Error).message); return }
+    const sku = product.sku.trim().toLocaleLowerCase()
+    const existing = lineItems.find(line => line.product_id === product.id || (sku && line.sku.trim().toLocaleLowerCase() === sku))
+    if (existing) {
+      setEntryNotice(`${product.sku} sudah ada. Jumlah dan harga tetap; periksa barang yang difokuskan.`)
+      focusQuantity(existing._key!)
+      return
+    }
+    setEntryNotice(''); setEntryError(null)
+    setLineItems(prev => [...prev, { ...newLine(), product_id: product.id, product_name: product.name, sku: product.sku, quantity: 1, unit_price: Number.NaN }])
+    productSearch.current?.focus()
+  }
+  const validateLine = (item: LineItem) => {
+    try {
+      assertCatalogueDraft({ customer_id: customerId, lineItems: [item] })
+      validateOrderLines([item])
+    } catch (error) {
+      setEntryError({ key: item._key!, message: (error as Error).message })
+      if (!item.product_name.trim()) nameInputs.current[item._key!]?.focus()
+      else if (!Number.isSafeInteger(item.quantity) || item.quantity <= 0) quantityInputs.current[item._key!]?.focus()
+      else priceInputs.current[item._key!]?.focus()
+      return false
+    }
+    return true
   }
 
   const total = lineItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0)
 
   const handleSubmit = () => {
-    if (!customerId) return alert('Pilih pelanggan terlebih dahulu.')
+    if (mutation.isPending || submissionStarting.current || stockSubmission.warning) return
+    if (!customerOptions.getCurrentData()?.some(customer => customer.id === customerId && customer.is_enabled)) return alert('Pilih pelanggan aktif terlebih dahulu.')
     if (!poNumber.trim()) return alert('Masukkan nomor PO terlebih dahulu.')
-    if (lineItems.some(l => !l.product_name.trim())) return alert('Semua barang harus memiliki nama produk.')
-    mutation.mutate({
+    if (lineItems.length === 0) {
+      alert('PO harus memiliki minimal satu barang.')
+      productSearch.current?.focus()
+      return
+    }
+    if (!lineItems.every(validateLine)) return
+    setEntryError(null)
+    submissionStarting.current = true
+    const key = crypto.randomUUID()
+    catalogueAdmission.current = { key, assert: assertCatalogueDraft }
+    void stockSubmission.run({
+      catalogueAdmission: key,
       customer_id: customerId,
       po_number: poNumber,
       order_date: orderDate,
       expected_delivery_date: expectedDelivery,
       notes,
       lineItems,
-    })
+    }).finally(() => { submissionStarting.current = false })
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <AthelNav />
-      <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center gap-4">
-        <button onClick={() => navigate('/athel/po')} className="text-gray-400 hover:text-gray-600 text-sm">
-          ← Kembali
-        </button>
+    <div className="min-h-screen bg-brand-canvas">
+      {unsaved.dialog}
+      {stockSubmission.warning && <PromoStockWarning warning={stockSubmission.warning} returnFocus={stockTrigger.current} fallbackFocus={() => formFocus.current} pending={mutation.isPending} onContinue={() => void stockSubmission.continue()} onCancel={() => { stockSubmission.cancel(); mutation.reset() }} />}
+      <div inert={!!stockSubmission.warning} aria-hidden={stockSubmission.warning ? true : undefined}>
+
+      <AthelNav /><MainContent>
+      {(customerReadError || productReadError) && <ReadFailure onRetry={() => { void retryCustomers(); void retryProducts() }} />}
+        {!stockSubmission.warning && <TransactionRecovery send={sendTransaction} onCommitted={onCommitted} />}
+      <div ref={formFocus} tabIndex={-1} className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center gap-4">
+        <ActionLink variant="quiet" to={'/athel/po'} >← Kembali</ActionLink>
         <div>
           <h1 className="text-xl font-semibold text-gray-900">PO Baru</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Athel — Manajemen PO</p>
+          <p className="text-sm text-brand-secondary mt-0.5">Procurement · Purchase Order</p>
         </div>
       </div>
 
       <div className="px-4 md:px-8 py-6 max-w-4xl mx-auto space-y-6">
 
+        <PODocumentImport key={`${actorKey}:${customerId}`} customers={customers ?? []} products={products ?? []} actorKey={actorKey}
+          disabled={!actorKey || !customers || !products || customerReadError || productReadError || customersFetching || productsFetching || formLocked}
+          hasFormEdits={formDirty} onDirtyChange={setImportDirty}
+          onApply={(proposed, accept) => unsaved.confirmDiscard(() => {
+            // Check before consuming acceptance so a stale confirmation cannot
+            // discard either the ordinary draft or the document review.
+            try {
+              const current = assertCatalogueDraft({ customer_id: proposed.customerId, lineItems: proposed.lineItems })
+              if (importCatalogueKey(current.customers, current.products) !== importCatalogueSnapshot) throw new Error('Pilihan katalog berubah. Periksa kembali hasil dokumen.')
+            }
+            catch (error) { setEntryNotice((error as Error).message); return }
+            const draft = accept ? accept() : proposed
+            if (!draft) return
+            try { assertCatalogueDraft({ customer_id: draft.customerId, lineItems: draft.lineItems }) }
+            catch (error) { setEntryNotice((error as Error).message); return }
+            setCustomerId(draft.customerId); setPoNumber(draft.poNumber); setOrderDate(draft.orderDate)
+            setExpectedDelivery(draft.expectedDelivery); setNotes(draft.notes); setLineItems(draft.lineItems)
+            setEntryError(null); setEntryNotice(''); setImportDirty(false)
+          }, { when: formDirty, message: 'Ganti detail PO dan semua barang dengan hasil dokumen yang sudah diperiksa? Dokumen tidak disimpan dan PO belum dikirim.' })} />
+
         {/* Detail Pesanan */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <fieldset disabled={formLocked} className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
           <h2 className="text-base font-medium text-gray-900 mb-4">Detail Pesanan</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm text-gray-600 mb-1">Pelanggan</label>
-              <select
-                value={customerId}
-                onChange={e => {
-                  setCustomerId(e.target.value)
-                  // Reset line item prices when customer changes
-                  setLineItems([{ ...EMPTY_LINE }])
-                }}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">Pilih pelanggan...</option>
-                {customers?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-              {selectedCustomer && (
-                <p className="text-xs text-blue-600 mt-1">
-                  Tier harga: <span className="font-medium">{TIER_LABELS[pricingTier]}</span>
-                </p>
-              )}
+              <Field id="po-customer" label="Pelanggan">{control => <POCustomerLookup {...control} customers={customers ?? []} selectedId={customerId} disabled={!customers || customerReadError || customersFetching || formLocked}
+                onSelect={customer => {
+                  const nextCustomer = customer.id
+                  if (nextCustomer === customerId) return
+                  unsaved.confirmDiscard(() => {
+                    if (!customerOptions.getCurrentData()?.some(row => row.id === nextCustomer && row.is_enabled)) return
+                    setCustomerId(nextCustomer)
+                    setLineItems([])
+                    setEntryError(null); setEntryNotice('')
+                  }, { when: itemsDirty, message: 'Mengganti pelanggan akan menghapus daftar barang dan harga yang sudah diisi. Detail PO lainnya tetap dipertahankan. Permintaan yang sudah dikirim tidak dibatalkan.' })
+                }} />}</Field>
+              {selectedCustomer && <NewPOSalesPreview customerId={selectedCustomer.id} />}
             </div>
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">Nomor PO</label>
-              <input
+            <Field id="po-number" label="Nomor PO">{control => <input {...control}
                 type="text"
                 value={poNumber}
                 onChange={e => setPoNumber(e.target.value)}
                 placeholder="mis. PO-2024-001"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">Tanggal PO</label>
-              <input
+                className="max-w-full focus:outline-none focus:ring-2 focus:ring-brand-primary"
+              />}</Field>
+            <Field id="po-order-date" label="Tanggal PO">{control => <input {...control}
                 type="date"
                 value={orderDate}
                 onChange={e => setOrderDate(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">Tanggal PO Expired</label>
-              <input
+                className="max-w-full focus:outline-none focus:ring-2 focus:ring-brand-primary"
+              />}</Field>
+            <Field id="po-expiry" label="Tanggal Kedaluwarsa PO (opsional)" hint="Jika PO pelanggan memiliki tanggal kedaluwarsa. Bukan tanggal pengiriman.">{control => <input {...control}
                 type="date"
                 value={expectedDelivery}
                 onChange={e => setExpectedDelivery(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="block text-sm text-gray-600 mb-1">Catatan</label>
-              <textarea
+                className="max-w-full focus:outline-none focus:ring-2 focus:ring-brand-primary"
+              />}</Field>
+            <Field id="po-notes" label="Catatan" className="sm:col-span-2">{control => <textarea {...control}
                 value={notes}
                 onChange={e => setNotes(e.target.value)}
                 rows={2}
                 placeholder="Catatan (opsional)..."
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-              />
-            </div>
+                className="max-w-full focus:outline-none focus:ring-2 focus:ring-brand-primary resize-none"
+              />}</Field>
           </div>
-        </div>
+        </fieldset>
 
         {/* Daftar Barang */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <fieldset disabled={formLocked} className="min-w-0 bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
           <h2 className="text-base font-medium text-gray-900 mb-1">Daftar Barang</h2>
-          <p className="text-xs text-gray-400 mb-4">
-            Cari berdasarkan SKU atau nama untuk mengisi otomatis. Harga otomatis sesuai tier pelanggan dan dapat diubah per pesanan.
+          <p className="text-[13px] text-brand-secondary mb-4">
+            Cari berdasarkan SKU atau nama untuk memilih barang. Masukkan dan periksa harga satuan untuk pesanan ini.
           </p>
 
           {!customerId && (
             <div className="bg-yellow-50 border border-yellow-100 rounded-lg px-4 py-3 mb-4">
-              <p className="text-xs text-yellow-700">Pilih pelanggan terlebih dahulu agar harga otomatis sesuai tier.</p>
+              <p className="text-[13px] text-yellow-700">Pilih pelanggan terlebih dahulu sebelum menambahkan barang.</p>
             </div>
           )}
 
-          <div className="space-y-4">
-            {lineItems.map((item, i) => (
-              <div key={i} className="border border-gray-100 rounded-lg p-4 space-y-3 relative">
-                <div className="grid grid-cols-12 gap-3 items-end">
-                  <div className="col-span-11">
-                    <label className="block text-xs text-gray-400 mb-1">Cari barang berdasarkan SKU atau nama</label>
-                    {products && (
-                      <SKULookup
-                        products={products}
-                        onSelect={p => fillFromProduct(i, p)}
-                      />
-                    )}
-                  </div>
-                  <button
-                    onClick={() => removeLine(i)}
-                    disabled={lineItems.length === 1}
-                    className="col-span-1 text-gray-300 hover:text-red-400 disabled:opacity-20 text-xl text-center pb-1"
-                  >
-                    ×
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-12 gap-3">
-                  <div className="col-span-1">
-                    <label className="block text-xs text-gray-400 mb-1">SKU</label>
-                    <input
-                      type="text"
-                      value={item.sku}
-                      onChange={e => updateLine(i, 'sku', e.target.value)}
-                      className="w-full border border-gray-200 rounded-lg px-2 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase"
-                    />
-                  </div>
-                  <div className="col-span-5">
-                    <label className="block text-xs text-gray-400 mb-1">Nama Produk</label>
-                    <input
-                      type="text"
-                      value={item.product_name}
-                      onChange={e => updateLine(i, 'product_name', e.target.value)}
-                      placeholder="Nama produk"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="block text-xs text-gray-400 mb-1">Qty</label>
-                    <input
-                      type="number" min={1}
-                      value={item.quantity}
-                      onChange={e => updateLine(i, 'quantity', parseInt(e.target.value) || 1)}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div className="col-span-4">
-                    <label className="block text-xs text-gray-400 mb-1">
-                      Harga Satuan (Rp)
-                      {item.product_id && (
-                        <span className="text-blue-400 ml-1">— dapat diubah</span>
-                      )}
-                    </label>
-                    <input
-                      type="number" min={0}
-                      value={item.unit_price}
-                      onChange={e => updateLine(i, 'unit_price', parseFloat(e.target.value) || 0)}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
-
-                <div className="text-right text-xs text-gray-400">
-                  Subtotal: <span className="text-gray-700 font-medium">
-                    Rp {(item.quantity * item.unit_price).toLocaleString('id-ID')}
-                  </span>
-                </div>
-              </div>
-            ))}
+          <div className="mb-4 min-w-0">
+            <Field id="po-product-search" label="Cari SKU atau nama barang" hint="Ketik SKU tepat lalu Enter, atau klik hasil pencarian untuk menambahkan barang. Ulangi pencarian untuk barang berikutnya.">{control => <POProductLookup {...control} products={products ?? []} inputRef={productSearch} onSelect={addProduct}
+              disabled={!customerId || !selectedCustomer || !products || !customers || customerReadError || productReadError || customersFetching || productsFetching || formLocked} />}</Field>
+            {entryNotice && <p role="status" className="text-[13px] text-blue-700 mt-2">{entryNotice}</p>}
           </div>
 
-          <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
-            <button onClick={addLine} className="text-blue-600 hover:text-blue-700 text-sm font-medium">
-              + Tambah Produk
-            </button>
-            <div className="text-sm text-gray-500">
+          {lineItems.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-gray-200 px-4 py-6 text-center text-sm text-brand-secondary">Belum ada barang. Cari SKU atau nama untuk menambahkan barang.</p>
+          ) : (
+            <div className="min-w-0 space-y-2">
+              <POLineItemsHeader />
+              {lineItems.map((item, i) => (
+                <div key={item._key} className="min-w-0">
+                <POLineRow identityLocked lineKey={item._key!} item={item}
+                  onChange={(field, value) => updateLine(i, field, value)}
+                  onRemove={() => removeLine(i)}
+                  nameRef={node => {
+                    nameInputs.current[item._key!] = node
+                    if (node && pendingFocus.current?.key === item._key && pendingFocus.current.field === 'name') { node.focus(); pendingFocus.current = null }
+                  }}
+                  quantityRef={node => {
+                    quantityInputs.current[item._key!] = node
+                    if (node && pendingFocus.current?.key === item._key && pendingFocus.current.field === 'quantity') { node.focus(); node.select(); pendingFocus.current = null }
+                  }}
+                  priceRef={node => { priceInputs.current[item._key!] = node }}
+                  error={entryError?.key === item._key ? entryError.message : undefined} />
+                <POLastPriceSuggestion customerId={customerId} productId={item.product_id} sku={item.sku}
+                  currentUnitPrice={item.unit_price} enabled={!priceSuggestionLive.current.blocked} disabled={priceSuggestionLive.current.blocked}
+                  onUsePrice={price => useSuggestedPrice(item, price)} />
+                </div>
+              ))}
+            </div>
+          )}
+
+          <p className="mt-4 text-[13px] text-gray-600">Barang baru harus dipilih dari katalog aktif. Nama dan SKU mengikuti pilihan katalog; harga pesanan tetap dapat ditinjau.</p>
+          <div className="flex flex-wrap items-center justify-between gap-3 mt-4 pt-4 border-t border-gray-100">
+            <div className="min-w-0 text-sm text-brand-secondary [overflow-wrap:anywhere]">
               Total: <span className="text-gray-900 font-semibold text-base ml-1">
-                Rp {total.toLocaleString('id-ID')}
+                {Number.isFinite(total) ? `Rp ${total.toLocaleString('id-ID')}` : 'Harga belum lengkap'}
               </span>
             </div>
           </div>
-        </div>
+        </fieldset>
 
         {/* Actions */}
-        <div className="flex justify-end gap-3 pb-8">
-          <button
-            onClick={() => navigate('/athel/po')}
-            className="px-5 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-200 rounded-lg"
-          >
-            Batal
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={mutation.isPending}
-            className="px-5 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 transition-colors"
+        <FormActions className="pb-8">
+          <ActionLink variant="quiet" to={'/athel/po'}
+
+          >Batal</ActionLink>
+          <Button variant="primary"
+            type="button"
+            pending={mutation.isPending} onClick={event => { stockTrigger.current = event.currentTarget; handleSubmit() }}
+            disabled={formLocked || customerReadError || productReadError || !customers || !products || customersFetching || productsFetching}
+
           >
             {mutation.isPending ? 'Menyimpan...' : 'Simpan PO'}
-          </button>
-        </div>
+          </Button>
+        </FormActions>
 
         {mutation.isError && (
-          <p className="text-red-500 text-sm text-right">{(mutation.error as Error).message}</p>
+          <p className="text-red-700 text-sm text-right">{(mutation.error as Error).message}</p>
         )}
+      </div>
+      </MainContent>
       </div>
     </div>
   )

@@ -1,0 +1,15 @@
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import {createMemoryRouter,RouterProvider} from 'react-router-dom';
+import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
+import {AuthProvider} from '../../src/lib/AuthContext';
+import COStockReturns from '../../src/pages/athel/co/COStockReturns';
+import {fixture} from './boundary';
+import '../../src/index.css';
+const scenario=new URLSearchParams(location.search).get('scenario')??'success';
+if(!['success','uncertain','reject','loading'].includes(scenario))throw Error('Unknown synthetic scenario');
+fixture.scenario=scenario;fixture.holdItems=scenario==='loading';
+const client=new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}});
+const router=createMemoryRouter([{path:'/athel/co/returns',element:<COStockReturns/>}],{initialEntries:['/athel/co/returns']});
+Object.assign(window,{returnFixture:fixture,releaseReturnItems:()=>{fixture.holdItems=false;fixture.releaseItems?.();},refreshReturnFixture:()=>client.invalidateQueries()});
+createRoot(document.getElementById('root')!).render(<QueryClientProvider client={client}><AuthProvider><div style={{maxWidth:1280,margin:'0 auto',padding:24}}><p style={{fontSize:12,color:'#475569',marginBottom:16}}>LOCAL SYNTHETIC FIXTURE · {scenario} · no hosted data or account</p><RouterProvider router={router}/></div></AuthProvider></QueryClientProvider>);

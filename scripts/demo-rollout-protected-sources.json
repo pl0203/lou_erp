@@ -1,0 +1,329 @@
+{
+  "upstream": "18ec064e43466dc8b567482a628b3ef91f886ce4",
+  "sources": [
+    {
+      "path": "src/lib/AuthContext.tsx",
+      "sha256": "6c0d5690bdff04c03fd62d6516c441472873f9923df92e49d1e007c4d60f3295"
+    },
+    {
+      "path": "src/lib/leave/accountContracts.ts",
+      "sha256": "8e01699d2f86bd2d2cbd15712574071ef6d66dfe6b724bf241756ef062ba0cc0"
+    },
+    {
+      "path": "src/lib/leave/accountRpc.ts",
+      "sha256": "a7913b57292013be0388d62cea0a25c0cd0f8f1a92d88176520c0b285cae01e1"
+    },
+    {
+      "path": "src/lib/leave/adminContracts.ts",
+      "sha256": "8c6cfefa3ed2de1258a7c5d6b2141102feab75cabbeebd001c89ca0b5328fa20"
+    },
+    {
+      "path": "src/lib/leave/adminQueryKeys.ts",
+      "sha256": "a6fd3e2591ec11d35ce65b518bb9754be9e14211856b6b59cae0d50425925ef5"
+    },
+    {
+      "path": "src/lib/leave/adminRpc.ts",
+      "sha256": "c028df6906b12a97490b70305c637a486ce681f746f60c344024c5729af580b9"
+    },
+    {
+      "path": "src/lib/leave/balanceTransport.ts",
+      "sha256": "2d8e61e9e9c04e809f969e7aafff4df4ef9e5df0911fc4a7d8fb3465cede2797"
+    },
+    {
+      "path": "src/lib/leave/contracts.ts",
+      "sha256": "1020ac9d24b22c8d36bf06ea21ec33387c22e16c35cc41199e32c6b02832b0c6"
+    },
+    {
+      "path": "src/lib/leave/formatMinutes.ts",
+      "sha256": "12113970e8b53bb57bafbd78a3129a43f752f019677c05fe30657fc7630c66db"
+    },
+    {
+      "path": "src/lib/leave/prepareAccount.ts",
+      "sha256": "b359aff11b93e3b6dd6762ebd4aa5828ccb2642c7a723b53c6b1f2010eac91a4"
+    },
+    {
+      "path": "src/lib/leave/queryKeys.ts",
+      "sha256": "d879b1cc713e783580f1b4dd5871b44f21414422cec178e33cafc5d8e1720073"
+    },
+    {
+      "path": "src/lib/leave/quoteContracts.ts",
+      "sha256": "63a9cf7dde2b1d53d5c766125af2db0eb6345567e39ed1f2400da02a1942a00b"
+    },
+    {
+      "path": "src/lib/leave/quoteRpc.ts",
+      "sha256": "b643445b577a0311a0ad62932c624fbcfc89d101e07f03c17ae70d62bda3b5eb"
+    },
+    {
+      "path": "src/lib/leave/readContracts.ts",
+      "sha256": "6167a23a4023af2558784d72b82db54751bdb6634c1fac08554292561ed97a8c"
+    },
+    {
+      "path": "src/lib/leave/readQueryKeys.ts",
+      "sha256": "8999f51a90c144cee8be3789203eda1e809485d3af419ef1850a2a8e4d252108"
+    },
+    {
+      "path": "src/lib/leave/readRpc.ts",
+      "sha256": "bfb7bdb94cbd1f0f2bdd1793cebe4630306a2017094749e3d92eabc8a07eeed9"
+    },
+    {
+      "path": "src/lib/leave/requestContracts.ts",
+      "sha256": "7f37f1a67dad388a8962d974dd73d8ed14a9939ab6e696c5a21b9d8f4825ba1f"
+    },
+    {
+      "path": "src/lib/leave/requestHistoryKeys.ts",
+      "sha256": "7cc9448dcee9722384f1b2dcc4a5ececd8796caf53e5a01b19cae81a76ff7a0f"
+    },
+    {
+      "path": "src/lib/leave/requestRpc.ts",
+      "sha256": "5aec082847b0fdc1c8c93519a38701594751c9f08812c40086e5d333a7208ba6"
+    },
+    {
+      "path": "src/lib/leave/requestTransport.ts",
+      "sha256": "568244f0286e1104f017b28928d5998c3a8514700cc50daea6bb735f58e78efb"
+    },
+    {
+      "path": "src/lib/leave/rpc.ts",
+      "sha256": "b67e480f1563577b60084df920fb8c7cf33b34a2df1bb65ce0dcc38b40a9214f"
+    },
+    {
+      "path": "src/lib/leave/setupContracts.ts",
+      "sha256": "61013a70c0b67684e99daeb915b776ad0a2f5bf39c70787050d4b520a8cea716"
+    },
+    {
+      "path": "src/lib/leave/setupRpc.ts",
+      "sha256": "c7642f1327d720a70a6f6798935b8148ebfd4a912cdeccdf687a06082aa1b88e"
+    },
+    {
+      "path": "src/lib/leave/setupValidation.ts",
+      "sha256": "9f253c4103b665f447a19df8051c92fe833f4a4a9c1356ee9c289bbc952a4fae"
+    },
+    {
+      "path": "src/lib/leave/transitionContracts.ts",
+      "sha256": "7aef48e6d9b0b0405cc6cc4e8e291dce0a05b185a71d13cbb06ec19ca1f70a02"
+    },
+    {
+      "path": "src/lib/leave/transitionRpc.ts",
+      "sha256": "b1139f6cfc0ae51bd274c42def46a8d5f9145a06c8f7dd373173e98b2587bc12"
+    },
+    {
+      "path": "src/lib/leave/transitionTransport.ts",
+      "sha256": "0048f0f6373a8ea4301442a08b81618930a0ee47bc3ac75f5e5d578320d9109d"
+    },
+    {
+      "path": "src/lib/leave/useLeaveContext.ts",
+      "sha256": "0edad74242309b36dc9745f3a4a55625cc634affdecce4640fb6f9ad6ba4b6b8"
+    },
+    {
+      "path": "src/lib/leave/useLeaveReads.ts",
+      "sha256": "75d068f1d0ba6060eb6a367a7160876c73e6c16171ff98af330bf59749ff2f45"
+    },
+    {
+      "path": "src/lib/leave/useOwnRequestAuthority.ts",
+      "sha256": "1d1c9b1d308085904f471cf4fc3f03227b86f32470cfc99ae3024298f2dd0ad3"
+    },
+    {
+      "path": "src/lib/passwordSetup.ts",
+      "sha256": "720042208f501977c2f02130dba68a04bcb3ee9f3f81bc70715f3b11c7c7da10"
+    },
+    {
+      "path": "src/pages/ForgotPassword.tsx",
+      "sha256": "abca16ccf7885f8508626693bf08c94bec3c0a4e3979be54f2f3d102233877de"
+    },
+    {
+      "path": "src/pages/ResetPassword.tsx",
+      "sha256": "ef8f5aa5e5b074e8d7193d1ea9cde15489e2cf00db5c070dcbb8d3f81b2a5a98"
+    },
+    {
+      "path": "src/pages/ihr/LeaveManagement.tsx",
+      "sha256": "52bae629481aa62dfad5ee0ad9ffe98d4edc5efc057e4f8d6cb6de00269ba310"
+    },
+    {
+      "path": "src/pages/ihr/UserManagement.tsx",
+      "sha256": "c794d3c6c4cb5fa77bfa8ddd2b3cc62fd04b36a665a89e1eadd88c10d6343d14"
+    },
+    {
+      "path": "src/pages/ihr/leave/AssignedApprovalInbox.tsx",
+      "sha256": "f1e697a3ff6676d725434381812a6119a10ac6cffbf073fa6206f7c87d07b4b5"
+    },
+    {
+      "path": "src/pages/ihr/leave/LeaveAccessSettings.tsx",
+      "sha256": "f9bc0b3563cce5f93c7d14d91c30a120abe5f2d3b2de07170d9aa36a0b551b4b"
+    },
+    {
+      "path": "src/pages/ihr/leave/LeaveAdminPrivatePanel.tsx",
+      "sha256": "608b9b593a716aa8501d1cda22405ccd9fae13695243db247e5be8e80d04a004"
+    },
+    {
+      "path": "src/pages/ihr/leave/LeaveAdminRotaPanel.tsx",
+      "sha256": "5216f0c1aad10c7fbad1737519d97b13be8b58badaf460a4988c01195a49521f"
+    },
+    {
+      "path": "src/pages/ihr/leave/LeaveAdminSettings.tsx",
+      "sha256": "8eb282d3795341e781969148b4f0f506a73a5c591d511f13113507a12ab523a2"
+    },
+    {
+      "path": "src/pages/ihr/leave/LeaveAdminWritePanels.tsx",
+      "sha256": "c90b30bf5d09a20864f32fcba33c98484c7aaf474c3864ab470077570e73a398"
+    },
+    {
+      "path": "src/pages/ihr/leave/LeaveAdministration.tsx",
+      "sha256": "b00435a73c6432ae2fb2cd6ae66e3d12c010f33412a3938a8aad79d7589c1f36"
+    },
+    {
+      "path": "src/pages/ihr/leave/LeaveApprovalBadge.tsx",
+      "sha256": "4b0513b064d66faea3a589bf700ee2fadbf183b6e8180c739e0563c389907039"
+    },
+    {
+      "path": "src/pages/ihr/leave/LeaveBalanceSettings.tsx",
+      "sha256": "1c799ddd791a6a2d90c733cf337b85b38def889741bafe931afcb93352bea263"
+    },
+    {
+      "path": "src/pages/ihr/leave/LeaveGovernanceSettings.tsx",
+      "sha256": "6e6215e54ebb07b9b61d5ba6c4d3818a9a56ab16537ed530c242e7eb861f4824"
+    },
+    {
+      "path": "src/pages/ihr/leave/LeavePeopleSettings.tsx",
+      "sha256": "348a4b70f749ad630165adb16f8a911ae7915979a5f6d5449d34294ca04f0fb4"
+    },
+    {
+      "path": "src/pages/ihr/leave/LeavePolicySettings.tsx",
+      "sha256": "ea1c94f64bcbc592880049416ba6d6029b25d36e324403eaeb9b85b76741eeb3"
+    },
+    {
+      "path": "src/pages/ihr/leave/LeaveReassignmentSettings.tsx",
+      "sha256": "8cb71170a4def65ba8d0eb8924388c9b6d777fd0fcbe733d0d0114192992afe0"
+    },
+    {
+      "path": "src/pages/ihr/leave/LeaveRequestForm.tsx",
+      "sha256": "c6fb66e5f98b4a4f173c6af9dd799992880b682f34f07ab1aad05e8c796ee0f0"
+    },
+    {
+      "path": "src/pages/ihr/leave/LeaveRotaSettings.tsx",
+      "sha256": "5e5f457a58fd06d982b69b9a2dfaee9aa43a16a15b3b0a195e8786187b021282"
+    },
+    {
+      "path": "src/pages/ihr/leave/LeaveSetupImpacts.tsx",
+      "sha256": "bd7bcf036482b5934797619ed4f139f09a7276a41b7c848ae7b8131b8c1e34d0"
+    },
+    {
+      "path": "src/pages/ihr/leave/LeaveSetupStatus.tsx",
+      "sha256": "ade6e27f5a6da1eafd26d5ae99542759e2bd7a65941b56d4a87aec7ccf9516ec"
+    },
+    {
+      "path": "src/pages/ihr/leave/LeaveTabs.tsx",
+      "sha256": "17aa698d598a955e1785783c240504a700684e86531093e276f287efa931f15d"
+    },
+    {
+      "path": "src/pages/ihr/leave/MyLeave.tsx",
+      "sha256": "e1bcd65fb3f14e97f10279f2494391019a58fa5b5d7538ceed9668bf88c1e0ae"
+    },
+    {
+      "path": "src/pages/ihr/leave/OwnLeaveHistory.tsx",
+      "sha256": "25116c0f98cd6e61306ab4c5cb6720b7197ddadf9dac8925df345f60c5e5ae72"
+    },
+    {
+      "path": "src/pages/ihr/leave/OwnRequestActions.tsx",
+      "sha256": "2d476e264fdc553d0b96c44b3a51811d3642aeb08021228a5ce16d945e8240f5"
+    },
+    {
+      "path": "src/pages/ihr/leave/TeamLeaveCalendar.tsx",
+      "sha256": "02edb29358e06f3dd74807cab7b9ca9d7e3a13b38c06fee944a5f6993e473ca0"
+    },
+    {
+      "path": "src/pages/ihr/leave/useAdminEditorContinuity.ts",
+      "sha256": "04cf9a71969a59e42149abc0d6e3d23f34e160cd0db4c2344696b99f692bdf09"
+    },
+    {
+      "path": "src/pages/ihr/leave/useSetupUnsaved.ts",
+      "sha256": "bee11a5ee128459eaa1b3d4e4c2ad948edfa9f316bd0129f274ca9c6de6ec5a9"
+    },
+    {
+      "path": "supabase/migrations/202609300001_pilot_security.sql",
+      "sha256": "f361220734a5dc9bde13beb254e4089bbb1a4166ac0b90540c6d20d8e5fb15c4"
+    },
+    {
+      "path": "supabase/migrations/202609300002_order_transactions.sql",
+      "sha256": "a0e422d69bd9bd7d85051ff50fc9266b3b6303945056bb0eac05310328d24eaf"
+    },
+    {
+      "path": "supabase/migrations/202609300003_visit_storage_security.sql",
+      "sha256": "1e383aa03424543b94dacc8de03d371315f1b3ac11a67246792be01ba0b9edb7"
+    },
+    {
+      "path": "supabase/migrations/202609300004_visit_transactions.sql",
+      "sha256": "3a1fab79c36cb5d59854ac6fa75020563bc858f91a19877ed603e4424806f30a"
+    },
+    {
+      "path": "supabase/migrations/202610010001_scalable_order_reads.sql",
+      "sha256": "071ea9280adf79b6ba5c0eb405e7b66706332f2ce2e183a9983a312a025614da"
+    },
+    {
+      "path": "supabase/migrations/202610010002_scalable_report_reads.sql",
+      "sha256": "8a7ee2a24e942f1c0d82d48b3d122ad88b25d48a090a88cc35f194d3882f03e4"
+    },
+    {
+      "path": "supabase/migrations/202610010004_scalable_order_lookup_index.sql",
+      "sha256": "9e8d5afba857af858e743b33a516eaf3f240738f7c2a5ea544f8fdc171ba0088"
+    },
+    {
+      "path": "supabase/migrations/202610010007_read_policy_plans.sql",
+      "sha256": "7cf626f169b52d993c00724c0ba34ba96438c85e03adea8b2c646a2e1a51c9dd"
+    },
+    {
+      "path": "supabase/migrations/202610010008_customer_delivery_aggregation.sql",
+      "sha256": "9bc0fb3cf69cf0273025bfbe7d2af36cce55bde5460cfee3d27fdbeaa2ef868a"
+    },
+    {
+      "path": "supabase/migrations/202610010009_sales_page_enrichment.sql",
+      "sha256": "40f8109d8e5bb449c2ea65ac54843915d80ac3ecd0431aeff33fb661427edd74"
+    },
+    {
+      "path": "supabase/migrations/202610010010_nullable_catalog_prices.sql",
+      "sha256": "0112b913abc92717c66f2bc2c9a3f826d14f9d7566eff6380cce889f410e1a46"
+    },
+    {
+      "path": "supabase/migrations/202610020001_customer_categories.sql",
+      "sha256": "ef24abedbf821688adb94ecbd141a74ecf1982b7b60228c5d0b933512ffe5462"
+    },
+    {
+      "path": "supabase/migrations/202610020003_stale_po_conflicts.sql",
+      "sha256": "e29991fdf76795e025b97dc8f9b9194da5be48229396ea10cf37387c3257e86d"
+    },
+    {
+      "path": "supabase/migrations/202610021001_ihr_leave_foundation.sql",
+      "sha256": "c77e9322b5cd49aaf60ba2b9bde7b30a3f55ba053dd465bbf2c6713990cdc6a3"
+    },
+    {
+      "path": "supabase/migrations/202610021002_ihr_leave_calendar.sql",
+      "sha256": "95fab10b94d8891bf1bfcaaf202e8c6bd2a230cecfd04eec20fa06009c86572e"
+    },
+    {
+      "path": "supabase/migrations/202610021003_ihr_leave_accounts.sql",
+      "sha256": "deb9fce2966d2013ffee758b0fdb9d0edcb8fc21a012b6bfb55e8bc1eda37914"
+    },
+    {
+      "path": "supabase/migrations/202610021004_ihr_leave_quote.sql",
+      "sha256": "d3429f1fad9bd02c2a1172cfe5e72815938d493def6711325c8c6bb2ec7d08f1"
+    },
+    {
+      "path": "supabase/migrations/202610021005_ihr_leave_requests.sql",
+      "sha256": "459dba4c181f9854e8d04ca549306d280f8219412566e33949cdd36d847462c6"
+    },
+    {
+      "path": "supabase/migrations/202610021006_ihr_leave_reads.sql",
+      "sha256": "62336dd73c0857993b378420bbe8fa131607fcf786bced49138e8180a8ff680b"
+    },
+    {
+      "path": "supabase/migrations/202610021007_ihr_leave_admin.sql",
+      "sha256": "46fb6efd077c7f61416c7f9a3cc0506d0b03f6c635393951998dccdaeddc9970"
+    },
+    {
+      "path": "supabase/migrations/202610021008_ihr_leave_context.sql",
+      "sha256": "902385119850103060dd98de70c93b3fd50ede3af61997aa3dcae33179e4e69f"
+    },
+    {
+      "path": "supabase/migrations/202610081001_ihr_po_admin_director.sql",
+      "sha256": "8402ebd330f66cb0b60e794fa8a9a4f6b480435cd13a58818927eb3fd242a837"
+    }
+  ]
+}

@@ -1,0 +1,114 @@
+import { useId, useMemo, useRef, useState } from 'react'
+import type { InputHTMLAttributes, Ref } from 'react'
+import { Button } from './ui/Button'
+
+type LookupControl = Pick<InputHTMLAttributes<HTMLInputElement>, 'id' | 'aria-describedby' | 'aria-invalid'>
+
+type Option = { id: string; name: string }
+export type POCustomerOption = Option & { pricing_tier: string }
+export type POProductOption = Option & { sku: string; size: string | null }
+const normalize = (value: string) => value.trim().toLocaleLowerCase()
+const VISIBLE_OPTIONS = 6
+
+/** Search the complete, authorized collection; the limit is presentation only. */
+function Picker<T extends Option>({ items, label, placeholder, selectedLabel = '', disabled = false, selectionDisabled = false, emptyMessage, inputRef, match, exact, describe, onSelect, ...control }: LookupControl & {
+  items: T[]; label: string; placeholder: string; selectedLabel?: string; disabled?: boolean; selectionDisabled?: boolean; emptyMessage?: string; inputRef?: Ref<HTMLInputElement>
+  match: (item: T, query: string) => boolean; exact?: (item: T, query: string) => boolean
+  describe: (item: T) => string; onSelect: (item: T) => void
+}) {
+  const id = useId()
+  const [query, setQuery] = useState<string | null>(null)
+  const [open, setOpen] = useState(false)
+  const [active, setActive] = useState<{ id: string; source: T[]; query: string } | null>(null)
+  const composing = useRef(false)
+  const consumed = useRef(false)
+  const normalized = normalize(query ?? '')
+  const matches = useMemo(() => {
+    if (!normalized) return []
+    const found = items.filter(item => match(item, normalized))
+    if (!exact) return found
+    return [...found.filter(item => exact(item, normalized)), ...found.filter(item => !exact(item, normalized))]
+  }, [items, normalized, match, exact])
+  const results = matches.slice(0, VISIBLE_OPTIONS)
+  const expanded = open && !disabled && !!normalized
+  const activeId = !disabled && active?.source === items && active.query === normalized ? active.id : null
+  const activeItem = results.find(item => item.id === activeId)
+  const select = (item: T) => {
+    if (disabled || selectionDisabled || consumed.current) return
+    consumed.current = true
+    setQuery(null); setOpen(false); setActive(null)
+    onSelect(item)
+  }
+  return <div className="relative min-w-0" onBlur={event => {
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) { setOpen(false); setQuery(null); setActive(null) }
+  }}>
+    <input
+      {...control}
+      ref={inputRef} role="combobox" aria-label={label} aria-autocomplete="list"
+      aria-expanded={expanded} aria-controls={`${id}-list`}
+      aria-activedescendant={expanded && activeItem ? `${id}-${activeItem.id}` : undefined}
+      autoComplete="off" type="text" placeholder={placeholder} disabled={disabled}
+      value={query ?? selectedLabel}
+      onFocus={() => { consumed.current = false; setOpen(true) }}
+      onChange={event => { consumed.current = false; setQuery(event.target.value); setActive(null); setOpen(true) }}
+      onCompositionStart={() => { composing.current = true }}
+      onCompositionEnd={() => { composing.current = false }}
+      onKeyDown={event => {
+        if (!['Enter', 'ArrowDown', 'ArrowUp', 'Escape'].includes(event.key)) return
+        // These controls always consume Enter, including IME and held keys.
+        event.preventDefault()
+        if (disabled || composing.current || event.nativeEvent.isComposing || event.keyCode === 229 || event.repeat) return
+        if (event.key === 'Escape') { setOpen(false); setActive(null); setQuery(null); return }
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+          if (!results.length) return
+          setOpen(true)
+          const index = results.findIndex(item => item.id === activeId)
+          const next = event.key === 'ArrowDown' ? (index + 1) % results.length : (index <= 0 ? results.length - 1 : index - 1)
+          setActive({ id: results[next].id, source: items, query: normalized })
+          return
+        }
+        if (!expanded || selectionDisabled) return
+        if (activeItem) { select(activeItem); return }
+        const exactMatches = exact ? matches.filter(item => exact(item, normalized)) : []
+        if (exactMatches.length === 1) select(exactMatches[0])
+      }}
+      className="ui-control max-w-full focus:outline-none focus:ring-2 focus:ring-brand-primary bg-white disabled:bg-gray-50 disabled:text-brand-secondary"
+    />
+    {expanded && <div className="absolute z-20 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+      <div id={`${id}-list`} role="listbox" aria-label={label}>
+        {results.map(item => <Button variant="quiet" size="compact"
+          key={item.id} id={`${id}-${item.id}`} type="button" role="option" tabIndex={-1} aria-selected={activeId === item.id} disabled={selectionDisabled}
+          onPointerDown={event => event.preventDefault()} onMouseDown={event => event.preventDefault()} onClick={() => select(item)}
+          className={`w-full flex-col items-start justify-start text-left transition-colors border-b border-gray-50 last:border-0 [overflow-wrap:anywhere] ${activeId === item.id ? 'bg-blue-100' : 'hover:bg-blue-50'}`}
+        >
+          <span >{item.name}</span>
+          <span className="mt-0.5">{describe(item)}</span>
+        </Button>)}
+      </div>
+      {!results.length && <p className="px-4 py-3 text-sm text-brand-secondary">{emptyMessage ?? 'Tidak ditemukan. Coba kata pencarian lain.'}</p>}
+      {matches.length > VISIBLE_OPTIONS && <p className="px-4 py-2 text-[13px] text-brand-secondary">Menampilkan {VISIBLE_OPTIONS} dari {matches.length} hasil. Perjelas pencarian.</p>}
+      {exact && !activeItem && matches.filter(item => exact(item, normalized)).length > 1 && <p className="px-4 py-2 text-[13px] text-amber-700">SKU cocok dengan beberapa produk. Pilih produk yang dimaksud.</p>}
+    </div>}
+  </div>
+}
+
+export function POCustomerLookup({ customers, selectedId, selectedLabel, disabled, onSelect, ...control }: LookupControl & {
+  customers: POCustomerOption[]; selectedId: string; selectedLabel?: string; disabled?: boolean; onSelect: (customer: POCustomerOption) => void
+}) {
+  const selected = customers.find(customer => customer.id === selectedId)
+  const knownLabels = useRef<Record<string, string>>({})
+  if (selected) knownLabels.current[selected.id] = selected.name
+  return <Picker {...control} items={customers} label="Pelanggan" placeholder="Cari nama pelanggan..." selectedLabel={selected?.name ?? knownLabels.current[selectedId] ?? selectedLabel} disabled={disabled}
+    match={(customer, query) => normalize(customer.name).includes(query) || normalize(customer.id).includes(query)}
+    describe={customer => customers.some(other => other.id !== customer.id && normalize(other.name) === normalize(customer.name)) ? `ID ${customer.id.slice(0, 8)}` : ''}
+    onSelect={onSelect} />
+}
+
+export function POProductLookup<T extends POProductOption>({ products, onSelect, disabled, selectionDisabled, emptyMessage, inputRef, label = 'Cari SKU atau nama barang', ...control }: LookupControl & {
+  products: T[]; onSelect: (product: T) => void; disabled?: boolean; selectionDisabled?: boolean; emptyMessage?: string; inputRef?: Ref<HTMLInputElement>; label?: string
+}) {
+  return <Picker {...control} items={products} label={label} placeholder="Cari SKU atau nama barang..." disabled={disabled} selectionDisabled={selectionDisabled} emptyMessage={emptyMessage} inputRef={inputRef}
+    match={(product, query) => normalize(product.sku).includes(query) || normalize(product.name).includes(query)}
+    exact={(product, query) => normalize(product.sku) === query}
+    describe={product => [product.sku, product.size].filter(Boolean).join(' · ')} onSelect={onSelect} />
+}

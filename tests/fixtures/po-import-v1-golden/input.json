@@ -1,0 +1,305 @@
+{
+  "manifest": {
+    "version": 1,
+    "customers": [
+      {
+        "key": "customer-a",
+        "name": "Synthetic imported customer",
+        "address": "Synthetic street 123",
+        "city": "Synthetic city A",
+        "phone": "+00 000 000000",
+        "email": "synthetic-imported@example.invalid",
+        "sourceTier": "Original synthetic outside-tier group",
+        "pricingTier": "others"
+      }
+    ],
+    "products": [
+      {
+        "key": "product-a",
+        "name": "Current catalog name",
+        "sku": "CURRENT-CATALOG-A",
+        "size": "Synthetic size A"
+      },
+      {
+        "key": "product-unused",
+        "name": "Unused catalog item",
+        "sku": "CURRENT-CATALOG-UNUSED",
+        "size": "Synthetic size"
+      }
+    ],
+    "purchaseOrders": [
+      {
+        "key": "anchor",
+        "customerKey": "customer-a",
+        "poNumber": "SYNTH-IMPORT-anchor",
+        "orderDate": "2026-01-02",
+        "expectedDeliveryDate": null,
+        "sourceStatus": null,
+        "notes": "Synthetic import test",
+        "lines": [
+          {
+            "key": "a",
+            "productKey": "product-a",
+            "productName": "Historical line name",
+            "sku": "HISTORIC-A",
+            "quantity": 5,
+            "unitPrice": "10.25",
+            "uom": "PIECE"
+          },
+          {
+            "key": "zero",
+            "productKey": "product-a",
+            "productName": "Legitimate free item",
+            "sku": "HISTORIC-FREE",
+            "quantity": 2,
+            "unitPrice": "0.00",
+            "uom": "PIECE"
+          }
+        ],
+        "shipments": [
+          {
+            "key": "anchor-1",
+            "number": "SYNTH-SJ-anchor-1",
+            "date": "2026-02-03",
+            "dateReceived": "2026-02-04",
+            "dateReturned": null,
+            "sourceSender": "Synthetic sender",
+            "lines": [
+              {
+                "lineKey": "a",
+                "quantity": 2
+              },
+              {
+                "lineKey": "zero",
+                "quantity": 2
+              }
+            ]
+          },
+          {
+            "key": "anchor-2",
+            "number": "SYNTH-SJ-anchor-2",
+            "date": "2026-02-03",
+            "dateReceived": "2026-02-04",
+            "dateReturned": null,
+            "sourceSender": "Synthetic sender",
+            "lines": [
+              {
+                "lineKey": "a",
+                "quantity": 3
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "key": "open",
+        "customerKey": "customer-a",
+        "poNumber": "SYNTH-IMPORT-open",
+        "orderDate": "2026-01-02",
+        "expectedDeliveryDate": null,
+        "sourceStatus": null,
+        "notes": "Synthetic import test",
+        "lines": [
+          {
+            "key": "b",
+            "productKey": "product-a",
+            "productName": "Historical line name",
+            "sku": "HISTORIC-A",
+            "quantity": 3,
+            "unitPrice": "1.11",
+            "uom": "PIECE"
+          }
+        ],
+        "shipments": []
+      },
+      {
+        "key": "partial",
+        "customerKey": "customer-a",
+        "poNumber": "SYNTH-IMPORT-partial",
+        "orderDate": "2026-01-02",
+        "expectedDeliveryDate": null,
+        "sourceStatus": null,
+        "notes": "Synthetic import test",
+        "lines": [
+          {
+            "key": "c",
+            "productKey": "product-a",
+            "productName": "Historical line name",
+            "sku": "HISTORIC-A",
+            "quantity": 4,
+            "unitPrice": "2.50",
+            "uom": "PIECE"
+          }
+        ],
+        "shipments": [
+          {
+            "key": "partial",
+            "number": "SYNTH-SJ-partial",
+            "date": "2026-02-03",
+            "dateReceived": "2026-02-04",
+            "dateReturned": null,
+            "sourceSender": "Synthetic sender",
+            "lines": [
+              {
+                "lineKey": "c",
+                "quantity": 1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "key": "last",
+        "customerKey": "customer-a",
+        "poNumber": "SYNTH-IMPORT-last",
+        "orderDate": "2026-01-02",
+        "expectedDeliveryDate": null,
+        "sourceStatus": null,
+        "notes": "Synthetic import test",
+        "lines": [
+          {
+            "key": "d",
+            "productKey": "product-a",
+            "productName": "Historical line name",
+            "sku": "HISTORIC-A",
+            "quantity": 1,
+            "unitPrice": "9.99",
+            "uom": "PIECE"
+          }
+        ],
+        "shipments": []
+      }
+    ]
+  },
+  "config": {
+    "expectedManifestSha256": "d1aa9ba39eaa1d7a152e75d8b772a904294ed345e3b6a4ebc252a008171b7f16",
+    "expectedProjectRef": "aaaaaaaaaaaaaaaaaaaa",
+    "expectedDatabase": "postgres",
+    "actorId": "84000000-0000-0000-0000-000000000001",
+    "actorEmail": "synthetic-actor@example.invalid",
+    "actorRole": "executive",
+    "schemaMd5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "baselineData": {
+      "public.users": {
+        "rows": 0,
+        "content_md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "public.customers": {
+        "rows": 0,
+        "content_md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "public.products": {
+        "rows": 0,
+        "content_md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "public.customer_manager_assignments": {
+        "rows": 0,
+        "content_md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "public.customer_sales_rep_assignments": {
+        "rows": 0,
+        "content_md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "public.customer_targets": {
+        "rows": 0,
+        "content_md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "public.sales_targets": {
+        "rows": 0,
+        "content_md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "public.sales_schedules": {
+        "rows": 0,
+        "content_md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "public.outlet_visits": {
+        "rows": 0,
+        "content_md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "public.visit_photos": {
+        "rows": 0,
+        "content_md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "public.purchase_orders": {
+        "rows": 0,
+        "content_md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "public.po_line_items": {
+        "rows": 0,
+        "content_md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "public.po_audit_log": {
+        "rows": 0,
+        "content_md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "public.promotions": {
+        "rows": 0,
+        "content_md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "public.girard_orders": {
+        "rows": 0,
+        "content_md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "public.girard_order_items": {
+        "rows": 0,
+        "content_md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "public.surat_jalan": {
+        "rows": 0,
+        "content_md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "public.sj_line_items": {
+        "rows": 0,
+        "content_md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "public.outlets": {
+        "rows": 0,
+        "content_md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "public.orders": {
+        "rows": 0,
+        "content_md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "public.order_line_items": {
+        "rows": 0,
+        "content_md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "private.pilot_order_requests": {
+        "rows": 0,
+        "content_md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "auth.users-safe-fields": {
+        "rows": 0,
+        "content_md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "storage.objects": {
+        "rows": 0,
+        "content_md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "storage.buckets": {
+        "rows": 0,
+        "content_md5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    },
+    "expectedFunctionHashes": {
+      "public.pilot_order_transaction(uuid,text,jsonb)": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "private.pilot_validate_order_lines(jsonb)": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "private.pilot_insert_po(uuid,jsonb,jsonb)": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "private.pilot_reconcile_po(uuid)": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "public.current_user_role()": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "auth.uid()": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "public.log_po_changes()": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "public.log_line_item_changes()": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "public.log_sj_changes()": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "public.recalculate_po_total()": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "public.check_po_completion()": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "expectedAuditFields": [
+      "status",
+      "fixture_line_write",
+      "fixture_delivery_write",
+      "sj_lines_revised"
+    ],
+    "batchSize": 2
+  }
+}

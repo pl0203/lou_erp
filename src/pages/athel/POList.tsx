@@ -1,242 +1,130 @@
+import { POListSkeleton } from '../../components/ui/LoadingSkeletons'
+import { Field } from '../../components/ui/Field'
+import { Button } from '../../components/ui/Button'
+import { ActionLink } from '../../components/ui/ActionLink'
+import { MainContent } from '../../components/ui/MainContent'
+import { PO_STATUS_LABELS } from '../../lib/orderPresentation'
+import { formatDisplayDate } from '../../lib/displayDate'
 import { useEffect, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
+import { fetchPOPage } from '../../lib/reads/orders'
+import type { POStatusFilter } from '../../lib/reads/contracts'
+import { usePagedRead } from '../../lib/reads/usePagedRead'
+import { formatMoney } from '../../lib/reads/money'
+import PaginationControls from '../../components/PaginationControls'
 import AthelNav from '../../components/AthelNav'
-
-type PO = {
-  id: string
-  po_number: string
-  status: string
-  order_date: string
-  expected_delivery_date: string | null
-  total_value: number
-  customers: { name: string }
-  surat_jalan: { sj_number: string }[]
-}
-
-type POListResponse = {
-  items: PO[]
-  total: number
-}
 
 const STATUS_STYLES: Record<string, string> = {
   confirm:     'bg-blue-100 text-blue-700',
   in_progress: 'bg-yellow-100 text-yellow-700',
   complete:    'bg-green-100 text-green-700',
-  cancelled:   'bg-gray-200 text-gray-500',
+  cancelled:   'bg-gray-200 text-brand-secondary',
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  confirm:     'Dikonfirmasi',
-  in_progress: 'Dalam Proses',
-  complete:    'Selesai',
-  cancelled:   'Dibatalkan',
-}
-
-const PAGE_SIZE = 10
-
-function applyStatusFilter(query: any, status: string) {
-  if (status === 'all') return query
-  return query.eq('status', status)
-}
-
-async function fetchMatchingCustomerIds(search: string): Promise<string[]> {
-  const { data, error } = await supabase
-    .from('customers')
-    .select('id')
-    .ilike('name', `%${search}%`)
-    .limit(100)
-
-  if (error) throw error
-  return (data ?? []).map(customer => customer.id)
-}
-
-async function fetchMatchingPOIdsFromSJ(search: string): Promise<string[]> {
-  const { data, error } = await supabase
-    .from('surat_jalan')
-    .select('purchase_order_id')
-    .ilike('sj_number', `%${search}%`)
-    .limit(100)
-
-  if (error) throw error
-  return [...new Set((data ?? []).map(item => item.purchase_order_id))]
-}
-
-async function fetchPOs(status: string, search: string, page: number): Promise<POListResponse> {
-  const from = (page - 1) * PAGE_SIZE
-  const to = from + PAGE_SIZE - 1
-  const trimmedSearch = search.trim()
-
-  let query = applyStatusFilter(
-    supabase
-    .from('purchase_orders')
-    .select(
-      'id, po_number, status, order_date, expected_delivery_date, total_value, customer_id, customers(name), surat_jalan(sj_number)',
-      { count: 'exact' }
-    )
-    .order('created_at', { ascending: false })
-    .range(from, to),
-    status
-  )
-
-  if (!trimmedSearch) {
-    const { data, error, count } = await query
-    if (error) throw error
-    return {
-      items: data as PO[],
-      total: count ?? 0,
-    }
-  }
-
-  const [customerIds, poIdsFromSJ] = await Promise.all([
-    fetchMatchingCustomerIds(trimmedSearch),
-    fetchMatchingPOIdsFromSJ(trimmedSearch),
-  ])
-
-  const searchFilters = [`po_number.ilike.%${trimmedSearch}%`]
-
-  if (customerIds.length > 0) {
-    searchFilters.push(`customer_id.in.(${customerIds.join(',')})`)
-  }
-  if (poIdsFromSJ.length > 0) {
-    searchFilters.push(`id.in.(${poIdsFromSJ.join(',')})`)
-  }
-
-  query = query.or(searchFilters.join(','))
-
-  const { data, error, count } = await query
-  if (error) throw error
-
-  return {
-    items: data as PO[],
-    total: count ?? 0,
-  }
+async function fetchPresentedPOPage(filters: { status: POStatusFilter; search: string }, page: number, signal: AbortSignal) {
+  return { ...await fetchPOPage(filters, page, signal), appliedFilters: filters }
 }
 
 export default function POList() {
-  const navigate = useNavigate()
-  const [status, setStatus] = useState('all')
   const [search, setSearch] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [page, setPage] = useState(1)
-
-  const handleSearch = (val: string) => {
-    setSearch(val)
-    clearTimeout((window as any)._searchTimer)
-    ;(window as any)._searchTimer = setTimeout(() => setDebouncedSearch(val), 300)
-  }
-
+  const { data, filters, setFilters, setPage, isPending, isError, refetch } = usePagedRead('purchase_orders', { status: 'all' as POStatusFilter, search: '' }, fetchPresentedPOPage)
   useEffect(() => {
-    setPage(1)
-  }, [status, debouncedSearch])
-
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ['purchase_orders', status, debouncedSearch, page],
-    queryFn: () => fetchPOs(status, debouncedSearch, page),
-    placeholderData: previousData => previousData,
-  })
-
+    const timer = setTimeout(() => setFilters(previous => previous.search === search ? previous : { ...previous, search }), 300)
+    return () => clearTimeout(timer)
+  }, [search, setFilters])
   const pos = data?.items ?? []
-  const totalItems = data?.total ?? 0
-  const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE))
-  const startItem = totalItems === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
-  const endItem = totalItems === 0 ? 0 : Math.min(page * PAGE_SIZE, totalItems)
+  const totalItems = data?.total
+  const isLoading = !data && isPending
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-brand-canvas">
       <AthelNav />
+      <MainContent>
 
-      <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex items-center justify-between">
+      <div className="bg-white border-b border-gray-200 px-4 md:px-8 py-5 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Pesanan Pembelian</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{totalItems} pesanan</p>
+          <p className="text-sm text-brand-secondary mt-0.5">{isError ? 'Data tidak tersedia' : totalItems === undefined ? 'Memuat pesanan…' : `${totalItems} pesanan`}</p>
         </div>
-        <button
-          onClick={() => navigate('/athel/po/new')}
-          className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-        >
-          + PO Baru
-        </button>
+        <ActionLink variant="primary" to={'/athel/po/new'}
+
+        >+ PO Baru</ActionLink>
       </div>
 
       <div className="px-4 md:px-8 py-3 flex flex-col sm:flex-row gap-2 bg-white border-b border-gray-100">
-        <input
+        <Field id="po-list-search" label="Cari PO" className="w-full sm:w-80">{control => <input {...control}
           type="text"
           placeholder="Cari nomor PO, pelanggan, atau SJ..."
           value={search}
-          onChange={e => handleSearch(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full sm:w-80 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-        <select
-          value={status}
-          onChange={e => setStatus(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          onChange={e => setSearch(e.target.value)}
+          className="w-full focus:outline-none focus:ring-2 focus:ring-brand-primary"
+        />}</Field>
+        <Field id="po-list-status" label="Status PO" className="w-full sm:w-48">{control => <select {...control}
+          value={filters.status}
+          onChange={e => setFilters(previous => ({ ...previous, status: e.target.value as POStatusFilter }))}
+          className="focus:outline-none focus:ring-2 focus:ring-brand-primary"
         >
           <option value="all">Semua status</option>
           <option value="confirm">Dikonfirmasi</option>
-          <option value="in_progress">Dalam Proses</option>
+          <option value="in_progress">Dalam proses</option>
           <option value="complete">Selesai</option>
-        </select>
+        </select>}</Field>
       </div>
 
       <div className="px-4 md:px-8 py-6">
+        <p role="status" aria-live="polite" aria-atomic="true" className="min-h-5 text-sm text-brand-secondary">
+          {isLoading ? 'Memuat pesanan pembelian...' : !isError && data && isPending ? `Hasil sebelumnya: ${({ all: 'Semua status', ...PO_STATUS_LABELS })[data.appliedFilters.status]} · ${data.appliedFilters.search ? `Pencarian “${data.appliedFilters.search}”` : 'Tanpa pencarian'} · Halaman ${data.page}. Memperbarui…` : ''}
+        </p>
+        {!isError && data && <PaginationControls page={data.page} total={data.total} pageSize={data.page_size} pending={isPending} announcePending={false} onPageChange={setPage} />}
         {isLoading && (
-          <div className="text-center text-gray-400 py-24 text-sm">Memuat pesanan pembelian...</div>
+          <POListSkeleton />
         )}
         {isError && (
-          <div className="text-center text-red-500 py-24 text-sm">Gagal memuat data. Periksa koneksi Anda.</div>
+          <div role="alert" className="text-center text-red-700 py-24 text-sm">Gagal memuat data. Periksa koneksi Anda. <Button variant="secondary" onClick={() => refetch()} >Coba lagi</Button></div>
         )}
         {!isLoading && !isError && pos.length === 0 && (
-          <div className="text-center text-gray-400 py-24 text-sm">Tidak ada pesanan pembelian ditemukan.</div>
+          <div className="text-center text-brand-secondary py-24 text-sm">Tidak ada pesanan pembelian ditemukan.</div>
         )}
 
         {!isLoading && !isError && pos.length > 0 && (
           <>
             {/* Desktop table */}
-            <div className="hidden md:block bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <table className="w-full text-sm">
+            <p className="hidden md:block mb-2 text-[13px] text-gray-600">Geser tabel untuk melihat semua kolom; kolom Aksi tetap terlihat di kanan.</p>
+            <div className="hidden md:block bg-white rounded-xl border border-gray-200 overflow-x-auto" role="region" aria-label="Daftar pesanan pembelian" tabIndex={0}>
+              <table className="w-full min-w-[56rem] text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50">
-                    <th className="text-left px-5 py-3 font-medium text-gray-500">Nomor PO</th>
-                    <th className="text-left px-5 py-3 font-medium text-gray-500">Pelanggan</th>
-                    <th className="text-left px-5 py-3 font-medium text-gray-500">Status</th>
-                    <th className="text-left px-5 py-3 font-medium text-gray-500">Tanggal Pesanan</th>
-                    <th className="text-left px-5 py-3 font-medium text-gray-500">Estimasi Pengiriman</th>
-                    <th className="text-right px-5 py-3 font-medium text-gray-500">Total Nilai</th>
-                    <th className="text-right px-5 py-3 font-medium text-gray-500">Aksi</th>
+                    <th className="text-left px-5 py-3 font-medium text-brand-secondary">Nomor PO</th>
+                    <th className="text-left px-5 py-3 font-medium text-brand-secondary">Pelanggan</th>
+                    <th className="text-left px-5 py-3 font-medium text-brand-secondary">Status</th>
+                    <th className="text-left px-5 py-3 font-medium text-brand-secondary">Tanggal Pesanan</th>
+                    <th className="text-left px-5 py-3 font-medium text-brand-secondary">Tanggal Kedaluwarsa PO</th>
+                    <th className="text-right px-5 py-3 font-medium text-brand-secondary">Total Nilai</th>
+                    <th className="sticky right-0 z-10 bg-gray-50 text-right px-5 py-3 font-medium text-gray-700 shadow-[-4px_0_6px_-4px_#9ca3af]">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
                   {pos.map(po => (
                     <tr key={po.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                      <td className="px-5 py-4 font-medium text-gray-900">{po.po_number}</td>
-                      <td className="px-5 py-4 text-gray-600">{po.customers?.name ?? '—'}</td>
+                      <td className="min-w-36 px-5 py-4 font-medium text-gray-900">{po.po_number}</td>
+                      <td className="min-w-48 max-w-72 px-5 py-4 text-gray-700 break-words">{po.customers?.name ?? '—'}</td>
                       <td className="px-5 py-4">
-                        <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${STATUS_STYLES[po.status] ?? 'bg-gray-100 text-gray-600'}`}>
-                          {STATUS_LABELS[po.status] ?? po.status}
+                        <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[13px] font-medium ${STATUS_STYLES[po.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                          {PO_STATUS_LABELS[po.status] ?? po.status}
                         </span>
                       </td>
-                      <td className="px-5 py-4 text-gray-600">{po.order_date}</td>
-                      <td className="px-5 py-4 text-gray-600">{po.expected_delivery_date ?? '—'}</td>
+                      <td className="px-5 py-4 text-gray-600">{formatDisplayDate(po.order_date)}</td>
+                      <td className="px-5 py-4 text-gray-600">{formatDisplayDate(po.expected_delivery_date)}</td>
                       <td className="px-5 py-4 text-right text-gray-900 font-medium">
-                        Rp {po.total_value.toLocaleString('id-ID')}
+                        Rp {formatMoney(po.total_value, 'full')}
                       </td>
-                      <td className="px-5 py-4 text-right">
-                        <button
-                          onClick={() => navigate(`/athel/po/${po.id}`)}
-                          className="text-blue-600 hover:text-blue-800 text-xs font-medium mr-3"
-                        >
-                          Lihat
-                        </button>
-                        {po.status !== 'complete' && (
-                          <button
-                            onClick={() => navigate(`/athel/po/${po.id}/edit`)}
-                            className="text-gray-500 hover:text-gray-800 text-xs font-medium"
-                          >
-                            Ubah
-                          </button>
-                        )}
+                      <td className="sticky right-0 z-10 min-w-48 max-w-52 bg-white px-5 py-4 text-right shadow-[-4px_0_6px_-4px_#9ca3af]">
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          <ActionLink variant="quiet" size="compact" to={`/athel/po/${po.id}`}>Lihat</ActionLink>
+                          {!['confirm', 'in_progress'].includes(po.status) && <span className="text-[13px] text-brand-secondary">{po.status === 'cancelled' ? 'PO dibatalkan: tidak dapat diubah' : po.status === 'complete' ? 'PO selesai: tidak dapat diubah' : 'Status PO tidak dapat diubah'}</span>}
+                          {['confirm', 'in_progress'].includes(po.status) && (
+                            <ActionLink variant="secondary" size="compact" to={`/athel/po/${po.id}/edit`}>Ubah</ActionLink>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -249,75 +137,43 @@ export default function POList() {
               {pos.map(po => (
                 <div key={po.id} className="bg-white rounded-xl border border-gray-200 p-4">
                   <div className="flex items-start justify-between gap-2 mb-3">
-                    <div>
+                    <div className="min-w-0 [overflow-wrap:anywhere]">
                       <p className="font-semibold text-gray-900 text-sm">{po.po_number}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">{po.customers?.name ?? '—'}</p>
+                      <p className="text-[13px] text-brand-secondary mt-0.5">{po.customers?.name ?? '—'}</p>
                     </div>
-                    <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium shrink-0 ${STATUS_STYLES[po.status] ?? 'bg-gray-100 text-gray-600'}`}>
-                      {STATUS_LABELS[po.status] ?? po.status}
+                    <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[13px] font-medium shrink-0 ${STATUS_STYLES[po.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                      {PO_STATUS_LABELS[po.status] ?? po.status}
                     </span>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 text-xs mb-3">
+                  <div className="grid grid-cols-2 gap-2 text-[13px] mb-3">
                     <div>
-                      <p className="text-gray-400">Tanggal Pesanan</p>
-                      <p className="text-gray-700 font-medium">{po.order_date}</p>
+                      <p className="text-brand-secondary">Tanggal Pesanan</p>
+                      <p className="text-gray-700 font-medium">{formatDisplayDate(po.order_date)}</p>
                     </div>
                     <div>
-                      <p className="text-gray-400">Estimasi Pengiriman</p>
-                      <p className="text-gray-700 font-medium">{po.expected_delivery_date ?? '—'}</p>
+                      <p className="text-brand-secondary">Tanggal Kedaluwarsa PO</p>
+                      <p className="text-gray-700 font-medium">{formatDisplayDate(po.expected_delivery_date)}</p>
                     </div>
                     <div className="col-span-2">
-                      <p className="text-gray-400">Total Nilai</p>
-                      <p className="text-gray-900 font-semibold">Rp {po.total_value.toLocaleString('id-ID')}</p>
+                      <p className="text-brand-secondary">Total Nilai</p>
+                      <p className="text-gray-900 font-semibold [overflow-wrap:anywhere]">Rp {formatMoney(po.total_value, 'full')}</p>
                     </div>
                   </div>
-                  <div className="flex gap-2 pt-3 border-t border-gray-100">
-                    <button
-                      onClick={() => navigate(`/athel/po/${po.id}`)}
-                      className="flex-1 text-center text-blue-600 text-xs font-medium py-2 rounded-lg bg-blue-50 hover:bg-blue-100 transition-colors"
-                    >
-                      Lihat
-                    </button>
-                    {po.status !== 'complete' && (
-                      <button
-                        onClick={() => navigate(`/athel/po/${po.id}/edit`)}
-                        className="flex-1 text-center text-gray-600 text-xs font-medium py-2 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors"
-                      >
-                        Ubah
-                      </button>
+                  <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-gray-100">
+                    <ActionLink variant="quiet" size="compact" to={`/athel/po/${po.id}`}>Lihat</ActionLink>
+                    {!['confirm', 'in_progress'].includes(po.status) && <span className="text-[13px] text-brand-secondary">{po.status === 'cancelled' ? 'PO dibatalkan: tidak dapat diubah' : po.status === 'complete' ? 'PO selesai: tidak dapat diubah' : 'Status PO tidak dapat diubah'}</span>}
+                    {['confirm', 'in_progress'].includes(po.status) && (
+                      <ActionLink variant="secondary" size="compact" to={`/athel/po/${po.id}/edit`}>Ubah</ActionLink>
                     )}
                   </div>
                 </div>
               ))}
             </div>
 
-            <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-gray-500">
-                Menampilkan {startItem}-{endItem} dari {totalItems} pesanan
-              </p>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setPage(prev => Math.max(1, prev - 1))}
-                  disabled={page === 1}
-                  className="px-3 py-2 text-sm rounded-lg border border-gray-200 bg-white text-gray-700 disabled:text-gray-300 disabled:bg-gray-50 disabled:cursor-not-allowed"
-                >
-                  Sebelumnya
-                </button>
-                <span className="text-sm text-gray-500 min-w-24 text-center">
-                  Halaman {page} / {totalPages}
-                </span>
-                <button
-                  onClick={() => setPage(prev => Math.min(totalPages, prev + 1))}
-                  disabled={page === totalPages}
-                  className="px-3 py-2 text-sm rounded-lg border border-gray-200 bg-white text-gray-700 disabled:text-gray-300 disabled:bg-gray-50 disabled:cursor-not-allowed"
-                >
-                  Berikutnya
-                </button>
-              </div>
-            </div>
           </>
         )}
       </div>
+      </MainContent>
     </div>
   )
 }

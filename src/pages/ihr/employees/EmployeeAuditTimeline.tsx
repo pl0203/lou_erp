@@ -1,0 +1,9 @@
+import { useState } from 'react'
+import { useEmployeeAudit } from '../../../lib/employees/useEmployeeReads'
+import type { EmployeeAction } from '../../../lib/employees/contracts'
+import { ChangeReview,dateLabel,EmployeeReadState,EmptyState,Pagination } from './EmployeeUI'
+const actions:Record<EmployeeAction,string>={create_employee:'Catatan karyawan dibuat',edit_employee:'Data dasar diubah',save_initial_episode:'Periode kerja awal dicatat',link_account:'Akun ditautkan',quarantine_account_link:'Tautan akun dikarantina',save_reporting:'Riwayat pelaporan diubah'}
+export default function EmployeeAuditTimeline({employeeId,timezone}:{employeeId:string;timezone:string|null}) {
+ const [page,setPage]=useState(1),read=useEmployeeAudit(employeeId,page),data=read.displayData,ready=read.authorityReady&&!!read.data
+ return <section className="employee-panel"><h2>Riwayat perubahan</h2>{data?<>{!data.rows.length?<EmptyState title="Belum ada perubahan tercatat">Perubahan berikutnya akan menyertakan pelaku, alasan, dan perbandingan data.</EmptyState>:<ol className="employee-audit">{data.rows.map(event=><li key={event.id}><h3>{actions[event.action]}</h3><p>{event.actorName} · <time dateTime={event.recordedAt}>{new Intl.DateTimeFormat('id-ID',{timeZone:timezone||'UTC',dateStyle:'medium',timeStyle:'short'}).format(new Date(event.recordedAt))} ({timezone||'UTC'})</time></p><p>Berlaku mulai: {dateLabel(event.effectiveDate)}</p><p className="employee-audit-reason">{event.reason}</p>{event.sourceReference&&<p>Sumber: {event.sourceReference}</p>}<details><summary className="min-h-[var(--ui-control-size)]">Lihat perubahan sebelum dan sesudah</summary><ChangeReview before={event.before} after={event.after}/></details></li>)}</ol>}<Pagination audit page={page} total={data.total} onPage={setPage} disabled={!ready}/></>:<EmployeeReadState state={read} loading="Memuat riwayat perubahan…"/>}</section>
+}

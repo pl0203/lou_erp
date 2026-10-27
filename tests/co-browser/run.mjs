@@ -1,0 +1,56 @@
+// Native Chrome + production CO review component/Worker. No hosted backend, accounts or screenshots.
+import assert from 'node:assert/strict';
+import { execFileSync,spawn } from 'node:child_process';
+import { mkdtemp,readFile,readdir,rm,realpath } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join,extname } from 'node:path';
+import { buildHarness } from './build.mjs';
+import { observeOwnedBrowser, stopOwnedBrowser } from './cleanup.mjs';
+const git=args=>execFileSync('git',args,{encoding:'utf8',env:{PATH:process.env.PATH},timeout:10000}).trim();
+for(const [key,value] of Object.entries({CI:'true',GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:'pl0203/lou_erp',GITHUB_WORKFLOW:'CO workspace runtime',GITHUB_JOB:'native-runtime'}))assert.equal(process.env[key],value,`Fixed native CI identity: ${key}`);
+for(const key of ['GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT'])assert.match(process.env[key]??'',/^[1-9][0-9]*$/);
+assert.match(process.env.CO_NATIVE_SOURCE_SHA??'',/^[a-f0-9]{40}$/);assert.equal(git(['rev-parse','HEAD']),process.env.CO_NATIVE_SOURCE_SHA);assert.equal(git(['status','--porcelain','--untracked-files=normal']),'','Clean source required');
+const receipt={commit:git(['rev-parse','HEAD']),tree:git(['rev-parse','HEAD^{tree}']),coverage:'native component/worker only; no Auth/Storage/backend E2E',assertions:[]};
+let temporary,server,browser,browserClosed,socket,fatal;let sequence=0;const calls=new Map(),sessions=new Map(),events=new Set(),violations=[];
+const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+async function until(fn,label){const end=Date.now()+30000;while(Date.now()<end){if(fatal)throw Error(fatal);assert.deepEqual(violations,[],'Network isolation violation');if(await fn())return;await delay(30)}throw Error(`Timeout: ${label}`)}
+let cdp;
+async function evaluate(session,expression){const result=await cdp('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true},session);assert.ok(!result.exceptionDetails,JSON.stringify(result.exceptionDetails));return result.result.value}
+async function click(session,expression){await evaluate(session,`(${expression}).scrollIntoView({block:'center'})`);const box=await evaluate(session,`(()=>{const r=(${expression}).getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2,width:r.width,height:r.height}})()`);assert.ok(box.width>0&&box.height>0);await cdp('Input.dispatchMouseEvent',{type:'mousePressed',x:box.x,y:box.y,button:'left',clickCount:1},session);await cdp('Input.dispatchMouseEvent',{type:'mouseReleased',x:box.x,y:box.y,button:'left',clickCount:1},session)}
+try{
+ temporary=await mkdtemp(join(tmpdir(),'co-native-browser-'));const out=join(temporary,'build');await buildHarness(out);
+ const files=new Map();async function index(dir,prefix=''){for(const e of await readdir(dir,{withFileTypes:true})){const path=prefix+e.name;if(e.isDirectory())await index(join(dir,e.name),path+'/');else{assert.ok(e.isFile());files.set('/'+path,await readFile(join(dir,e.name)))}}}await index(out);
+ server=createServer((request,response)=>{const path=new URL(request.url,'http://127.0.0.1').pathname;const target=path==='/'?'/index.html':path;if(request.method!=='GET'||(!files.has(target)&&path!=='/favicon.ico')){violations.push('unapproved-local-path');response.writeHead(403).end();return}response.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'none'; worker-src 'self'; img-src 'none'; font-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'");response.setHeader('Cache-Control','no-store');if(path==='/favicon.ico'){response.writeHead(204).end();return}response.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.css':'text/css'})[extname(target)]??'application/octet-stream');response.end(files.get(target))});
+ await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve)});const origin=`http://127.0.0.1:${server.address().port}`;
+ const chrome=await realpath('/usr/bin/google-chrome');assert.ok(chrome.startsWith('/opt/google/chrome/'),'Official preinstalled Chrome required');const safeEnv={PATH:process.env.PATH,HOME:temporary,TMPDIR:temporary,LANG:'C.UTF-8'};receipt.browser=execFileSync(chrome,['--version'],{env:safeEnv,encoding:'utf8',timeout:10000}).trim();
+ browser=spawn(chrome,['--headless=new','--remote-debugging-address=127.0.0.1','--remote-debugging-port=0',`--user-data-dir=${join(temporary,'profile')}`,'--no-first-run','--no-default-browser-check','--disable-background-networking','--disable-extensions','--disable-component-extensions-with-background-pages','--disable-default-apps','about:blank'],{env:safeEnv,stdio:['ignore','ignore','pipe']});browserClosed=observeOwnedBrowser(browser);let endpoint;browser.once('error',e=>{fatal=e.message});browser.once('exit',code=>{if(!endpoint)fatal=`Chrome exited ${code}`});browser.stderr.on('data',b=>{const m=/DevTools listening on (ws:\/\/127\.0\.0\.1:\d+\/devtools\/browser\/[\w-]+)/.exec(String(b));if(m)endpoint=m[1]});await until(()=>!!endpoint,'sandboxed Chrome');socket=new WebSocket(endpoint);await new Promise((resolve,reject)=>{socket.addEventListener('open',resolve,{once:true});socket.addEventListener('error',reject,{once:true})});
+ cdp=(method,params={},sessionId)=>new Promise((resolve,reject)=>{const id=++sequence;const timer=setTimeout(()=>{calls.delete(id);reject(Error(`CDP timeout ${method}`))},30000);calls.set(id,{resolve:r=>{clearTimeout(timer);resolve(r)},reject:e=>{clearTimeout(timer);reject(e)}});socket.send(JSON.stringify({id,method,params,...(sessionId?{sessionId}:{})}))});
+ const filter=[{type:'browser',exclude:true},{type:'tab',exclude:true},{type:'browser_ui',exclude:true},{}];
+ socket.addEventListener('message',event=>{const message=JSON.parse(String(event.data));if(message.id){const call=calls.get(message.id);if(call){calls.delete(message.id);message.error?call.reject(Error(message.error.message)):call.resolve(message.result)}return}const task=(async()=>{
+  if(message.method==='Target.attachedToTarget'){const {sessionId,targetInfo}=message.params;if(!['page','worker'].includes(targetInfo.type)){violations.push('unexpected-target');await cdp('Target.closeTarget',{targetId:targetInfo.targetId});return}await cdp('Network.enable',{},sessionId);await cdp('Runtime.enable',{},sessionId);if(targetInfo.type==='page')await cdp('Fetch.enable',{patterns:[{urlPattern:'*'}]},sessionId);if(targetInfo.type==='page')await cdp('Target.setAutoAttach',{autoAttach:true,waitForDebuggerOnStart:true,flatten:true,filter},sessionId);await cdp('Runtime.runIfWaitingForDebugger',{},sessionId);sessions.set(targetInfo.targetId,sessionId)}
+  if(message.method==='Fetch.requestPaused'){const {requestId,request}=message.params;let allowed=false;try{allowed=new URL(request.url).origin===origin}catch{}if(!allowed){violations.push('off-origin-request');await cdp('Fetch.failRequest',{requestId,errorReason:'BlockedByClient'},message.sessionId)}else await cdp('Fetch.continueRequest',{requestId},message.sessionId)}
+  if(message.method==='Network.requestWillBeSent'){let allowed=false;try{allowed=new URL(message.params.request.url).origin===origin}catch{}if(!allowed)violations.push('off-origin-network-attempt')}
+  if(message.method==='Network.webSocketCreated')violations.push('unexpected-websocket');
+  if(message.method==='Runtime.exceptionThrown')fatal='Uncaught native browser exception';
+ })().catch(error=>{fatal??=error.message});events.add(task);void task.finally(()=>events.delete(task))});
+ await cdp('Target.setAutoAttach',{autoAttach:true,waitForDebuggerOnStart:true,flatten:true,filter});
+ const {targetId}=await cdp('Target.createTarget',{url:'about:blank'});await until(()=>sessions.has(targetId),'guarded native page');const session=sessions.get(targetId);await cdp('Page.enable',{},session);await cdp('Page.navigate',{url:origin},session);await until(()=>evaluate(session,'document.querySelectorAll("tbody>tr").length===100'),'100 real component rows');
+ for(const width of [1440,1180,390,360]){await cdp('Emulation.setDeviceMetricsOverride',{width,height:900,deviceScaleFactor:1,mobile:false},session);await delay(100);const geometry=await evaluate(session,'(()=>{const s=document.querySelector(".co-import__scroll");return{viewport:innerWidth,page:document.documentElement.scrollWidth,scroll:s.scrollWidth,client:s.clientWidth,rows:document.querySelectorAll("tbody>tr").length}})()');assert.equal(geometry.rows,100);assert.ok(geometry.page<=geometry.viewport+1,`Page overflow at ${width}`);if(width<600)assert.ok(geometry.scroll>geometry.client,'Dense mobile table scroll remains localized');receipt.assertions.push(`100-row review table layout ${width}`)}
+ assert.equal(await evaluate(session,'document.body.textContent.includes("Simpan draf")'),false);
+ const checkbox=text=>`Array.from(document.querySelectorAll('label')).find(n=>n.textContent.includes(${JSON.stringify(text)})).querySelector('input[type=checkbox]')`;
+ await click(session,checkbox('Semua barang dan bagian sumber'));await until(()=>evaluate(session,'JSON.parse(document.querySelector("#intent").textContent).complete'),'explicit completeness');
+ await click(session,checkbox('Tampilkan yang perlu diperiksa'));await until(()=>evaluate(session,'document.querySelectorAll("tbody>tr").length===1'),'issue-only filtering');assert.equal(await evaluate(session,'JSON.parse(document.querySelector("#intent").textContent).complete'),true);
+ await click(session,checkbox('Tampilkan yang perlu diperiksa'));await until(()=>evaluate(session,'document.querySelectorAll("tbody>tr").length===100'),'filter restores rows');
+ await click(session,'document.querySelector(".co-import__issues a")');await until(()=>evaluate(session,'document.activeElement?.closest(".co-import__editor")!==null'),'error summary keyboard focus');receipt.assertions.push('real clicks preserve completeness across issue filtering and focus first error editor');
+ const worker=await evaluate(session,'window.runNativeWorkerCases()');assert.deepEqual(worker,['stored','deflated','crc','cancel-and-new-scope']);receipt.assertions.push(...worker.map(name=>'native XLSX worker '+name));
+ await Promise.all([...events]);assert.deepEqual(violations,[]);assert.ok(!fatal,fatal);
+}finally{
+ // Never delete a profile while the owned Chrome may still be writing it.
+ try{if(browser)await stopOwnedBrowser(browser,browserClosed,()=>cdp?cdp('Browser.close'):Promise.resolve())}
+ finally{if(socket){for(const call of calls.values())call.reject(Error('Browser cleanup'));calls.clear();socket.close()}if(server)await new Promise(resolve=>server.close(resolve))}
+ // Chromium child processes can finish a final profile rename just after close.
+ // Retry only the exact mkdtemp-owned tree, bounded; exhaustion remains failure.
+ if(temporary)await rm(temporary,{recursive:true,force:true,maxRetries:5,retryDelay:100});
+}
+console.log('CO_NATIVE_COMPONENT_WORKER_PASSED '+JSON.stringify(receipt));

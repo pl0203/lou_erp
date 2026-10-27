@@ -1,117 +1,109 @@
-import { useState, useEffect } from 'react'
+import SessionLoading from '../components/SessionLoading'
+import BrandLogo from '../components/BrandLogo'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 
-const ROLE_HOME: Record<string, string> = {
-  po_admin:      '/athel/po',
-  sales_person:  '/girard/schedule',
-  sales_manager: '/girard/schedule',
-  sales_head:    '/girard/schedule',
-  executive:     '/landing',
-}
+import { Button } from '../components/ui/Button'
+import { ActionLink } from '../components/ui/ActionLink'
+import { Field } from '../components/ui/Field'
+import { PageHeader } from '../components/ui/PageHeader'
+import { Notice } from '../components/ui/Feedback'
+import { MainContent } from '../components/ui/MainContent'
+
+import { roleHome } from '../components/navigationModules'
 
 export default function Login() {
   const navigate = useNavigate()
-  const { profile, loading } = useAuth()
+  const { profile, loading, identityRevision, error: profileError } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [awaitingProfile, setAwaitingProfile] = useState(false)
+  const attemptedLogin = useRef(false)
   const [error, setError] = useState('')
+  const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({})
+  const [failedSubmit, setFailedSubmit] = useState(0)
+  const errorSummary = useRef<HTMLDivElement>(null)
+  const submittingNow = useRef(false)
+  const attemptRevision = useRef(identityRevision)
+  const busy = submitting || loading || awaitingProfile
+
+  useEffect(() => {
+    // Only a new, completed identity resolution belongs to this attempt.
+    // A previous error cannot unlock a retry; SIGNED_OUT is terminal too.
+    if (awaitingProfile && !submitting && !loading && identityRevision !== attemptRevision.current) {
+      setAwaitingProfile(false)
+      if (!profile && !profileError) {
+        setError('Sesi berakhir. Silakan coba masuk lagi.')
+        setFailedSubmit(attempt => attempt + 1)
+      }
+    }
+  }, [awaitingProfile, submitting, loading, identityRevision, profile, profileError])
+
+  const fail = (message: string, fields: typeof fieldErrors = {}) => {
+    setError(message); setFieldErrors(fields); setFailedSubmit(attempt => attempt + 1)
+  }
+  useEffect(() => {
+    if (error || profileError) errorSummary.current?.focus()
+  }, [error, profileError, failedSubmit, loading])
 
   useEffect(() => {
     if (!loading && profile) {
-      navigate(ROLE_HOME[profile.role] ?? '/login', { replace: true })
+      navigate(roleHome(profile.role), { replace: true })
     }
   }, [profile, loading])
 
   const handleLogin = async () => {
-    if (!email || !password) return setError('Masukkan email dan kata sandi Anda.')
+    if (submittingNow.current || busy) return
+    if (!email || !password) {
+      const message = 'Masukkan email dan kata sandi Anda.'
+      return fail(message, { email: !email ? message : undefined, password: !password ? message : undefined })
+    }
+    attemptedLogin.current = true
+    attemptRevision.current = identityRevision
+    submittingNow.current = true
     setSubmitting(true)
     setError('')
+    setFieldErrors({})
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
-
-    if (signInError) {
-      setError('Email atau kata sandi salah. Silakan coba lagi.')
-      setSubmitting(false)
-      return
-    }
-
-    const { data: profileData } = await supabase
-      .from('users')
-      .select('is_active')
-      .eq('email', email)
-      .single()
-
-    if (profileData && !profileData.is_active) {
-      await supabase.auth.signOut()
-      setError('Akun Anda telah dinonaktifkan. Hubungi administrator Anda.')
+    try {
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+      if (signInError) { setAwaitingProfile(false); fail('Email atau kata sandi salah. Silakan coba lagi.') }
+      else setAwaitingProfile(true)
+      // AuthProvider owns profile validation; do not query by a user-entered email.
+    } catch {
+      setAwaitingProfile(false)
+      fail('Tidak dapat masuk. Periksa koneksi dan coba lagi.')
+    } finally {
+      submittingNow.current = false
       setSubmitting(false)
     }
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-400 text-sm">Memuat...</p>
-      </div>
-    )
-  }
+  if (loading && !attemptedLogin.current) return <SessionLoading />
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-      <div className="bg-white rounded-2xl border border-gray-200 p-8 w-full max-w-sm shadow-sm">
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">Selamat datang</h1>
-          <p className="text-sm text-gray-500 mt-1">Masuk ke akun Anda</p>
-        </div>
-
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm text-gray-600 mb-1">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleLogin()}
-              placeholder="anda@perusahaan.com"
-              autoComplete="email"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="block text-sm text-gray-600">Kata Sandi</label>
-              <button
-                onClick={() => navigate('/forgot-password')}
-                className="text-xs text-blue-600 hover:text-blue-800"
-              >
-                Lupa kata sandi?
-              </button>
-            </div>
-            <input
-              type="password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleLogin()}
-              placeholder="••••••••"
-              autoComplete="current-password"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          {error && <p className="text-red-500 text-xs">{error}</p>}
-
-          <button
-            onClick={handleLogin}
-            disabled={submitting}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium py-2.5 rounded-lg transition-colors disabled:opacity-50"
-          >
-            {submitting ? 'Masuk...' : 'Masuk'}
-          </button>
-        </div>
+    <MainContent className="min-h-screen bg-brand-canvas flex items-center justify-center px-4 py-8">
+      <div className="bg-white rounded-[14px] border border-brand-divider p-8 w-full max-w-sm shadow-sm">
+        <BrandLogo className="mb-8" />
+        <PageHeader className="mb-8" title="Selamat datang" description="Masuk ke akun Anda" />
+        <form noValidate onSubmit={event => { event.preventDefault(); void handleLogin() }} className="space-y-4">
+          <Field id="login-email" label="Email" error={fieldErrors.email}>
+            {control => <input {...control} type="email" required value={email} disabled={busy}
+              onChange={event => { setEmail(event.target.value); setFieldErrors(previous => ({ ...previous, email: undefined })) }} placeholder="anda@perusahaan.com" autoComplete="email" />}
+          </Field>
+          <Field id="login-password" label="Kata Sandi" error={fieldErrors.password}>
+            {control => <input {...control} type="password" required value={password} disabled={busy}
+              onChange={event => { setPassword(event.target.value); setFieldErrors(previous => ({ ...previous, password: undefined })) }} placeholder="••••••••" autoComplete="current-password" />}
+          </Field>
+          <ActionLink to="/forgot-password" variant="quiet">Lupa kata sandi?</ActionLink>
+          {(error || profileError) && <div ref={errorSummary} role="group" aria-label="Ringkasan kesalahan masuk" tabIndex={-1}><Notice tone="error" title={error || profileError} /></div>}
+          <Button type="submit" pending={busy} className="w-full auth-login-submit">{busy ? 'Sedang masuk…' : error || profileError ? 'Coba lagi' : 'Masuk'}</Button>
+          <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{busy ? 'Sedang masuk…' : ''}</span>
+        </form>
       </div>
-    </div>
+    </MainContent>
   )
 }

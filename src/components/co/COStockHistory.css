@@ -1,0 +1,19 @@
+.ui-dialog.co-movement-dialog { max-width: 54rem; padding: 1.25rem; }
+.co-movement-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.co-movement-heading > div { min-width: 0; }
+.co-movement-heading > button { flex-shrink: 0; }
+.co-movement-store { margin-top: .5rem; font-weight: 600; }
+.co-movement-product { font-size: .875rem; color: var(--color-brand-secondary); margin-top: .125rem; }
+.co-movement-cutoff { color: var(--color-brand-secondary); font-size: .8125rem; margin: .75rem 0 1rem; }
+.co-movement-scroll { max-width: 100%; overflow-x: auto; }
+.co-movement-table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+.co-movement-table th { text-align: left; color: var(--color-brand-secondary); font-weight: 600; background: var(--color-brand-background); }
+.co-movement-table th, .co-movement-table td { padding: .75rem .625rem; border-bottom: 1px solid var(--color-brand-divider); vertical-align: middle; }
+.co-movement-table .co-movement-number { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.co-movement-table .ui-action { white-space: nowrap; text-decoration: none; }
+.co-movement-kind { display: inline-flex; padding: .125rem .5rem; border-radius: .375rem; font-size: .8125rem; font-weight: 600; white-space: nowrap; }
+.co-movement-kind--delivery { background: #e8f5ed; color: #21603d; }
+.co-movement-kind--sold { background: #e9f0fb; color: #285389; }
+.co-movement-kind--return { background: #fff1dc; color: #80500e; }
+.co-movement-note { color: var(--color-brand-secondary); font-size: .75rem; line-height: 1.5; margin-top: 1rem; }
+@media (max-width: 540px) { .ui-dialog.co-movement-dialog { padding: 1rem; } .co-movement-table { min-width: 30rem; } }

@@ -1,0 +1,32 @@
+{
+  "promotion": {
+    "source": "supabase/migrations/202610081101_demo_order_promotions.sql",
+    "function": "public.pilot_promotion_transaction_v1",
+    "body_sha256": "e1253899543a3f1426972e25402d3921b6c196efcd97b6b7088c2765571fc3f7"
+  },
+  "owner": {
+    "source": "supabase/migrations/20261009061801_unify_store_owner_credit.sql",
+    "function": "public.pilot_assign_store_owner_v1",
+    "body_sha256": "e1cbbd75ab17e37c5712e2a84ff80c8ad8fa67a1c04a2dffbc37b52e941defb4"
+  },
+  "schedule": {
+    "source": "supabase/migrations/202610081102_demo_visit_workflow.sql",
+    "function": "public.pilot_schedule_transaction_v1",
+    "body_sha256": "fecb08d548db4bb61c57b767cb20a763425bbc89188e961003d0aa642e2f48cc"
+  },
+  "visit": {
+    "source": "supabase/migrations/202610081102_demo_visit_workflow.sql",
+    "function": "public.pilot_finalize_visit",
+    "body_sha256": "0df84efa4a1b82d552f16772b1fe5a562fa0acd10ede6b84fdfd69e63d929260"
+  },
+  "evidence": {
+    "source": "supabase/migrations/20261009110008_co_evidence.sql",
+    "function": "public.pilot_co_evidence_transaction_v1",
+    "body_sha256": "09b0bece164b911bb6a25114ab76b5ef5ba2ff1a46020c9747a88e9141dd6fb7"
+  },
+  "attest": {
+    "source": "supabase/migrations/20261009110008_co_evidence.sql",
+    "function": "public.pilot_co_evidence_attest_v1",
+    "body_sha256": "7e9a6d0ed5d73d716c47f0bd4b697668dc9aca5fb1097925e5899be2f5d8a4df"
+  }
+}
