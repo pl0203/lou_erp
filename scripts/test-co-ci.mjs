@@ -1,5 +1,6 @@
 // Fixed composition for a NEW synthetic PostgreSQL service. Never a rollout runner.
 import assert from 'node:assert/strict'
+import { buildReturnCurrentFixture } from './co-return-current-schema.mjs'
 import { randomUUID } from 'node:crypto'
 import { buildEvidenceTopologyChecks } from '../tests/database/co/evidence-topology.mjs'
 import { buildAccessTopologyChecks } from '../tests/database/co/access-topology.mjs'
@@ -143,7 +144,9 @@ export function runCoFinalChecks({run,decode,read,protectedBefore}) {
  return evidence
 }
 
-export function runCoCi({ env = process.env, execute = execFileSync, through = '08', sourceIdentity = coSourceIdentity } = {}) {
+export function runCoCi({ env = process.env, execute = execFileSync, through = '08', sourceIdentity = coSourceIdentity, fixtureProfile = 'minimal' } = {}) {
+  assert.ok(['minimal','return-current'].includes(fixtureProfile), 'Unknown fixed fixture profile')
+  if (fixtureProfile === 'return-current') assert.equal(env.CO_CI_PROFILE, 'github-co-return-workspace-v1', 'Current return schema is restricted to its dedicated CI profile')
   const ciSource = env.CO_CI_PROFILE ? sourceIdentity() : undefined
   const connection = coCiConnection(env, ciSource)
   const source = ciSource ?? sourceIdentity()
@@ -186,6 +189,7 @@ export function runCoCi({ env = process.env, execute = execFileSync, through = '
       assert.match(protectedBefore, /^[a-f0-9]{64}$/, 'Protected baseline fingerprint required')
     }
     let sql = readFileSync(new URL(path, pathToFileURL(repoRoot)), 'utf8')
+    if (path === 'tests/database/fixture.sql' && fixtureProfile === 'return-current') sql = buildReturnCurrentFixture(sql)
     if (fixtureTargets.has(path)) {
       assert.equal(sql.split("current_database()<>'pilot_test'").length, 2, 'Exact fixture target guard required')
       sql = sql.replace("current_database()<>'pilot_test'", "current_database()<>'pilot_co_test'")

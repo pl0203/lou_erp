@@ -57,3 +57,30 @@ test('ACL normalization regression executes before the preflight and candidate',
  const sql=readFileSync(new URL('./return-workspace-acl-normalization.sql',import.meta.url),'utf8');
  assert.match(sql,/BEGIN READ ONLY;/);assert.match(sql,/Explicit column grant or grant option lost/);assert.match(sql,/Empty object ACL incorrectly inherited defaults/);
 });
+
+test('both return profiles install the pinned workspace-read dependency before attestation',async()=>{
+ const {readFileSync}=await import('node:fs');
+ const {installReturnReadDependency}=await import('../../../scripts/test-co-return-workspace-db.mjs');
+ const path='supabase/candidates/co-workspace-redesign/20261026101000_co_workspace_reads.sql';
+ const sql=readFileSync(new URL('../../../'+path,import.meta.url),'utf8');
+ for(const baseline of ['legacy','current']){
+  const events=[];
+  installReturnReadDependency({read:p=>{assert.equal(p,path);events.push('read');return sql},run:s=>{assert.equal(s,sql);events.push('install')},verify:()=>events.push('verify')});
+  assert.deepEqual(events,['read','install','verify'],baseline);
+ }
+ let executed=false;
+ assert.throws(()=>installReturnReadDependency({read:()=>sql+'-- drift',run:()=>{executed=true},verify:()=>{executed=true}}),/Workspace-read dependency changed/);
+ assert.equal(executed,false);
+ const runner=readFileSync(new URL('../../../scripts/test-co-return-workspace-db.mjs',import.meta.url),'utf8');
+ assert.match(runner,/run\(read\('supabase\/candidates\/co-workspace-redesign\/20261026100000_co_import_manifest\.sql'\)\);verify\(\)\s+installReturnReadDependency\(\{read,run,verify\}\)\s+const normalization/,'dependency install is unconditional for both profiles, after import and before preflight');
+ assert.match(sql,/CREATE FUNCTION public\.pilot_co_report_import_v1/);
+});
+
+test('late-install fault composition preserves PostgreSQL dollar quoting literally',async()=>{
+ const {composeReturnInstallFailure}=await import('../../../scripts/test-co-return-workspace-db.mjs');
+ const source="BEGIN;\nDO $$ BEGIN PERFORM 1; END $$;\nCOMMIT;\n";
+ const actual=composeReturnInstallFailure(source);
+ assert.equal(actual,"BEGIN;\nDO $$ BEGIN PERFORM 1; END $$;\nDO $$ BEGIN RAISE EXCEPTION 'Synthetic return install fault' USING ERRCODE='PZ702';END $$;\nCOMMIT;");
+ assert.doesNotMatch(actual,/DO \$ BEGIN/);
+ assert.throws(()=>composeReturnInstallFailure('BEGIN; SELECT 1;'),/Terminal candidate COMMIT required/);
+});

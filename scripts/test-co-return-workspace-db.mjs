@@ -5,6 +5,8 @@ import {readFileSync} from 'node:fs'
 import {createHash} from 'node:crypto'
 import {fileURLToPath,pathToFileURL} from 'node:url'
 import {runCoCi} from './test-co-ci.mjs'
+import {installReturnCurrentFunctions} from './co-return-current-functions.mjs'
+import {installReturnCurrentSchema} from './co-return-current-schema.mjs'
 import {runWorkspaceCurrentBaseline,WORKSPACE_CURRENT_AUTHORITY_SNAPSHOT} from './co-workspace-current-baseline.mjs'
 import {coWorkspaceConnection,coSourceIdentity,coBindFixtureServer,CO_FIXTURE_OBSERVATION_SQL,coVerifyFixtureIdentitySql,coFixtureChildEnv} from './co-fixture-target.mjs'
 const root=fileURLToPath(new URL('../',import.meta.url))
@@ -21,10 +23,24 @@ export function composeReturnFixture(posting,returns){
  assert.doesNotMatch(returns,/^\s*(BEGIN|COMMIT|ROLLBACK);/mi)
  return posting.replace(terminal,()=>returns+"\nROLLBACK;\nSELECT 'CO_IMPORT_ATOMIC_POST_EDIT_PASSED';\n")
 }
+// Same real additive read dependency as the original workspace posting fixture.
+// Fixed source only: no caller-selected path, target, or replacement SQL.
+export function installReturnReadDependency({read,run,verify}){
+ const sql=read('supabase/candidates/co-workspace-redesign/20261026101000_co_workspace_reads.sql')
+ assert.equal(createHash('sha256').update(sql).digest('hex'),'ba57d414ddf786df64e391765e5634edbf494c05a8c6aa126b8379267503aa57','Workspace-read dependency changed')
+ assert.equal(sql.split('\n').filter(line=>/^(BEGIN|COMMIT);\s*$/.test(line)).join(','),'BEGIN;,COMMIT;','One whole workspace-read candidate transaction required')
+ assert.ok(sql.trimEnd().endsWith('COMMIT;'),'Terminal workspace-read COMMIT required')
+ run(sql);verify()
+}
+export function composeReturnInstallFailure(candidate){
+ assert.match(candidate,/COMMIT;\s*$/,'Terminal candidate COMMIT required')
+ // A replacement string would collapse PostgreSQL $$ to $, so return it literally.
+ return candidate.replace(/COMMIT;\s*$/,()=>"DO $$ BEGIN RAISE EXCEPTION 'Synthetic return install fault' USING ERRCODE='PZ702';END $$;\nCOMMIT;")
+}
 export function runReturnWorkspace({env=process.env,execute=execFileSync,sourceIdentity=coSourceIdentity,baselineName='legacy'}={}){
  returnWorkspaceOptions(['--case','returns','--baseline',baselineName])
  const source=sourceIdentity(),expected=coWorkspaceConnection(env,source)
- const {identity,connection}=runCoCi({env,execute,sourceIdentity,through:'08'})
+ const {identity,connection}=runCoCi({env,execute,sourceIdentity,through:'08',fixtureProfile:baselineName==='current'?'return-current':'minimal'})
  assert.deepEqual(connection,expected);assert.deepEqual(identity.source,source)
  const run=sql=>execute('psql',['-X','--no-password','-qAt','-v','ON_ERROR_STOP=1','-v','VERBOSITY=verbose'],{env:{...connection,PGDATABASE:'pilot_co_test'},cwd:root,input:sql,encoding:'utf8',maxBuffer:32*1024*1024,timeout:180000,shell:false,stdio:['pipe','pipe','pipe']})
  const verify=()=>{
@@ -32,9 +48,14 @@ export function runReturnWorkspace({env=process.env,execute=execFileSync,sourceI
   assert.equal(run(coVerifyFixtureIdentitySql(identity)).trim(),'t')
  }
  verify()
- if(baselineName==='current')runWorkspaceCurrentBaseline({run,verify,read})
+ if(baselineName==='current'){
+  runWorkspaceCurrentBaseline({run,verify,read})
+  installReturnCurrentFunctions({read,run,verify})
+  installReturnCurrentSchema({read,run,verify})
+ }
  const before=baselineName==='current'?run(WORKSPACE_CURRENT_AUTHORITY_SNAPSHOT).trim():null
  run(read('supabase/candidates/co-workspace-redesign/20261026100000_co_import_manifest.sql'));verify()
+ installReturnReadDependency({read,run,verify})
  const normalization=run(read('tests/database/co/return-workspace-acl-normalization.sql'))
  assert.equal(normalization.trim(),'CO_RETURN_ACL_NORMALIZATION_PASSED')
  process.stdout.write(normalization)
@@ -50,7 +71,7 @@ export function runReturnWorkspace({env=process.env,execute=execFileSync,sourceI
  const absent="SELECT to_regclass('private.co_return_workspace_requests') IS NULL AND NOT EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE (n.nspname='private' AND p.proname='co_return_workspace_page_v1') OR (n.nspname='public' AND p.proname IN('pilot_co_return_customers_v1','pilot_co_return_history_customers_v1','pilot_co_return_items_v1','pilot_co_returns_page_v1','pilot_co_return_create_v1','pilot_co_return_create_result_v1')));"
  assert.equal(run(absent).trim(),'t')
  let failed=false
- try{run(candidate.replace(/COMMIT;\s*$/,"DO $$ BEGIN RAISE EXCEPTION 'Synthetic return install fault' USING ERRCODE='PZ702';END $$;\nCOMMIT;"))}
+ try{run(composeReturnInstallFailure(candidate))}
  catch(error){assert.match(String(error.stderr??''),/PZ702.*Synthetic return install fault/);failed=true}
  assert.equal(failed,true);assert.equal(run(absent).trim(),'t');assert.equal(run(schemaSnapshot).trim(),schemaBefore,'Failed candidate leaves exact existing schema');verify()
  run(candidate);verify()

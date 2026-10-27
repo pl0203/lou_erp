@@ -25,3 +25,12 @@ test('fixture preserves production ES worker output for the legacy recovery impo
  const {default:config}=await import('./vite.config.mjs');
  assert.equal(config.worker?.format,'es');
 });
+test('blocked network diagnostics omit credentials, query, fragments and opaque payloads',async()=>{
+ const {blockedNetworkDiagnostic}=await import('./network-diagnostic.mjs');
+ const value=blockedNetworkDiagnostic('off-origin-network-attempt','https://alice:password@example.invalid/private-token?secret=value#fragment','Fetch');
+ assert.deepEqual(value,{kind:'off-origin-network-attempt',scheme:'https:',origin:'https://example.invalid',path:'[redacted]',resourceType:'Fetch'});
+ for(const secret of ['alice','password','private-token','secret','value','fragment'])assert.ok(!JSON.stringify(value).includes(secret));
+ assert.deepEqual(blockedNetworkDiagnostic('off-origin-network-attempt','data:text/plain,secret','Image'),{kind:'off-origin-network-attempt',scheme:'data:',origin:'[opaque]',path:'[redacted]',resourceType:'Image'});
+ assert.equal(blockedNetworkDiagnostic('off-origin-network-attempt','about:blank','Document').path,'blank');
+ assert.equal(blockedNetworkDiagnostic('off-origin-request','not a URL token','unexpected token').resourceType,'Other');
+});

@@ -200,7 +200,9 @@ jobs:
       - name: Execute Stock Return schema, ACL, rollback, behavior and real races
         env:
           FIXED_BASELINE: ${{ matrix.baseline }}
-        run: node scripts/test-co-return-workspace-db.mjs --case returns --baseline "$FIXED_BASELINE"
+        run: |
+          node --test tests/database/co/return-current-schema.node.mjs tests/database/co/return-current-functions.node.mjs tests/database/co/return-workspace-runner.node.mjs tests/database/co/return-workspace-topology.mjs
+          node scripts/test-co-return-workspace-db.mjs --case returns --baseline "$FIXED_BASELINE"
   stock-return-native:
     if: >-
       github.repository == 'pl0203/lou_erp' &&

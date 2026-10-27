@@ -6,6 +6,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join,extname } from 'node:path';
 import { buildFixture } from './build.mjs';
+import { blockedNetworkDiagnostic } from './network-diagnostic.mjs';
 import { observeOwnedBrowser, stopOwnedBrowser } from '../co-browser/cleanup.mjs';
 const git=args=>execFileSync('git',args,{encoding:'utf8',env:{PATH:process.env.PATH},timeout:10000}).trim();
 for(const [key,value] of Object.entries({CI:'true',GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:'pl0203/lou_erp',GITHUB_WORKFLOW:'CO workspace runtime',GITHUB_JOB:'stock-return-native',GITHUB_HEAD_REF:'test/co-workspace-runtime-20261027'}))assert.equal(process.env[key],value,`Fixed return native CI identity: ${key}`);
@@ -29,8 +30,8 @@ try{
  const filter=[{type:'browser',exclude:true},{type:'tab',exclude:true},{type:'browser_ui',exclude:true},{}];
  socket.addEventListener('message',event=>{const message=JSON.parse(String(event.data));if(message.id){const call=calls.get(message.id);if(call){calls.delete(message.id);message.error?call.reject(Error(message.error.message)):call.resolve(message.result)}return}const task=(async()=>{
   if(message.method==='Target.attachedToTarget'){const {sessionId,targetInfo}=message.params;if(!['page','worker'].includes(targetInfo.type)){violations.push('unexpected-target');await cdp('Target.closeTarget',{targetId:targetInfo.targetId});return}await cdp('Network.enable',{},sessionId);await cdp('Runtime.enable',{},sessionId);if(targetInfo.type==='page')await cdp('Fetch.enable',{patterns:[{urlPattern:'*'}]},sessionId);if(targetInfo.type==='page')await cdp('Target.setAutoAttach',{autoAttach:true,waitForDebuggerOnStart:true,flatten:true,filter},sessionId);await cdp('Runtime.runIfWaitingForDebugger',{},sessionId);sessions.set(targetInfo.targetId,sessionId)}
-  if(message.method==='Fetch.requestPaused'){const {requestId,request}=message.params;let allowed=false;try{allowed=new URL(request.url).origin===origin}catch{}if(!allowed){violations.push('off-origin-request');await cdp('Fetch.failRequest',{requestId,errorReason:'BlockedByClient'},message.sessionId)}else await cdp('Fetch.continueRequest',{requestId},message.sessionId)}
-  if(message.method==='Network.requestWillBeSent'){let allowed=false;try{allowed=new URL(message.params.request.url).origin===origin}catch{}if(!allowed)violations.push('off-origin-network-attempt')}
+  if(message.method==='Fetch.requestPaused'){const {requestId,request}=message.params;let allowed=false;try{allowed=new URL(request.url).origin===origin}catch{}if(!allowed){violations.push(blockedNetworkDiagnostic('off-origin-request',request.url,message.params.resourceType));await cdp('Fetch.failRequest',{requestId,errorReason:'BlockedByClient'},message.sessionId)}else await cdp('Fetch.continueRequest',{requestId},message.sessionId)}
+  if(message.method==='Network.requestWillBeSent'){let allowed=false;try{allowed=new URL(message.params.request.url).origin===origin}catch{}if(!allowed)violations.push(blockedNetworkDiagnostic('off-origin-network-attempt',message.params.request.url,message.params.type))}
   if(message.method==='Network.webSocketCreated')violations.push('unexpected-websocket');
   if(message.method==='Runtime.exceptionThrown')fatal='Uncaught native browser exception';
  })().catch(error=>{fatal??=error.message});events.add(task);void task.finally(()=>events.delete(task))});
