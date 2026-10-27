@@ -1,5 +1,6 @@
+import type { StockFilters, COOrdersPageFilters } from './contracts';
 import { supabase } from '../supabase';
-import { decodeCORead, invalid, parseUUID, parseVersion, parseHash, parseMonth, parseDate, parseSafeCount, sections } from './validation';
+import { decodeCORead, invalid, parseUUID, parseVersion, parseHash, parseMonth, parseDate, parseSafeCount, sections, validateCOStockV2Args, validateCOOrdersV2Args } from './validation';
 import type { COReadName, COReadResult, COSection } from './validation';
 export class COConflictError extends Error {
     readonly code = 'PT409';
@@ -44,6 +45,8 @@ export type COSectionInput = COPageInput & {
     p_expected_draft_version?: string | null;
 };
 export async function callCORead(name: COReadName, args: Record<string, any>, options: COReadOptions = {}): Promise<COReadResult> {
+    if (name === 'pilot_co_customer_stock_v2') validateCOStockV2Args(args);
+    if (name === 'pilot_co_page_v2') validateCOOrdersV2Args(args);
     options.signal?.throwIfAborted();
     if (options.isCurrent && !options.isCurrent())
         invalid('identity');
@@ -176,3 +179,14 @@ export async function fetchCompleteCOReturn(args: {
 }, o?: COReadOptions) { let header: Record<string, any> | undefined; const rows = await completeCORead(async (page) => { const r = await fetchCOReturn({ ...args, p_page: page, p_page_size: 100 }, o); if (header && JSON.stringify(header) !== JSON.stringify(r.header))
     invalid('changed return'); header = r.header; return r; }); if (BigInt(rows.length) !== BigInt(header!.line_count))
     invalid('return completeness'); return { header: header!, lines: rows }; }
+// Strict additive workspace contracts remain separate from permissive legacy reads.
+export { fetchCOCustomerBatchesV2, fetchCOReportsPageV2, fetchCOReportImport, fetchCOReportHistory } from './workspaceReads';
+
+/** One bounded response; filtering/sorting/counting belongs to SQL, never the loaded page. */
+export async function fetchCOStockV2(filters: StockFilters, o?: COReadOptions): Promise<COReadResult> {
+    return callCORead('pilot_co_customer_stock_v2', {p_customer_id:filters.customerId,p_sku:filters.sku,p_search:filters.search,p_as_of:filters.asOf,p_sort:filters.sort,p_direction:filters.direction,p_page:filters.page,p_page_size:filters.pageSize}, o);
+}
+/** Text CO-number ordering uses PostgreSQL C collation, not natural numeric order. */
+export async function fetchCOPageV2(filters: COOrdersPageFilters, o?: COReadOptions): Promise<COReadResult> {
+    return callCORead('pilot_co_page_v2', {p_customer_id:filters.customerId,p_status:filters.status,p_search:filters.search,p_sort:filters.sort,p_direction:filters.direction,p_page:filters.page,p_page_size:filters.pageSize}, o);
+}

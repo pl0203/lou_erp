@@ -1,3 +1,5 @@
+import { assertNoOtherCORequest } from './import/recoveryScope';
+import { validateWorkbook } from './import/workbookGuard';
 import { useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../AuthContext';
 import { supabase } from '../supabase';
@@ -15,11 +17,11 @@ export type EvidenceReceipt={id:string;operation:EvidenceOperation;version:strin
 export type EvidenceRecovery={status:'committed';operation:EvidenceOperation;receipt:EvidenceReceipt}|{status:'unknown'|'abandoned'};
 const exact=(o:Record<string,unknown>,keys:string[])=>{if(Object.keys(o).length!==keys.length||keys.some(k=>!Object.hasOwn(o,k)))invalid('evidence response fields');};
 export function parseEvidenceReceipt(raw:unknown):EvidenceReceipt{const v=record(raw);exact(v,['id','operation','version','customer_id','customer_version']);return {id:parseUUID(v.id),operation:oneOf(evidenceOperations)(v.operation),version:parseVersion(v.version),customer_id:parseUUID(v.customer_id),customer_version:parseVersion(v.customer_version)};}
-export type EvidenceRecord={id:string;version:string;customer_id:string;customer_version:string;draft_id:string;draft_version:string;report_month:string;filename:string;mime_type:'application/pdf'|'image/png'|'image/jpeg';byte_size:number;state:'pending'|'verified'|'finalized';finalized_draft_version:string|null};
+export type EvidenceRecord={id:string;version:string;customer_id:string;customer_version:string;draft_id:string;draft_version:string;report_month:string;filename:string;mime_type:'application/pdf'|'image/png'|'image/jpeg'|'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';byte_size:number;state:'pending'|'verified'|'finalized';finalized_draft_version:string|null};
 export function parseEvidenceRecord(raw:unknown):EvidenceRecord{
  const v=record(raw);exact(v,['id','version','customer_id','customer_version','draft_id','draft_version','report_month','filename','mime_type','byte_size','state','finalized_draft_version']);
- const mime_type=oneOf(['application/pdf','image/png','image/jpeg'] as const)(v.mime_type), id=parseUUID(v.id),filename=parseText(v.filename),byte_size=parseSafeCount(v.byte_size),state=oneOf(['pending','verified','finalized'] as const)(v.state),version=parseVersion(v.version),draft_version=parseVersion(v.draft_version),finalized_draft_version=v.finalized_draft_version===null?null:parseVersion(v.finalized_draft_version);
- if(byte_size<1||byte_size>10485760||filename!==`evidence-${id}.${mime_type==='application/pdf'?'pdf':mime_type==='image/png'?'png':'jpg'}`||(state==='finalized'?(version!=='2'||finalized_draft_version!==(BigInt(draft_version)+1n).toString()):(version!=='1'||finalized_draft_version!==null)))invalid('evidence metadata');
+ const mime_type=oneOf(['application/pdf','image/png','image/jpeg','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'] as const)(v.mime_type), id=parseUUID(v.id),filename=parseText(v.filename),byte_size=parseSafeCount(v.byte_size),state=oneOf(['pending','verified','finalized'] as const)(v.state),version=parseVersion(v.version),draft_version=parseVersion(v.draft_version),finalized_draft_version=v.finalized_draft_version===null?null:parseVersion(v.finalized_draft_version);
+ if(byte_size<1||byte_size>10485760||filename!==`evidence-${id}.${mime_type==='application/pdf'?'pdf':mime_type==='image/png'?'png':mime_type==='image/jpeg'?'jpg':'xlsx'}`||(state==='finalized'?(version!=='2'||finalized_draft_version!==(BigInt(draft_version)+1n).toString()):(version!=='1'||finalized_draft_version!==null)))invalid('evidence metadata');
  return {id,version,customer_id:parseUUID(v.customer_id),customer_version:parseVersion(v.customer_version),draft_id:parseUUID(v.draft_id),draft_version,report_month:parseMonth(v.report_month),filename,mime_type,byte_size,state,finalized_draft_version};
 }
 function stillCurrent(current?:()=>boolean){if(current&&!current())invalid('evidence owner changed');}
@@ -112,7 +114,8 @@ export function createEvidenceSender(options: EvidenceSenderOptions): EvidenceSe
     const storage: Storage = { get length() { return options.storage().length; }, clear() { invalid('unscoped recovery clear'); }, key: i => options.storage().key(i), getItem: k => { if (k !== key)
             invalid('storage scope'); const r = readRaw(); return r === null ? null : JSON.stringify(r); }, setItem: (k, raw) => { current(); if (k !== key)
             invalid('storage scope'); const v = record(JSON.parse(raw)), old = readRaw(), binding = old?.id === v.id ? old.binding : active; if (!binding)
-            invalid('missing request identity'); const saved = { id: parseUUID(v.id), key: parseHash(v.key), uncertain: parseBoolean(v.uncertain), binding: identity(binding), ...(v.committed === undefined ? {} : { committed: parseEvidenceReceipt(v.committed) }) }; // Shared validation can report uncertainty after rejecting a response. A previously
+            invalid('missing request identity'); if (!old || old.id !== v.id || !old.uncertain && !old.committed)
+            assertNoOtherCORequest(options.storage(),options.actorId,options.customerId,options.scope,key); const saved = { id: parseUUID(v.id), key: parseHash(v.key), uncertain: parseBoolean(v.uncertain), binding: identity(binding), ...(v.committed === undefined ? {} : { committed: parseEvidenceReceipt(v.committed) }) }; // Shared validation can report uncertainty after rejecting a response. A previously
         // confirmed receipt stays pinned until this domain explicitly acknowledges it.
         if (old?.id === saved.id && old.committed) {
             if (saved.key !== old.key || saved.committed && !sameReceipt(saved.committed, old.committed)) invalid('changed committed recovery');
@@ -163,6 +166,9 @@ export function createEvidenceSender(options: EvidenceSenderOptions): EvidenceSe
     const send = async (operation: EvidenceOperation, payload: unknown): Promise<EvidenceReceipt> => { if (inFlight)
         throw new Error('Penyimpanan CO masih berjalan.'); inFlight = true; try {
         await authorize();
+        const ownPending = readRaw();
+        if (!ownPending?.uncertain && !ownPending?.committed)
+            assertNoOtherCORequest(options.storage(),options.actorId,options.customerId,options.scope,key);
         const p = record(payload);
         active = identity({ operation, customer_id: options.customerId, ...(options.coId ? { co_id: options.coId } : {}), ...(typeof p.draft_id === 'string' ? { draft_id: p.draft_id } : {}), ...(target(operation, p) !== undefined ? { target_id: target(operation, p) } : {}) });
         if (p.customer_id && p.customer_id !== options.customerId || p.co_id && p.co_id !== options.coId)
@@ -234,13 +240,17 @@ export function useEvidenceSender(scope: EvidenceFormScope): EvidenceSender {
 
 /** Convenience checks only; the authenticated verifier validates actual bytes again. */
 export async function prepareEvidenceFile(file: File, current: () => boolean) {
-    const extension = file.type === 'application/pdf' ? /\.pdf$/i : file.type === 'image/png' ? /\.png$/i : file.type === 'image/jpeg' ? /\.jpe?g$/i : null;
+    const extension = file.type === 'application/pdf' ? /\.pdf$/i : file.type === 'image/png' ? /\.png$/i : file.type === 'image/jpeg' ? /\.jpe?g$/i : file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ? /\.xlsx$/i : null;
     if (!extension || !extension.test(file.name) || !file.name || file.name.length > 200 || /^[.]/.test(file.name) || /[\x00-\x1f\x7f/\\]/.test(file.name) || file.size < 1 || file.size > 10485760)
-        throw new Error('Pilih PDF, PNG, atau JPEG, maksimum 10 MiB, dengan nama berkas yang sesuai.');
+        throw new Error('Pilih PDF, PNG, JPEG, atau XLSX, maksimum 10 MiB, dengan nama berkas yang sesuai.');
     stillCurrent(current);
     const bytes = new Uint8Array(await file.arrayBuffer());
     stillCurrent(current);
     if (bytes.length !== file.size) invalid('evidence file size');
+    if (file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
+        await validateWorkbook(bytes);
+        stillCurrent(current);
+    }
     const hash = await crypto.subtle.digest('SHA-256', bytes);
     stillCurrent(current);
     return { bytes, filename: file.name, mime_type: file.type, byte_size: bytes.length, sha256: Array.from(new Uint8Array(hash), b => b.toString(16).padStart(2, '0')).join('') };

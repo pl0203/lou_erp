@@ -208,10 +208,10 @@ export default function COEvidenceAttachment({ work, blocked = false, sourceFing
     const disabled=busy||blocked||work.evidenceBlocked||outstanding||loading;
     return <Section title="Lampiran laporan (opsional)" className="text-sm" aria-label="Lampiran laporan opsional" aria-labelledby={undefined}>
         <div className="min-w-0 space-y-2">
-        <p>PDF, PNG, atau JPEG, maksimum 10 MiB. Berkas hanya diunduh, tidak ditampilkan atau diimpor.</p>
+        <p>PDF, PNG, JPEG, atau XLSX, maksimum 10 MiB. Berkas hanya diunduh, tidak ditampilkan atau diimpor.</p>
         {selected && <Button type="button" variant="quiet" size="compact" disabled={busy||blocked} onClick={()=>void run(async live=>saveBlob(await downloadEvidence(selected,live),selected.filename,live),true)}>Unduh {selected.filename}</Button>}
         {!selected&&!loading&&<p>Tanpa lampiran tetap dapat disimpan dan diposting.</p>}
-        {usable&&<><Field id={`co-evidence-${inputId}`} label="Pilih lampiran">{control => <input {...control} ref={input} aria-label="Pilih lampiran" type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" disabled={disabled} onChange={event=>{const chosen=event.target.files?.[0];if(!chosen)return;void run(async live=>{const prepared=await prepareEvidenceFile(chosen,live);if(live())setFile(prepared);});}}/>}</Field>
+        {usable&&<><Field id={`co-evidence-${inputId}`} label="Pilih lampiran">{control => <input {...control} ref={input} aria-label="Pilih lampiran" type="file" accept=".pdf,.png,.jpg,.jpeg,.xlsx,application/pdf,image/png,image/jpeg,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" disabled={disabled} onChange={event=>{const chosen=event.target.files?.[0];if(!chosen)return;void run(async live=>{const prepared=await prepareEvidenceFile(chosen,live);if(live())setFile(prepared);});}}/>}</Field>
         {file&&<p>{file.filename} · belum terpasang</p>}{record&&<p role="status">{record.state==='pending'?'Unggahan belum terverifikasi. Periksa lalu lanjutkan dengan berkas yang sama.':'Berkas terverifikasi, pemasangan belum dikonfirmasi.'}</p>}
         <Button type="button" variant="secondary" disabled={disabled||(!file&&!record)} onClick={()=>void run(attach)}>Verifikasi dan pasang lampiran</Button>
         {(file||record)&&!outstanding&&<Button type="button" variant="quiet" size="compact" disabled={busy} onClick={()=>{setFile(null);setRecord(null);if(input.current)input.current.value='';}}>Batalkan pilihan lampiran</Button>}</>}

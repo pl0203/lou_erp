@@ -8,8 +8,8 @@ export function formatDisplayDate(value: string | null | undefined): string {
 }
 
 /** Display convention only; stored instants and business/reporting boundaries are unchanged. */
-export function formatAuditTimestamp(value: string): string {
+export function formatAuditTimestamp(value: string, zone: 'UTC' | 'WIB' = 'UTC'): string {
   const date = new Date(value)
   if (!Number.isFinite(date.getTime())) return 'Waktu tidak tersedia'
-  return `${date.toLocaleString('id-ID', { timeZone: 'UTC', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })} UTC`
+  return `${date.toLocaleString('id-ID', { timeZone: zone === 'WIB' ? 'Asia/Jakarta' : 'UTC', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })} ${zone}`
 }

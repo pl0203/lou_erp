@@ -135,9 +135,11 @@ export type COReportInitialize = COReportMetadata & {
   customer_id: string
   /** ISO first-of-month calendar date. */
   report_month: string
-  source_context?: COSourceContext
   expected_customer_version: Version
 } & (
+  | { source_context?: COSourceContext; seed_effective_revision_id?: never }
+  | { source_context?: never; seed_effective_revision_id: string }
+) & (
   | { draft_id?: never; expected_draft_version?: never }
   | { draft_id: string; expected_draft_version: Version }
 )
@@ -327,4 +329,58 @@ export interface COOperationPayloads {
   correct_return: COCorrectReturnPayload
   resolve_undelivered: COResolveUndeliveredPayload
   close_co: COClosePayload
+}
+
+/** Exact SKU text is independent from the UUID used to open movement history. */
+export type StockFilters = {
+  customerId: string | null; sku: string | null; search: string; asOf: string | null
+  sort: 'sku' | 'customer' | 'balance'; direction: 'asc' | 'desc'
+  page: number; pageSize: 25 | 50 | 100
+}
+export interface COReportingFreshness {
+  cutoff_date: string; next_required_report_month: string | null
+  pending_report_month_count: Quantity; overdue_report_month_count: Quantity
+  next_required_month_end: string | null; days_since_pending_month_end: Quantity | null
+  status: 'no_recorded_activity' | 'complete' | 'missing_completed_period' | 'current_unreported' | 'current_partial'
+  zero_stock_reporting_pending: boolean
+}
+export interface COStockRowV2 {
+  id: string; stock_key_id: string; customer_id: string; customer_name: string; customer_version: Version
+  generation_id: string | null; normalized_sku: string; display_sku: string; product_id: string | null; product_name: string
+  unit: string | null; unit_basis: 'unknown' | 'declared_by_cutoff' | 'declared_after_cutoff'
+  unit_declaration: { id: string; version: Version; unit: string; declared_at: string } | null
+  opening_quantity: Quantity; delivered_quantity: Quantity; sold_quantity: Quantity; returned_quantity: Quantity; recorded_quantity: Quantity
+  has_delivery_history: boolean; last_report_month: string | null; coverage_through_date: string | null
+  reporting_freshness: COReportingFreshness
+  /** Surviving batches × retained CO prices; not report source prices, cost or revenue. */
+  contract_stock_value: Money | null; contract_currency: 'IDR' | null; contract_unit_price: Money | null
+  price_state: 'unknown' | 'single' | 'mixed'; valuation_basis: 'retained_co_batch' | null
+}
+export interface COStockPageV2 {
+  version: '2'; as_of: string; customer_id: string | null; customer_version: Version | null; generation_id: string | null
+  sku: string | null; normalized_search: string; stock_as_of: string | null; period_start: string; coverage_date: string
+  sort: StockFilters['sort']; direction: StockFilters['direction']; page: number; page_size: 25 | 50 | 100
+  total: Quantity; rows: COStockRowV2[]; reporting_freshness: COReportingFreshness | null
+}
+export type COOrdersPageFilters = {
+  customerId: string | null; status: COStatus | 'all'; search: string
+  sort: 'order_date' | 'co_number'; direction: 'asc' | 'desc'; page: number; pageSize: number
+}
+
+/** Restated composition from the current effective generation, through a concrete UTC cutoff. */
+export type COCustomerBatchesV2Args = {
+  p_customer_id: string; p_stock_key_id: string; p_as_of: string
+  p_expected_customer_version: string; p_expected_generation_id: string
+  p_page: number; p_page_size: number
+}
+export interface COCustomerBatchV2 {
+  id: string; co_id: string; co_number: string; delivery_head_id: string
+  delivery_revision_id: string | null; sj_number: string | null; sj_date: string | null
+  available_quantity: Quantity; unit_price: Money; contract_value: Money
+}
+export interface COCustomerBatchesV2 {
+  version: '2'; as_of: string; customer_id: string; stock_key_id: string
+  customer_version: Version; generation_id: string; stock_as_of: string; coverage_date: string
+  page: number; page_size: number; total: Quantity; recorded_quantity: Quantity
+  contract_stock_value: Money; contract_currency: 'IDR'; rows: COCustomerBatchV2[]
 }

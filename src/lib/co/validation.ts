@@ -1,4 +1,4 @@
-import type { COOperation, COReceipt, Money, SignedMoney, Quantity, SignedQuantity, Version } from './contracts';
+import type { COOperation, COReceipt, Money, SignedMoney, Quantity, SignedQuantity, Version, COStockPageV2, COStockRowV2 } from './contracts';
 export class COReadError extends Error {
     readonly code = 'CO_READ_INVALID';
     constructor(path = 'response') { super(`Data CO tidak lengkap atau tidak valid: ${path}`); this.name = 'COReadError'; }
@@ -137,7 +137,7 @@ const planSummary = shape({ sold_quantity: q, revenue: money, remaining_quantity
 const impactSchemas: Record<string, Parser> = { report: shape({ ref, head_id: nu, revision_id: nu, month, coverage: dt, is_partial_month: b, report_reference: nt, received_date: nd, notes: nt, row_count: q, before_sold_quantity: q, after_sold_quantity: q, before_revenue: money, after_revenue: money, complete: b }), stock: shape({ stock_key_id: uuid, batch_id: uuid, before_quantity: sq, after_quantity: sq }), revenue: shape({ report_month: month, before_amount: sm, after_amount: sm }), credit: shape({ report_month: month, sales_person_id_at_creation: nu, before_amount: sm, after_amount: sm }), reopen: shape({ co_id: uuid, remaining_quantity: q, expected_co_version: optional(ver), pending_quantity: optional(q), missing_month_count: optional(q) }), issue: shape({ code: oneOf(['CO_REPORT_INCOMPLETE', 'CO_SOLD_EXCEEDS_ELIGIBLE', 'CO_SOURCE_STOCK_NEGATIVE', 'CO_REPORT_REVISION_REQUIRED', 'CO_FUTURE_REPORT_MONTH', 'CO_FUTURE_RECEIVED_DATE', 'CO_CORRECTION_REASON_REQUIRED', 'CO_MISSING_REQUIRED_MONTH', 'CO_PARTIAL_MONTH_INCOMPLETE', 'CO_REOPEN_REQUIRED', 'CO_REVIEWED_CORRECTION_REQUIRED']), report_month: optional(month), stock_key_id: optional(uuid), batch_id: optional(uuid), co_id: optional(uuid), date: optional(dt), sold_quantity: optional(q), eligible_quantity: optional(sq) }), missing_month: shape({ report_month: month, reason: oneOf(['missing', 'partial_coverage']), head_id: nu, coverage_through_date: nd }) };
 export const sections = { lines: line, deliveries: delivery, delivery_lines: sourceLine, reports: report, returns: returnRow, return_lines: sourceLine, return_drafts: returnHeader, audit, audit_changes: change, available_batches: batch, sj_drafts: sj, sj_draft_lines: sjLine } as const;
 export type COSection = keyof typeof sections;
-export const readNames = ['pilot_co_page_v1', 'pilot_co_detail_v1', 'pilot_co_detail_section_v1', 'pilot_co_reports_page_v1', 'pilot_co_report_months_v1', 'pilot_co_report_v1', 'pilot_co_report_rows_v1', 'pilot_co_report_allocations_v1', 'pilot_co_customer_stock_v1', 'pilot_co_stock_movements_v1', 'pilot_co_customer_batches_v1', 'pilot_co_preview_v1', 'pilot_co_preview_impacts_v1', 'pilot_co_preview_allocations_v1', 'pilot_co_return_v1'] as const;
+export const readNames = ['pilot_co_customer_stock_v2', 'pilot_co_page_v2', 'pilot_co_page_v1', 'pilot_co_detail_v1', 'pilot_co_detail_section_v1', 'pilot_co_reports_page_v1', 'pilot_co_report_months_v1', 'pilot_co_report_v1', 'pilot_co_report_rows_v1', 'pilot_co_report_allocations_v1', 'pilot_co_customer_stock_v1', 'pilot_co_stock_movements_v1', 'pilot_co_customer_batches_v1', 'pilot_co_preview_v1', 'pilot_co_preview_impacts_v1', 'pilot_co_preview_allocations_v1', 'pilot_co_return_v1'] as const;
 export type COReadName = typeof readNames[number];
 export type COReadPage = {
     version: '1';
@@ -150,6 +150,8 @@ export type COReadPage = {
 };
 export type COReadResult = Record<string, any>;
 export function decodeCORead(name: COReadName, args: Record<string, any>, data: unknown): COReadResult {
+    if (name === 'pilot_co_customer_stock_v2') return decodeCOStockV2(args, data);
+    if (name === 'pilot_co_page_v2') return decodeCOOrdersV2(args, data);
     const v = record(data);
     if (v.version !== '1')
         invalid('contract version');
@@ -213,6 +215,10 @@ export function decodeCORead(name: COReadName, args: Record<string, any>, data: 
             shape({ customer_id: uuid, customer_version: ver, report_month: month, view: oneOf(['draft', 'effective', 'revision']), generation_id: nu, source_context_link: nullable(contextLink), draft_id: nu, draft_version: nv, revision_id: nu, eligible_set_fingerprint: nh, source_context_fingerprint: nh, context_issue: nt })(v);
             if (v.view !== args.p_view)
                 invalid('view');
+            if (v.view === 'draft' ? (!v.draft_id || !v.draft_version || v.revision_id !== null)
+                : (v.draft_id !== null || v.draft_version !== null || !v.revision_id || v.eligible_set_fingerprint !== null
+                    || v.source_context_link !== null || v.source_context_fingerprint !== null || v.context_issue !== null))
+                invalid('report row identity');
             break;
         case 'pilot_co_report_allocations_v1':
             row = allocation;
@@ -445,3 +451,142 @@ export type COStockMovement = ReturnType<typeof movement>;
 export type COAuditEntry = ReturnType<typeof audit>;
 
 export type COReportingFreshness = ReturnType<typeof reportingFreshness>;
+
+// Additive v2 boundaries: exact envelopes, no v1 relaxation or implicit totals.
+function exactRead(value: unknown, fields: readonly string[]): Record<string, any> {
+    const v = record(value);
+    if (Object.keys(v).length !== fields.length || fields.some(k => !Object.hasOwn(v, k))) invalid('v2 fields');
+    return v;
+}
+/** Match SQL btrim(text), not browser-locale normalization or an inferred SKU. */
+function normalizedReadText(value: unknown): string { return parseText(value).replace(/^ +| +$/g, '').toLowerCase(); }
+export function validateCOStockV2Args(a: Record<string, any>): void {
+    nullable(parseUUID)(a.p_customer_id);
+    if (a.p_sku !== null && !normalizedReadText(a.p_sku)) invalid('exact SKU');
+    parseText(a.p_search);
+    if (a.p_as_of !== null) {
+        const date = parseDate(a.p_as_of), end = new Date(`${date}T00:00:00Z`);
+        end.setUTCMonth(end.getUTCMonth() + 1, 0);
+        if (end.toISOString().slice(0,10) !== date) invalid('completed month end');
+    }
+    oneOf(['sku','customer','balance'])(a.p_sort); oneOf(['asc','desc'])(a.p_direction);
+    if (parseSafeCount(a.p_page) < 1 || ![25,50,100].includes(a.p_page_size)) invalid('stock page');
+}
+function checkedV2Page(v: Record<string, any>, a: Record<string, any>): void {
+    if (v.version !== '2' || v.page !== a.p_page || v.page_size !== a.p_page_size) invalid('v2 page binding');
+    parseTimestamp(v.as_of);
+    const total = BigInt(parseQuantity(v.total)), offset = (BigInt(a.p_page)-1n)*BigInt(a.p_page_size);
+    const expected = total <= offset ? 0n : total-offset < BigInt(a.p_page_size) ? total-offset : BigInt(a.p_page_size);
+    if (!Array.isArray(v.rows) || BigInt(v.rows.length) !== expected) invalid('v2 page completeness');
+}
+function strictFreshness(value: unknown, cutoff: string) {
+    exactRead(value,['cutoff_date','next_required_report_month','pending_report_month_count','overdue_report_month_count','next_required_month_end','days_since_pending_month_end','status','zero_stock_reporting_pending']);
+    const f = checkReportingFreshness(value);
+    if (f.cutoff_date !== cutoff) invalid('v2 freshness cutoff');
+    return f;
+}
+// PostgreSQL C collation orders Unicode code points (not browser-localized labels).
+function compareReadText(a: string, b: string): number {
+    const aa=Array.from(a), bb=Array.from(b);
+    for(let i=0;i<Math.min(aa.length,bb.length);i++) {
+        const d=aa[i].codePointAt(0)!-bb[i].codePointAt(0)!; if(d) return d;
+    }
+    return aa.length-bb.length;
+}
+export function decodeCOStockV2(a: Record<string, any>, data: unknown): COStockPageV2 {
+    validateCOStockV2Args(a);
+    const v = exactRead(data,['version','as_of','customer_id','customer_version','generation_id','sku','normalized_search','stock_as_of','period_start','coverage_date','sort','direction','page','page_size','total','reporting_freshness','rows']);
+    checkedV2Page(v,a);
+    const statementDay = new Date(v.as_of).toISOString().slice(0,10);
+    const cutoff = a.p_as_of ?? statementDay;
+    if(v.customer_id !== a.p_customer_id || v.sku !== (a.p_sku===null ? null : normalizedReadText(a.p_sku)) || v.normalized_search !== normalizedReadText(a.p_search)
+        || v.stock_as_of !== a.p_as_of || v.coverage_date !== cutoff || cutoff > statementDay || v.period_start !== `${cutoff.slice(0,7)}-01`
+        || v.sort !== a.p_sort || v.direction !== a.p_direction) invalid('v2 stock binding');
+    parseDate(v.coverage_date); parseMonth(v.period_start);
+    nullable(parseVersion)(v.customer_version); nullable(parseUUID)(v.generation_id);
+    if(v.customer_id===null) {
+        if(v.customer_version!==null || v.generation_id!==null || v.reporting_freshness!==null) invalid('all-store binding');
+    } else { parseVersion(v.customer_version); strictFreshness(v.reporting_freshness,cutoff); }
+    const seen = new Set<string>(), declarations = new Set<string>(), customers = new Map<string,string>();
+    let previous: COStockRowV2 | undefined;
+    const rows: COStockRowV2[] = v.rows.map((value:unknown) => {
+        const r = exactRead(value,['id','stock_key_id','customer_id','customer_name','customer_version','generation_id','normalized_sku','display_sku','product_id','product_name','unit','unit_basis','unit_declaration','opening_quantity','delivered_quantity','sold_quantity','returned_quantity','recorded_quantity','has_delivery_history','last_report_month','coverage_through_date','reporting_freshness','contract_stock_value','contract_currency','contract_unit_price','price_state','valuation_basis']);
+        parseUUID(r.id); parseUUID(r.stock_key_id); parseUUID(r.customer_id); parseText(r.customer_name); parseVersion(r.customer_version); nullable(parseUUID)(r.generation_id);
+        const key=`${r.customer_id}:${r.stock_key_id}`;
+        if(r.id!==r.stock_key_id || seen.has(key) || (a.p_customer_id!==null && (r.customer_id!==v.customer_id || r.customer_version!==v.customer_version || r.generation_id!==v.generation_id))) invalid('v2 stock identity');
+        seen.add(key);
+        parseText(r.normalized_sku); parseText(r.display_sku); parseText(r.product_name); nullable(parseUUID)(r.product_id);
+        if(!r.normalized_sku || r.normalized_sku!==normalizedReadText(r.display_sku) || (v.sku!==null && r.normalized_sku!==v.sku)
+            || (v.normalized_search && !r.normalized_sku.includes(v.normalized_search) && !r.product_name.toLowerCase().includes(v.normalized_search))) invalid('v2 stock filter membership');
+        Object.values(stockEquation).forEach((parse,i)=>parse(r[Object.keys(stockEquation)[i]])); checkStockEquation(r); parseBoolean(r.has_delivery_history);
+        if((!r.has_delivery_history || r.generation_id===null) && Object.keys(stockEquation).some(k=>r[k]!=='0')) invalid('undelivered stock');
+        nullable(parseMonth)(r.last_report_month); nullable(parseDate)(r.coverage_through_date);
+        if((r.last_report_month===null)!==(r.coverage_through_date===null) || (r.coverage_through_date!==null && (r.coverage_through_date>cutoff || r.coverage_through_date.slice(0,7)!==r.last_report_month.slice(0,7)))) invalid('v2 report coverage');
+        const f = strictFreshness(r.reporting_freshness,cutoff);
+        const binding=JSON.stringify([r.customer_name,r.customer_version,r.generation_id,r.last_report_month,r.coverage_through_date,...Object.keys(f).sort().map(k=>f[k as keyof typeof f])]);
+        if(customers.has(r.customer_id) && customers.get(r.customer_id)!==binding) invalid('v2 customer facts');
+        customers.set(r.customer_id,binding);
+        if(a.p_customer_id!==null && Object.keys(f).some(k=>f[k as keyof typeof f]!==v.reporting_freshness[k])) invalid('v2 selected freshness');
+        nullable(parseText)(r.unit); oneOf(['unknown','declared_by_cutoff','declared_after_cutoff'])(r.unit_basis);
+        if(r.unit_declaration===null) {
+            if(r.unit!==null || r.unit_basis!=='unknown') invalid('missing declaration');
+        } else {
+            const d=exactRead(r.unit_declaration,['id','version','unit','declared_at']); parseUUID(d.id); parseVersion(d.version); parseText(d.unit); parseTimestamp(d.declared_at);
+            if(d.version!=='1' || !d.unit || d.unit!==d.unit.trim() || d.unit.length>128 || /[\x00-\x1f\x7f]/.test(d.unit) || declarations.has(d.id) || Date.parse(d.declared_at)>Date.parse(v.as_of)) invalid('immutable declaration');
+            declarations.add(d.id);
+            const known = a.p_as_of===null || Date.parse(d.declared_at)<Date.parse(`${cutoff}T00:00:00Z`)+86400000;
+            if(r.unit_basis!==(known?'declared_by_cutoff':'declared_after_cutoff') || r.unit!==(known?d.unit:null)) invalid('declaration cutoff provenance');
+        }
+        nullable(parseMoney)(r.contract_stock_value); nullable(parseMoney)(r.contract_unit_price); oneOf(['unknown','single','mixed'])(r.price_state);
+        if(r.contract_stock_value===null) {
+            if(r.contract_currency!==null || r.contract_unit_price!==null || r.price_state!=='unknown' || r.valuation_basis!==null) invalid('unavailable valuation');
+        } else {
+            if(r.unit===null || r.contract_currency!=='IDR' || r.valuation_basis!=='retained_co_batch') invalid('valuation basis');
+            if(r.recorded_quantity==='0') {
+                if(minorUnits(r.contract_stock_value)!==0n || r.price_state!=='unknown' || r.contract_unit_price!==null) invalid('zero surviving batches');
+            } else if(r.price_state==='single') {
+                if(r.contract_unit_price===null || minorUnits(r.contract_stock_value)!==BigInt(r.recorded_quantity)*minorUnits(r.contract_unit_price)) invalid('single retained price');
+            } else if(r.price_state!=='mixed' || r.contract_unit_price!==null) invalid('mixed retained prices');
+        }
+        if(previous) {
+            const comparison=a.p_sort==='balance' ? (BigInt(previous.recorded_quantity)<BigInt(r.recorded_quantity)?-1:BigInt(previous.recorded_quantity)>BigInt(r.recorded_quantity)?1:0)
+                : compareReadText(a.p_sort==='sku'?previous.normalized_sku:previous.customer_name,a.p_sort==='sku'?r.normalized_sku:r.customer_name);
+            const tie=compareReadText(previous.customer_id,r.customer_id)||compareReadText(previous.stock_key_id,r.stock_key_id);
+            if(comparison*(a.p_direction==='asc'?1:-1)>0 || (comparison===0 && tie>=0)) invalid('v2 stock order');
+        }
+        previous=r as COStockRowV2;
+        return r as COStockRowV2;
+    });
+    return {...v,rows} as COStockPageV2;
+}
+export function validateCOOrdersV2Args(a:Record<string,any>):void {
+    nullable(parseUUID)(a.p_customer_id); parseText(a.p_search); oneOf(['all','active','closed','cancelled'])(a.p_status);
+    oneOf(['order_date','co_number'])(a.p_sort); oneOf(['asc','desc'])(a.p_direction);
+    if(parseSafeCount(a.p_page)<1 || parseSafeCount(a.p_page_size)<1 || a.p_page_size>100) invalid('order v2 page');
+}
+export function decodeCOOrdersV2(a:Record<string,any>,data:unknown):COReadResult {
+    validateCOOrdersV2Args(a);
+    const v=exactRead(data,['version','as_of','customer_id','status','normalized_search','sort','direction','page','page_size','total','rows']); checkedV2Page(v,a);
+    if(v.customer_id!==a.p_customer_id || v.status!==a.p_status || v.normalized_search!==normalizedReadText(a.p_search) || v.sort!==a.p_sort || v.direction!==a.p_direction) invalid('order v2 binding');
+    const seen=new Set<string>(); let previous:Record<string,any>|undefined;
+    for(const r of v.rows) {
+        exactRead(r,['id','customer_id','customer_name','co_number','status','order_date','expected_delivery_date','notes','co_version','customer_version','generation_id',...Object.keys(credit),'summary','last_report_month','coverage_through_date','reporting_freshness','sku_count']);
+        co(r); creditCheck(r); parseQuantity(r.sku_count);
+        exactRead(r.summary,['ordered_quantity','delivered_quantity','resolved_undelivered_quantity','pending_quantity','delivery_progress','planned_value','sold_quantity','revenue','returned_quantity','remaining_quantity']);
+        const s=r.summary;
+        if(BigInt(s.ordered_quantity)-BigInt(s.delivered_quantity)-BigInt(s.resolved_undelivered_quantity)!==BigInt(s.pending_quantity)
+            || s.delivery_progress!==(s.pending_quantity==='0'?'complete':s.delivered_quantity==='0'?'not_started':'partial')) invalid('order v2 delivery progress');
+        const cutoff=new Date(v.as_of).toISOString().slice(0,10);
+        strictFreshness(r.reporting_freshness,cutoff);
+        if((r.last_report_month===null)!==(r.coverage_through_date===null) || (r.coverage_through_date!==null && (r.coverage_through_date>cutoff || r.coverage_through_date.slice(0,7)!==r.last_report_month.slice(0,7)))) invalid('order v2 report coverage');
+        if(seen.has(r.id) || (a.p_customer_id!==null && r.customer_id!==a.p_customer_id) || (a.p_status!=='all' && r.status!==a.p_status)
+            || (v.normalized_search && !r.co_number.toLowerCase().includes(v.normalized_search) && !r.customer_name.toLowerCase().includes(v.normalized_search))) invalid('order v2 membership');
+        seen.add(r.id);
+        if(previous) {
+            const comparison=compareReadText(previous[a.p_sort],r[a.p_sort]);
+            if(comparison*(a.p_direction==='asc'?1:-1)>0 || (comparison===0 && compareReadText(previous.id,r.id)>=0)) invalid('order v2 sort');
+        }
+        previous=r;
+    }
+    return v;
+}

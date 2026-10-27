@@ -1,5 +1,7 @@
 import { LoadingState } from '../ui/LoadingState'
 import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { formatDisplayDate } from '../../lib/displayDate';
 import { ActionLink } from '../ui/ActionLink';
 import { fetchCOStockMovements } from '../../lib/co/rpc';
 import { isCOAuthorityError } from './COReportWorkspace';
@@ -14,7 +16,10 @@ export default function COStockHistory({ customerId, stockKeyId, asOf, onAuthori
     onAuthorityFailure: (error: unknown) => void;
 }) {
     const actor = useCOActor(`movements:${customerId}:${stockKeyId}:${asOf}`);
-    const [page, setPage] = useState(1);
+    const [params,setParams] = useSearchParams();
+    const rawPage=params.get('movementPage') ?? '1';
+    const page=/^[1-9]\d*$/.test(rawPage) && Number(rawPage)<=2147483647 ? Number(rawPage) : 1;
+    const setPage=(value:number)=>setParams(previous=>{const next=new URLSearchParams(previous);next.set('movementPage',String(value));return next;});
     const [epoch, setEpoch] = useState(0);
     const binding = useRef<string | null>(null);
     const args = { p_customer_id: customerId, p_stock_key_id: stockKeyId, p_as_of: asOf, p_page: page, p_page_size: 20 };
@@ -32,11 +37,11 @@ export default function COStockHistory({ customerId, stockKeyId, asOf, onAuthori
     }, [read.error]);
     const reload = () => { binding.current = null; setPage(1); setEpoch(n => n + 1); };
     return <COCard title="Riwayat stok pelanggan/SKU">
-        <p className="text-[13px] break-all">Pelanggan {customerId} · kunci SKU {stockKeyId} · {asOf ?? 'Current'}</p>
+        <p className="text-[13px] break-all">Pelanggan {customerId} · kunci SKU {stockKeyId} · {asOf ? `${formatDisplayDate(asOf)} (tanggal UTC)` : 'Terkini'}</p>
         <p className="text-sm my-3">Riwayat efektif yang telah dinyatakan ulang. Penjualan dicatat pada batas cakupan laporan, bukan tanggal penjualan harian.</p>
-        {read.isError ? <COFailure error={read.error} retry={reload}/> : !read.data ? <LoadingState title="Memuat riwayat stok…" shape="list" /> : <>
+        {read.isError ? <COFailure error={read.error} retry={reload}/> : !read.data || read.isFetching ? <LoadingState title="Memuat riwayat stok…" shape="list" /> : <>
             <RecordList label="Pergerakan stok tercatat">{read.data.rows.map(row => <li key={row.id} className="border-b border-brand-divider py-3 text-sm break-words">
-                <p>{row.effective_date} · {row.kind === 'sold' ? 'Penjualan pada checkpoint laporan' : row.kind === 'return' ? 'Retur belum terjual' : 'Pengiriman'} · {row.quantity_delta}</p>
+                <p>{formatDisplayDate(row.effective_date)} (tanggal UTC) · {row.kind === 'sold' ? 'Penjualan pada checkpoint laporan' : row.kind === 'return' ? 'Retur belum terjual' : 'Pengiriman'} · {row.quantity_delta}</p>
                 <ActionLink variant="quiet" size="compact" to={`/athel/co/${row.co_id}`}>Bukti CO sumber</ActionLink>
                 <p className="text-[13px] break-all">Batch asli {row.batch_id} · baris revisi {row.delivery_revision_line_id ?? row.return_revision_line_id ?? row.report_revision_line_id}</p>
             </li>)}</RecordList>
