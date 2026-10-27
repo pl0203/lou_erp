@@ -93,3 +93,20 @@ test('detail dismissal and nested confirmation mounting wait for exact effect-ow
   assert.ok(source.includes("assert.equal(await ev(`document.activeElement===(${button('"+target+"')})`),true)"));
  }
 });
+
+for(const fixture of ['co-detail-browser','co-usability-browser'])test(`${fixture} proves owned Chrome close before bounded profile removal and success receipt`,async()=>{
+ const source=await readFile(new URL(`../${fixture}/run.mjs`,import.meta.url),'utf8');
+ assert.ok(source.includes("import {observeOwnedBrowser,stopOwnedBrowser} from '../co-browser/cleanup.mjs'"));
+ assert.ok(source.includes('browserClosed=observeOwnedBrowser(browser)'));
+ assert.ok(source.includes("await stopOwnedBrowser(browser,browserClosed,()=>cdp?cdp('Browser.close'):Promise.resolve())"));
+ assert.ok(source.indexOf('await stopOwnedBrowser(')<source.indexOf('await rm(temp,'));
+ assert.ok(source.includes('await rm(temp,{recursive:true,force:true,maxRetries:5,retryDelay:100})'));
+ assert.ok(!source.includes("browser?.kill('SIGTERM')"));
+ assert.ok(source.indexOf('console.log(JSON.stringify(receipt,null,2))')>source.indexOf('await rm(temp,'));
+});
+
+for(const [fixture,target,label] of [['co-detail-browser','actions','cancel Actions focus restored'],['co-stock-browser','trigger','stock trigger focus restored']])test(`${fixture} awaits exact effect-owned close focus without replacing its strict assertion`,async()=>{
+ const source=await readFile(new URL(`../${fixture}/run.mjs`,import.meta.url),'utf8');
+ assert.ok(source.includes('await until(()=>evaluate(`document.activeElement===${'+target+'}`),\''+label+'\')'));
+ assert.ok(source.includes('assert.equal(await evaluate(`document.activeElement===${'+target+'}`),true)'));
+});

@@ -27,7 +27,7 @@ try{
  await cdp('Input.dispatchKeyEvent',{type:'keyDown',key:'Tab',code:'Tab',windowsVirtualKeyCode:9,modifiers:8},sessionId);await cdp('Input.dispatchKeyEvent',{type:'keyUp',key:'Tab',code:'Tab',windowsVirtualKeyCode:9,modifiers:8},sessionId);assert.equal(await evaluate(`${dialog}.contains(document.activeElement)`),true);
  await screenshot('stock-modal-desktop');receipt.checks.push('Actual production stock page opens native modal with human labels, no UUID text and 20-row server page');
  await click(button('Berikutnya',dialog));await until(()=>evaluate(`${table}?.querySelectorAll('tbody tr').length===1`),'next page');
- await click(button('Tutup',dialog));await until(()=>evaluate(`!${dialog}`),'closed');assert.equal(await evaluate(`document.activeElement===${trigger}`),true);assert.equal(await evaluate(`fixtureRouter.state.location.search.includes('sku=SKU-1')`),true);
+ await click(button('Tutup',dialog));await until(()=>evaluate(`!${dialog}`),'closed');await until(()=>evaluate(`document.activeElement===${trigger}`),'stock trigger focus restored');assert.equal(await evaluate(`document.activeElement===${trigger}`),true);assert.equal(await evaluate(`fixtureRouter.state.location.search.includes('sku=SKU-1')`),true);
  await click(trigger);await until(()=>evaluate(`!!${table}`),'reopened');await click(button('Tutup',dialog));
  await evaluate('fixture.holdMovements=true');await click(trigger);await until(()=>evaluate(`!!${dialog}&&!${table}`),'loading dialog');
  await cdp('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27},sessionId);await cdp('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27},sessionId);
