@@ -64,3 +64,19 @@ test('built-in classification never changes Fetch blocking or image CSP and is s
  assert.ok(source.includes('receipt.builtinCalendarImages.push(diagnostic)'));
  assert.ok(source.includes('if(isBuiltinCalendarImageDiagnostic(diagnostic))'));
 });
+test('nested Keep editing waits for the same strict native focus restoration predicate',async()=>{
+ const source=await readFile(url,'utf8');
+ assert.ok(source.includes("await until(()=>ev(`document.querySelector('dialog').contains(document.activeElement)`),'keep editing focus restored')"));
+ assert.ok(source.includes("assert.equal(await ev(`document.querySelector('dialog').contains(document.activeElement)`),true)"));
+ assert.ok(source.includes('KEEP_EDITING_FOCUS_DIAGNOSTIC'));
+});
+test('stock browser cleanup proves owned process close before bounded profile removal',async()=>{
+ const source=await readFile(new URL('../co-stock-browser/run.mjs',import.meta.url),'utf8');
+ assert.ok(source.includes("import {observeOwnedBrowser,stopOwnedBrowser} from '../co-browser/cleanup.mjs'"));
+ assert.ok(source.includes('browserClosed=observeOwnedBrowser(browser)'));
+ assert.ok(source.includes("await stopOwnedBrowser(browser,browserClosed,()=>cdp?cdp('Browser.close'):Promise.resolve())"));
+ assert.ok(source.indexOf('await stopOwnedBrowser(')<source.indexOf('await rm(temp,'));
+ assert.ok(source.includes('await rm(temp,{recursive:true,force:true,maxRetries:5,retryDelay:100})'));
+ assert.ok(!source.includes("browser?.kill('SIGTERM')"));
+ assert.ok(source.indexOf('console.log(JSON.stringify(receipt,null,2))')>source.indexOf('await rm(temp,'));
+});

@@ -101,6 +101,13 @@ try{
   await key('Tab','Tab',9);assert.equal(await ev(`document.activeElement===(${button('Buang perubahan')})`),true);
   await tap(button('Tetap mengedit'));await until(()=>ev(`document.querySelectorAll('dialog').length===1`),'keep edits');
   assert.equal(await ev(`document.querySelector('[aria-label="Qty retur CAT-001"]').value`),'3');
+  // DOM removal precedes passive dialog cleanup; require actual restored focus,
+  // not merely disappearance of the nested confirmation. Same bounded guard.
+  try{await until(()=>ev(`document.querySelector('dialog').contains(document.activeElement)`),'keep editing focus restored')}
+  catch(error){
+   const diagnostic=await ev(`(()=>{const a=document.activeElement,d=document.querySelector('dialog');return {activeTag:['BODY','BUTTON','INPUT','TEXTAREA','DIALOG'].includes(a?.tagName)?a.tagName:'other',activeId:['return-customer-search','return-date','return-reason','return-reference','return-item-search','return-notes'].includes(a?.id)?a.id:'other',dialogOpen:d?.open===true,dialogModal:d?.matches(':modal')===true,focusInside:d?.contains(a)===true}})()`);
+   console.error('KEEP_EDITING_FOCUS_DIAGNOSTIC '+JSON.stringify(diagnostic));throw error;
+  }
   assert.equal(await ev(`document.querySelector('dialog').contains(document.activeElement)`),true);
   await key('Escape','Escape',27);await waitButton('Buang perubahan');await tap(button('Buang perubahan'));
   await until(()=>ev(`!document.querySelector('dialog')`),'discard form');
