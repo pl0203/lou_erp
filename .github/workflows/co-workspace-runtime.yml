@@ -120,12 +120,15 @@ jobs:
           node --test tests/co-browser/cleanup.node.mjs
           node tests/co-browser/run.mjs
       - name: Native Chrome form and monthly usability
+        timeout-minutes: 3
         if: ${{ !cancelled() && steps.native-dependencies.outcome == 'success' }}
         run: CHROME_BINARY=/usr/bin/google-chrome node tests/co-usability-browser/run.mjs
       - name: Native Chrome compact CO detail
+        timeout-minutes: 3
         if: ${{ !cancelled() && steps.native-dependencies.outcome == 'success' }}
         run: CHROME_BINARY=/usr/bin/google-chrome node tests/co-detail-browser/run.mjs
       - name: Native Chrome stock movement modal
+        timeout-minutes: 3
         if: ${{ !cancelled() && steps.native-dependencies.outcome == 'success' }}
         run: CHROME_BINARY=/usr/bin/google-chrome node tests/co-stock-browser/run.mjs
       - name: Complete frontend regression suite

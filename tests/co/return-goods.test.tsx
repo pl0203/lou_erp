@@ -3,7 +3,13 @@ import { expect, test, vi } from 'vitest';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { customer, id, mount, mountApp, stockFixture, wire } from './stock-ui-harness';
 import App from '../../src/App';
-import CODetail from '../../src/pages/athel/co/CODetail';
+import COReturnDialog, { type COReturnSelection } from '../../src/components/co/COReturnDialog';
+
+// The user removed historical return sections from CO detail. These tests keep
+// the underlying saved-return protocol coverage without claiming route discovery.
+function mountStoredReturn(s: any, selection: COReturnSelection) {
+    return mount(<COReturnDialog customerId={customer} customerVersion={s.cv} selection={selection} returnFocus={null} onClose={() => {}}/>, `/athel/co/${s.co.id}`);
+}
 
 test('customer-wide return saves a draft without ledger effect then posts through shared review', async () => {
     const s = stockFixture();
@@ -24,11 +30,10 @@ test('customer-wide return saves a draft without ledger effect then posts throug
     expect(s.batches[0].available_quantity).toBe('25');
     expect(s.co.summary.revenue).toBe('720000');
 });
-test('detail draft discovery restores all customer-wide lines across COs and pages', async () => {
+test('saved draft protocol restores all customer-wide lines across COs and pages', async () => {
     const s = stockFixture(101);
     s.draft = s.makeDraft(s.batches.map((b: any) => ({ batch_id: b.id, quantity: 1 })));
-    mount(<CODetail />, `/athel/co/${s.co.id}`);
-    fireEvent.click(await screen.findByRole('button', { name: 'Buka draft retur' }));
+    mountStoredReturn(s, { view: 'draft', id: s.draft.header.id, draftVersion: s.draft.header.draft_version });
     await screen.findByText(/101 sumber tersimpan/);
     expect((screen.getByLabelText('Tanggal retur') as HTMLInputElement).value).toBe('2026-10-09');
     fireEvent.change(screen.getByLabelText('Referensi retur'), { target: { value: 'RESTORED' } });
@@ -152,14 +157,13 @@ test('same editor survives a non-authority background source failure and retry',
     expect(screen.getByDisplayValue('BACKGROUND')).toBe(field);
 });
 
-test.each(['replace', 'void'] as const)('effective return %s is reachable and bound to its exact original head and revision', async action => {
+test.each(['replace', 'void'] as const)('effective return %s protocol is bound to its exact original head and revision', async action => {
     const s = stockFixture();
     s.draft = s.makeDraft([{ batch_id: id(2001), quantity: 5 }]);
     await s.handle('pilot_co_transaction_v1', { p_operation: 'post_return', p_payload: {} });
     const original = structuredClone(s.effective);
     s.commands = [];
-    mount(<CODetail />, `/athel/co/${s.co.id}`);
-    await click(action === 'replace' ? 'Siapkan pengganti retur' : 'Batalkan retur dengan koreksi');
+    mountStoredReturn(s, { view: 'effective', id: original.header.head_id, revisionId: original.header.revision_id, returnVersion: original.header.head_version, action });
     await screen.findByLabelText('Referensi retur');
     if (action === 'replace') change('Jumlah retur SJ-1 Item 1', '4');
     await click('Tinjau koreksi retur');
@@ -181,8 +185,7 @@ test.each(['replace', 'void'] as const)('effective return %s is reachable and bo
 test('immutable return revision is read only and restored from revision view', async () => {
     const s = stockFixture(); s.draft = s.makeDraft([{ batch_id: id(2001), quantity: 5 }]);
     await s.handle('pilot_co_transaction_v1', { p_operation: 'post_return', p_payload: {} }); s.commands = [];
-    mount(<CODetail />, `/athel/co/${s.co.id}`);
-    await click('Lihat revisi retur');
+    mountStoredReturn(s, { view: 'revision', id: s.effective.header.revision_id });
     await screen.findByText(/Riwayat retur tersimpan, hanya baca/);
     expect(screen.getByLabelText('Referensi retur').matches(':disabled')).toBe(true);
     expect(screen.queryByRole('button', { name: 'Simpan Draft retur' })).toBeNull();
@@ -311,8 +314,7 @@ test('malformed incomplete saved return pages cannot enable replacement saving',
         if (n === 'pilot_co_return_v1' && a.p_page === 2) result.data.rows = [];
         return result;
     };
-    mount(<CODetail />, `/athel/co/${s.co.id}`);
-    await click('Buka draft retur');
+    mountStoredReturn(s, { view: 'draft', id: s.draft.header.id, draftVersion: s.draft.header.draft_version });
     await screen.findAllByText(/page completeness/);
     expect(screen.queryByRole('button', { name: 'Simpan Draft retur' })).toBeNull();
     expect(s.commands).toHaveLength(0);
