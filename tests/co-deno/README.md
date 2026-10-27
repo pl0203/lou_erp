@@ -3,7 +3,10 @@
 Run with **Deno 2.9.7**, after `npm ci` has installed the existing `package-lock.json`.
 The dedicated configuration uses those manually managed modules and pins its sole
 bare production import (`saxes`) to the already locked 6.0.0 package. It does not
-install dependencies or write a Deno lockfile.
+install dependencies or write a Deno lockfile. Node builtin type declarations are
+explicitly bound to the existing locked `@types/node` 25.5.2 package (also declared
+as a direct development dependency), rather than Deno resolving an unversioned
+implicit type dependency.
 
 ```sh
 deno check --config tests/co-deno/deno.json --cached-only --no-remote \

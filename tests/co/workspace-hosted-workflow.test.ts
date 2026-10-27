@@ -17,7 +17,7 @@ test('hosted execution uses only bounded standard Ubuntu and fresh per-case Post
  expect(workflow).toContain('case: [import-manifest, import-posting, import-races, workspace-reads]')
  expect(workflow).toContain('max-parallel: 2')
  expect(workflow).toContain('fail-fast: false')
- expect(workflow).toContain('image: postgres:17.6')
+ expect(workflow).toContain('image: postgres:17.11')
  expect(workflow).toContain('--memory=2g --cpus=2 --log-driver=none')
  expect(workflow).toContain('CREATE TABLE public.pilot_fixture_marker')
  expect(workflow).toContain('node scripts/test-co-workspace-db.mjs --case "$FIXED_CASE"')
@@ -41,4 +41,12 @@ test('source admission and native runtimes bind exact head without weakening loc
  expect(workflow).toContain('deno test --config tests/co-deno/deno.json --cached-only --no-remote')
  expect(workflow).not.toMatch(/--allow-|unset CI|env -u|CI: false/)
  expect(workflow).toContain('node tests/co-browser/run.mjs')
+})
+
+test('native diagnostics run before the slow aggregate without masking failures',()=>{
+ const native=workflow.slice(workflow.indexOf('  native-runtime:'))
+ expect(native.indexOf('Native Deno Edge type graph')).toBeLessThan(native.indexOf('run: npm test'))
+ expect(native.indexOf('Native Chrome synthetic')).toBeLessThan(native.indexOf('run: npm test'))
+ expect(native).toContain("if: ${{ !cancelled() && steps.native-dependencies.outcome == 'success' }}")
+ expect(native).not.toContain('continue-on-error')
 })
