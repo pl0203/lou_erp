@@ -9,11 +9,12 @@ as a direct development dependency), rather than Deno resolving an unversioned
 implicit type dependency.
 
 ```sh
-deno check --config tests/co-deno/deno.json --cached-only --no-remote \
+node tests/co-deno/preflight.mjs
+deno check --config deno.co-runtime.json --cached-only --no-remote \
   supabase/functions/co-evidence-upload/index.ts \
   supabase/functions/co-evidence-download/index.ts \
   tests/co-deno/evidence_test.ts
-deno test --config tests/co-deno/deno.json --cached-only --no-remote \
+deno test --config deno.co-runtime.json --cached-only --no-remote \
   tests/co-deno/evidence_test.ts
 ```
 
@@ -30,3 +31,8 @@ not started: their module import normally starts `Deno.serve`.
 These checks do **not** certify a deployed Supabase Edge runtime, real Auth/RLS,
 Storage writes, SQL receipt issuance/retry, or complete browser-to-backend flows.
 Those require a separately isolated backend acceptance environment.
+
+The explicitly selected `deno.co-runtime.json` is at repository root so Deno
+2.9.7 BYONM resolves injected Node types against the same root `package.json`
+and `node_modules` installed by npm. A nested config changes that resolution
+anchor. The preflight prints only fixed installed package existence/version data.

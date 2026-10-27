@@ -20,6 +20,15 @@ export function composeWorkspaceReadFixture(posting, reads) {
   assert.ok(!/^\s*(BEGIN|COMMIT|ROLLBACK);/mi.test(reads), 'Read assertions stay in existing rollback fixture')
   return posting.replace(terminal, reads + "\nROLLBACK;\nSELECT 'CO_IMPORT_ATOMIC_POST_EDIT_PASSED';\nSELECT 'CO_WORKSPACE_READS_PASSED';\n")
 }
+// Only reached after the fixed synthetic target and immutable identity checks.
+// Keep unexpected PostgreSQL errors diagnosable without dumping exec arguments,
+// stdout, or unbounded server output into the public job log.
+export function assertWorkspaceInstallFailure(error) {
+  const stderr = typeof error?.stderr === 'string' || Buffer.isBuffer(error?.stderr) ? String(error.stderr) : ''
+  if (/PZ603.*Synthetic late import installation failure/.test(stderr)) return
+  const diagnostic = stderr.slice(-8192).replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '')
+  throw new Error(`Must reach the deliberately late installation failure; unexpected PostgreSQL diagnostic:\n${diagnostic || 'No PostgreSQL stderr available'}`)
+}
 export function runCoWorkspaceDb({ env = process.env, execute = execFileSync, sourceIdentity = coSourceIdentity, caseName = 'import-manifest' } = {}) {
   workspaceCase(['--case',caseName])
   const source = sourceIdentity()
@@ -47,7 +56,7 @@ export function runCoWorkspaceDb({ env = process.env, execute = execFileSync, so
   let failed = false
   try { run(candidate.replace(/COMMIT;\s*$/, lateFailure + '\nCOMMIT;\n')) }
   catch (error) {
-    assert.match(String(error.stderr ?? error.message), /PZ603.*Synthetic late import installation failure/, 'Must reach the deliberately late installation failure')
+    assertWorkspaceInstallFailure(error)
     failed = true
   }
   assert.equal(failed, true, 'Late installation fault must abort')

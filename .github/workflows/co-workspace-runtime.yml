@@ -99,14 +99,16 @@ jobs:
         with:
           deno-version: v2.9.7
           cache: false
+      - name: Verify native dependency root and locked metadata
+        run: node tests/co-deno/preflight.mjs
       - name: Native Deno Edge type graph
         run: >-
-          deno check --config tests/co-deno/deno.json --cached-only --no-remote
+          deno check --config deno.co-runtime.json --cached-only --no-remote
           supabase/functions/co-evidence-upload/index.ts
           supabase/functions/co-evidence-download/index.ts
           tests/co-deno/evidence_test.ts
       - name: Native Deno synthetic byte and evidence guards
-        run: deno test --config tests/co-deno/deno.json --cached-only --no-remote tests/co-deno/evidence_test.ts
+        run: deno test --config deno.co-runtime.json --cached-only --no-remote tests/co-deno/evidence_test.ts
       - name: Native Chrome synthetic CO component and worker acceptance
         if: ${{ !cancelled() && steps.native-dependencies.outcome == 'success' }}
         env:
