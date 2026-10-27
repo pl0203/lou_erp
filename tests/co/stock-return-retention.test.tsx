@@ -121,6 +121,7 @@ test.each(['resolve_undelivered', 'close_co'] as const)('settlement %s conflict 
     if (operation === 'close_co') state.blockers = { stock_remains: false, undelivered_remains: false, missing_month_count: '0' };
     mount(<CODetail />, `/athel/co/${state.co.id}`);
     const label = operation === 'close_co' ? 'penutupan' : 'penyelesaian';
+    await click('Actions');
     await click(operation === 'close_co' ? 'Tutup CO' : 'Selesaikan sisa belum dikirim');
     const reason = await screen.findByLabelText(`Alasan ${label}`);
     await waitFor(() => expect(reason.matches(':disabled')).toBe(false));
@@ -179,6 +180,7 @@ test.each(['resolve_undelivered', 'close_co'] as const)('settlement %s conflict 
 test('settlement conflict cannot reuse a same-version cached line read as its explicit refresh', async () => {
     const state = stockFixture();
     mount(<CODetail />, `/athel/co/${state.co.id}`);
+    await click('Actions');
     await click('Selesaikan sisa belum dikirim');
     await screen.findByLabelText('Jumlah dibatalkan Item 1');
     change('Jumlah dibatalkan Item 1', '5'); change('Alasan penyelesaian', 'SAME VERSION');

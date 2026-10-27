@@ -14,12 +14,15 @@ for (const kind of ['return', 'settlement'] as const) {
     test(`${kind} shared native dialog preserves real sender pending dismissal and trigger focus`, async () => {
         const s = stockFixture();
         mountApp(<App/>, kind === 'return' ? `/athel/co/stock?customer=${customer}` : `/athel/co/${id(11)}`);
-        const trigger = await click(kind === 'return' ? 'Retur barang belum terjual' : 'Selesaikan sisa belum dikirim');
+        const toolbarTrigger = kind === 'settlement' ? await click('Actions') : null;
+        const action = await click(kind === 'return' ? 'Retur barang belum terjual' : 'Selesaikan sisa belum dikirim');
+        const trigger = toolbarTrigger ?? action;
         await screen.findByLabelText(kind === 'return' ? 'Jumlah retur SJ-1 Item 1' : 'Jumlah dibatalkan Item 1');
         let dialog = screen.getByRole('dialog');
         expect(dialog.tagName).toBe('DIALOG'); expect(dialog.classList.contains('ui-dialog')).toBe(true);
         fireEvent.keyDown(dialog, { key: 'Escape' });
         await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull()); expect(document.activeElement).toBe(trigger);
+        if (kind === 'settlement') await click('Actions');
         await click(kind === 'return' ? 'Retur barang belum terjual' : 'Selesaikan sisa belum dikirim');
         const quantity = await screen.findByLabelText(kind === 'return' ? 'Jumlah retur SJ-1 Item 1' : 'Jumlah dibatalkan Item 1');
         expect(quantity.closest('.ui-field')).toBeTruthy();

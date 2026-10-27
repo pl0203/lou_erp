@@ -11,7 +11,7 @@ const click = async (name: string) => {
     fireEvent.click(node); return node;
 };
 
-test('stock history and source links stay quiet compact with current-stock command and return progression distinct', async () => {
+test('stock history uses quiet compact disclosure and uniform secondary source navigation, with return progression distinct', async () => {
     const s = stockFixture();
     s.movements = [{ id: id(51), customer_id: customer, stock_key_id: id(1001), generation_id: s.generation, co_line_id: id(3001), batch_id: id(2001), co_id: id(11), effective_date: '2026-09-01', kind: 'delivery', quantity_delta: '30', delivery_revision_line_id: id(5001), return_revision_line_id: null, report_revision_line_id: null }];
     mountApp(<App/>, `/athel/co/stock?customer=${customer}`);
@@ -22,8 +22,8 @@ test('stock history and source links stay quiet compact with current-stock comma
     const returns = within(screen.getByRole('group', { name: 'Pengembalian barang' })).getByRole('button', { name: 'Retur barang belum terjual' });
     variant(returns, 'quiet'); expect(returns.classList.contains('ui-action--compact')).toBe(true);
     fireEvent.click(history);
-    const link = await screen.findByRole('link', { name: 'Bukti CO sumber' });
-    variant(link, 'quiet'); expect(link.classList.contains('ui-action--compact')).toBe(true);
+    const link = await screen.findByRole('link', { name: 'Lihat CO sumber' });
+    variant(link, 'secondary'); expect(link.classList.contains('ui-action--compact')).toBe(true);
     expect(link.getAttribute('href')).toBe(`/athel/co/${id(11)}`);
     expect(s.commands).toHaveLength(0);
 });

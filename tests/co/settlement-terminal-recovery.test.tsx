@@ -5,7 +5,12 @@ import { stockFixture, mountApp, wire, id } from './stock-ui-harness';
 import App from '../../src/App';
 const pending = () => Object.keys(localStorage).filter(k => k.startsWith('co-request:'));
 const path = `/athel/co/${id(11)}`;
+async function openActions() {
+    const toggle = await screen.findByRole('button', { name: 'Actions' });
+    if (toggle.getAttribute('aria-expanded') !== 'true') fireEvent.click(toggle);
+}
 async function click(name: string) {
+    if (name === 'Tutup CO' || name === 'Selesaikan sisa belum dikirim') await openActions();
     const button = await screen.findByRole('button', { name });
     await waitFor(() => expect(button.matches(':disabled')).toBe(false)); fireEvent.click(button);
 }
@@ -50,6 +55,7 @@ async function reopen(departure: 'reload' | 'reopen', client: ReturnType<typeof 
     if (departure === 'reload') { cleanup(); mountApp(<App/>, path); }
     else { await click('Batal'); await click('Buang perubahan'); await act(async () => { await client.invalidateQueries({ queryKey: ['co'] }); }); }
     await screen.findByRole('heading', { name: 'CO-1' });
+    await openActions();
     expect(screen.getByRole('button', { name: 'Selesaikan sisa belum dikirim' }).matches(':disabled')).toBe(true);
     await click('Pulihkan penyelesaian CO');
     await click('Pulihkan hasil penyimpanan'); await click('Lihat hasil tersimpan');
@@ -70,6 +76,7 @@ for (const operation of ['resolve_undelivered', 'close_co'] as const) {
             await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
             expect(s.commands).toHaveLength(1);
             expect(screen.queryByRole('button', { name: 'Pulihkan penyelesaian CO' })).toBeNull();
+            await openActions();
             expect(screen.getByRole('button', { name: 'Selesaikan sisa belum dikirim' }).matches(':disabled')).toBe(true);
             if (operation === 'close_co') expect(screen.getByRole('button', { name: 'Tutup CO' }).matches(':disabled')).toBe(true);
             else {
@@ -147,5 +154,6 @@ test.each(['resolve_undelivered', 'close_co'] as const)('%s: deliberate newer-or
  await click('Selesaikan konflik penyelesaian');await waitFor(()=>expect(pending()).toHaveLength(0));
  await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());
  expect(s.commands).toHaveLength(1);expect(s.co.co_version).toBe('3');
+ await openActions();
  await waitFor(()=>expect(screen.getByRole('button',{name:'Tutup CO'}).matches(':disabled')).toBe(false));
 });

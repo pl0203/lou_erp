@@ -12,9 +12,11 @@ test.each(['edit', 'sj', 'cancel'] as const)('%s current-profile revocation clea
     const s = stockFixture(); s.allowed = ['edit_co', 'cancel_co', 'save_sj_draft', 'post_sj'];
     vi.spyOn(catalog, 'fetchCOCatalog').mockResolvedValue([]);
     const { client } = mountApp(<App/>, `/athel/co/${s.co.id}${kind === 'edit' ? '/edit' : ''}`);
-    await screen.findByText('Original PIC');
+    const privateSentinel = kind === 'edit' ? 'Original PIC' : s.co.co_number;
+    await screen.findByText(privateSentinel);
     if (kind === 'edit') fireEvent.change(await screen.findByLabelText('Catatan'), { target: { value: 'Private profile note' } });
     else {
+        if (kind === 'cancel') await click('Actions');
         await click(kind === 'sj' ? 'Buat surat jalan' : 'Batalkan CO');
         fireEvent.change(await screen.findByLabelText(kind === 'sj' ? 'Nomor SJ' : 'Alasan pembatalan'), { target: { value: 'Private profile note' } });
         if (kind === 'sj') fireEvent.change(screen.getByLabelText('Jumlah dikirim Item 1'), { target: { value: '1' } });
@@ -22,7 +24,7 @@ test.each(['edit', 'sj', 'cancel'] as const)('%s current-profile revocation clea
     s.fail = (name: string) => name === 'pilot_my_profile' ? { data: [], error: null } : null;
     await click(kind === 'edit' ? 'Simpan Perubahan' : kind === 'sj' ? 'Simpan Draft SJ' : 'Konfirmasi pembatalan');
     await screen.findByText('CO authority required');
-    expect(screen.queryByDisplayValue('Private profile note')).toBeNull(); expect(screen.queryByText('Original PIC')).toBeNull();
+    expect(screen.queryByDisplayValue('Private profile note')).toBeNull(); expect(screen.queryByText(privateSentinel)).toBeNull();
     expect(client.getQueriesData({ queryKey: ['co'] }).filter(([, data]) => data !== undefined)).toEqual([]);
     expect(wire.rpc.mock.calls.filter(([name]) => name === 'pilot_co_transaction_v1')).toHaveLength(0);
 });

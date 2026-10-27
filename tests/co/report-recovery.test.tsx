@@ -217,6 +217,9 @@ async function assertSJDenial(standalone: boolean, parentNote = 'Private CO sour
     const nested = store(1, nestedMonth, id(50));
     const source = deliveryFixture();
     source.co.notes = parentNote;
+    // Notes were removed from detail; use a visible source-owned order identifier
+    // to prove authority denial clears the parent snapshot and retry restores it.
+    source.co.co_number = parentNote;
     const sourceHandler = wire.handler;
     let nestedCommand = false;
     wire.handler = async (name: string, args: any) => {
@@ -246,7 +249,7 @@ async function assertSJDenial(standalone: boolean, parentNote = 'Private CO sour
         onClose={() => {}}
         returnFocus={null}
     /> : <CODetail />, `/athel/co/${id(10)}`);
-    if (!standalone) await click('Siapkan pengganti SJ');
+    if (!standalone) { await screen.findByRole('heading', { name: parentNote }); await click('Siapkan pengganti SJ'); }
     await screen.findByLabelText('Jumlah dikirim Item 1');
     await click('Simpan Draft SJ');
     await waitFor(() => expect(screen.getByRole('button', {

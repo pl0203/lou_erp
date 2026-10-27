@@ -19,8 +19,11 @@ function privateCache(client: ReturnType<typeof mount>['client']) {
 }
 test.each(['edit', 'sj', 'cancel'] as const)('%s transaction denial unmounts every private field and cache until explicit retry', async kind => {
     const { client } = mount(kind === 'edit' ? <COForm mode="edit"/> : <CODetail/>, `/athel/co/${ids.co}${kind === 'edit' ? '/edit' : ''}`);
+    const privateSentinel = kind === 'edit' ? 'Original PIC' : 'CO-A';
+    await screen.findByText(privateSentinel);
     if (kind === 'edit') { await screen.findByDisplayValue('Item 1'); change('Catatan', 'PRIVATE ORDER'); }
     else {
+        if (kind === 'cancel') await click('Actions');
         await click(kind === 'sj' ? 'Buat surat jalan' : 'Batalkan CO');
         fireEvent.change(await screen.findByLabelText(kind === 'sj' ? 'Nomor SJ' : 'Alasan pembatalan'), { target: { value: 'PRIVATE OPERATION' } });
         if (kind === 'sj') change('Jumlah dikirim Item 1', '1');
@@ -30,7 +33,7 @@ test.each(['edit', 'sj', 'cancel'] as const)('%s transaction denial unmounts eve
     await click(kind === 'edit' ? 'Simpan Perubahan' : kind === 'sj' ? 'Simpan Draft SJ' : 'Konfirmasi pembatalan');
     await screen.findByText('Confirmed source denial');
     expect(screen.queryByDisplayValue(/PRIVATE/)).toBeNull();
-    expect(screen.queryByText('Original PIC')).toBeNull();
+    expect(screen.queryByText(privateSentinel)).toBeNull();
     expect(privateCache(client)).toEqual([]);
     expect(screen.queryByRole('button', { name: /Simpan Perubahan|Simpan Draft SJ|Konfirmasi pembatalan/ })).toBeNull();
     const count = read.mock.calls.length;
@@ -38,7 +41,7 @@ test.each(['edit', 'sj', 'cancel'] as const)('%s transaction denial unmounts eve
     expect(read).toHaveBeenCalledTimes(count);
     state.send.mockReset();
     await click('Coba lagi');
-    await screen.findByText('Original PIC');
+    await screen.findByText(privateSentinel);
     expect(screen.queryByDisplayValue(/PRIVATE/)).toBeNull();
 });
 test.each(['edit-header', 'edit-lines', 'sj-preparation', 'detail', 'order-actions', 'orders'] as const)('%s authoritative read denial clears its whole owning source', async resource => {
@@ -53,14 +56,15 @@ test.each(['edit-header', 'edit-lines', 'sj-preparation', 'detail', 'order-actio
         fireEvent.click((await screen.findAllByRole('link',{name:'Lihat CO'}))[0]);
         await screen.findByRole('link',{name:'Edit CO'});
     }
-    await screen.findAllByText(orders ? 'Store A' : 'Original PIC');
+    const privateSentinel = form ? 'Original PIC' : orders ? 'Store A' : 'CO-A';
+    await screen.findAllByText(privateSentinel);
     if (form) change('Catatan', 'PRIVATE READ');
     if (resource === 'sj-preparation') { await click('Buat surat jalan'); await screen.findByLabelText('Nomor SJ'); }
     const fetcher = vi.spyOn(rpc, resource === 'edit-lines' ? 'fetchCompleteCOLines' : resource === 'orders' ? 'fetchCOPageV2' : 'fetchCODetail').mockRejectedValue(denial());
     await act(async () => { await client.invalidateQueries({ predicate: q => q.queryKey[4] === ownedResource }); });
     await screen.findByText('Confirmed source denial');
     expect(screen.queryByDisplayValue('PRIVATE READ')).toBeNull();
-    expect(screen.queryByText('Original PIC')).toBeNull();
+    expect(screen.queryAllByText(privateSentinel)).toHaveLength(0);
     expect(screen.queryByRole('link', { name: 'Buat CO' })).toBeNull();
     expect(screen.queryByRole('link', { name: 'Edit CO' })).toBeNull();
     expect(privateCache(client)).toEqual([]);
@@ -96,11 +100,11 @@ test.each(['reconcile', 'acknowledge'] as const)('order recovery %s denial clear
 });
 
 test('ordinary SJ committed canonical import denial clears both dialog and detail', async () => {
-    const { client } = mount(<CODetail/>, `/athel/co/${ids.co}`); await click('Buat surat jalan');
+    const { client } = mount(<CODetail/>, `/athel/co/${ids.co}`); await screen.findByText('CO-A'); await click('Buat surat jalan');
     await screen.findByLabelText('Nomor SJ'); change('Nomor SJ', 'PRIVATE CANONICAL SJ'); change('Jumlah dikirim Item 1', '1');
     vi.spyOn(rpc, 'fetchCompleteCOSJDraft').mockRejectedValue(denial());
     await click('Simpan Draft SJ'); await screen.findByText('Confirmed source denial');
-    expect(screen.queryByDisplayValue('PRIVATE CANONICAL SJ')).toBeNull(); expect(screen.queryByText('Original PIC')).toBeNull();
+    expect(screen.queryByDisplayValue('PRIVATE CANONICAL SJ')).toBeNull(); expect(screen.queryByText('CO-A')).toBeNull();
     expect(privateCache(client)).toEqual([]);
 });
 
