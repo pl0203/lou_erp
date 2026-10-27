@@ -1,0 +1,13 @@
+{
+  "added": [
+    {
+      "file": "src/components/co/COChangePreview.tsx",
+      "title": "Memeriksa identitas pesanan terdampak\u2026",
+      "guards": [
+        "needsReopen &&",
+        "reopen.isError ? false",
+        "!reopen.data ? true"
+      ]
+    }
+  ]
+}

@@ -14,3 +14,6 @@ test('ordinary Save payload includes no source file or preview fields', async ()
  await createPO({ customer_id: 'c', po_number: 'synthetic', order_date: '2026-10-05', expected_delivery_date: '', notes: '', lineItems: [{ _key: 'local', product_id: 'p', product_name: 'Synthetic', sku: 'SYN', quantity: 1, unit_price: 12 }] }, send as any)
  expect(send.mock.calls[0][1]).toEqual({ customer_id: 'c', po_number: 'synthetic', order_date: '2026-10-05', expected_delivery_date: null, notes: null, items: [{ product_id: 'p', product_name: 'Synthetic', sku: 'SYN', quantity: 1, unit_price: 12 }] })
 })
+
+// No external client is part of this unit boundary; accidental I/O is a failure.
+vi.mock('../src/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_target, key) => { throw new Error(`Unexpected Supabase access: ${String(key)}`) } }) }))

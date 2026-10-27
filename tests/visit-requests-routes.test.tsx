@@ -7,6 +7,12 @@ vi.mock('../src/pages/Login', () => ({ default: () => <p>Login boundary</p> }))
 vi.mock('../src/pages/athel/POList', () => ({ default: () => <p>Procurement home</p> }))
 vi.mock('../src/components/GirardNav', () => ({ default: () => null }))
 vi.mock('../src/components/VisitRequestInbox', () => ({ default: () => <p>Scoped requests</p>, VisitProposalForm: () => null }))
+// Employee authority is independently covered; these are outer route tests.
+vi.mock('../src/lib/employees/useEmployeeContext', () => ({ useEmployeeIdentityBoundary: () => undefined, useEmployeeContext: () => ({ displayAllowed: false }) }))
+vi.mock('../src/pages/ihr/employees/EmployeeList', () => ({ default: () => <p data-testid="route-leaf">EmployeeList</p> }))
+vi.mock('../src/pages/ihr/employees/EmployeeDetail', () => ({ default: () => <p data-testid="route-leaf">EmployeeDetail</p> }))
+vi.mock('../src/pages/ihr/employees/EmployeeEditor', () => ({ default: () => <p data-testid="route-leaf">EmployeeEditor</p> }))
+vi.mock('../src/pages/ihr/employees/EmployeeReportingEditor', () => ({ default: () => <p data-testid="route-leaf">EmployeeReportingEditor</p> }))
 import App from '../src/App'
 beforeEach(() => { state.user = true })
 afterEach(cleanup)
@@ -23,3 +29,5 @@ test('Procurement-only users are redirected out of the requests route', () => {
 test('signed-out users cannot open requests directly', () => {
  state.user = false; mount(); expect(screen.getByText('Login boundary')).toBeTruthy(); expect(screen.queryByText('Scoped requests')).toBeNull()
 })
+
+vi.mock('../src/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_target, key) => { throw new Error(`Unexpected Supabase access: ${String(key)}`) } }) }))

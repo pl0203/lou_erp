@@ -23,3 +23,6 @@ test('manager schedule starts with its schedule heading and an obvious empty-sta
  expect(screen.getByRole('heading', { name: 'Jadwal', level: 1 })).toBeTruthy()
  expect(screen.getByRole('button', { name: /Tambahkan jadwal kunjungan baru/ }).className).toMatch(/ui-action--secondary/)
 })
+
+// No external client is part of this unit boundary; accidental I/O is a failure.
+vi.mock('../src/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_target, key) => { throw new Error(`Unexpected Supabase access: ${String(key)}`) } }) }))

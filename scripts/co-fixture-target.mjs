@@ -12,11 +12,15 @@ export function coSourceIdentity() {
 export function coCiConnection(env, source) {
   const ci = env.CO_CI_PROFILE !== undefined
   if (ci) {
-    assert.equal(env.CO_CI_PROFILE, 'github-pilot-safety-v1', 'Unknown CO fixture profile')
+    const contexts = {
+      'github-pilot-safety-v1': { GITHUB_WORKFLOW: 'Pilot safety checks', GITHUB_JOB: 'synthetic-safety' },
+      'github-co-workspace-v1': { GITHUB_WORKFLOW: 'CO workspace runtime', GITHUB_JOB: 'workspace-sql' },
+    }
+    assert.ok(Object.hasOwn(contexts, env.CO_CI_PROFILE), 'Unknown CO fixture profile')
     assert.ok(source?.clean === true, 'CI requires a verified clean Git source')
     assert.match(source.commit, /^[a-f0-9]{40}$/); assert.match(source.tree, /^[a-f0-9]{40}$/)
     assert.equal(env.CO_CI_SOURCE_SHA, source.commit, 'CI source must equal actual checked-out HEAD')
-    for (const [key, value] of Object.entries({ CI: 'true', GITHUB_ACTIONS: 'true', GITHUB_REPOSITORY: 'pl0203/lou_erp', GITHUB_WORKFLOW: 'Pilot safety checks', GITHUB_JOB: 'synthetic-safety' })) assert.equal(env[key], value, `Fixed CI context required: ${key}`)
+    for (const [key, value] of Object.entries({ CI: 'true', GITHUB_ACTIONS: 'true', GITHUB_REPOSITORY: 'pl0203/lou_erp', ...contexts[env.CO_CI_PROFILE] })) assert.equal(env[key], value, `Fixed CI context required: ${key}`)
     for (const key of ['GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT']) assert.match(env[key] ?? '', /^[1-9][0-9]*$/, `Invalid ${key}`)
     assert.match(env.GITHUB_SHA ?? '', /^[a-f0-9]{40}$/, 'Invalid GitHub event SHA')
     assert.equal(env.LD_LIBRARY_PATH, undefined, 'CI library overrides refused')
@@ -38,6 +42,19 @@ export function coCiConnection(env, source) {
     ...(ci ? { PGPASSWORD: 'synthetic-ci-only' } : {}),
     PGCONNECT_TIMEOUT: '5', PGTZ: 'UTC', PGPASSFILE: '/dev/null/co-ci-no-password', PGSYSCONFDIR: '/dev/null',
   }
+}
+// Workspace SQL and its race child share this gate. Existing local-only rejection
+// remains unchanged unless the complete dedicated hosted profile is selected.
+export function coWorkspaceConnection(env, source) {
+  if (env.CO_CI_PROFILE !== undefined) {
+    assert.equal(env.CO_CI_PROFILE, 'github-co-workspace-v1', 'Dedicated workspace CI profile required')
+  } else {
+    for (const key of Object.keys(env)) {
+      assert.ok(key !== 'CI' && !key.startsWith('CO_CI_') && !key.startsWith('GITHUB_'), `Workspace runner refuses CI context: ${key}`)
+    }
+  }
+  assert.equal(source?.clean, true, 'Workspace DB acceptance requires clean frozen source')
+  return coCiConnection(env, source)
 }
 function privateIPv4(address) {
   if (isIP(address ?? '') !== 4) return false

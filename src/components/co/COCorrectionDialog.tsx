@@ -1,7 +1,9 @@
+import { canonicalManifestValue } from '../../lib/co/import/manifest';
+import { decodeCOSourceContext, type COImpactLabels } from '../../lib/co/workspaceReads';
 import { Field } from '../ui/Field';
 import { Button } from '../ui/Button';
 import COEvidenceAttachment from './COEvidenceAttachment';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { COCompletedReportDraft, COReceipt, COReviewedOperation, COReviewSets, COSourceContext, COPreview, COReopenImpact } from '../../lib/co/contracts';
 import type { COTransactionSender } from '../../lib/co/transactions';
@@ -16,6 +18,9 @@ import { useCOReportWorkspace, COReportFields, reportBinding, isCOAuthorityError
 /** Source owner retains canonical identity, original revision and result validation. No source reconstruction here. */
 export interface COCorrectionProps {
     operation: COReviewedOperation;
+    /** Exact checked source core. Fixed reason; never restores earlier consent. */
+    resumeContext?: COSourceContext;
+    finalActionLabel?: string;
     customerId: string;
     source: Record<string, unknown>;
     selectedMonth?: string;
@@ -23,6 +28,7 @@ export interface COCorrectionProps {
     current: () => boolean;
     blocked?: boolean;
     readFailure?: ReactNode;
+    resultAcceptance?: ReactNode;
     onAccepted: (receipt: COReceipt) => Promise<boolean>;
     onRecovered?: (receipt: COReceipt) => Promise<boolean>;
     onClose: () => void;
@@ -53,22 +59,23 @@ function GuardedReview(props: COCorrectionProps) {
         />
     </>;
 }
-function ReviewBody({ operation, customerId, source, selectedMonth, sender, current, blocked = false, readFailure, onAccepted, onRecovered, onClose, returnFocus, embedded = false, onDirtyChange, onPendingChange, confirmDiscard, onAuthorityFailure }: COCorrectionProps) {
-    const [reason, setReason] = useState(''), [review, setReview] = useState<COReviewSnapshot | null>(null), [required, setRequired] = useState<string[]>([]), [reopen, setReopen] = useState<COReopenImpact[]>([]), [completed, setCompleted] = useState<Record<string, COCompletedReportDraft>>({}), [ack, setAck] = useState<COReviewSets['acknowledged_reopen_orders']>([]), [context, setContext] = useState<COSourceContext | null>(null), [activeMonth, setActiveMonth] = useState<string | null>(null), [pending, setPending] = useState(false), [error, setError] = useState<unknown>(null), [confirmed, setConfirmed] = useState<COReceipt | null>(null), [childDirty, setChildDirty] = useState(false);
+function ReviewBody({ operation, resumeContext, finalActionLabel, customerId, source, selectedMonth, sender, current, blocked = false, readFailure, resultAcceptance, onAccepted, onRecovered, onClose, returnFocus, embedded = false, onDirtyChange, onPendingChange, confirmDiscard, onAuthorityFailure }: COCorrectionProps) {
+    const [reason, setReason] = useState(resumeContext?.payload.reason ?? ''), [review, setReview] = useState<COReviewSnapshot | null>(null), [required, setRequired] = useState<string[]>([]), [reopen, setReopen] = useState<(COReopenImpact & {labels?:COImpactLabels})[]>([]), [completed, setCompleted] = useState<Record<string, COCompletedReportDraft>>({}), [ack, setAck] = useState<COReviewSets['acknowledged_reopen_orders']>([]), [context, setContext] = useState<COSourceContext | null>(null), [activeMonth, setActiveMonth] = useState<string | null>(null), [pending, setPending] = useState(false), [error, setError] = useState<unknown>(null), [confirmed, setConfirmed] = useState<COReceipt | null>(null), [childDirty, setChildDirty] = useState(false);
     const [childPending, setChildPending] = useState(false);
+    const [identitiesReady,setIdentitiesReady]=useState(false);
     const anyPending = pending || childPending;
     useEffect(() => {
         onPendingChange?.(anyPending);
         return () => onPendingChange?.(false);
     }, [anyPending, onPendingChange]);
-    const busy = useRef(false), mounted = useRef(true), epoch = useRef(0), sourceKey = JSON.stringify([operation, customerId, source]);
+    const busy = useRef(false), mounted = useRef(true), epoch = useRef(0), sourceKey = JSON.stringify([operation, customerId, source, resumeContext]);
     const lastSource = useRef(sourceKey);
     if (lastSource.current !== sourceKey) {
         lastSource.current = sourceKey;
         epoch.current++;
     }
     useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-    useEffect(() => { setReview(null); setContext(null); setCompleted({}); setAck([]); setRequired([]); setReopen([]); }, [sourceKey]);
+    useEffect(() => { setReview(null); setContext(null); setCompleted({}); setAck([]); setRequired([]); setReopen([]); setActiveMonth(null); if(resumeContext)setReason(resumeContext.payload.reason ?? ''); }, [sourceKey]);
     const live = () => mounted.current && current();
     const locked = pending || blocked || sender.hasUnresolved() || !!confirmed;
     useEffect(() => onDirtyChange?.(!!reason || !!activeMonth || childDirty || Object.keys(completed).length > 0 || ack.length > 0), [reason, activeMonth, childDirty, completed, ack, onDirtyChange]);
@@ -78,14 +85,21 @@ function ReviewBody({ operation, customerId, source, selectedMonth, sender, curr
         busy.current = true;
         setPending(true);
         setError(null);
+        setIdentitiesReady(false);
         setReview(null);
         const e = epoch.current;
         const valid = () => live() && epoch.current === e;
         try {
-            const payload = { ...source, reason: reason.trim(), completed_report_drafts: Object.values(completed), acknowledged_reopen_orders: ack };
+            if (resumeContext) {
+                decodeCOSourceContext(resumeContext);
+                if (resumeContext.operation !== operation || canonicalManifestValue(resumeContext.payload) !== canonicalManifestValue(source)) throw new Error('Usulan sumber tidak tersedia: identitas berbeda.');
+            }
+            const core = resumeContext ? resumeContext.payload : { ...source, reason: reason.trim() };
+            const payload = { ...core, completed_report_drafts: Object.values(completed), acknowledged_reopen_orders: ack };
             const header = await previewCOOperation(operation, payload, { isCurrent: valid }) as COPreview;
+            if (resumeContext && header.source_context_fingerprint !== resumeContext.source_context_fingerprint) throw new Error('Usulan sumber tidak tersedia: sidik sumber berubah.');
             const snap: COReviewSnapshot = { operation, payload, header };
-            const [issues, missing, reopens] = await Promise.all([readAllCOImpacts(snap, 'issue', { isCurrent: valid }), readAllCOImpacts(snap, 'missing_month', { isCurrent: valid }), readAllCOImpacts(snap, 'reopen', { isCurrent: valid })]);
+            const [issues, missing, reopens] = await Promise.all([readAllCOImpacts(snap, 'issue', { isCurrent: valid }), readAllCOImpacts(snap, 'missing_month', { isCurrent: valid }), readAllCOImpacts(snap, 'reopen', { isCurrent: valid }), ...(['stock','credit','report','revenue'] as const).map(kind=>readAllCOImpacts(snap,kind,{isCurrent:valid}))]);
             if (!valid())
                 return;
             const months = new Set(missing.map(r => r.report_month));
@@ -96,8 +110,9 @@ function ReviewBody({ operation, customerId, source, selectedMonth, sender, curr
                 months.delete(selectedMonth);
             setRequired([...months].sort());
             setReopen(reopens);
+            setIdentitiesReady(true);
             if (header.source_context_fingerprint) {
-                const core = { ...source, reason: reason.trim() };
+                const core = resumeContext ? resumeContext.payload : { ...source, reason: reason.trim() };
                 setContext({ operation, payload: core, source_context_fingerprint: header.source_context_fingerprint } as COSourceContext);
             }
             else if (months.size)
@@ -146,7 +161,7 @@ function ReviewBody({ operation, customerId, source, selectedMonth, sender, curr
         if (live())
             setPending(false);
     } }
-    function exactAck() { return reopen.length === ack.length && reopen.every(r => r.expected_co_version && ack.some(a => a.co_id === r.co_id && a.expected_co_version === r.expected_co_version)); }
+    function exactAck() { return identitiesReady && reopen.every(r=>!!r.labels?.coNumber) && reopen.length === ack.length && reopen.every(r => r.expected_co_version && ack.some(a => a.co_id === r.co_id && a.expected_co_version === r.expected_co_version)); }
     async function recover(receipt: COReceipt): Promise<boolean> { if (receipt.customer_id !== customerId || receipt.operation !== operation)
         throw new Error('Hasil pemulihan tidak sesuai perubahan ini.'); if (onRecovered)
         return onRecovered(receipt); /* Source owner validates canonical result before acknowledgment. */ throw new Error('Buka pemulihan dari editor sumber untuk memeriksa hasil kanonis dan menyetujui penggantian isian.'); }
@@ -179,12 +194,12 @@ function ReviewBody({ operation, customerId, source, selectedMonth, sender, curr
             epoch.current++;
         }}
     /> : null;
-    const body = <><h2 id="co-correction-title" className="font-semibold text-lg">Tinjau perubahan tercatat</h2><p className="text-[13px] mt-2 break-all">Operasi {operation} · sumber {String(source.report_head_id ?? source.delivery_head_id ?? source.return_head_id ?? source.draft_id)}{source.original_revision_id ? ` · revisi asli ${source.original_revision_id}` : ''}{source.expected_report_version ?? source.expected_delivery_version ?? source.expected_return_version ? ` · versi asli ${source.expected_report_version ?? source.expected_delivery_version ?? source.expected_return_version}` : ''}</p><p className="text-[13px] mt-2">Semua periode, stok, pendapatan dan atribusi diterapkan bersama. Riwayat asli tetap tersimpan.</p><div className="space-y-4 mt-4">{readFailure}{error && <COFailure error={error}/>}<CORecoveryPanel confirmed={!!confirmed} pending={pending} sender={sender} current={() => live() && !pending && !busy.current} accept={recover}/>{monthEditor ? monthEditor : <>
- <Field id="co-correction-reason" label="Alasan perubahan">{control => <textarea {...control} className={CO_INPUT} aria-label="Alasan perubahan" disabled={locked} value={reason} onChange={e => { if (locked)
+    const body = <><h2 id="co-correction-title" className="font-semibold text-lg">Tinjau perubahan tercatat</h2><p className="text-[13px] mt-2 break-all">Operasi {operation} · sumber {String(source.report_head_id ?? source.delivery_head_id ?? source.return_head_id ?? source.draft_id)}{source.original_revision_id ? ` · revisi asli ${source.original_revision_id}` : ''}{source.expected_report_version ?? source.expected_delivery_version ?? source.expected_return_version ? ` · versi asli ${source.expected_report_version ?? source.expected_delivery_version ?? source.expected_return_version}` : ''}</p><p className="text-[13px] mt-2">Semua periode, stok, pendapatan dan atribusi diterapkan bersama. Riwayat asli tetap tersimpan.</p><div className="space-y-4 mt-4">{readFailure}{resultAcceptance}{error && <COFailure error={error}/>}<CORecoveryPanel confirmed={!!confirmed} pending={pending} sender={sender} current={() => live() && !pending && !busy.current} accept={recover}/>{monthEditor ? monthEditor : <>
+ <Field id="co-correction-reason" label="Alasan perubahan">{control => <textarea {...control} className={CO_INPUT} aria-label="Alasan perubahan" disabled={locked || !!resumeContext} value={reason} onChange={e => { if (locked || resumeContext)
             return; setReason(e.target.value); setReview(null); setContext(null); setCompleted({}); setAck([]); setRequired([]); setReopen([]); epoch.current++; }}/>}</Field>
- {required.map(m => <Button type="button" variant="quiet" size="compact" key={m} disabled={locked || !context} onClick={() => { setActiveMonth(m); setReview(null); epoch.current++; }}>Lengkapi periode {m.slice(0, 7)}</Button>)}{Object.keys(completed).length > 0 && <p className="text-base">Draft periode siap dalam paket: {Object.keys(completed).map(m => m.slice(0, 7)).join(', ')}. Tinjau ulang seluruh paket.</p>}
- {reopen.length > 0 && <div className="rounded-lg bg-amber-50 p-3 text-base"><p>{reopen.length} CO perlu dibuka ulang, termasuk stok nol dengan pengiriman/laporan belum lengkap.</p><div className="max-h-40 overflow-y-auto">{reopen.map(r => <p key={r.co_id} className="break-all">{r.co_id} · versi {r.expected_co_version ?? 'Tidak tersedia'}</p>)}</div><label className="flex min-h-[var(--ui-control-size)] items-center gap-2 text-[length:var(--ui-text-label)] font-medium"><input type="checkbox" checked={exactAck()} disabled={locked || reopen.some(r => !r.expected_co_version)} onChange={e => { setAck(e.target.checked ? reopen.map(r => ({ co_id: r.co_id, expected_co_version: r.expected_co_version! })) : []); setReview(null); epoch.current++; }}/> Saya menyetujui pembukaan ulang tepat {reopen.length} CO dan versi yang tercantum</label></div>}
- <Button variant={review?.header.can_post && exactAck() && !required.length ? "secondary" : "primary"} disabled={locked || !reason.trim()} onClick={() => void inspect()}>Tinjau semua dampak</Button>{review && <COChangePreview snapshot={review} selectedMonth={selectedMonth} onAuthorityFailure={rejectPreviewAuthority}/>} {review?.header.can_post && exactAck() && !required.length && <Button disabled={locked} onClick={() => void apply()}>Terapkan perubahan</Button>}</>}
+ {required.map(m => <Button type="button" variant="quiet" size="compact" key={m} disabled={locked || !context} onClick={() => { setActiveMonth(m); setReview(null); epoch.current++; }}>Lengkapi periode {m.slice(0, 7)}</Button>)}{Object.keys(completed).length > 0 && <p className="text-base">Periode telah diperiksa dalam paket: {Object.keys(completed).map(m => m.slice(0, 7)).join(', ')}. Tinjau ulang seluruh paket.</p>}
+ {reopen.length > 0 && <div className="rounded-lg bg-amber-50 p-3 text-base"><p>{reopen.length} CO perlu dibuka ulang, termasuk stok nol dengan pengiriman/laporan belum lengkap.</p><div className="max-h-40 overflow-y-auto">{reopen.map(r => <p key={r.co_id} className="break-all">{r.labels?.coNumber ?? 'Identitas CO tidak tersedia'} · versi {r.expected_co_version ?? 'Tidak tersedia'}</p>)}</div><label className="flex min-h-[var(--ui-control-size)] items-center gap-2 text-[length:var(--ui-text-label)] font-medium"><input type="checkbox" checked={exactAck()} disabled={locked || !identitiesReady || reopen.some(r => !r.expected_co_version || !r.labels?.coNumber)} onChange={e => { setAck(e.target.checked ? reopen.map(r => ({ co_id: r.co_id, expected_co_version: r.expected_co_version! })) : []); setReview(null); epoch.current++; }}/> Saya menyetujui pembukaan ulang tepat {reopen.length} CO dan versi yang tercantum</label></div>}
+ <Button variant={review?.header.can_post && exactAck() && !required.length ? "secondary" : "primary"} disabled={locked || !reason.trim()} onClick={() => void inspect()}>Tinjau semua dampak</Button>{review && <COChangePreview snapshot={review} selectedMonth={selectedMonth} onAuthorityFailure={rejectPreviewAuthority} onStalePreview={(_fingerprint,_error)=>{if(live()&&epoch.current===previewEpoch){setIdentitiesReady(false);setAck([])}}}/>} {review?.header.can_post && exactAck() && !required.length && <Button disabled={locked} onClick={() => void apply()}>{finalActionLabel ?? (operation === 'post_sj' ? 'Catat pengiriman' : 'Terapkan perubahan')}</Button>}</>}
  {confirmed && <div role="alert"><p>Perubahan sudah tersimpan. Periksa hasil sumber sebelum membuat perubahan baru.</p><Button variant="quiet" size="compact" disabled={pending} onClick={() => { if (busy.current || !live())
         return; busy.current = true; setPending(true); void onAccepted(confirmed).then(ok => { if (live() && ok)
         setConfirmed(null); }).catch(setError).finally(() => { busy.current = false; if (live())
@@ -210,8 +225,15 @@ function ReviewMonth({
     const work = useCOReportWorkspace(customerId, month, onAuthorityFailure);
     const [prepared, setPrepared] = useState(false);
     const [zero, setZero] = useState(false);
+    const zeroId=useId(),zeroTrigger=useRef<HTMLElement|null>(null);
     const [count, setCount] = useState('0');
     const ready = prepared && work.header?.source_context_fingerprint === context.source_context_fingerprint;
+    // A consumed draft retains source ownership; the accepted posted revision is
+    // separately canonical and correctly has no draft/source fingerprint.
+    const recordedResult = prepared && !work.editing && work.accepted?.draft?.consumed
+        && work.accepted.draft.source_context_fingerprint === context.source_context_fingerprint
+        && work.accepted.effective?.status === 'posted' && !!work.accepted.effective.revision_id
+        && work.header?.revision_id === work.accepted.effective.revision_id;
     useEffect(() => onDirty(work.dirty || work.pending), [work.dirty, work.pending, onDirty]);
     const retainsResult = work.pending || work.evidenceState.pending || work.evidenceState.unresolved || work.sender.hasUnresolved() || !!work.confirmed;
     useEffect(() => {
@@ -222,12 +244,12 @@ function ReviewMonth({
 
     async function recover(receipt: COReceipt) {
         if (receipt.operation !== 'save_report_draft') {
-            throw new Error('Hasil pemulihan bukan draft periode ini.');
+            throw new Error('Hasil pemulihan bukan isian periode ini.');
         }
         const generation = work.generation;
         if (work.dirty) {
             if (!confirmDiscard) throw new Error('Buka pemulihan melalui editor sumber untuk menyetujui penggantian isian.');
-            const accepted = await confirmDiscard('Buang isian periode ini dan buka hasil draft yang dipulihkan?');
+            const accepted = await confirmDiscard('Buang isian periode ini dan buka hasil isian yang dipulihkan?');
             if (!accepted || !current() || !work.isGenerationCurrent(generation)) return false;
         }
         const accepted = await work.acceptCanonical(receipt, true);
@@ -273,37 +295,35 @@ function ReviewMonth({
             accept={recover}
         />
         {work.confirmed && <div role="alert">
-            <p>Draft periode sudah tersimpan. Baca hasilnya sebelum melanjutkan; isian yang belum terkirim tetap dipertahankan.</p>
+            <p>Isian periode sudah diterima. Baca hasilnya sebelum melanjutkan; isian yang belum terkirim tetap dipertahankan.</p>
             <Button variant="quiet" size="compact" disabled={work.pending || blocked}
                 onClick={() => ignore(retryCommitted())}>Buka hasil laporan tersimpan</Button>
         </div>}
-        {!ready ? <Button variant="secondary"
+        {!ready ? <>{recordedResult && <COReportFields work={work}/>}<Button variant="secondary"
             disabled={blocked || work.pending || !work.accepted || !current() || !!work.confirmed || work.sender.hasUnresolved()}
             onClick={() => ignore(work.initialize(context).then(header => {
                 if (header && current()) setPrepared(true);
-            }))}>Perbarui periode terhadap sumber usulan</Button> : <>
+            }))}>Perbarui periode terhadap sumber usulan</Button></> : <>
             <COReportFields work={work}/><COEvidenceAttachment work={work} confirmDiscard={confirmDiscard} blocked={blocked || !current()} sourceFingerprint={context.source_context_fingerprint}/>
             <Button variant="secondary" disabled={blocked || work.frozen}
-                onClick={() => ignore(work.save())}>Simpan Draft periode</Button>
-            <Button variant="secondary" disabled={blocked || work.frozen}
-                onClick={() => ignore(work.save().then(header => {
+                onClick={event => { zeroTrigger.current=event.currentTarget;ignore(work.save().then(header => {
                     if (header && current()) {
                         setCount(header.missing_count);
                         setZero(true);
                     }
-                }))}>Isi sisa periode dengan nol</Button>
-            {zero && <div role="alert">
+                }));}}>Isi sisa periode dengan nol</Button>
+            {zero && <Dialog labelledBy={`${zeroId}-title`} pending={work.frozen||blocked} onClose={()=>setZero(false)} returnFocus={zeroTrigger.current} fallbackFocus={()=>zeroTrigger.current}><h4 id={`${zeroId}-title`}>Konfirmasi isi nol</h4>
                 <p>{count} baris kosong di seluruh periode, termasuk halaman belum dibuka. Isi nol?</p>
                 <Button variant="quiet" size="compact" onClick={() => setZero(false)}>Batal nol</Button>
                 <Button variant="secondary" disabled={work.frozen || blocked}
                     onClick={() => { setZero(false); ignore(work.fillZero()); }}>Konfirmasi nol periode</Button>
-            </div>}
+            </Dialog>}
             <Button disabled={blocked || work.frozen}
-                onClick={() => void finish()}>Gunakan draft periode lengkap</Button>
+                onClick={() => void finish()}>Lanjutkan peninjauan periode</Button>
         </>}
         {!ready && work.error && <COFailure error={work.error}/>}
         <Button variant="quiet" size="compact" disabled={work.dirty || work.pending || work.evidenceState.pending || work.evidenceState.unresolved || work.sender.hasUnresolved() || !!work.confirmed}
             onClick={onCancel}>Kembali ke peninjauan</Button>
-        {work.dirty && <p>Simpan isian periode sebelum kembali.</p>}
+        {work.dirty && <p>Lanjutkan peninjauan untuk memeriksa kelengkapan isian sebelum kembali.</p>}
     </div>;
 }

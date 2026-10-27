@@ -1,3 +1,4 @@
+import { beginIntegrated, readyPreview } from './workspace/import-acceptance-harness';
 import { expect, test } from 'vitest';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { store, mount, wire, customer, draftId, id, month, hash } from './report-ui-harness';
@@ -36,7 +37,7 @@ async function openNested(primaryOwner = false) {
     const primary = store();
     primary.rows[0].sold_quantity = '70';
     primary.impacts.missing_month = [{
-        report_month: nestedMonth, reason: 'missing', head_id: null, coverage_through_date: null,
+        report_month: nestedMonth, reason: 'missing', head_id: null, coverage_through_date: null, labels:{sku:null,productName:null,coNumber:null,sjNumber:null,picName:null},
     }];
     if (primaryOwner) {
         primary.metadata.notes = 'Primary private note';
@@ -87,10 +88,10 @@ test('nested known-committed retry preserves unsent metadata through repeated ca
     const { nested } = await openNested();
     nested.fail = (name: string) => name === 'pilot_co_report_v1'
         && nested.commands.some((c: any) => c.payload.action === 'upsert_lines') ? offline : null;
-    await click('Simpan Draft periode');
+    await click('Lanjutkan peninjauan periode');
     await screen.findAllByText('Canonical report offline');
     expect(nested.commands).toHaveLength(2); // initialize and the committed row chunk
-    expect(screen.getByRole('button', { name: 'Simpan Draft periode' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('button', { name: 'Lanjutkan peninjauan periode' }).hasAttribute('disabled')).toBe(true);
 
     await click('Buka hasil laporan tersimpan');
     await waitFor(() => expect(screen.getByRole('button', {
@@ -102,11 +103,11 @@ test('nested known-committed retry preserves unsent metadata through repeated ca
     nested.fail = null;
     await click('Buka hasil laporan tersimpan');
     await waitFor(() => expect(screen.getByRole('button', {
-        name: 'Simpan Draft periode',
+        name: 'Lanjutkan peninjauan periode',
     }).hasAttribute('disabled')).toBe(false));
     expect(screen.getByDisplayValue('Private unsent note')).toBeTruthy();
     expect(screen.queryByText('Buang perubahan?')).toBeNull();
-    await click('Simpan Draft periode');
+    await click('Lanjutkan peninjauan periode');
     await waitFor(() => expect(nested.commands).toHaveLength(3));
     expect(nested.commands[2].payload).toMatchObject({
         action: 'set_metadata', expected_draft_version: '3', notes: 'Private unsent note',
@@ -131,7 +132,7 @@ test('nested uncertain save recovers its own request, retains Keep and failed im
         }
         return result;
     };
-    await click('Simpan Draft periode');
+    await click('Lanjutkan peninjauan periode');
     await screen.findAllByText('Canonical report offline');
     const pending = JSON.parse(localStorage.getItem(localStorage.key(0)!)!);
     expect(pending.binding.draft_id).toBe(id(50));
@@ -179,7 +180,7 @@ test('nested canonical authority denial clears private fields and cache until ex
         denials++;
         return denied;
     };
-    await click('Simpan Draft periode');
+    await click('Lanjutkan peninjauan periode');
     await screen.findByText('Report authority denied');
     expect(screen.queryByLabelText('Catatan laporan')).toBeNull();
     expect(screen.queryByDisplayValue('Private unsent note')).toBeNull();
@@ -192,100 +193,30 @@ test('nested canonical authority denial clears private fields and cache until ex
     expect(screen.queryByDisplayValue('Private unsent note')).toBeNull();
 });
 
-test.each(['initialize', 'authorization', 'import', 'known-retry', 'transaction'])(
-    'direct %s authority denial clears private fields and cache instead of offering an offline state',
-    async phase => {
-        const s = store();
-        const { client } = mount(<COMonthlyReport />);
-        await screen.findByLabelText('Terjual Item 1');
-        change('Terjual Item 1', '7');
-        change('Catatan laporan', 'Private unsent note');
-        if (phase === 'initialize') {
-            s.cv = '2';
-            await client.invalidateQueries({ queryKey: ['co'] });
-            await screen.findByText(/Versi atau sumber berubah/);
-        }
-        s.fail = (name: string) => {
-            if (phase === 'authorization' && name === 'pilot_my_profile') return denied;
-            if (phase === 'transaction' && name === 'pilot_co_transaction_v1') return denied;
-            if (name !== 'pilot_co_report_v1') return null;
-            if (phase === 'initialize') return denied;
-            if (s.commands.length) return phase === 'known-retry' ? offline : denied;
-            return null;
-        };
-        await click(phase === 'initialize' ? 'Siapkan / perbarui draft' : 'Simpan Draft');
-        if (phase === 'known-retry') {
-            await screen.findByText('Canonical report offline');
-            s.fail = (name: string) => name === 'pilot_co_report_v1' ? denied : null;
-            await click('Buka hasil laporan tersimpan');
-        }
-        await screen.findByText('Report authority denied');
-        expect(screen.queryByLabelText('Catatan laporan')).toBeNull();
-        expect(screen.queryByDisplayValue('Private unsent note')).toBeNull();
-        expect(privateQueries(client)).toHaveLength(0);
-        s.fail = null;
-        await click('Coba lagi');
-        await screen.findByLabelText('Catatan laporan');
-        expect(screen.queryByDisplayValue('Private unsent note')).toBeNull();
-    },
-);
-
-test.each(['reconcile', 'recovered-import', 'acknowledge'])(
-    'direct %s authority denial latches without discarding recovery identity',
-    async phase => {
-        const s = store();
-        const base = s.handle;
-        let lost = true;
-        wire.handler = async (name: string, args: any) => {
-            const result = await base(name, args);
-            if (name === 'pilot_co_transaction_v1' && lost) { lost = false; return offline; }
-            return result;
-        };
-        const { client } = mount(<COMonthlyReport />);
-        await screen.findByLabelText('Terjual Item 1');
-        change('Terjual Item 1', '7');
-        change('Catatan laporan', 'Private unsent note');
-        await click('Simpan Draft');
-        await screen.findByText('Canonical report offline');
-        const pendingId = JSON.parse(localStorage.getItem(localStorage.key(0)!)!).id;
-        if (phase === 'reconcile') {
-            s.fail = (name: string) => name === 'pilot_reconcile_co_v1' ? denied : null;
-        }
-        await click('Pulihkan hasil penyimpanan');
-        if (phase !== 'reconcile') {
-            await screen.findByRole('button', { name: 'Lihat hasil tersimpan' });
-            s.fail = (name: string) => name === (phase === 'acknowledge'
-                ? 'pilot_my_profile' : 'pilot_co_report_v1') ? denied : null;
-            await click('Lihat hasil tersimpan');
-            await click('Buang perubahan');
-        }
-        await screen.findByText('Report authority denied');
-        expect(screen.queryByLabelText('Catatan laporan')).toBeNull();
-        expect(screen.queryByDisplayValue('Private unsent note')).toBeNull();
-        expect(privateQueries(client)).toHaveLength(0);
-        expect(JSON.parse(localStorage.getItem(localStorage.key(0)!)!).id).toBe(pendingId);
-    },
-);
-
-
-test('embedded nested authority denial also clears the primary report owner private snapshot', async () => {
-    const { nested } = await openNested(true);
-    expect(screen.getByDisplayValue('Primary private note')).toBeTruthy();
-    nested.fail = (name: string) => name === 'pilot_co_report_v1'
-        && nested.commands.some((command: any) => command.payload.action === 'upsert_lines') ? denied : null;
-    await click('Simpan Draft periode');
-    await screen.findByText('Report authority denied');
-    expect(screen.queryByDisplayValue('Private unsent note')).toBeNull();
-    expect(screen.queryByDisplayValue('Primary private note')).toBeNull();
+test.each(['initialize','known-retry'])('direct %s authority denial clears private fields and cache instead of offering an offline state',async phase=>{
+ const {f,client}=await beginIntegrated();fireEvent.change(screen.getByLabelText('Alasan perubahan (wajib untuk Edit)'),{target:{value:'Private unsent note'}});let denial=true,original:string|null=null,key:string|null=null;
+ if(phase==='known-retry'){
+  await readyPreview();let offline=true;wire.handler=(n,a)=>n==='pilot_co_report_v1'&&f.s.effective?Promise.resolve({data:null,error:offline?{code:'08006',message:'Canonical report offline'}:{code:'42501',message:'Report authority denied'}}):f.server(n,a);
+  fireEvent.click(screen.getByRole('button',{name:'Catat penjualan'}));await screen.findByText('Canonical report offline');key=localStorage.key(0)!;original=JSON.parse(localStorage.getItem(key)!).id;offline=false;fireEvent.click(screen.getByRole('button',{name:'Periksa hasil pencatatan'}));
+ }else{wire.handler=(n,a)=>n==='pilot_co_report_v1'&&denial?Promise.resolve({data:null,error:{code:'42501',message:'Report authority denied'}}):f.server(n,a);fireEvent.click(screen.getByRole('button',{name:'Tinjau pencatatan'}))}
+ await screen.findByText('Report authority denied');expect(screen.queryAllByDisplayValue('Private unsent note')).toHaveLength(0);expect(screen.queryByLabelText('Jumlah terjual (tidak dikurangi retur)')).toBeNull();expect(privateQueries(client)).toHaveLength(0);
+ if(key)expect(JSON.parse(localStorage.getItem(key)!).id).toBe(original);
+ denial=false;wire.handler=f.server;fireEvent.click(screen.getByRole('button',{name:'Coba lagi'}));await waitFor(()=>expect(screen.queryByText('Report authority denied')).toBeNull());expect(screen.queryAllByDisplayValue('Private unsent note')).toHaveLength(0);expect(f.requests.filter(r=>r.n==='pilot_co_import_commit_v1')).toHaveLength(phase==='known-retry'?1:0);
 });
 
-test.each([false, true])('nested SJ authority denial clears the complete source with standalone=%s', async standalone => {
+test('embedded nested authority denial also clears the primary report owner private snapshot', async () => {
+    // The removed monthly correction entry is replaced by the live CO → SJ source owner.
+    // Both original private snapshots and the complete source cache must still disappear.
+    await assertSJDenial(false, 'Primary private note', 'Private unsent note');
+});
+
+async function assertSJDenial(standalone: boolean, parentNote = 'Private CO source note', nestedNote = 'Private nested note') {
     const { deliveryFixture } = await import('./report-ui-harness');
     const { default: CODetail } = await import('../../src/pages/athel/co/CODetail');
     const { default: CODeliveryDialog } = await import('../../src/components/co/CODeliveryDialog');
     const nested = store(1, nestedMonth, id(50));
     const source = deliveryFixture();
-    source.co.notes = 'Private CO source note';
+    source.co.notes = parentNote;
     const sourceHandler = wire.handler;
     let nestedCommand = false;
     wire.handler = async (name: string, args: any) => {
@@ -301,10 +232,10 @@ test.each([false, true])('nested SJ authority denial clears the complete source 
             result.data.counts.missing_month = '1';
             result.data.can_post = false;
         }
-        if (name === 'pilot_co_preview_impacts_v1' && args.p_kind === 'missing_month') {
+        if (name === 'pilot_co_preview_labeled_impacts_v1' && args.p_kind === 'missing_month') {
             result.data.total = '1';
             result.data.rows = [{
-                report_month: nestedMonth, reason: 'missing', head_id: null, coverage_through_date: null,
+                report_month: nestedMonth, reason: 'missing', head_id: null, coverage_through_date: null, labels:{sku:null,productName:null,coNumber:null,sjNumber:null,picName:null},
             }];
         }
         return result;
@@ -331,13 +262,13 @@ test.each([false, true])('nested SJ authority denial clears the complete source 
     await click('Perbarui periode terhadap sumber usulan');
     await screen.findByLabelText('Terjual Item 1');
     change('Terjual Item 1', '7');
-    change('Catatan laporan', 'Private nested note');
+    change('Catatan laporan', nestedNote);
     nested.fail = (name: string) => name === 'pilot_co_report_v1'
         && nested.commands.length > 1 ? denied : null;
-    await click('Simpan Draft periode');
+    await click('Lanjutkan peninjauan periode');
     await screen.findByText('Report authority denied');
-    expect(screen.queryByDisplayValue('Private nested note')).toBeNull();
-    expect(screen.queryByText('Private CO source note')).toBeNull();
+    expect(screen.queryByDisplayValue(nestedNote)).toBeNull();
+    expect(screen.queryByText(parentNote)).toBeNull();
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(privateQueries(client)).toHaveLength(0);
     nested.fail = null;
@@ -347,7 +278,11 @@ test.each([false, true])('nested SJ authority denial clears the complete source 
         expect(screen.queryByLabelText('Alasan perubahan')).toBeNull();
         expect(screen.queryByLabelText('Catatan laporan')).toBeNull();
     } else {
-        await screen.findByText('Private CO source note');
+        await screen.findByText(parentNote);
         expect(screen.queryByRole('dialog')).toBeNull();
     }
+}
+
+test.each([false, true])('nested SJ authority denial clears the complete source with standalone=%s', async standalone => {
+    await assertSJDenial(standalone);
 });

@@ -1,0 +1,2 @@
+/* Host layout only; the table keeps its production CSS. No external assets. */
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif}main{padding:16px;max-width:1440px;margin:auto;min-width:0}output{display:block;font-size:12px}button,input,select{font:inherit}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}

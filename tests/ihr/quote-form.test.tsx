@@ -8,7 +8,7 @@ import { employeeA, employeeB } from './fixtures'
 import { changedQuoteScope, quoteFixture, quoteInput, quoteScope } from './quote-fixture'
 const mocks=vi.hoisted(()=>({rpc:vi.fn()}))
 vi.mock('../../src/lib/supabase',()=>({supabase:{rpc:mocks.rpc}}))
-vi.mock('../../src/lib/AuthContext',()=>({useAuth:()=>({user:{id:'71000000-0000-0000-0000-000000000001'}})}))
+vi.mock('../../src/lib/AuthContext',()=>({useAuth:()=>({user:{id:'71000000-0000-0000-0000-000000000001'},profile:{id:'71000000-0000-0000-0000-000000000001',is_active:true},loading:false})}))
 import MyLeave from '../../src/pages/ihr/leave/MyLeave'
 import LeaveTabs from '../../src/pages/ihr/leave/LeaveTabs'
 const context:LeaveContext={scopeVersion:quoteScope,memberKind:'employee',capabilities:{request:true,approve:true,configure:false,adjust:false,readPrivate:false,manageAccess:false},currentPeriod:{year:2026,startDate:'2026-01-01',endDate:'2027-01-01'},timezone:'Etc/UTC',setup:{ready:false,blockers:[]},balances:[{accountId:employeeA,year:2026,allowanceMinutes:5400,approvedMinutes:450,pendingMinutes:60,availableMinutes:4890,expiredMinutes:0,version:4,reconciled:true}]}
@@ -20,7 +20,7 @@ function quotes(){return mocks.rpc.mock.calls.filter(([name])=>name==='leave_quo
 async function open(){fireEvent.click(screen.getByRole('button',{name:'Ajukan cuti'}));await screen.findByLabelText('Tanggal mulai')}
 function fill(){for(const [label,value] of [['Tanggal mulai',quoteInput.startDate],['Tanggal selesai',quoteInput.endDate],['Alasan pribadi',quoteInput.reason]])fireEvent.change(screen.getByLabelText(label),{target:{value}})}
 async function preview(){fireEvent.click(screen.getByRole('button',{name:'Hitung pratinjau'}));await screen.findByRole('region',{name:'Pratinjau cuti'})}
-beforeEach(()=>{vi.stubGlobal('AbortController',class{constructor(){return transferableAbortController()}});mocks.rpc.mockImplementation((name:string)=>({abortSignal:()=>Promise.resolve(reply(name==='leave_context_v1'?context:quoteFixture))}));vi.spyOn(window,'confirm').mockReturnValue(false)})
+beforeEach(()=>{vi.stubGlobal('AbortController',class{constructor(){return transferableAbortController()}});mocks.rpc.mockImplementation((name:string)=>({abortSignal:()=>Promise.resolve(reply(name==='leave_context_v1'?context:name==='leave_reads_context_v1'?{scopeVersion:quoteScope,calendarAudiences:[],defaultRange:null,defaultRangeState:'unavailable'}:quoteFixture))}));vi.spyOn(window,'confirm').mockReturnValue(false)})
 afterEach(()=>{cleanup();clients.splice(0).forEach(c=>c.clear());mocks.rpc.mockReset();vi.restoreAllMocks();vi.unstubAllGlobals()})
 test('single duration form focuses the date and shows authoritative 675-minute preview without submission',async()=>{
  render(panel(client()));await open();expect(document.activeElement).toBe(screen.getByLabelText('Tanggal mulai'))
@@ -54,7 +54,7 @@ test('read failure preserves private draft, focuses safe error and never stores 
  fireEvent.click(screen.getByRole('button',{name:'Hitung pratinjau'}));const alert=await screen.findByRole('alert')
  expect(document.activeElement).toBe(alert);expect((screen.getByLabelText('Alasan pribadi') as HTMLTextAreaElement).value).toBe(quoteInput.reason)
  expect(alert.textContent).not.toContain(quoteInput.reason);expect(storage).not.toHaveBeenCalled();expect(JSON.stringify(c.getQueryCache().getAll().map(q=>q.state.data))).not.toContain(quoteInput.reason)
- mocks.rpc.mockImplementation((name:string)=>({abortSignal:()=>Promise.resolve(reply(name==='leave_context_v1'?context:quoteFixture))}));await preview()
+ mocks.rpc.mockImplementation((name:string)=>({abortSignal:()=>Promise.resolve(reply(name==='leave_context_v1'?context:name==='leave_reads_context_v1'?{scopeVersion:quoteScope,calendarAudiences:[],defaultRange:null,defaultRangeState:'unavailable'}:quoteFixture))}));await preview()
 })
 test('repeat clicks coalesce; editing aborts and discards a late quote while preserving new input',async()=>{
  let finish!:(v:unknown)=>void;let signal!:AbortSignal
@@ -86,7 +86,7 @@ test('tab navigation asks before discarding and returning starts a fresh form',a
  render(<QueryClientProvider client={client()}><LeaveTabs context={context}/></QueryClientProvider>);await open();fill()
  fireEvent.click(screen.getByRole('tab',{name:'Kalender'}));expect(screen.getByDisplayValue(quoteInput.reason)).toBeTruthy()
  vi.mocked(window.confirm).mockReturnValue(true);fireEvent.click(screen.getByRole('tab',{name:'Kalender'}));expect(screen.queryByLabelText('Alasan pribadi')).toBeNull()
- fireEvent.click(screen.getByRole('tab',{name:'Ajukan Cuti'}));await open();expect((screen.getByLabelText('Alasan pribadi') as HTMLTextAreaElement).value).toBe('')
+ await waitFor(()=>expect(screen.getByRole('tab',{name:'Ajukan Cuti'}).matches(':disabled')).toBe(false));fireEvent.click(screen.getByRole('tab',{name:'Ajukan Cuti'}));await open();expect((screen.getByLabelText('Alasan pribadi') as HTMLTextAreaElement).value).toBe('')
 })
 test('router push, Back and Forward remain blocked until discard is confirmed',async()=>{
  function Scene(){const navigate=useNavigate();return <><button onClick={()=>navigate('/other')}>Navigate away</button><button onClick={()=>navigate(-1)}>Back</button><button onClick={()=>navigate(1)}>Forward</button><MyLeave actorId={employeeA} context={context}/></>}

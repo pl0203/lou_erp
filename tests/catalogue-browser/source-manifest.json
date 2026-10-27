@@ -119,9 +119,9 @@
     },
     {
       "path": "src/index.css",
-      "sha": "1c8bd59a1f9c8aaeb85b5985fb6a06e66869b417",
-      "sha256": "9412752a7f6aa72a169adfbd08d17977e8b1f8b444e93e0a8f1329408d9165d4",
-      "bytes": 2315
+      "sha": "fbdc921e811cd043e9e638f8fa8a8487283a4945",
+      "sha256": "4602dfaa82ad6454343c5c6b54425a0ca9946a349f5cfc0cfd6b42c9957d8729",
+      "bytes": 2649
     },
     {
       "path": "src/styles/ui.css",
@@ -191,15 +191,15 @@
     },
     {
       "path": "package.json",
-      "sha": "eebda2f358053faeb86c9c30c2f38e0ceff9a028",
-      "sha256": "a00509f8a767578d265c292ccc78ee6d0319da729e673571549bbc9f2860d7f3",
-      "bytes": 1222
+      "sha": "10ddc1bb932fde7abe71ec78ac7e52c159a9bd5d",
+      "sha256": "a5629bc296d4e250eb124059406e68fe6a48cd50f6bef864ad86a08202a9f98d",
+      "bytes": 1268
     },
     {
       "path": "package-lock.json",
-      "sha": "1d38422028b5432b5b48ecf782d1238fb11c8567",
-      "sha256": "943d730df0724f7e85c7bd4aaff707911bfa92ca4426a264bb91bd4cd972578d",
-      "bytes": 141750
+      "sha": "50e1cd0d8c159133c74ac8eb9e858f9f1bddbdb6",
+      "sha256": "384346a5ec2f13d15ee8a5ca274c0b94e90de301fe3b8b95caeebbea954291ca",
+      "bytes": 234738
     },
     {
       "path": "public/fonts/plus-jakarta-sans/PlusJakartaSans-Variable.ttf",

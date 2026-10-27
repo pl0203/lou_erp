@@ -2,7 +2,13 @@
 
 This document describes the unpublished UI-only motion extension of the approved first pass. The combined review package also contains the separately reviewed SJ received-date feature and its source-only migration, described in `sj-received-date-correction.md`. Base: `e484367a2fae22b4f3530beb30e823aa8bb23d74` on `feat/catalogue-mutations-20261014`.
 
-## Design and safety boundaries
+## Current recovery addendum (2026-10-24)
+
+The historical motion-only description below remains a record of its original scope, not the current HR continuity contract. Subsequently approved HR behavior retains already loaded information during a same-session permission recheck, with actions disabled, for at most 10 seconds. Cancellation, failure, revocation, timeout, identity/backend change, or feature exit clears the protected display. New readers still need genuine completion receipts; retained display is not authority. See `employee-fields-recovery/harness-recovery.md` for approval provenance and verification.
+
+The immutable 102-branch fixture is unchanged. `tests/ui/fixtures/hr-continuity-loading-guards.json` records explicit before/after predicates for 12 HR owners and two new employee loading surfaces; the separate SJ mapping and Procurement identity loader stay exact. Route coverage now includes the five employee patterns.
+
+## Original design and safety boundaries
 
 - One presentation-only `LoadingState` supports compact, list, detail, form and dashboard shapes. Decorative geometry is hidden from assistive technology and static, including while offline. The existing human-readable status remains.
 - Newly mounted main-content surfaces fade in over 160 ms. The persistent CO layout does not need a keyed route or an extra wrapper. Existing children and drafts remain mounted when the original code retains them. Parameter changes and tabs that keep the same surface do not force a replay.
@@ -13,7 +19,7 @@ This document describes the unpublished UI-only motion extension of the approved
 - HR private views still hide data while authority is checked. PO/dashboard retained results keep their existing labels; this retention is not generalized to HR or approval screens.
 - The motion-only delta changes no library/auth/query/transaction code, database migrations, permissions, deployment configuration, packages or lockfiles. The separate SJ feature's source changes and unexecuted migration remain independently frozen and documented; no hosted state is changed by this combined review.
 
-## Route coverage: 38 actual paths
+## Route coverage: 43 current paths (38 original + 5 employee routes)
 
 Every active page below owns `MainContent` directly or through COLayout and receives shared mounted-content/control polish. The retired order-history URL now redirects to the Sales schedule. Sources are relative to `src/`. Shapes describe the changed loading presentation, not a new blocking condition.
 
@@ -55,6 +61,11 @@ Every active page below owns `MainContent` directly or through COLayout and rece
 | `/girard/my-customers` | `pages/girard/ManagerCustomers` | Customer list loading |
 | `/girard/customers` | `pages/girard/GirardCustomers` | Customer list; separate assignment/editor errors intact |
 | `/girard/managers` | `pages/girard/GirardManagers` | Manager list loading |
+| `/ihr/employees` | `pages/ihr/employees/EmployeeList` + `EmployeeUI` | Shared access boundary and list loading; retained display never grants actions |
+| `/ihr/employees/new` | `pages/ihr/employees/EmployeeEditor` + `EmployeeUI` | Access check and form loading; no invented delay |
+| `/ihr/employees/:employeeId` | `pages/ihr/employees/EmployeeDetail` + `EmployeeUI` | Shared detail/access loading; identity and authority invalidation clear display |
+| `/ihr/employees/:employeeId/edit` | `pages/ihr/employees/EmployeeEditor` + `EmployeeUI` | Shared form/access loading; actions require fresh authority |
+| `/ihr/employees/:employeeId/reporting` | `pages/ihr/employees/EmployeeReportingEditor` + `EmployeeUI` | Shared reporting/access loading; actions require fresh authority |
 | `/ihr/users` | `pages/ihr/UserManagement` | Directory list; waiting-for-connection title and explanation preserved |
 | `/ihr/leave` | `pages/ihr/LeaveManagement` and panels below | Context/access check and all eligible existing nested read states |
 

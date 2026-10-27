@@ -12,7 +12,7 @@ test('Vercel serves the SPA entry point for fresh client-side deep links', () =>
 })
 
 test('SPA routing preserves database preview deployment and backend guard configuration', () => {
-  expect(config.git).toEqual({ deploymentEnabled: { 'fix/pilot-database': true, 'fix/po-admin-director': false, 'fix/padiwan-sidebar-theme': false, 'fix/demo-revisions': false, 'fix/pilot-scale-sql': false, 'ci/customer-categories-postgres': false, 'ci/ihr-leave-postgres': false, 'feat/consignment-orders-reviewed-20261010': false, 'fix/usability-findings-local-20261010': false, 'feat/padiwan-ui-reviewed-checkpoint-20261012': false, 'feat/catalogue-mutations-20261014': false } })
+  expect(config.git).toEqual({ deploymentEnabled: { 'fix/pilot-database': true, 'fix/po-admin-director': false, 'fix/padiwan-sidebar-theme': false, 'fix/demo-revisions': false, 'fix/pilot-scale-sql': false, 'ci/customer-categories-postgres': false, 'ci/ihr-leave-postgres': false, 'feat/consignment-orders-reviewed-20261010': false, 'fix/usability-findings-local-20261010': false, 'feat/padiwan-ui-reviewed-checkpoint-20261012': false, 'feat/catalogue-mutations-20261014': false, 'test/co-workspace-runtime-20261027': false } })
   const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
   expect(pkg.scripts.build).toBe('node scripts/verify-preview-backend.mjs && vite build')
 })

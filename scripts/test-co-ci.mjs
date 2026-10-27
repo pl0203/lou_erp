@@ -292,6 +292,7 @@ export function runCoCi({ env = process.env, execute = execFileSync, through = '
     process.stdout.write(races)
   }
   if(through==='08') process.stdout.write('CO_FINAL_COMPOSED_DATABASE_PASSED\n')
+  return { identity, connection }
 
 }
 

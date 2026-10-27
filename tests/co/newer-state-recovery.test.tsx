@@ -92,7 +92,7 @@ for (const kind of ['return', 'settlement'] as const) {
             ? new Promise(resolve => { release = async () => resolve(await base(name, args)); }) : base(name, args);
         await click(kind === 'return' ? 'Selesaikan konflik retur' : 'Selesaikan konflik penyelesaian'); await click('Buang perubahan');
         await waitFor(() => expect(release).toBeTypeOf('function'));
-        cleanup(); mountApp(<App/>, path); await screen.findByRole('heading', { name: kind === 'return' ? 'Stok pelanggan' : 'CO-1' });
+        cleanup(); mountApp(<App/>, path); await screen.findByRole('heading', { name: kind === 'return' ? 'Stok Pelanggan' : 'CO-1' });
         await act(async () => release());
         expect(localStorage.getItem(key)).toBe(before); expect(screen.queryByDisplayValue('PRIVATE BEFORE RECOVERY')).toBeNull();
     });

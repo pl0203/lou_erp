@@ -45,12 +45,12 @@ test.each(['executive', 'po_admin', 'co_admin'].flatMap(role => ['expanded', 'co
   if (layout === 'collapsed') fireEvent.click(screen.getByRole('button', { name: 'Minimalkan menu' }))
   if (layout === 'mobile') fireEvent.click(screen.getByRole('button', { name: 'Buka menu' }))
   const nav = screen.getByRole('navigation', { name: 'Navigasi Procurement' })
+  expect(!!within(nav).queryByRole('button', { name: 'Consignment Order' })).toBe(role !== 'po_admin')
   expect(within(nav).queryByRole('link', { name: /Antrean Sales lama/i })).toBeNull()
   expect(nav.querySelector('a[href="/athel/sales-orders"]')).toBeNull()
   expect(within(nav).getAllByRole('link').map(link => [link.getAttribute('href'), link.getAttribute('aria-label')])).toEqual([
     ...(role === 'executive' ? [['/athel/dashboard', 'Dashboard']] : []),
     ...(role !== 'co_admin' ? [['/athel/po', 'Purchase Order']] : []),
-    ...(role !== 'po_admin' ? [['/athel/co', 'Consignment Order']] : []),
     ['/athel/customers', 'Daftar Pelanggan'],
     ...(role === 'executive' ? [['/athel/promotions', 'Promosi']] : []),
     ['/athel/products', 'Daftar Barang'],
@@ -92,7 +92,7 @@ test('storage refusal cannot prevent opening or minimizing navigation', () => {
 
 test.each(['sales_person', 'sales_manager', 'sales_head', 'po_admin', 'executive'])('%s keeps the existing module access and renamed labels', role => {
   state.role = role; mount(<IHRNav />, '/ihr/leave')
-  expect(!!screen.queryByRole('link', { name: 'Manajemen Pengguna' })).toBe(role === 'executive')
+  expect(!!screen.queryByRole('link', { name: 'Karyawan' })).toBe(role === 'executive')
   fireEvent.click(screen.getByRole('button', { name: 'HR' }))
   const choices = screen.getByRole('group', { name: 'Pilihan modul' })
   expect(!!within(choices).queryByRole('link', { name: /Procurement/ })).toBe(['po_admin', 'executive'].includes(role))
@@ -224,7 +224,7 @@ test.each(allRoles.flatMap(role => layouts.map(layout => [role, layout])))('%s r
   const leave = within(nav).getByRole('link', { name: personal ? 'Ajukan Cuti' : 'Manajemen Cuti' })
   expect(leave.getAttribute('href')).toBe(personal ? '/ihr/leave?tab=mine' : '/ihr/leave')
   expect(leave.getAttribute('aria-current')).toBe('page')
-  expect(!!within(nav).queryByRole('link', { name: 'Manajemen Pengguna' })).toBe(role === 'executive')
+  expect(!!within(nav).queryByRole('link', { name: 'Karyawan' })).toBe(role === 'executive')
   fireEvent.click(leave)
   expect(screen.getByTestId('location').textContent).toBe(personal ? '/ihr/leave?tab=mine' : '/ihr/leave')
   if (layout === 'mobile') expect(screen.queryByRole('dialog')).toBeNull()

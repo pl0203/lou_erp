@@ -1,7 +1,7 @@
 import React from 'react';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
-import { mount, state, ids, change } from './ui-harness';
+import { mount, mountRoutes, state, ids, change } from './ui-harness';
 import COForm from '../../src/pages/athel/co/COForm';
 import CODetail from '../../src/pages/athel/co/CODetail';
 import COOrders from '../../src/pages/athel/co/COOrders';
@@ -21,7 +21,7 @@ test.each(['edit', 'sj', 'cancel'] as const)('%s transaction denial unmounts eve
     const { client } = mount(kind === 'edit' ? <COForm mode="edit"/> : <CODetail/>, `/athel/co/${ids.co}${kind === 'edit' ? '/edit' : ''}`);
     if (kind === 'edit') { await screen.findByDisplayValue('Item 1'); change('Catatan', 'PRIVATE ORDER'); }
     else {
-        await click(kind === 'sj' ? 'Tambah Surat Jalan' : 'Batalkan CO');
+        await click(kind === 'sj' ? 'Buat surat jalan' : 'Batalkan CO');
         fireEvent.change(await screen.findByLabelText(kind === 'sj' ? 'Nomor SJ' : 'Alasan pembatalan'), { target: { value: 'PRIVATE OPERATION' } });
         if (kind === 'sj') change('Jumlah dikirim Item 1', '1');
     }
@@ -43,17 +43,26 @@ test.each(['edit', 'sj', 'cancel'] as const)('%s transaction denial unmounts eve
 });
 test.each(['edit-header', 'edit-lines', 'sj-preparation', 'detail', 'order-actions', 'orders'] as const)('%s authoritative read denial clears its whole owning source', async resource => {
     const form = resource.startsWith('edit');
-    const orders = resource === 'orders' || resource === 'order-actions';
-    const { client } = mount(form ? <COForm mode="edit"/> : orders ? <COOrders/> : <CODetail/>, `/athel/co/${ids.co}${form ? '/edit' : ''}`);
+    // Inline order-actions RPC was removed; this case now checks its canonical detail owner.
+    const orders = resource === 'orders';
+    const ownedResource = resource === 'order-actions' ? 'detail' : resource;
+    const { client } = resource === 'order-actions'
+        ? mountRoutes([{path:'/athel/co',element:<COOrders/>},{path:'/athel/co/:id',element:<CODetail/>}],'/athel/co')
+        : mount(form ? <COForm mode="edit"/> : orders ? <COOrders/> : <CODetail/>, `/athel/co/${ids.co}${form ? '/edit' : ''}`);
+    if(resource === 'order-actions') {
+        fireEvent.click((await screen.findAllByRole('link',{name:'Lihat CO'}))[0]);
+        await screen.findByRole('link',{name:'Edit CO'});
+    }
     await screen.findAllByText(orders ? 'Store A' : 'Original PIC');
     if (form) change('Catatan', 'PRIVATE READ');
-    if (resource === 'sj-preparation') { await click('Tambah Surat Jalan'); await screen.findByLabelText('Nomor SJ'); }
-    const fetcher = vi.spyOn(rpc, resource === 'edit-lines' ? 'fetchCompleteCOLines' : resource === 'orders' ? 'fetchCOPage' : 'fetchCODetail').mockRejectedValue(denial());
-    await act(async () => { await client.invalidateQueries({ predicate: q => q.queryKey[4] === resource }); });
+    if (resource === 'sj-preparation') { await click('Buat surat jalan'); await screen.findByLabelText('Nomor SJ'); }
+    const fetcher = vi.spyOn(rpc, resource === 'edit-lines' ? 'fetchCompleteCOLines' : resource === 'orders' ? 'fetchCOPageV2' : 'fetchCODetail').mockRejectedValue(denial());
+    await act(async () => { await client.invalidateQueries({ predicate: q => q.queryKey[4] === ownedResource }); });
     await screen.findByText('Confirmed source denial');
     expect(screen.queryByDisplayValue('PRIVATE READ')).toBeNull();
     expect(screen.queryByText('Original PIC')).toBeNull();
-    expect(screen.queryByRole('link', { name: '+ CO Baru' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Buat CO' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Edit CO' })).toBeNull();
     expect(privateCache(client)).toEqual([]);
     const count = fetcher.mock.calls.length;
     await act(async () => { await client.invalidateQueries({ queryKey: ['co'] }); });
@@ -87,7 +96,7 @@ test.each(['reconcile', 'acknowledge'] as const)('order recovery %s denial clear
 });
 
 test('ordinary SJ committed canonical import denial clears both dialog and detail', async () => {
-    const { client } = mount(<CODetail/>, `/athel/co/${ids.co}`); await click('Tambah Surat Jalan');
+    const { client } = mount(<CODetail/>, `/athel/co/${ids.co}`); await click('Buat surat jalan');
     await screen.findByLabelText('Nomor SJ'); change('Nomor SJ', 'PRIVATE CANONICAL SJ'); change('Jumlah dikirim Item 1', '1');
     vi.spyOn(rpc, 'fetchCompleteCOSJDraft').mockRejectedValue(denial());
     await click('Simpan Draft SJ'); await screen.findByText('Confirmed source denial');

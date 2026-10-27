@@ -12,7 +12,7 @@ import COSourceBoundary from './COSourceBoundary';
 import { completeCORead, fetchCompleteCOLines, fetchCompleteCOSJDraft, fetchCODetail, fetchCODetailSection } from '../../lib/co/rpc';
 import type { COOrderRecord, COOrderLine, CODeliveryRevision } from '../../lib/co/validation';
 import { useCOTransactionSender } from '../../lib/co/transactions';
-import type { COReceipt } from '../../lib/co/contracts';
+import type { COReceipt, COSourceContext } from '../../lib/co/contracts';
 import { CO_INPUT, COFailure, CORecoveryPanel, enteredQuantity, useCOActor, useCORead } from './COShared';
 type SJInput = {
     id: string;
@@ -27,6 +27,7 @@ const sjSnapshot = (number: string, date: string, received: string, notes: strin
 type CODeliveryDialogProps = {
     co: COOrderRecord;
     draftId?: string;
+    resumeContext?: COSourceContext;
     correctionSource?: CODeliveryCorrectionSelection;
     onClose: () => void;
     returnFocus: HTMLElement | null;
@@ -42,7 +43,7 @@ export default function CODeliveryDialog(props: CODeliveryDialogProps) {
         {checked => <DeliveryEditor {...props} co={checked?.co ?? props.co}/>}
     </COSourceBoundary>;
 }
-function DeliveryEditor({ co, draftId, correctionSource, onClose, returnFocus, onSaved,
+function DeliveryEditor({ co, draftId, correctionSource, resumeContext, onClose, returnFocus, onSaved,
     readBlocked = false, readFailure, onAuthorityFailure }: CODeliveryDialogProps) {
     const actor = useCOActor(`sj:${co.id}:${draftId ?? JSON.stringify(correctionSource) ?? 'new'}`);
     const sender = useCOTransactionSender({ formScope: `sj:${co.id}`, customerId: co.customer_id, coId: co.id });
@@ -58,7 +59,7 @@ function DeliveryEditor({ co, draftId, correctionSource, onClose, returnFocus, o
     const [saved, setSaved] = useState<Record<string, any> | null>(null);
     const [binding, setBinding] = useState(co);
     const [pending, setPending] = useState(false);
-    const [reviewing, setReviewing] = useState(false);
+    const [reviewing, setReviewing] = useState(!!resumeContext);
     const [reviewDirty, setReviewDirty] = useState(false);
     const [reviewPending,setReviewPending]=useState(false);
     const [error, setError] = useState('');
@@ -110,7 +111,7 @@ function DeliveryEditor({ co, draftId, correctionSource, onClose, returnFocus, o
     useEffect(()=>{if(read.data&&actor.isCurrent())setAllowed(read.data.detail.allowed_operations)},[read.data,actor]);
     const correction = saved?.mode === 'delivery_correction' || !!correctionSource;
     const original = read.data?.original;
-    const sourceTarget = saved?.mode === 'delivery_correction' ? { delivery_head_id: saved.bound_delivery_head_id, original_revision_id: saved.bound_delivery_revision_id, expected_delivery_version: saved.bound_delivery_version } : original ? { delivery_head_id: original.head_id, original_revision_id: original.id, expected_delivery_version: original.head_version } : null;
+    const sourceTarget = resumeContext?.operation==='correct_sj' ? {delivery_head_id:resumeContext.payload.delivery_head_id,original_revision_id:resumeContext.payload.original_revision_id,expected_delivery_version:resumeContext.payload.expected_delivery_version} : saved?.mode === 'delivery_correction' ? { delivery_head_id: saved.bound_delivery_head_id, original_revision_id: saved.bound_delivery_revision_id, expected_delivery_version: saved.bound_delivery_version } : original ? { delivery_head_id: original.head_id, original_revision_id: original.id, expected_delivery_version: original.head_version } : null;
     const voiding = correctionSource?.action === 'void';
     const unavailable = rows.some(r => !r.available);
     const blocked = readBlocked || sender.hasUnresolved() || confirmed !== null;
@@ -151,16 +152,28 @@ function DeliveryEditor({ co, draftId, correctionSource, onClose, returnFocus, o
     async function prepareReceipt(receipt: COReceipt): Promise<() => void> {
         if (receipt.customer_id !== co.customer_id || !['save_sj_draft', 'post_sj', 'correct_sj'].includes(receipt.operation))
             throw new Error('Hasil pemulihan bukan SJ untuk pelanggan ini.');
-        if (receipt.operation === 'correct_sj' && receipt.id !== sourceTarget?.delivery_head_id)
-            throw new Error('Hasil koreksi tidak sesuai pengiriman asli.');
+        const recoveryOnlyTarget = receipt.operation === 'correct_sj' && !sourceTarget;
+        if (receipt.operation === 'correct_sj') {
+            if (sourceTarget && receipt.id !== sourceTarget.delivery_head_id) throw new Error('Hasil koreksi tidak sesuai pengiriman asli.');
+            if (recoveryOnlyTarget) {
+                // A stale proposal must not hide its original sender's result.
+                // Retained identity locates the target only; canonical reads below
+                // still establish customer/CO ownership and exact result version.
+                const identity = sender.getCommittedIdentity(receipt);
+                if (identity.operation !== 'correct_sj' || identity.customer_id !== co.customer_id || identity.co_id !== co.id || identity.target_id !== receipt.id)
+                    throw new Error('Hasil koreksi tidak sesuai pengiriman asli.');
+            }
+        }
         const fresh = await fetchCODetail(co.id, null, { isCurrent: actor.isCurrent });
         const current = fresh.co as COOrderRecord;
+        if (recoveryOnlyTarget && current.customer_version !== receipt.customer_version) throw new Error('Keadaan pengiriman berubah; hasil asli tetap menunggu pemeriksaan.');
         if (receipt.operation === 'save_sj_draft') {
             const draft = await fetchCompleteCOSJDraft(co.id, receipt.id, current.co_version, current.customer_version, { isCurrent: actor.isCurrent });
             const lines = await fetchCompleteCOLines(co.id, current.co_version, current.customer_version, { isCurrent: actor.isCurrent });
             return () => { setAllowed(fresh.allowed_operations);setBinding(current); restore(draft.header, lines, draft.lines); setGeneration(g => g + 1); setConfirmed(null); onSaved?.(); };
         }
         const canonical = await fetchCODetailSection({ p_co_id: co.id, p_section: 'deliveries', p_parent_id: receipt.id, p_expected_version: current.co_version, p_expected_customer_version: current.customer_version, p_page: 1, p_page_size: 20 }, { isCurrent: actor.isCurrent });
+        if (recoveryOnlyTarget && !canonical.rows.some((r: Record<string, any>) => r.head_id === receipt.id && r.is_effective && r.head_version === receipt.version)) throw new Error('Keadaan pengiriman berubah; hasil asli tetap menunggu pemeriksaan.');
         if (!canonical.rows.some((r: Record<string, any>) => r.head_id === receipt.id))
             throw new Error('Pengiriman tersimpan belum dapat dibuka untuk CO ini.');
         return () => { setConfirmed(null); onSaved?.(); unsaved.runWithoutPrompt(onClose); };
@@ -250,12 +263,12 @@ function DeliveryEditor({ co, draftId, correctionSource, onClose, returnFocus, o
         }
     }
     return <>{unsaved.dialog}<Dialog labelledBy="co-sj-title" pending={pending || reviewPending} onClose={dismiss} returnFocus={returnFocus} fallbackFocus={() => null}>
-    <h2 id="co-sj-title" className="font-semibold text-lg">{draftId ? 'Draft Surat Jalan' : 'Tambah Surat Jalan'}</h2>
-    <p className="mt-2 text-[13px] text-brand-secondary">Draft tidak menambah stok atau pendapatan. Post menambah stok tercatat pada tanggal SJ; bukan pendapatan.</p>
+    <h2 id="co-sj-title" className="font-semibold text-lg">{draftId ? 'Draft Surat Jalan' : 'Buat surat jalan'}</h2>
+    <p className="mt-2 text-[13px] text-brand-secondary">Penyiapan tidak mengubah stok. Catat pengiriman menambah stok tercatat pada tanggal SJ; bukan pendapatan.</p>
     <p className="mt-1 text-[13px] text-brand-secondary">SJ Kembali adalah pengembalian dokumen, bukan retur barang.</p>
     <div className="space-y-4 mt-4">{readFailure}
-    <CORecoveryPanel confirmed={!!confirmed} pending={pending || reviewPending} sender={sender} current={()=>actor.isCurrent()&&!pending&&!reviewPending} accept={recovered}/>{read.isError && <COFailure error={read.error}/>}{(stale || read.isError) && <Button type="button" variant="quiet" size="compact" disabled={pending || blocked} onClick={() => void refreshSources()}>Muat sumber SJ terbaru</Button>}{!loaded && !read.isError && <LoadingState title="Memuat seluruh sumber CO…" shape="compact" />}
-      {reviewing && (saved || voiding && sourceTarget) ? <COCorrectionDialog embedded ownUnsaved={false} operation={correction ? 'correct_sj' : 'post_sj'} customerId={co.customer_id} source={{ expected_co_version: binding.co_version, expected_customer_version: binding.customer_version, ...(voiding ? { action: 'void', ...sourceTarget } : { draft_id: saved!.id, expected_draft_version: saved!.draft_version, ...(correction ? { action: 'replace', ...sourceTarget } : {}) }) }} sender={sender} current={actor.isCurrent} blocked={readBlocked || !dataReady || pending} readFailure={readFailure} onDirtyChange={setReviewDirty} onPendingChange={setReviewPending} onClose={() => unsaved.confirmDiscard(() => { if(voiding)onClose();else { setReviewing(false); setReviewDirty(false); } })} onAuthorityFailure={error => { actor.rejectAuthority(error); onAuthorityFailure?.(error); }} confirmDiscard={message => unsaved.confirmDiscardDecision({ message })} onRecovered={recovered} onAccepted={async receipt => { setConfirmed(receipt); return importReceipt(receipt); }} returnFocus={returnFocus}/> : loaded && <>
+    <CORecoveryPanel confirmed={!!confirmed} pending={pending || reviewPending} sender={sender} current={()=>actor.isCurrent()&&!pending&&!reviewPending} accept={recovered}/>{read.isError && <COFailure error={read.error}/>}{!resumeContext && (stale || read.isError) && <Button type="button" variant="quiet" size="compact" disabled={pending || blocked} onClick={() => void refreshSources()}>Muat sumber SJ terbaru</Button>}{!loaded && !read.isError && <LoadingState title="Memuat seluruh sumber CO…" shape="compact" />}
+      {reviewing && (resumeContext || saved || voiding && sourceTarget) ? <COCorrectionDialog embedded ownUnsaved={false} resumeContext={resumeContext} operation={resumeContext?.operation ?? (correction ? 'correct_sj' : 'post_sj')} customerId={co.customer_id} source={resumeContext?.payload ?? { expected_co_version: binding.co_version, expected_customer_version: binding.customer_version, ...(voiding ? { action: 'void', ...sourceTarget } : { draft_id: saved!.id, expected_draft_version: saved!.draft_version, ...(correction ? { action: 'replace', ...sourceTarget } : {}) }) }} sender={sender} current={actor.isCurrent} blocked={readBlocked || !dataReady || pending} readFailure={readFailure} onDirtyChange={setReviewDirty} onPendingChange={setReviewPending} onClose={() => unsaved.confirmDiscard(() => { if(voiding || resumeContext)onClose();else { setReviewing(false); setReviewDirty(false); } })} onAuthorityFailure={error => { actor.rejectAuthority(error); onAuthorityFailure?.(error); }} confirmDiscard={message => unsaved.confirmDiscardDecision({ message })} onRecovered={recovered} onAccepted={async receipt => { setConfirmed(receipt); return importReceipt(receipt); }} returnFocus={returnFocus}/> : loaded && <>
         <fieldset disabled={pending || blocked || !dataReady} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field id="co-sj-number" label="Nomor SJ">{control => <input {...control} aria-label="Nomor SJ" className={CO_INPUT} value={number} onChange={e => setNumber(e.target.value)}/>}</Field>
         <Field id="co-sj-date" label="Tanggal SJ">{control => <input {...control} type="date" aria-label="Tanggal SJ" className={CO_INPUT} value={date} onChange={e => setDate(e.target.value)}/>}</Field>
@@ -277,9 +290,9 @@ function DeliveryEditor({ co, draftId, correctionSource, onClose, returnFocus, o
             setError((e as Error).message); }).finally(() => { if (actor.isCurrent())
             setPending(false); }); }}>Buka hasil SJ tersimpan</Button>
         </div>}{saved && !saved.bindings_current && <p role="alert" className="text-amber-800">Sumber berubah. Periksa semua isian dan simpan ulang untuk mengikat versi terbaru.</p>}{error && <COFailure error={new Error(error)}/>}<FormActions>
-    <Button type="button" variant="quiet" size="compact" onClick={dismiss} disabled={pending || reviewPending}>Batal</Button>{!reviewing && <>
+    <Button type="button" variant="quiet" size="compact" onClick={dismiss} disabled={pending || reviewPending}>Batal</Button>{!reviewing && !resumeContext && <>
         <Button type="button" variant={!saved || dirty || !saved.bindings_current || !allowed.includes(correction ? 'correct_sj' : 'post_sj') ? "primary" : "secondary"} disabled={!dataReady || pending || blocked || unavailable || saved?.consumed || !allowed.includes(correction?'correct_sj':'save_sj_draft')} onClick={() => void execute(false)}>Simpan Draft SJ</Button>
-        {!correction && <Button type="button" variant={saved && !dirty && saved.bindings_current && !saved.preparation_ready && allowed.includes('post_sj') ? "primary" : "secondary"} disabled={!dataReady || pending || blocked || unavailable || !saved || dirty || !saved.bindings_current || saved.consumed || !allowed.includes('post_sj')} onClick={() => void execute(true)}>Post SJ</Button>}
+        {!correction && <Button type="button" variant={saved && !dirty && saved.bindings_current && !saved.preparation_ready && allowed.includes('post_sj') ? "primary" : "secondary"} disabled={!dataReady || pending || blocked || unavailable || !saved || dirty || !saved.bindings_current || saved.consumed || !allowed.includes('post_sj')} onClick={() => void execute(true)}>Catat pengiriman</Button>}
         <Button type="button" variant={saved && !dirty && saved.bindings_current && saved.preparation_ready && allowed.includes(correction ? 'correct_sj' : 'post_sj') ? "primary" : "secondary"} disabled={!dataReady || pending || blocked || unavailable || !saved || dirty || !saved.bindings_current || !saved.preparation_ready || saved.consumed || !allowed.includes(correction ? 'correct_sj' : 'post_sj')} onClick={() => setReviewing(true)}>Tinjau perubahan SJ</Button>
         </>}</FormActions>
     </div>

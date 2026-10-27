@@ -14,21 +14,20 @@ const compact = (node: HTMLElement, variant: string) => {
     expect(node.classList.contains(`ui-action--${variant}`)).toBe(true);
 };
 
-test('CO pilot keeps balanced filters, eight meanings, and compact horizontal View/Edit in both presentations', async () => {
+test('CO pilot keeps balanced filters, seven order-fulfilment meanings, and compact horizontal View/Edit in both presentations', async () => {
     mount(<COOrders/>, '/athel/co/list');
-    const edits = await screen.findAllByRole('link', { name: 'Ubah' });
-    expect(edits).toHaveLength(2);
-    for (const view of screen.getAllByRole('link', { name: 'Lihat' })) {
+    await screen.findAllByRole('link',{name:'Lihat CO'});
+    expect(screen.queryByRole('link',{name:'Edit'})).toBeNull(); // canonical detail owns fresh Edit authority; no list N+1
+    for (const view of screen.getAllByRole('link', { name: 'Lihat CO' })) {
         compact(view, 'quiet');
         expect(view.getAttribute('href')).toBe(`/athel/co/${ids.co}`);
         expect(view.parentElement?.classList.contains('flex-wrap')).toBe(true);
         expect(view.parentElement?.classList.contains('items-center')).toBe(true);
     }
-    for (const edit of edits) compact(edit, 'secondary');
-    expect(edits[0].closest('td')?.classList.contains('min-w-36')).toBe(true);
-    expect(screen.getByRole('link', { name: '+ CO Baru' }).classList.contains('ui-action--primary')).toBe(true);
-    expect(screen.getAllByRole('columnheader').map(n => n.textContent)).toEqual(['Nomor / tanggal CO', 'Pelanggan', 'Status / pengiriman', 'Nilai rencana', 'Terjual / pendapatan', 'Stok tercatat', 'Laporan pelanggan (semua CO)', 'Aksi']);
-    expect(screen.getByRole('table').classList.contains('min-w-[70rem]')).toBe(true);
+    expect(screen.getAllByRole('link',{name:'Lihat CO'})[0].closest('td')?.classList.contains('min-w-36')).toBe(true);
+    expect(screen.getByRole('link', { name: 'Buat CO' }).classList.contains('ui-action--primary')).toBe(true);
+    expect(screen.getAllByRole('columnheader').map(n => n.textContent)).toEqual(['Nomor CO', 'Toko', 'Tanggal CO', 'Status / pengiriman', 'Jumlah SKU', 'Nilai CO', 'Aksi']);
+    expect(screen.getByRole('table').classList.contains('min-w-[56rem]')).toBe(true);
     expect(screen.getByRole('region', { name: 'Daftar CO' }).tabIndex).toBe(0);
     for (const [label, basis] of [['Cari CO', 'basis-72'], ['Status CO', 'basis-44'], ['Filter pelanggan', 'basis-60']]) {
         const field = screen.getByLabelText(label).closest('.ui-field')!;
@@ -36,7 +35,7 @@ test('CO pilot keeps balanced filters, eight meanings, and compact horizontal Vi
         expect(field.classList.contains(basis), label).toBe(true);
     }
     fireEvent.change(screen.getByLabelText('Status CO'), { target: { value: 'closed' } });
-    await waitFor(() => expect(state.page).toHaveBeenCalledWith(expect.objectContaining({ p_status: 'closed', p_page: 1 })));
+    await waitFor(() => expect(state.page).toHaveBeenCalledWith(expect.objectContaining({ status: 'closed', page: 1 })));
     expect(state.commands).toHaveLength(0);
 });
 
@@ -73,8 +72,10 @@ test('CO fields retain responsive density, saved manual editing and compact cata
 test('CO status commands distinguish one delivery progression from quiet routing and destructive openers', () => {
     const onCancel = vi.fn();
     mount(<COStatusActions co={state.header} id={ids.co} customerId={ids.customer} allowed={['edit_co', 'save_sj_draft', 'cancel_co', 'resolve_undelivered', 'close_co']} blockers={state.header.close_blockers} pending={false} onSJ={vi.fn()} onCancel={onCancel} onResolve={vi.fn()} onClose={vi.fn()}/>);
-    expect(screen.getByRole('button', { name: 'Tambah Surat Jalan' }).classList.contains('ui-action--primary')).toBe(true);
-    for (const name of ['Ubah CO', 'Catat penjualan bulanan', 'Retur barang belum terjual']) compact(screen.getByRole('link', { name }), 'quiet');
+    expect(screen.getByRole('button', { name: 'Buat surat jalan' }).classList.contains('ui-action--primary')).toBe(true);
+    for (const name of ['Lihat laporan bulanan', 'Retur barang belum terjual']) compact(screen.getByRole('link', { name }), 'quiet');
+    for (const name of ['Edit CO', 'Lihat stok toko']) compact(screen.getByRole('link', { name }), 'secondary');
+    expect(screen.getByText('Tindakan lainnya').closest('details')!.open).toBe(false);
     const cancel = screen.getByRole('button', { name: 'Batalkan CO' });
     compact(cancel, 'danger-quiet'); fireEvent.click(cancel); expect(onCancel).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('button', { name: 'Tutup CO' }).matches(':disabled')).toBe(true);
@@ -104,12 +105,10 @@ test('CO pagination is compact support and preserves pending and exact page boun
     expect(screen.getByText('Halaman 1 dari 450.359.962.737.050')).toBeTruthy();
 });
 
-test('CO section navigation remains quiet compact native destinations with selected-page semantics', () => {
+test('CO layout removes redundant section tabs and leaves navigation to persistent sidebar', () => {
     mountRoutes([{ path: '/athel/co', element: <COLayout/>, children: [{ path: 'reports', element: <p>Reports</p> }] }], '/athel/co/reports');
-    const nav = screen.getByRole('navigation', { name: 'Bagian pesanan konsinyasi' });
-    for (const link of within(nav).getAllByRole('link')) compact(link, 'quiet');
-    expect(within(nav).getByRole('link', { name: 'Laporan penjualan bulanan' }).getAttribute('aria-current')).toBe('page');
-    expect(within(nav).getByRole('link', { name: 'Stok pelanggan' }).getAttribute('href')).toBe('/athel/co/stock');
+    expect(screen.queryByRole('navigation', { name: 'Bagian pesanan konsinyasi' })).toBeNull();
+    expect(within(screen.getByRole('main')).getByText('Reports')).toBeTruthy();
 });
 
 test.each([true, false])('saved SJ emphasizes the existing %s prepared-review stage while direct Post remains available', async prepared => {
@@ -118,7 +117,7 @@ test.each([true, false])('saved SJ emphasizes the existing %s prepared-review st
     mount(<CODeliveryDialog co={state.header} draftId={ids.draft} returnFocus={null} onClose={vi.fn()}/>);
     await screen.findByDisplayValue('SJ-A');
     const save = screen.getByRole('button', { name: 'Simpan Draft SJ' });
-    const post = screen.getByRole('button', { name: 'Post SJ' });
+    const post = screen.getByRole('button', { name: 'Catat pengiriman' });
     const review = screen.getByRole('button', { name: 'Tinjau perubahan SJ' });
     expect(save.classList.contains('ui-action--secondary')).toBe(true);
     expect(post.classList.contains(prepared ? 'ui-action--secondary' : 'ui-action--primary')).toBe(true);
@@ -140,6 +139,6 @@ test('saved SJ keeps Save primary when server authority permits no publication s
     await screen.findByDisplayValue('Save only');
     expect(screen.getByRole('button', { name: 'Simpan Draft SJ' }).classList.contains('ui-action--primary')).toBe(true);
     expect(screen.getByRole('button', { name: 'Tinjau perubahan SJ' }).classList.contains('ui-action--secondary')).toBe(true);
-    expect(screen.getByRole('button', { name: 'Post SJ' }).matches(':disabled')).toBe(true);
+    expect(screen.getByRole('button', { name: 'Catat pengiriman' }).matches(':disabled')).toBe(true);
     expect(state.commands).toHaveLength(0);
 });

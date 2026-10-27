@@ -15,7 +15,7 @@ test.each(['edit', 'sj', 'cancel'] as const)('%s current-profile revocation clea
     await screen.findByText('Original PIC');
     if (kind === 'edit') fireEvent.change(await screen.findByLabelText('Catatan'), { target: { value: 'Private profile note' } });
     else {
-        await click(kind === 'sj' ? 'Tambah Surat Jalan' : 'Batalkan CO');
+        await click(kind === 'sj' ? 'Buat surat jalan' : 'Batalkan CO');
         fireEvent.change(await screen.findByLabelText(kind === 'sj' ? 'Nomor SJ' : 'Alasan pembatalan'), { target: { value: 'Private profile note' } });
         if (kind === 'sj') fireEvent.change(screen.getByLabelText('Jumlah dikirim Item 1'), { target: { value: '1' } });
     }

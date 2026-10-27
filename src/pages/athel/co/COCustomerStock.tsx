@@ -1,13 +1,15 @@
-import { LoadingState } from '../../../components/ui/LoadingState'
-import { useEffect, useRef, useState } from 'react';
+import COSourceProposalResume from '../../../components/co/COSourceProposalResume';
+import { coSourceProposalRequest } from '../../../lib/co/workspaceReads';
+import { useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { fetchCOCustomers } from '../../../lib/co/catalog';
-import { fetchCOCustomerStock } from '../../../lib/co/rpc';
+import { fetchCOStockV2 } from '../../../lib/co/rpc';
+import type { COStockPageV2, StockFilters } from '../../../lib/co/contracts';
 import { formatCOReportMonth } from '../../../lib/co/presentation';
 import { formatDisplayDate } from '../../../lib/displayDate';
-import { coKeys } from '../../../lib/co/queryKeys';
-import { isCOAuthorityError } from '../../../components/co/COReportWorkspace';
-import { CO_INPUT, COFailure, COFreshness, COPagination, useCOActor, useCORead } from '../../../components/co/COShared';
+import { CO_INPUT, COFailure, COFreshness, useCOActor, useCORead } from '../../../components/co/COShared';
+import COSourceBoundary from '../../../components/co/COSourceBoundary';
+import COStockTable from '../../../components/co/COStockTable';
 import COStockHistory from '../../../components/co/COStockHistory';
 import COReturnDialog from '../../../components/co/COReturnDialog';
 import { PageHeader } from '../../../components/ui/PageHeader';
@@ -15,141 +17,80 @@ import { Button } from '../../../components/ui/Button';
 import { ActionLink } from '../../../components/ui/ActionLink';
 import { Field } from '../../../components/ui/Field';
 import { FilterBar } from '../../../components/ui/FilterBar';
-import { SummaryList } from '../../../components/ui/SummaryList';
-import { EmptyState } from '../../../components/ui/Feedback';
+import { LoadingState } from '../../../components/ui/LoadingState';
 
 function monthEnd(month: string) {
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return null;
     const date = new Date(`${month}-01T00:00:00Z`);
-    date.setUTCMonth(date.getUTCMonth() + 1);
-    date.setUTCDate(0);
+    date.setUTCMonth(date.getUTCMonth() + 1); date.setUTCDate(0);
     return date.toISOString().slice(0, 10);
 }
+function stockFilters(params: URLSearchParams): StockFilters {
+    const raw = params.get('page') ?? '1';
+    return { customerId: params.get('customer') || null, sku: params.get('sku')?.trim() || null, search: params.get('search') ?? '', asOf: monthEnd(params.get('month') ?? ''),
+        sort: params.get('sort') === 'customer' ? 'customer' : params.get('sort') === 'balance' ? 'balance' : 'sku', direction: params.get('direction') === 'desc' ? 'desc' : 'asc',
+        page: /^[1-9]\d*$/.test(raw) && Number(raw) <= 2147483647 ? Number(raw) : 1, pageSize: params.get('pageSize') === '100' ? 100 : params.get('pageSize') === '50' ? 50 : 25 };
+}
 export default function COCustomerStock() {
+    const [params] = useSearchParams();
+    let request;try{request=coSourceProposalRequest(params,params.get('customer')??'')}catch(error){return <COFailure error={error}/>;}
+    return <COSourceBoundary source="stock" check={options => fetchCOStockV2(stockFilters(params), options)}>{request?<COSourceProposalResume key={JSON.stringify(request)} request={request} owner={{kind:'return'}}/>:<StockOwner/>}</COSourceBoundary>;
+}
+function StockOwner() {
     const [params, setParams] = useSearchParams();
-    const customer = params.get('customer') ?? '';
-    const sku = params.get('sku') ?? '';
+    const filters = stockFilters(params);
     const period = params.get('month') ?? '';
-    const search = params.get('search') ?? '';
-    const [page, setPage] = useState(1);
+    const invalidMonth = !!period && !filters.asOf;
+    const actor = useCOActor(`stock:${JSON.stringify(filters)}`);
     const [returning, setReturning] = useState(false);
-    const [failure, setFailure] = useState<unknown>(null);
     const [error, setError] = useState('');
-    const [epoch, setEpoch] = useState(0);
     const trigger = useRef<HTMLElement | null>(null);
-    const actor = useCOActor(`stock:${customer}:${period}`);
-    const asOf = period ? monthEnd(period) : null;
-    const args = { p_customer_id: customer || null, p_as_of: asOf, p_search: search,
-        p_expected_customer_version: null, p_page: page, p_page_size: 20 };
-    const customers = useCORead(actor, 'customers', {}, fetchCOCustomers, !failure);
-    const stock = useCORead(actor, 'customer-stock', { ...args, epoch }, o => fetchCOCustomerStock(args, o), !failure && (!period || !!asOf));
-    const denied = useRef(false);
-    function rejectAuthority(value: unknown) {
-        if (!actor.isCurrent() || !isCOAuthorityError(value)) return;
-        denied.current = true;
-        setFailure(value);
-        setReturning(false);
-        const queryKey = coKeys.identity(actor.identity);
-        void actor.client.cancelQueries({ queryKey });
-        actor.client.removeQueries({ queryKey });
-    }
-    useEffect(() => {
-        if (isCOAuthorityError(stock.error)) rejectAuthority(stock.error);
-        if (isCOAuthorityError(customers.error)) rejectAuthority(customers.error);
-    }, [stock.error, customers.error]);
-    useEffect(() => { setPage(1); setReturning(false); }, [customer, period, search]);
-    const update = (key: string, value: string) => {
-        const next = new URLSearchParams(params);
-        if (value) next.set(key, value); else next.delete(key);
-        if (key === 'customer') { next.delete('sku'); next.delete('co'); }
-        setParams(next);
+    const directoryActor = useCOActor('stock-directory');
+    const customers = useCORead(directoryActor, 'customers', {}, fetchCOCustomers);
+    const stock = useCORead(actor, 'customer-stock-v2', filters, async options => await fetchCOStockV2(filters, options) as COStockPageV2, !invalidMonth);
+    const result = stock.data;
+    const serverAsOf = useRef<string | null>(null);
+    if (result) serverAsOf.current = result.as_of;
+    const update = (next: StockFilters) => {
+        const url = new URLSearchParams(params);
+        for (const [key,value] of Object.entries({customer:next.customerId,sku:next.sku,search:next.search,month:next.asOf?.slice(0,7),sort:next.sort,direction:next.direction,page:String(next.page),pageSize:String(next.pageSize)})) {
+            if (value) url.set(key,value); else url.delete(key);
+        }
+        url.delete('stockKey'); url.delete('movementCustomer'); url.delete('movementPage');
+        setReturning(false); setParams(url);
     };
+    const setFilter = (change: Partial<StockFilters>) => update({...filters,...change,page:1});
+    const selectedName = result?.rows[0]?.customer_name ?? customers.data?.find(c => c.id === filters.customerId)?.name;
+    const stockKey = params.get('stockKey');
+    const movementCustomer = params.get('movementCustomer');
+    const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const movementValid = !!stockKey && !!movementCustomer && uuid.test(stockKey) && uuid.test(movementCustomer);
+    const blocked = stock.isFetching || stock.isError || !result || !!filters.asOf;
     if (!actor.enabled) return null;
-    if (failure) return <COFailure error={failure} retry={() => {
-        denied.current = false;
-        setFailure(null);
-        setEpoch(n => n + 1);
-    }}/>;
-    const customerIdentity = (id: string) => {
-        const canonical = !customers.isError ? customers.data?.find(row => row.id === id) : undefined;
-        return canonical?.name ?? `Identitas pelanggan tidak tersedia (${id})`;
-    };
-    const blocked = stock.isFetching || stock.isError || !stock.data;
-    const readFailure = stock.isError ? <COFailure error={stock.error} retry={() => void stock.refetch()}/> : null;
-    return <div className="min-w-0 max-w-6xl mx-auto space-y-5">
-        <PageHeader title="Stok pelanggan" description="Stok buku tercatat. Stok terkini memakai pergerakan bulan berjalan sampai cakupan server."/>
-        <p className="text-base text-brand-secondary">Stok pelanggan mencakup semua CO pada cakupan dipilih. Retur berlaku untuk pelanggan.</p>
+    return <div className="min-w-0 max-w-7xl mx-auto space-y-3">
+        <PageHeader title="Stok Pelanggan" description={filters.customerId ? `${selectedName ?? 'Toko dipilih'} · stok seluruh CO pelanggan` : 'Stok seluruh CO · filter toko dan SKU dapat digabung.'}/>
         <FilterBar label="Filter stok pelanggan">
-            <Field id="co-stock-customer-filter" label="Pelanggan stok" className="flex-1 basis-56">{control => <select {...control} aria-label="Pelanggan stok" className={CO_INPUT} value={customer} onChange={e => update('customer', e.target.value)}>
-                <option value="">Semua pelanggan</option>{customers.data?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>}</Field>
-            <Field id="co-stock-search-filter" label="Cari SKU stok" className="flex-1 basis-56">{control => <input {...control} aria-label="Cari SKU stok" className={CO_INPUT} value={search} onChange={e => update('search', e.target.value)}/>}</Field>
-            <Field id="co-stock-month-filter" label="Bulan akhir stok" className="flex-1 basis-56">{control => <input {...control} aria-label="Bulan akhir stok" className={CO_INPUT} type="month" value={period}
-                max={(stock.data?.as_of ?? new Date().toISOString()).slice(0, 7)} onChange={e => {
-                    const end = e.target.value ? monthEnd(e.target.value) : null;
-                    const today = (stock.data?.as_of ?? new Date().toISOString()).slice(0, 10);
-                    if (end && end > today) { setError('Pilih akhir bulan yang sudah selesai menurut tanggal UTC server.'); return; }
-                    setError(''); update('month', e.target.value);
-                }}/>}</Field>
+            <Field id="co-stock-customer-filter" label="Pelanggan stok" className="flex-1 basis-44">{control => <select {...control} aria-label="Pelanggan stok" className={CO_INPUT} value={filters.customerId ?? ''} disabled={customers.isError} onChange={e => setFilter({customerId:e.target.value || null})}><option value="">Semua pelanggan</option>{customers.data?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>}</Field>
+            <Field id="co-stock-sku-filter" label="SKU tepat" className="flex-1 basis-36">{control => <input {...control} aria-label="SKU tepat" className={CO_INPUT} placeholder="Semua SKU" value={params.get('sku') ?? ''} onChange={e => setFilter({sku:e.target.value || null})}/>}</Field>
+            <Field id="co-stock-search-filter" label="Cari SKU stok" className="flex-1 basis-44">{control => <input {...control} aria-label="Cari SKU stok" placeholder="SKU / nama barang" className={CO_INPUT} value={filters.search} onChange={e => setFilter({search:e.target.value})}/>}</Field>
+            <Field id="co-stock-month-filter" label="Bulan akhir stok" className="flex-1 basis-40">{control => <input {...control} aria-label="Bulan akhir stok" className={CO_INPUT} type="month" value={period} max={serverAsOf.current?.slice(0,7)} onChange={e => {
+                const end = monthEnd(e.target.value), today = serverAsOf.current?.slice(0,10);
+                if (end && today && end > today) { setError('Pilih akhir bulan yang sudah selesai menurut tanggal UTC server.'); return; }
+                setError(''); setFilter({asOf:end});
+            }}/>}</Field>
         </FilterBar>
-        <Button variant="quiet" size="compact" onClick={() => update('month', '')}>Stok terkini</Button>
-        {period && !asOf && <COFailure error={new Error('Bulan stok tidak valid. Pilih bulan kalender.')}/>}
+        <div className="flex flex-wrap items-center gap-3"><Button variant="quiet" size="compact" disabled={stock.isFetching || invalidMonth} onClick={() => void stock.refetch()}>Muat ulang stok</Button><Button variant="quiet" size="compact" onClick={() => {setError('');setFilter({asOf:null});}}>Stok terkini</Button>{filters.customerId && <><ActionLink variant="primary" size="compact" to={`/athel/co/reports?customer=${filters.customerId}`}>Catat penjualan</ActionLink><div role="group" aria-label="Pengembalian barang"><Button variant="quiet" size="compact" disabled={blocked} onClick={e => {trigger.current=e.currentTarget;setReturning(true);}}>Retur barang belum terjual</Button></div></>}</div>
+        {invalidMonth && <COFailure error={new Error('Bulan stok tidak valid. Pilih bulan kalender.')}/>}
         {error && <COFailure error={new Error(error)}/>}
         {customers.isError && <COFailure error={customers.error} retry={() => void customers.refetch()}/>}
-        {customer && <div className="space-y-3">
-            <ActionLink variant="primary" to={`/athel/co/reports?customer=${customer}`}>Catat penjualan</ActionLink>
-            <div role="group" aria-label="Pengembalian barang" className="border-t border-brand-divider pt-3 space-y-2">
-                <p className="text-sm text-brand-secondary">Barang belum terjual yang dikembalikan dicatat sebagai retur terpisah dari penjualan.</p>
-                <Button variant="quiet" size="compact" disabled={blocked} onClick={e => { trigger.current = e.currentTarget; setReturning(true); }}>Retur barang belum terjual</Button>
-            </div>
-        </div>}
-        {!returning && readFailure}
-        {!stock.data && !stock.isError && <LoadingState title="Memuat stok…" shape="list" />}
-        {stock.data && !stock.isError && <>
-            <p className="text-sm">Periode {formatDisplayDate(stock.data.period_start)} sampai {formatDisplayDate(stock.data.coverage_date)} (tanggal UTC server) · {asOf ? 'Akhir bulan, riwayat efektif dinyatakan ulang' : 'Stok terkini, bulan berjalan'}</p>
-            <p className="text-sm">Total seluruh hasil filter: {stock.data.summary.opening_quantity} + {stock.data.summary.delivered_quantity} − {stock.data.summary.sold_quantity} − {stock.data.summary.returned_quantity} = {stock.data.summary.recorded_quantity}</p>
-            {stock.data.reporting_freshness && <COFreshness value={stock.data.reporting_freshness}/>}
-            {!stock.data.reporting_freshness && <p className="text-[13px] text-brand-secondary">Angka tercatat berdasarkan laporan, bukan verifikasi stok fisik saat ini.</p>}
-            {stock.data.rows.some(row => !row.has_delivery_history) && <p className="text-[13px] text-brand-secondary">Belum ada riwayat pengiriman pada barang bertanda Belum dikirim. Nol tercatat tidak membuktikan saldo fisik awal.</p>}
-            <div role="region" aria-label="Daftar stok pelanggan" tabIndex={0} className="min-w-0 max-w-full overflow-x-auto rounded-[14px] focus-visible:outline-2 focus-visible:outline-brand-primary"><table aria-label="Stok pelanggan tercatat" className="block w-full md:table md:table-fixed md:border-collapse text-sm">
-                <thead className="hidden md:table-header-group text-left text-brand-secondary">
-                    <tr><th className="p-3 w-[28%]">Pelanggan / barang</th><th className="p-3 w-[24%]">Jumlah stok</th><th className="p-3 w-[28%]">Pelaporan</th><th className="p-3 w-[20%]">Riwayat</th></tr>
-                </thead>
-                <tbody className="block md:table-row-group">{stock.data.rows.map(row => <tr key={`${row.customer_id}:${row.id}`}
-                    className="mb-3 block rounded-xl border border-brand-divider bg-brand-surface md:table-row md:rounded-none">
-                    <td className="block p-3 align-top md:table-cell">
-                        <p className="font-semibold break-words">{customerIdentity(row.customer_id)}</p>
-                        <h3 className="font-medium break-words">{row.display_sku} · {row.product_name}</h3>
-                        {!row.has_delivery_history && <p className="text-[13px] mt-2 text-brand-secondary">Belum dikirim</p>}
-                    </td>
-                    <td className="block p-3 align-top md:table-cell">
-                        <SummaryList aria-label="Jumlah stok" className="tabular-nums [&_.ui-summary-list__item]:grid [&_.ui-summary-list__item]:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] [&_dd]:text-right [&_dd]:font-medium [&_dd]:break-all" items={[
-                            { label: 'Awal', value: row.opening_quantity }, { label: 'Dikirim', value: row.delivered_quantity },
-                            { label: 'Terjual', value: row.sold_quantity }, { label: 'Retur', value: row.returned_quantity }, { label: 'Sisa tercatat', value: row.recorded_quantity },
-                        ].map(item => ({ ...item, value: <span style={{ fontSize: '14px' }}>{item.value}</span> }))}/>
-                        <p className="sr-only">{row.opening_quantity} + {row.delivered_quantity} − {row.sold_quantity} − {row.returned_quantity} = {row.recorded_quantity}</p>
-                    </td>
-                    <td className="block p-3 align-top md:table-cell">
-                        <p className="text-[13px]">Laporan terakhir: {formatCOReportMonth(row.last_report_month)} · Cakupan sampai: {row.coverage_through_date ? formatDisplayDate(row.coverage_through_date) : 'Belum ada'} (UTC)
-                            {row.coverage_through_date && row.coverage_through_date !== monthEnd(row.coverage_through_date.slice(0, 7)) ? ' · bulan parsial' : ''}</p>
-                        <COFreshness value={row.reporting_freshness} compact/>
-                    </td>
-                    <td className="block p-3 align-top md:table-cell">
-                        {!customer && <ActionLink variant="secondary" size="compact" className="mb-2 max-w-full" aria-label={`Catat penjualan ${customerIdentity(row.customer_id)} · ${row.display_sku}`} to={`/athel/co/reports?customer=${row.customer_id}`}>Catat penjualan</ActionLink>}
-                        <Button variant="quiet" size="compact" className="max-w-full" aria-label={`Lihat pergerakan ${customerIdentity(row.customer_id)} · ${row.display_sku}`} onClick={() => {
-                            const next = new URLSearchParams(params);
-                            next.set('customer', row.customer_id); next.set('sku', row.id); setParams(next);
-                        }}>Pergerakan</Button>
-                    </td>
-                </tr>)}</tbody>
-            </table></div>
-            {stock.data.total === '0' && <EmptyState title="Tidak ada kunci stok sesuai filter.">Saldo historis awal tidak diasumsikan.</EmptyState>}
-            <COPagination page={page} total={stock.data.total} pending={stock.isFetching} onPage={setPage}/>
-        </>}
-        {customer && sku && <COStockHistory key={`${actor.scope}:${sku}:${asOf}`} customerId={customer} stockKeyId={sku} asOf={asOf} onAuthorityFailure={rejectAuthority}/>}
-        {returning && stock.data && <COReturnDialog key={`${actor.scope}:${epoch}`} customerId={customer}
-            customerVersion={stock.data.customer_version} returnFocus={trigger.current} onClose={() => setReturning(false)}
-            blocked={blocked} readFailure={readFailure} onAuthorityFailure={rejectAuthority}
-            onSaved={() => { void stock.refetch(); }}/>}
+        {stock.isError ? <COFailure error={stock.error} retry={() => void stock.refetch()}/> : !invalidMonth && (!result || stock.isFetching) ? <LoadingState title="Memuat stok…" shape="list"/> : result && !invalidMonth ? <>
+            <p className="text-[13px] text-brand-secondary">Pergerakan periode {formatDisplayDate(result.period_start)}–{formatDisplayDate(result.coverage_date)} (UTC): Dikirim, Terjual, Retur. Awal = saldo sebelum periode. Saldo tercatat per {formatDisplayDate(result.coverage_date)} (UTC). {filters.asOf ? 'Akhir bulan, riwayat efektif dinyatakan ulang.' : 'Bulan berjalan sampai cakupan server.'}</p>
+            {result.reporting_freshness ? <div className="co-stock-freshness" role="note" aria-label="Cakupan pelaporan toko">{result.rows[0] && <p>Laporan terakhir: {formatCOReportMonth(result.rows[0].last_report_month)} · Cakupan sampai: {result.rows[0].coverage_through_date ? formatDisplayDate(result.rows[0].coverage_through_date) : 'Belum ada'} (tanggal UTC)</p>}<COFreshness value={result.reporting_freshness} compact/><p>Angka tercatat berdasarkan laporan, bukan verifikasi stok fisik saat ini.</p></div> : <p className="text-[13px] text-brand-secondary">Angka tercatat berdasarkan laporan, bukan verifikasi stok fisik saat ini.</p>}
+            <COStockTable key={`${actor.scope}:table`} result={result} filters={filters} onFiltersChange={update} onOpenMovement={(customerId,stockKeyId) => {
+                const next = new URLSearchParams(params); next.set('movementCustomer',customerId); next.set('stockKey',stockKeyId); next.delete('movementPage'); setParams(next);
+            }}/>
+        </> : null}
+        {movementValid && !stock.isError && !stock.isFetching && <div className="space-y-2"><Button variant="quiet" size="compact" onClick={() => {const next=new URLSearchParams(params);next.delete('stockKey');next.delete('movementCustomer');next.delete('movementPage');setParams(next);}}>Tutup mutasi</Button><COStockHistory key={`${actor.scope}:${movementCustomer}:${stockKey}`} customerId={movementCustomer} stockKeyId={stockKey} asOf={filters.asOf} onAuthorityFailure={actor.rejectAuthority}/></div>}
+        {returning && result && filters.customerId && !filters.asOf && <COReturnDialog key={`${actor.scope}:return`} customerId={filters.customerId} customerVersion={result.customer_version!} returnFocus={trigger.current} onClose={() => setReturning(false)} blocked={blocked} readFailure={stock.isError ? <COFailure error={stock.error}/> : null} onAuthorityFailure={actor.rejectAuthority} onSaved={() => {void stock.refetch();}}/>}
     </div>;
 }

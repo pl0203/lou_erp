@@ -79,7 +79,7 @@ test('real shared page completes history/detail gates and hides frozen reason du
  render(<QueryClientProvider client={client}><LeaveManagement/></QueryClientProvider>)
  fireEvent.click(await screen.findByRole('button',{name:'Riwayat pengajuan'}));await screen.findByText('Menunggu persetujuan');await details()
  let signal!:AbortSignal;mocks.rpc.mockImplementation((name:string,args:Record<string,unknown>)=>({abortSignal:(s:AbortSignal)=>name==='leave_context_v1'?(signal=s,new Promise(()=>{})):Promise.resolve({data:response(name,args),error:null})}))
- fireEvent(window,new Event('focus'));await waitFor(()=>expect(signal).toBeDefined());expect(screen.queryByText(detail.reason)).toBeNull()
+ fireEvent(window,new Event('focus'));await waitFor(()=>expect(signal).toBeDefined());expect(screen.getByText(detail.reason)).toBeTruthy()
  await act(async()=>client.cancelQueries({queryKey:leaveKeys.context(employeeA,'current'),exact:true}));expect(screen.queryByText(detail.reason)).toBeNull()
  serve();fireEvent.click(await screen.findByRole('button',{name:'Coba lagi'}));await screen.findByRole('button',{name:'Ajukan cuti'})
  expect(screen.queryByText(detail.reason)).toBeNull();fireEvent.click(screen.getByRole('button',{name:'Coba lagi riwayat pengajuan'}));await screen.findByText('Menunggu persetujuan');fireEvent.click(screen.getByRole('button',{name:'Coba lagi rincian'}));expect(await screen.findByText(detail.reason)).toBeTruthy()
@@ -94,12 +94,12 @@ test('owner detail presents immutable declined cancellation reason and tuple his
 })
 test('cancelled owner event refetch cannot restore a cached private decision reason',async()=>{
  const event={id:employeeB,event:'cancellation_declined',atTime:'2026-10-03T11:00:00Z',actor:{id:employeeB,name:'Decision manager'},reason:'Private event cancellation note',approverName:'Decision manager'}
- const data={requestId:employeeA,requestVersion:1,scopeVersion:quoteScope,rows:[event],nextBefore:null}
+ const data={requestId:employeeA,requestVersion:1,scopeVersion:quoteScope,rows:[event],nextBefore:{atTime:event.atTime,id:event.id}}
  const normal=(name:string,args:Record<string,unknown>)=>({abortSignal:()=>Promise.resolve({data:name==='leave_own_request_history_v1'?data:response(name,args),error:null})})
- mocks.rpc.mockImplementation(normal);const {client}=mount();await history();await details();await screen.findByText(event.reason)
+ mocks.rpc.mockImplementation(normal);const {client}=mount();await history();await details();await screen.findByText(event.reason);expect(screen.getByRole('button',{name:'Peristiwa lebih lama'}).matches(':disabled')).toBe(false)
  let signal!:AbortSignal,finish!:(value:unknown)=>void
  mocks.rpc.mockImplementation((name:string,args:Record<string,unknown>)=>name==='leave_own_request_history_v1'?{abortSignal:(s:AbortSignal)=>{signal=s;return new Promise(resolve=>finish=resolve)}}:normal(name,args))
- fireEvent(window,new Event('focus'));await waitFor(()=>expect(signal).toBeDefined());expect(screen.queryByText(event.reason)).toBeNull()
+ fireEvent(window,new Event('focus'));await waitFor(()=>expect(signal).toBeDefined());expect(screen.getByText(event.reason)).toBeTruthy();expect(screen.getByRole('button',{name:'Peristiwa lebih lama'}).matches(':disabled')).toBe(true)
  await act(async()=>client.cancelQueries({predicate:q=>q.queryKey.includes('own-request-events')}));expect(signal.aborted).toBe(true)
  await act(async()=>finish({data,error:null}));expect(screen.queryByText(event.reason)).toBeNull()
  mocks.rpc.mockImplementation(normal);fireEvent.click(await screen.findByRole('button',{name:'Muat ulang peristiwa'}));expect(await screen.findByText(event.reason)).toBeTruthy();expect(localStorage.length).toBe(0)

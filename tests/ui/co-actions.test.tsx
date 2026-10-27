@@ -21,30 +21,32 @@ test.each(['co_admin', 'executive'] as const)('orders use shared actions and fre
     const current = auth.useAuth();
     vi.spyOn(auth, 'useAuth').mockReturnValue({ ...current, profile: { ...current.profile!, role } });
     state.header.allowed_operations = [];
-    const { router, client } = mount(<COOrders/>, '/athel/co/list');
+    const { router, client } = mountRoutes([{path:'/athel/co/list',element:<COOrders/>},{path:'/athel/co/:id',element:<CODetail/>},{path:'/athel/co/:id/edit',element:<p>Canonical edit destination</p>}], '/athel/co/list');
     const mobile = await screen.findByRole('article');
-    expect(screen.queryAllByRole('link', { name: 'Ubah' })).toHaveLength(0);
-    expect(screen.getAllByRole('link', { name: 'Lihat' })).toHaveLength(2);
-    sharedAction(screen.getByRole('link', { name: '+ CO Baru' }));
+    expect(screen.queryAllByRole('link', { name: 'Edit' })).toHaveLength(0);
+    expect(screen.getAllByRole('link', { name: 'Lihat CO' })).toHaveLength(2);
+    sharedAction(screen.getByRole('link', { name: 'Buat CO' }));
     expect(screen.getByRole('region', { name: 'Filter pesanan CO' }).classList.contains('ui-filter-bar')).toBe(true);
     const region = screen.getByRole('region', { name: 'Daftar CO' });
     expect(region.tabIndex).toBe(0);
     expect(region.contains(screen.getByRole('table'))).toBe(true);
-    expect(within(mobile).getByText('Nilai rencana').nextElementSibling?.textContent).toBe('Rp 20');
-    expect(within(mobile).getByText('Pendapatan terjual').nextElementSibling?.textContent).toBe('Rp 0');
-    state.header.allowed_operations = ['edit_co'];
-    await act(async () => { await client.invalidateQueries({ queryKey: coKeys.read({ actorId: ids.actor, role }, 'order-actions', { id: ids.co, version: '1' }) }); });
-    const edits = await screen.findAllByRole('link', { name: 'Ubah' });
-    expect(edits).toHaveLength(2); edits.forEach(sharedAction);
-    const link = edits[0];
+    expect(within(mobile).getByText('Nilai CO').nextElementSibling?.textContent).toBe('Rp 20');
+    expect(within(mobile).queryByText('Pendapatan terjual')).toBeNull();
+    // Task12 ruling: list does not expose unverified capabilities or perform per-row detail reads.
+    const view=screen.getAllByRole('link',{name:'Lihat CO'})[0];
+    expect(view.getAttribute('href')).toBe(`/athel/co/${ids.co}`);
+    fireEvent.click(view);
+    await screen.findByRole('heading',{name:'CO-A'});
+    expect(screen.queryByRole('link',{name:'Edit CO'})).toBeNull();
+    state.header.allowed_operations=['edit_co'];
+    await act(async()=>{await client.invalidateQueries({queryKey:coKeys.read({actorId:ids.actor,role},'detail',{id:ids.co})})});
+    const link=await screen.findByRole('link',{name:'Edit CO'});sharedAction(link);
     expect(link.getAttribute('href')).toBe(`/athel/co/${ids.co}/edit`);
-    let intercepted = true;
-    document.addEventListener('click', event => { intercepted = event.defaultPrevented; event.preventDefault(); }, { once: true });
-    fireEvent.click(link, { ctrlKey: true, button: 0 });
-    expect(intercepted).toBe(false);
-    expect(router.state.location.pathname).toBe('/athel/co/list');
-    fireEvent.click(link);
-    await waitFor(() => expect(router.state.location.pathname).toBe(`/athel/co/${ids.co}/edit`));
+    let intercepted=true;
+    document.addEventListener('click',event=>{intercepted=event.defaultPrevented;event.preventDefault()},{once:true});
+    fireEvent.click(link,{ctrlKey:true,button:0});expect(intercepted).toBe(false);
+    expect(router.state.location.pathname).toBe(`/athel/co/${ids.co}`);
+    fireEvent.click(link);await waitFor(()=>expect(router.state.location.pathname).toBe(`/athel/co/${ids.co}/edit`));
 });
 
 test('edit header and lines are read-only when fresh edit_co capability is absent', async () => {
@@ -173,17 +175,16 @@ test.each(['pending', 'unknown'] as const)('fixed navigation preserves original 
     if (outcome === 'unknown') expect(state.unresolved).toBe(true);
 });
 
-test('detail uses shared definition lists with independent exact planned value and revenue', async () => {
+test('detail preserves independent exact ordered value and revenue without mixed-unit totals', async () => {
     Object.assign(state.header.summary, { planned_value: '9007199254740993.01', revenue: '0.01', delivery_progress: 'complete', pending_quantity: '0' });
     mount(<CODetail/>, `/athel/co/${ids.co}`);
-    const section = (await screen.findByRole('heading', { name: 'Ringkasan CO ini' })).closest('section')!;
-    expect(section.classList.contains('ui-section')).toBe(true);
-    expect(section.querySelector('dl')?.classList.contains('ui-summary-list')).toBe(true);
-    expect(within(section).getByText('Nilai rencana CO').nextElementSibling?.textContent).toBe('Rp 9.007.199.254.740.993,01');
-    expect(within(section).getByText('Pendapatan terjual').nextElementSibling?.textContent).toBe('Rp 0,01');
+    expect(await screen.findByText('Nilai CO: Rp 9.007.199.254.740.993,01')).toBeTruthy();
+    expect(screen.getByText(/Pendapatan terjual: Rp 0,01/)).toBeTruthy();
+    expect(screen.getByText('Informasi pesanan dan penjualan').closest('details')!.open).toBe(false);
+    expect(screen.queryByText('Sisa stok tercatat')).toBeNull();
     expect(screen.getByText('Aktif').classList.contains('ui-status-badge')).toBe(true);
     expect(screen.getByText('Terkirim penuh')).toBeTruthy();
-    sharedAction(screen.getByRole('link', { name: 'Ubah CO' }));
+    sharedAction(screen.getByRole('link', { name: 'Edit CO' }));
 });
 
 test.each([
@@ -230,13 +231,14 @@ test.each(['ready', 'loading', 'error', 'denied'] as const)('layout owns one foc
     if (mode === 'loading') vi.spyOn(rpc, 'fetchCODetail').mockReturnValue(new Promise(() => {}));
     if (mode === 'error') vi.spyOn(rpc, 'fetchCODetail').mockRejectedValue(new Error('CO read unavailable'));
     if (mode === 'denied') vi.spyOn(rpc, 'fetchCODetail').mockRejectedValue(Object.assign(new Error('CO authority required'), { code: '42501' }));
+    const navigation = await import('../../src/components/AthelNav');
+    const { default: ActualNav } = await vi.importActual<typeof navigation>('../../src/components/AthelNav');
+    vi.spyOn(navigation, 'default').mockImplementation(ActualNav);
     mountRoutes([{ path: '/athel/co', element: <COLayout/>, children: [{ path: ':id', element: <CODetail/> }, { path: 'reports', element: <p>Report destination</p> }] }], `/athel/co/${ids.co}`);
     if (mode === 'ready') await screen.findByText('CO-A');
     if (mode === 'error') await screen.findByText('CO read unavailable');
     if (mode === 'denied') { await screen.findByText('CO authority required'); expect(screen.queryByText('Original PIC')).toBeNull(); }
-    const moduleLabel = screen.getByText('Pesanan konsinyasi (CO)');
-    expect(moduleLabel.tagName).toBe('P');
-    expect(moduleLabel.classList.contains('text-xl')).toBe(true);
+    expect(screen.queryByRole('navigation', { name: 'Bagian pesanan konsinyasi' })).toBeNull();
     if (mode === 'ready') {
         expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
         expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('CO-A');
@@ -245,10 +247,10 @@ test.each(['ready', 'loading', 'error', 'denied'] as const)('layout owns one foc
     expect(main.id).toBe('main-content'); expect(main.tabIndex).toBe(-1);
     expect(document.querySelectorAll('#main-content')).toHaveLength(1);
     main.focus(); expect(document.activeElement).toBe(main);
-    fireEvent.click(screen.getByRole('link', { name: 'Laporan penjualan bulanan' }));
+    fireEvent.click(screen.getByRole('link', { name: 'Laporan Penjualan Bulanan' }));
     await screen.findByText('Report destination');
     expect(screen.getAllByRole('main')).toHaveLength(1);
-    expect(screen.getByRole('link', { name: 'Laporan penjualan bulanan' }).getAttribute('aria-current')).toBe('page');
+    expect(screen.getByRole('link', { name: 'Laporan Penjualan Bulanan' }).getAttribute('aria-current')).toBe('page');
 });
 
 test('shared exact pagination preserves BigInt totals and pending page clamping', async () => {

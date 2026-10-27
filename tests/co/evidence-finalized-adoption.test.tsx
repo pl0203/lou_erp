@@ -3,7 +3,7 @@ import { expect, test, vi } from 'vitest';
 import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { mount, wire, customer, month, draftId, id } from './report-ui-harness';
 import { evidenceId, fixture, choose } from './evidence-ui-harness';
-import COMonthlyReport from '../../src/pages/athel/co/COMonthlyReport';
+import { mountNestedReport } from './nested-report-harness';
 
 
 async function begin(mode: 'exact' | 'newer' | 'consumed' = 'exact', arrange?: (f: ReturnType<typeof fixture>) => void) {
@@ -11,15 +11,15 @@ async function begin(mode: 'exact' | 'newer' | 'consumed' = 'exact', arrange?: (
  wire.invoke.mockImplementation(async name => {
   if(name==='co-evidence-download')return {data:new Blob(['%PDF-1.7\n%%EOF\n']),error:null};
   f.finalizeElsewhere();
-  if(mode!=='exact'){f.s.version='3'; f.s.rows[0].sold_quantity='4';f.s.metadata.notes='Latest canonical note';}
+  if(mode!=='exact'){f.s.version='4'; f.s.rows[0].sold_quantity='4';f.s.metadata.notes='Latest canonical note';}
   if(mode==='consumed'){
    f.s.metadata.consumed=true;
-   f.s.effective={...f.s.header(),id:id(4),status:'posted',draft_id:null,draft_version:null,report_head_id:id(4),revision_id:id(5),report_version:'1',revenue:'40000',eligible_set_fingerprint:null,consumed:false};
+   f.s.effective={...f.s.header(),id:id(4),status:'posted',draft_id:null,draft_version:null,report_head_id:id(4),revision_id:id(5),report_version:'1',revenue:'40000',eligible_set_fingerprint:null,source_context_link:null,source_context_fingerprint:null,context_issue:null,consumed:false};
   }
   return {data:{id:evidenceId,state:'finalized'},error:null};
  });
  arrange?.(f);
- const owner=mount(<COMonthlyReport/>);
+ const owner=await mountNestedReport(f.s);
  fireEvent.change(await screen.findByLabelText('Terjual Item 1'),{target:{value:'8'}});
  fireEvent.change(screen.getByLabelText('Catatan laporan'),{target:{value:'Keep authorized report fields'}});
  await choose(); fireEvent.click(screen.getByText('Verifikasi dan pasang lampiran'));
@@ -31,7 +31,7 @@ test('same-creator finalized upload adopts checked canonical evidence with dirty
  expect(f.commands.map(c=>c.p_operation)).toEqual(['register_evidence']); expect(localStorage.length).toBe(0);
  expect((screen.getByLabelText('Terjual Item 1') as HTMLInputElement).value).toBe('8');
  expect((screen.getByLabelText('Catatan laporan') as HTMLInputElement).value).toBe('Keep authorized report fields');
- await waitFor(()=>expect(screen.getByRole('button',{name:'Simpan Draft'}).matches(':disabled')).toBe(false));
+ await waitFor(()=>expect(screen.getByRole('button',{name:'Lanjutkan peninjauan periode'}).matches(':disabled')).toBe(false));
  expect(screen.queryByText('Coba buka hasil lampiran')).toBeNull();
  const create=vi.fn(()=> 'blob:adopted'),revoke=vi.fn();let downloaded='';
  vi.spyOn(HTMLAnchorElement.prototype,'click').mockImplementation(function(this: HTMLAnchorElement){downloaded=this.download;});
@@ -39,11 +39,11 @@ test('same-creator finalized upload adopts checked canonical evidence with dirty
  fireEvent.click(screen.getByText(`Unduh evidence-${evidenceId}.pdf`));
  await waitFor(()=>expect(downloaded).toBe(`evidence-${evidenceId}.pdf`));
  expect(create.mock.calls).toHaveLength(1);expect(revoke).toHaveBeenCalledWith('blob:adopted');
- await waitFor(()=>expect(screen.getByRole('button',{name:'Simpan Draft'}).matches(':disabled')).toBe(false));
- fireEvent.click(screen.getByRole('button',{name:'Simpan Draft'}));
+ await waitFor(()=>expect(screen.getByRole('button',{name:'Lanjutkan peninjauan periode'}).matches(':disabled')).toBe(false));
+ fireEvent.click(screen.getByRole('button',{name:'Lanjutkan peninjauan periode'}));
  await waitFor(()=>expect(f.s.metadata.notes).toBe('Keep authorized report fields'));
  expect(f.s.rows[0].sold_quantity).toBe('8');
- expect(f.s.commands[0].payload.expected_draft_version).toBe('2');
+ expect(f.s.commands[1].payload.expected_draft_version).toBe('3');
 });
 test.each(['newer','consumed'] as const)('observed finalized evidence with %s source uses explicit Keep/Discard without a fabricated acknowledgement',async mode=>{
  const {f}=await begin(mode);
@@ -68,7 +68,28 @@ test.each(['newer','consumed'] as const)('observed finalized evidence with %s so
   expect(label.nextElementSibling?.tagName).toBe('DD');
   expect(label.nextElementSibling?.textContent).toBe('Latest canonical note');
   expect(panel.querySelector('input, textarea, fieldset')).toBeNull();
+  for(const name of ['Simpan Draft periode','Gunakan draft periode lengkap','Lanjutkan peninjauan periode','Isi sisa periode dengan nol'])expect(screen.queryByRole('button',{name})).toBeNull();
+  expect(f.commands.map(c=>c.p_operation)).toEqual(['register_evidence']);expect(localStorage.length).toBe(0);
  }
+});
+test('consumed canonical display refuses another source fingerprint without new draft actions or commands',async()=>{
+ const {f}=await begin('consumed',f=>{
+  const invoke=wire.invoke.getMockImplementation()!;
+  wire.invoke.mockImplementation(async(...args)=>{
+   const result=await invoke(...args);
+   if(args[0]!=='co-evidence-download')f.s.metadata.source_context_fingerprint='d'.repeat(64);
+   return result;
+  });
+ });
+ await screen.findByText('Coba buka hasil lampiran');
+ await waitFor(()=>expect(screen.getByText('Selesaikan konflik lampiran').matches(':disabled')).toBe(false));
+ fireEvent.click(screen.getByText('Selesaikan konflik lampiran'));fireEvent.click(await screen.findByText('Buang perubahan'));
+ // Adoption completed; this is a source-display refusal, not a malformed-wire refusal.
+ await waitFor(()=>expect(screen.queryByText('Coba buka hasil lampiran')).toBeNull());
+ expect(f.s.effective.source_context_fingerprint).toBeNull();
+ expect(screen.queryByRole('region',{name:'Isian laporan pelanggan'})).toBeNull();
+ for(const name of ['Simpan Draft periode','Gunakan draft periode lengkap','Lanjutkan peninjauan periode','Isi sisa periode dengan nol'])expect(screen.queryByRole('button',{name})).toBeNull();
+ expect(f.commands.map(c=>c.p_operation)).toEqual(['register_evidence']);expect(localStorage.length).toBe(0);
 });
 
 test.each(['authority','wrong sidecar','read failure','late owner','late denial'] as const)('canonical observation retains authority and lifetime checks: %s',async mode=>{
@@ -91,7 +112,7 @@ test.each(['authority','wrong sidecar','read failure','late owner','late denial'
   await waitFor(()=>expect(release).toBeTypeOf('function'));
   const oldRelease=release;
   cleanup();const base=wire.handler;wire.handler=(n:string,a:any)=>n==='pilot_co_evidence_selection_v1'?Promise.resolve({data:{version:'1',customer_id:customer,draft_id:a.p_draft_id,draft_version:a.p_expected_draft_version,revision_id:a.p_revision_id,evidence:f.e},error:null}):base(n,a);
-  mount(<COMonthlyReport/>);fireEvent.change(await screen.findByLabelText('Terjual Item 1'),{target:{value:'19'}});
+  await mountNestedReport(f.s);fireEvent.change(await screen.findByLabelText('Terjual Item 1'),{target:{value:'19'}});
   await act(async()=>oldRelease());
   expect((screen.getByLabelText('Terjual Item 1') as HTMLInputElement).value).toBe('19');
   expect(screen.queryByText('Late old authority denial')).toBeNull();
@@ -101,12 +122,12 @@ test.each(['authority','wrong sidecar','read failure','late owner','late denial'
   if(mode==='authority')expect(screen.queryByLabelText('Terjual Item 1')).toBeNull();
   else {
    expect((screen.getByLabelText('Terjual Item 1') as HTMLInputElement).value).toBe('8');
-   expect(screen.getByRole('button',{name:'Simpan Draft'}).matches(':disabled')).toBe(true);
+   expect(screen.getByRole('button',{name:'Lanjutkan peninjauan periode'}).matches(':disabled')).toBe(true);
    expect(screen.getByText('Coba buka hasil lampiran')).toBeTruthy();
    if(mode==='read failure'){
     resumeReads();fireEvent.click(screen.getByText('Coba buka hasil lampiran'));
     await screen.findByText(`Unduh evidence-${evidenceId}.pdf`);
-    await waitFor(()=>expect(screen.getByRole('button',{name:'Simpan Draft'}).matches(':disabled')).toBe(false));
+    await waitFor(()=>expect(screen.getByRole('button',{name:'Lanjutkan peninjauan periode'}).matches(':disabled')).toBe(false));
     expect((screen.getByLabelText('Terjual Item 1') as HTMLInputElement).value).toBe('8');
    }
   }

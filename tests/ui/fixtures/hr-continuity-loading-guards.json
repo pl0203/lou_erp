@@ -1,0 +1,589 @@
+{
+  "approval": "Sentinel_8093360d34748191a2965913631af06c: bounded same-session retained display while actions disabled; errors/revocation clear",
+  "updates": [
+    {
+      "file": "src/pages/ihr/leave/AssignedApprovalInbox.tsx",
+      "before": [
+        {
+          "file": "src/pages/ihr/leave/AssignedApprovalInbox.tsx",
+          "title": "Memeriksa akses persetujuan...",
+          "guards": [
+            "if readState!=='ready'"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/AssignedApprovalInbox.tsx",
+          "title": "Memuat permintaan...",
+          "guards": [
+            "inbox.isError ? false",
+            "inbox.isFetching||inbox.isPending ? true"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/AssignedApprovalInbox.tsx",
+          "title": "Memuat detail...",
+          "guards": [
+            "selected &&",
+            "detail.isError ? false",
+            "detail.isPending||detail.isFetching ? true"
+          ]
+        }
+      ],
+      "after": [
+        {
+          "file": "src/pages/ihr/leave/AssignedApprovalInbox.tsx",
+          "title": "Memeriksa akses persetujuan...",
+          "guards": [
+            "if readState!=='ready'&&!shownInbox"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/AssignedApprovalInbox.tsx",
+          "title": "Memuat permintaan...",
+          "guards": [
+            "inbox.isError&&!shownInbox ? false",
+            "!shownInbox&&(inbox.isFetching||inbox.isPending) ? true"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/AssignedApprovalInbox.tsx",
+          "title": "Memuat detail...",
+          "guards": [
+            "selected &&",
+            "detail.isError&&!shownDetail ? false",
+            "!shownDetail&&(detail.isPending||detail.isFetching) ? true"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "src/pages/ihr/leave/DirectorLeaveOverview.tsx",
+      "before": [
+        {
+          "file": "src/pages/ihr/leave/DirectorLeaveOverview.tsx",
+          "title": "Memeriksa akses dan memuat ringkasan...",
+          "guards": [
+            "readState==='pending'||requests.isFetching ? true"
+          ]
+        }
+      ],
+      "after": [
+        {
+          "file": "src/pages/ihr/leave/DirectorLeaveOverview.tsx",
+          "title": "Memeriksa akses dan memuat ringkasan...",
+          "guards": [
+            "!shown&&(readState==='pending'||readState==='refreshing'||requests.isFetching) ? true"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "src/pages/ihr/leave/LeaveAdminPrivatePanel.tsx",
+      "before": [
+        {
+          "file": "src/pages/ihr/leave/LeaveAdminPrivatePanel.tsx",
+          "title": "Memeriksa akses tinjauan privat...",
+          "guards": [
+            "readState!=='ready' ? true"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/LeaveAdminPrivatePanel.tsx",
+          "title": "Memuat permohonan privat...",
+          "guards": [
+            "readState!=='ready' ? false",
+            "(query.isError||!query.available&&!query.isFetching) ? false",
+            "!fresh ? true"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/LeaveAdminPrivatePanel.tsx",
+          "title": "Memeriksa rincian privat...",
+          "guards": [
+            "(query.isError||!fresh&&!query.isFetching)&&readState==='ready' ? false",
+            "!fresh ? true"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/LeaveAdminPrivatePanel.tsx",
+          "title": "Memeriksa akses riwayat peristiwa...",
+          "guards": [
+            "readState!=='ready' ? true"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/LeaveAdminPrivatePanel.tsx",
+          "title": "Memuat riwayat peristiwa...",
+          "guards": [
+            "readState!=='ready' ? false",
+            "(query.isError||!fresh&&!query.isFetching) ? false",
+            "!fresh ? true"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/LeaveAdminPrivatePanel.tsx",
+          "title": "Memeriksa akses saldo privat...",
+          "guards": [
+            "readState!=='ready' ? true"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/LeaveAdminPrivatePanel.tsx",
+          "title": "Memuat saldo anggota...",
+          "guards": [
+            "readState!=='ready' ? false",
+            "(query.isError||!query.available&&!query.isFetching) ? false",
+            "!fresh ? true"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/LeaveAdminPrivatePanel.tsx",
+          "title": "Memeriksa akses riwayat saldo...",
+          "guards": [
+            "readState!=='ready' ? true"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/LeaveAdminPrivatePanel.tsx",
+          "title": "Memuat riwayat saldo anggota...",
+          "guards": [
+            "readState!=='ready' ? false",
+            "(query.isError||!query.available&&!query.isFetching) ? false",
+            "!query.available ? true"
+          ]
+        }
+      ],
+      "after": [
+        {
+          "file": "src/pages/ihr/leave/LeaveAdminPrivatePanel.tsx",
+          "title": "Memeriksa akses tinjauan privat...",
+          "guards": [
+            "readState!=='ready'&&!shown ? true"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/LeaveAdminPrivatePanel.tsx",
+          "title": "Memuat permohonan privat...",
+          "guards": [
+            "readState!=='ready'&&!shown ? false",
+            "(!shown&&(query.isError||!query.available&&!query.isFetching)) ? false",
+            "!shown ? true"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/LeaveAdminPrivatePanel.tsx",
+          "title": "Memeriksa rincian privat...",
+          "guards": [
+            "(query.isError||!fresh&&!query.isFetching)&&readState==='ready' ? false",
+            "!shown ? true"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/LeaveAdminPrivatePanel.tsx",
+          "title": "Memeriksa akses riwayat peristiwa...",
+          "guards": [
+            "readState!=='ready'&&!shown ? true"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/LeaveAdminPrivatePanel.tsx",
+          "title": "Memuat riwayat peristiwa...",
+          "guards": [
+            "readState!=='ready'&&!shown ? false",
+            "(!shown&&(query.isError||!fresh&&!query.isFetching)) ? false",
+            "!shown ? true"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/LeaveAdminPrivatePanel.tsx",
+          "title": "Memeriksa akses saldo privat...",
+          "guards": [
+            "readState!=='ready'&&!shown ? true"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/LeaveAdminPrivatePanel.tsx",
+          "title": "Memuat saldo anggota...",
+          "guards": [
+            "readState!=='ready'&&!shown ? false",
+            "(!shown&&(query.isError||!query.available&&!query.isFetching)) ? false",
+            "!shown ? true"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/LeaveAdminPrivatePanel.tsx",
+          "title": "Memeriksa akses riwayat saldo...",
+          "guards": [
+            "readState!=='ready'&&!shown ? true"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/LeaveAdminPrivatePanel.tsx",
+          "title": "Memuat riwayat saldo anggota...",
+          "guards": [
+            "readState!=='ready'&&!shown ? false",
+            "(!shown&&(query.isError||!query.available&&!query.isFetching)) ? false",
+            "!shown ? true"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "src/pages/ihr/leave/LeaveAdminRotaPanel.tsx",
+      "before": [
+        {
+          "file": "src/pages/ihr/leave/LeaveAdminRotaPanel.tsx",
+          "title": "Memuat kalender perusahaan...",
+          "guards": [
+            "selected ? false",
+            "readState==='ready' &&",
+            "(query.isError||!query.available&&!query.isFetching) ? false",
+            "!query.available ? true"
+          ]
+        }
+      ],
+      "after": [
+        {
+          "file": "src/pages/ihr/leave/LeaveAdminRotaPanel.tsx",
+          "title": "Memuat kalender perusahaan...",
+          "guards": [
+            "selected ? false",
+            "(readState==='ready'||readState==='refreshing') &&",
+            "(!visible&&(query.isError||!query.available&&!query.isFetching)) ? false",
+            "!visible ? true"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "src/pages/ihr/leave/LeaveAdminSettings.tsx",
+      "before": [
+        {
+          "file": "src/pages/ihr/leave/LeaveAdminSettings.tsx",
+          "title": "Memeriksa kembali akses dan lingkup anggota…",
+          "guards": [
+            "if !fresh"
+          ]
+        }
+      ],
+      "after": [
+        {
+          "file": "src/pages/ihr/leave/LeaveAdminSettings.tsx",
+          "title": "Memeriksa kembali akses dan lingkup anggota…",
+          "guards": [
+            "if !displayReady||dataScopeVersion!==scopeVersion||observedScope!==scopeVersion||waitingContinuity"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "src/pages/ihr/leave/LeaveBalanceSettings.tsx",
+      "before": [
+        {
+          "file": "src/pages/ihr/leave/LeaveBalanceSettings.tsx",
+          "title": "Memeriksa akses perubahan saldo...",
+          "guards": [
+            "if !authorityReady"
+          ]
+        }
+      ],
+      "after": [
+        {
+          "file": "src/pages/ihr/leave/LeaveBalanceSettings.tsx",
+          "title": "Memeriksa akses perubahan saldo...",
+          "guards": [
+            "if !displayReady"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "src/pages/ihr/leave/LeavePeopleSettings.tsx",
+      "before": [
+        {
+          "file": "src/pages/ihr/leave/LeavePeopleSettings.tsx",
+          "title": "Memeriksa akses pengaturan anggota...",
+          "guards": [
+            "if !authorityReady"
+          ]
+        }
+      ],
+      "after": [
+        {
+          "file": "src/pages/ihr/leave/LeavePeopleSettings.tsx",
+          "title": "Memeriksa akses pengaturan anggota...",
+          "guards": [
+            "if !displayReady"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "src/pages/ihr/leave/LeaveRotaSettings.tsx",
+      "before": [
+        {
+          "file": "src/pages/ihr/leave/LeaveRotaSettings.tsx",
+          "title": "Memeriksa akses kalender dan roster...",
+          "guards": [
+            "if !authorityReady"
+          ]
+        }
+      ],
+      "after": [
+        {
+          "file": "src/pages/ihr/leave/LeaveRotaSettings.tsx",
+          "title": "Memeriksa akses kalender dan roster...",
+          "guards": [
+            "if !displayReady"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "src/pages/ihr/leave/MyLeave.tsx",
+      "before": [
+        {
+          "file": "src/pages/ihr/leave/MyLeave.tsx",
+          "title": "Memeriksa akses riwayat...",
+          "guards": [
+            "if readState!=='ready'"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/MyLeave.tsx",
+          "title": "Memuat riwayat...",
+          "guards": [
+            "denied ? false",
+            "pending ? true"
+          ]
+        }
+      ],
+      "after": [
+        {
+          "file": "src/pages/ihr/leave/MyLeave.tsx",
+          "title": "Memeriksa akses riwayat...",
+          "guards": [
+            "if readState!=='ready'&&!shown"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/MyLeave.tsx",
+          "title": "Memuat riwayat...",
+          "guards": [
+            "denied&&!shown ? false",
+            "pending&&!shown ? true"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "src/pages/ihr/leave/OwnLeaveHistory.tsx",
+      "before": [
+        {
+          "file": "src/pages/ihr/leave/OwnLeaveHistory.tsx",
+          "title": "Memeriksa akses riwayat...",
+          "guards": [
+            "readState!=='ready' ? true"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/OwnLeaveHistory.tsx",
+          "title": "Memuat riwayat pengajuan...",
+          "guards": [
+            "readState!=='ready' ? false",
+            "authority.denied ? false",
+            "!authority.ready||history.isFetching||history.isPending ? true"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/OwnLeaveHistory.tsx",
+          "title": "Memeriksa akses rincian...",
+          "guards": [
+            "readState!=='ready' ? true"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/OwnLeaveHistory.tsx",
+          "title": "Memuat rincian...",
+          "guards": [
+            "readState!=='ready' ? false",
+            "authority.denied ? false",
+            "!authority.ready||detail.isPending||detail.isFetching ? true"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/OwnLeaveHistory.tsx",
+          "title": "Memeriksa peristiwa...",
+          "guards": [
+            "readState!=='ready'||events.isFetching ? true"
+          ]
+        }
+      ],
+      "after": [
+        {
+          "file": "src/pages/ihr/leave/OwnLeaveHistory.tsx",
+          "title": "Memeriksa akses riwayat...",
+          "guards": [
+            "readState!=='ready'&&!shown ? true"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/OwnLeaveHistory.tsx",
+          "title": "Memuat riwayat pengajuan...",
+          "guards": [
+            "readState!=='ready'&&!shown ? false",
+            "authority.denied&&!shown ? false",
+            "!shown&&!authority.denied&&!history.isError ? true"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/OwnLeaveHistory.tsx",
+          "title": "Memeriksa akses rincian...",
+          "guards": [
+            "readState!=='ready'&&!shown ? true"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/OwnLeaveHistory.tsx",
+          "title": "Memuat rincian...",
+          "guards": [
+            "readState!=='ready'&&!shown ? false",
+            "authority.denied&&!shown ? false",
+            "!shown&&!authority.denied&&!detail.isError ? true"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/OwnLeaveHistory.tsx",
+          "title": "Memeriksa peristiwa...",
+          "guards": [
+            "!shown&&(readState!=='ready'||events.isFetching) ? true"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "src/pages/ihr/leave/OwnRequestActions.tsx",
+      "before": [
+        {
+          "file": "src/pages/ihr/leave/OwnRequestActions.tsx",
+          "title": "Memeriksa akses tindakan...",
+          "guards": [
+            "readState!=='ready' ? true"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/OwnRequestActions.tsx",
+          "title": "Memeriksa akses tindakan...",
+          "guards": [
+            "readState!=='ready' ? false",
+            "authority.denied ? false",
+            "!authority.ready ? true"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/OwnRequestActions.tsx",
+          "title": "Memuat status tindakan...",
+          "guards": [
+            "readState!=='ready' ? false",
+            "authority.denied ? false",
+            "!authority.ready ? false",
+            "unresolved ? false",
+            "state.isError ? false",
+            "!visible ? true"
+          ]
+        }
+      ],
+      "after": [
+        {
+          "file": "src/pages/ihr/leave/OwnRequestActions.tsx",
+          "title": "Memeriksa akses tindakan...",
+          "guards": [
+            "readState!=='ready'&&!shown ? true"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/OwnRequestActions.tsx",
+          "title": "Memeriksa akses tindakan...",
+          "guards": [
+            "readState!=='ready'&&!shown ? false",
+            "authority.denied&&!shown ? false",
+            "!authority.ready&&!shown ? true"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/OwnRequestActions.tsx",
+          "title": "Memuat status tindakan...",
+          "guards": [
+            "readState!=='ready'&&!shown ? false",
+            "authority.denied&&!shown ? false",
+            "!authority.ready&&!shown ? false",
+            "unresolved ? false",
+            "state.isError&&!shown ? false",
+            "!shown ? true"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "src/pages/ihr/leave/TeamLeaveCalendar.tsx",
+      "before": [
+        {
+          "file": "src/pages/ihr/leave/TeamLeaveCalendar.tsx",
+          "title": "Memeriksa akses kalender...",
+          "guards": [
+            "readState==='pending'||access.isFetching ? true"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/TeamLeaveCalendar.tsx",
+          "title": "Memuat kalender...",
+          "guards": [
+            "readState==='pending'||access.isFetching ? false",
+            "readState==='error'||access.isError ? false",
+            "!access.available ? false",
+            "!access.data?.calendarAudiences.length ? false",
+            "!authorized ? false",
+            "!range ? false",
+            "calendar.isFetching||calendar.isPending ? true"
+          ]
+        }
+      ],
+      "after": [
+        {
+          "file": "src/pages/ihr/leave/TeamLeaveCalendar.tsx",
+          "title": "Memeriksa akses kalender...",
+          "guards": [
+            "!shownCalendar&&(readState==='pending'||readState==='refreshing'||access.isFetching) ? true"
+          ]
+        },
+        {
+          "file": "src/pages/ihr/leave/TeamLeaveCalendar.tsx",
+          "title": "Memuat kalender...",
+          "guards": [
+            "!shownCalendar&&(readState==='pending'||readState==='refreshing'||access.isFetching) ? false",
+            "readState==='error'||access.isError ? false",
+            "!shownAccess ? false",
+            "!shownAccess.calendarAudiences.length ? false",
+            "!shownAccess.calendarAudiences.includes(audience) ? false",
+            "!range ? false",
+            "!shownCalendar&&(calendar.isFetching||calendar.isPending) ? true"
+          ]
+        }
+      ]
+    }
+  ],
+  "added": [
+    {
+      "file": "src/pages/ihr/employees/EmployeeUI.tsx",
+      "title": "Akses belum dapat dikonfirmasi",
+      "guards": [
+        "if !state.authorityReady"
+      ]
+    },
+    {
+      "file": "src/pages/ihr/employees/EmployeeUI.tsx",
+      "title": "{loading}",
+      "guards": []
+    }
+  ]
+}

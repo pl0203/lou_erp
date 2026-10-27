@@ -183,3 +183,6 @@ test('plain button labels never retain the old blue or green module action color
 test('shared customer-history action labels use the brand token', () => {
   expect(readFileSync('src/components/CustomerHistory.tsx', 'utf8')).toMatch(/const action = '[^']*text-brand-primary/)
 })
+
+// Theme behavior is independent of the employee authority provider.
+vi.mock('../src/lib/employees/useEmployeeContext', () => ({ useEmployeeContext: () => ({ displayAllowed: false }) }))

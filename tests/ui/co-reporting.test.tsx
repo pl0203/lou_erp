@@ -1,3 +1,5 @@
+import { beginIntegrated, readyPreview } from '../co/workspace/import-acceptance-harness';
+import { mountNestedReport } from '../co/nested-report-harness';
 import React from 'react';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { expect, test } from 'vitest';
@@ -22,41 +24,19 @@ async function soldInput(n: number) {
     });
 }
 
-test('report contains keyboard-scrollable sales rows with native labels and original focus IDs', async () => {
-    store(); mount(<COMonthlyReport/>);
-    const sold = await screen.findByLabelText('Terjual Item 1') as HTMLInputElement;
-    const region = screen.getByRole('region', { name: 'Baris penjualan laporan pelanggan' });
-    expect(region.tabIndex).toBe(0);
-    expect(region.className).toContain('overflow-x-auto');
-    expect(region.className).toContain('min-w-0');
-    expect(sold.id).toBe(`co-sold-${id(1001)}`);
-    expect(sold.labels?.[0].htmlFor).toBe(sold.id);
-    expect(sold.closest('.ui-field')).toBeTruthy();
-    const notes = screen.getByLabelText('Catatan laporan') as HTMLInputElement;
-    expect(notes.labels?.[0].htmlFor).toBe(notes.id);
-    expect(screen.getByRole('heading', { name: 'Store A · September 2026' }).closest('.ui-page-header')).toBeTruthy();
-    expect(screen.getByText('Laporan pelanggan ini mencakup semua CO pada periode dipilih.')).toBeTruthy();
-    expect(document.querySelector('main, #main-content')).toBeNull();
+test('report contains keyboard-scrollable sales rows with native labels and original focus IDs',async()=>{
+ await beginIntegrated();const sold=screen.getByLabelText('Jumlah terjual (tidak dikurangi retur)') as HTMLInputElement;
+ const region=screen.getByRole('region',{name:'Tabel pemeriksaan laporan'});expect(region.tabIndex).toBe(0);expect(region.classList.contains('co-import__scroll')).toBe(true);expect(region.contains(sold)).toBe(true);expect(sold.labels?.[0].contains(sold)).toBe(true);expect(sold.classList.contains('ui-control')).toBe(true);
+ const reason=screen.getByLabelText('Alasan perubahan (wajib untuk Edit)') as HTMLInputElement;expect(reason.labels?.[0].contains(reason)).toBe(true);
+ expect(screen.getByRole('heading',{name:'Store A · September 2026'}).closest('.ui-page-header')).toBeTruthy();expect(screen.getByText(/Laporan penjualan bulanan mencakup semua CO toko/)).toBeTruthy();expect(document.querySelector('main,#main-content')).toBeNull();
 });
 
-test('partial coverage remains a date-only UTC server statement with customer-wide scope', async () => {
-    const s = store(); s.metadata = { coverage_through_date: '2026-09-09', is_partial_month: true };
-    mount(<COMonthlyReport/>);
-    expect(await screen.findByText(/Cakupan tercatat sampai 9 September 2026.*tanggal UTC server.*parsial/)).toBeTruthy();
-    expect(screen.queryByText(/WIB/)).toBeNull();
-    const freshness = screen.getByText('Angka tercatat berdasarkan laporan, bukan verifikasi stok fisik saat ini.');
-    expect(freshness.closest('[role="status"], [role="alert"], [aria-live]')).toBeNull();
+test('partial coverage remains a date-only UTC server statement with customer-wide scope',async()=>{
+ recordedFixture(id(5),true);mount(<COMonthlyReport/>);const statement=await screen.findByText(/Cakupan tercatat sampai 9 September 2026.*tanggal UTC server.*parsial/);expect(statement.textContent).not.toContain('WIB');const freshness=screen.getByText('Angka tercatat berdasarkan laporan, bukan verifikasi stok fisik saat ini.');expect(freshness.closest('[role="status"],[role="alert"],[aria-live]')).toBeNull();
 });
 
-test('draft and posting actions have separate native named groups with server-reviewed Post availability', async () => {
-    const s = store(); s.rows[0].sold_quantity = '70'; s.impacts.report = [reportImpact()]; mount(<COMonthlyReport/>);
-    await screen.findByLabelText('Terjual Item 1');
-    const draftActions = screen.getByRole('group', { name: 'Tindakan draft laporan' });
-    fireEvent.click(within(draftActions).getByRole('button', { name: 'Tinjau laporan' }));
-    const postActions = await screen.findByRole('group', { name: 'Tindakan posting laporan' });
-    const post = within(postActions).getByRole('button', { name: 'Post laporan' });
-    expect(post.tagName).toBe('BUTTON'); expect(post.matches(':disabled')).toBe(false);
-    expect(s.previewCount).toBe(1); expect(s.commands).toHaveLength(0);
+test('draft and posting actions have separate native named groups with server-reviewed Post availability',async()=>{
+ const {f}=await beginIntegrated();const reviewActions=screen.getByRole('group',{name:'Tindakan pemeriksaan laporan'});fireEvent.click(within(reviewActions).getByRole('button',{name:'Tinjau pencatatan'}));const finalActions=await screen.findByRole('group',{name:'Tindakan pencatatan laporan'});const post=within(finalActions).getByRole('button',{name:'Catat penjualan'});await waitFor(()=>expect(post.matches(':disabled')).toBe(false));expect(post.tagName).toBe('BUTTON');expect(f.requests.filter(r=>r.n==='pilot_co_import_preview_v1')).toHaveLength(1);expect(f.requests.filter(r=>r.n==='pilot_co_import_commit_v1')).toHaveLength(0);
 });
 
 test('metadata and optional file labels stay unique when the same report appears in separate presentation panels', async () => {
@@ -76,32 +56,11 @@ test('metadata and optional file labels stay unique when the same report appears
     }
 });
 
-test('report filters preserve customer and period payloads, accessible native fields and list scope', async () => {
-    store(); mount(<COMonthlyReports/>, `/athel/co/reports?customer=${customer}&month=2026-09`);
-    const link = await screen.findByRole('link', { name: /Store A · September 2026/ });
-    expect(link.getAttribute('href')).toBe(`/athel/co/reports/${customer}/${month}`);
-    expect(screen.getByRole('list', { name: 'Laporan penjualan pelanggan' }).contains(link)).toBe(true);
-    const filters = screen.getByRole('region', { name: 'Filter laporan penjualan' });
-    expect(filters.className).toContain('ui-filter-bar');
-    const period = within(filters).getByLabelText('Bulan laporan') as HTMLInputElement;
-    expect(period.labels?.[0].htmlFor).toBe(period.id);
-    fireEvent.change(within(filters).getByLabelText('Status laporan'), { target: { value: 'posted' } });
-    await waitFor(() => expect(wire.rpc.mock.calls.some(([n, a]) => n === 'pilot_co_reports_page_v1' && a.p_status === 'posted' && a.p_customer_id === customer && a.p_month === month && a.p_page === 1)).toBe(true));
-    expect(await screen.findByText(/pelanggan dipilih, semua CO.*September 2026/)).toBeTruthy();
-    expect(screen.getByRole('region', { name: 'Periode laporan pelanggan' }).className).toContain('ui-section');
+test('report filters preserve customer and period payloads, accessible native fields and list scope',async()=>{
+ listFixture();mount(<COMonthlyReports/>,`/athel/co/reports?customer=${customer}&month=2026-09`);const link=await screen.findByRole('link',{name:'Buka laporan'});expect(link.getAttribute('href')).toBe(`/athel/co/reports/${customer}/${month}?returnTo=${encodeURIComponent(`/athel/co/reports?customer=${customer}&month=2026-09`)}`);expect(screen.getByRole('table',{name:'Laporan penjualan pelanggan'}).contains(link)).toBe(true);const filters=screen.getByRole('region',{name:'Filter laporan penjualan'});expect(filters.className).toContain('ui-filter-bar');const period=within(filters).getByLabelText('Bulan laporan') as HTMLInputElement;expect(period.labels?.[0].htmlFor).toBe(period.id);fireEvent.change(within(filters).getByLabelText('Status laporan'),{target:{value:'posted'}});await waitFor(()=>expect(wire.rpc.mock.calls.some(([n,a])=>n==='pilot_co_reports_page_v2'&&a.p_status==='posted'&&a.p_customer_id===customer&&a.p_month===month&&a.p_page===1)).toBe(true));expect(await screen.findByText(/pelanggan dipilih, semua CO.*September 2026/)).toBeTruthy();expect(screen.getByRole('region',{name:'Periode laporan pelanggan'}).className).toContain('ui-section');
 });
 
-test('empty filtered report list explicitly avoids a verified-zero interpretation', async () => {
-    const s = store(), base = s.handle;
-    wire.handler = async (name: string, args: any) => {
-        const response = await base(name, args);
-        if (name === 'pilot_co_reports_page_v1') { response.data.rows = []; response.data.total = '0'; }
-        return response;
-    };
-    mount(<COMonthlyReports/>, '/athel/co/reports');
-    expect(await screen.findByRole('heading', { name: 'Belum ada laporan sesuai filter.' })).toBeTruthy();
-    expect(screen.getByText(/Daftar kosong berarti belum ada laporan sesuai filter, bukan penjualan terverifikasi nol/)).toBeTruthy();
-});
+test('empty filtered report list explicitly avoids a verified-zero interpretation',async()=>{listFixture(true);mount(<COMonthlyReports/>,'/athel/co/reports');expect(await screen.findByRole('heading',{name:'Belum ada laporan sesuai filter.'})).toBeTruthy();expect(screen.getByText(/Daftar kosong berarti belum ada laporan sesuai filter, bukan penjualan terverifikasi nol/)).toBeTruthy()});
 
 test('blank, explicit zero and unavailable eligibility retain distinct quantities and raw input', async () => {
     store();
@@ -118,33 +77,34 @@ test('blank, explicit zero and unavailable eligibility retain distinct quantitie
 });
 
 test('save returns to an earlier page and focuses the unchanged invalid native sold input', async () => {
-    const s = store(101); mount(<COMonthlyReport/>);
+    const s = store(101); await mountNestedReport(s);
     fireEvent.change(await soldInput(1), { target: { value: '1.5' } });
     fireEvent.click(within(screen.getByRole('navigation', { name: 'Halaman hasil' })).getByRole('button', { name: 'Berikutnya' }));
     await soldInput(101);
-    fireEvent.click(within(screen.getByRole('group', { name: 'Tindakan draft laporan' })).getByRole('button', { name: 'Simpan Draft' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Lanjutkan peninjauan periode' }));
     await waitFor(() => expect(document.activeElement?.id).toBe(`co-sold-${id(1001)}`));
     expect((document.activeElement as HTMLInputElement).value).toBe('1.5');
-    expect(s.commands).toHaveLength(0);
+    expect(s.commands).toHaveLength(1);
     expect(screen.getByRole('region', { name: 'Baris penjualan laporan pelanggan' }).contains(document.activeElement)).toBe(true);
 });
 
 test('whole-report zero confirmation retains unopened-page count, native dialog and trigger focus', async () => {
-    const s = store(601); mount(<COMonthlyReport/>);
+    const s = store(601); await mountNestedReport(s);
     fireEvent.change(await soldInput(1), { target: { value: '7' } });
-    const trigger = within(screen.getByRole('group', { name: 'Tindakan draft laporan' })).getByRole('button', { name: 'Isi sisa kosong dengan nol' }); trigger.focus(); fireEvent.click(trigger);
+    const trigger = screen.getByRole('button', { name: 'Isi sisa periode dengan nol' }); trigger.focus(); fireEvent.click(trigger);
     const dialog = await screen.findByRole('dialog', { name: 'Konfirmasi isi nol' });
     expect(dialog.tagName).toBe('DIALOG'); expect(dialog.className).toContain('ui-dialog');
-    expect(within(dialog).getByText(/600 baris belum diisi, termasuk halaman yang belum dibuka/)).toBeTruthy();
+    expect(within(dialog).getByText(/600 baris kosong di seluruh periode, termasuk halaman belum dibuka/)).toBeTruthy();
+    await waitFor(()=>expect(within(dialog).getByRole('button',{name:'Konfirmasi nol periode'}).matches(':disabled')).toBe(false));
     fireEvent(dialog, new Event('cancel', { bubbles: true, cancelable: true }));
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('dialog',{name:'Konfirmasi isi nol'})).toBeNull());
     expect(document.activeElement).toBe(trigger);
-    expect(s.commands.map((c: any) => c.payload.action)).toEqual(['upsert_lines']);
+    expect(s.commands.map((c: any) => c.payload.action)).toEqual(['initialize','upsert_lines']);
     expect(s.rows[0].sold_quantity).toBe('7'); expect(s.rows[600].sold_quantity).toBeNull();
 });
 
 test('optional evidence error keeps named panel, raw fields and canonical-only retry without resending', async () => {
-    const f = fixture(); f.selectionFail = true; mount(<COMonthlyReport/>);
+    const f = fixture(); f.selectionFail = true; await mountNestedReport(f.s);
     const sold = await screen.findByLabelText('Terjual Item 1');
     fireEvent.change(sold, { target: { value: '8' } });
     fireEvent.change(screen.getByLabelText('Catatan laporan'), { target: { value: 'Keep raw' } });
@@ -156,39 +116,23 @@ test('optional evidence error keeps named panel, raw fields and canonical-only r
     expect(contents.classList.contains('space-y-2')).toBe(true);
     expect(contents.contains(within(evidence).getByLabelText('Pilih lampiran'))).toBe(true);
     expect(within(evidence).getAllByRole('alert').some(alert => alert.textContent?.includes('Lampiran sudah tersimpan'))).toBe(true);
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Simpan Draft' }).matches(':disabled')).toBe(true));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Lanjutkan peninjauan periode' }).matches(':disabled')).toBe(true));
     expect(sold.matches(':disabled')).toBe(true);
     expect(screen.getByLabelText('Catatan laporan').matches(':disabled')).toBe(true);
     f.selectionFail = false;
     await act(async () => { fireEvent.click(within(evidence).getByRole('button', { name: 'Coba buka hasil lampiran' })); });
     await screen.findByRole('button', { name: `Unduh evidence-${evidenceId}.pdf` });
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Simpan Draft' }).matches(':disabled')).toBe(false));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Lanjutkan peninjauan periode' }).matches(':disabled')).toBe(false));
     expect(screen.getByLabelText('Terjual Item 1')).toBe(sold);
     expect((sold as HTMLInputElement).value).toBe('8');
     expect((screen.getByLabelText('Catatan laporan') as HTMLInputElement).value).toBe('Keep raw');
     expect(f.commands.map(command => command.p_operation)).toEqual(['register_evidence', 'finalize_evidence']);
     expect(wire.invoke.mock.calls.filter(([name]) => name === 'co-evidence-upload')).toHaveLength(1);
-    expect(f.s.commands).toHaveLength(0);
+    expect(f.s.commands).toHaveLength(1);
 });
 
-test('immutable historical evidence uses a shared named panel and original zero rows without importing a current draft', async () => {
-    const s = store(), revision = id(6); s.rows[0].sold_quantity = '7';
-    s.effective = { ...s.header(), revision_id: id(5) };
-    const base = s.handle;
-    wire.handler = async (name: string, args: any) => {
-        const response = await base(name, args);
-        if (name === 'pilot_co_report_rows_v1') { response.data.revision_id = revision; response.data.rows = [{ ...s.rows[0], sold_quantity: '0' }]; }
-        return response;
-    };
-    mount(<COReportRevisionEvidence customerId={customer} month={month} customerVersion="1" revisionId={revision}/>);
-    await screen.findByText('Sisa periode tercatat: 100');
-    const panel = screen.getByRole('region', { name: `Bukti revisi historis ${revision}` });
-    expect(panel.className).toContain('ui-section');
-    expect(within(panel).getByText('0')).toBeTruthy();
-    expect(within(panel).queryByRole('textbox')).toBeNull();
-    expect(s.rows[0].sold_quantity).toBe('7'); expect(s.commands).toHaveLength(0);
-    expect(wire.rpc.mock.calls.some(([n, a]) => n === 'pilot_co_report_rows_v1' && a.p_view === 'revision' && a.p_revision_id === revision)).toBe(true);
-    expect(wire.rpc.mock.calls.some(([n, a]) => n === 'pilot_co_evidence_selection_v1' && a.p_revision_id === revision && a.p_draft_id === null)).toBe(true);
+test('immutable historical evidence uses a shared named panel and original zero rows without importing a current draft',async()=>{
+ const revision=id(6),s=recordedFixture(revision);mount(<COReportRevisionEvidence customerId={customer} month={month} customerVersion="1" revisionId={revision}/>);await screen.findByRole('columnheader',{name:'Jumlah terjual'});const panel=screen.getByRole('region',{name:`Bukti revisi historis ${revision}`});expect(panel.className).toContain('ui-section');expect(within(panel).getByText('0')).toBeTruthy();expect(within(panel).queryByRole('textbox')).toBeNull();expect(within(panel).getByText('Cakupan revisi ini belum tersedia pada data yang diperiksa.')).toBeTruthy();expect(s.rows[0].sold_quantity).toBe('7');expect(s.commands).toHaveLength(0);expect(wire.rpc.mock.calls.some(([n,a])=>n==='pilot_co_report_rows_v1'&&a.p_view==='revision'&&a.p_revision_id===revision)).toBe(true);expect(wire.rpc.mock.calls.some(([n,a])=>n==='pilot_co_evidence_selection_v1'&&a.p_revision_id===revision&&a.p_draft_id===null)).toBe(true);
 });
 
 test('revision attachment keeps its descriptions inside the spaced local content wrapper', async () => {
@@ -214,3 +158,10 @@ test('selected-SKU allocation evidence retains every-page exact revenue and orig
     expect(within(list).getByText(new RegExp(`PIC asli: PIC-1 · ${id(6001)}`))).toBeTruthy();
     expect(wire.rpc.mock.calls.filter(([n, a]) => n === 'pilot_co_preview_allocations_v1' && a.p_page_size === 100).map(([, a]) => a.p_page)).toEqual([1, 2]);
 });
+
+function listFixture(empty=false){const s=store(),base=s.handle;wire.handler=async(n,a)=>n==='pilot_co_reports_page_v2'?{data:{version:'2',as_of:'2026-10-09T00:00:00Z',customer_id:a.p_customer_id,report_month:a.p_month,status:a.p_status,page:a.p_page,page_size:a.p_page_size,total:empty?'0':'1',rows:empty?[]:[{id:id(4),customer_id:customer,customer_name:'Store A',report_month:a.p_month??month,status:'posted',revision_id:id(5),report_head_id:id(4),legacy_pending:false,source_filename:'synthetic.pdf',updated_at:'2026-10-09T00:00:00Z'}]},error:null}:base(n,a);return s}
+function recordedFixture(revision=id(5),partial=false){const s=store();s.rows[0].sold_quantity='7';s.effective={...s.header(),id:id(4),status:'posted',draft_id:null,draft_version:null,report_head_id:id(4),revision_id:id(5),report_version:'2',revenue:'0',eligible_set_fingerprint:null,coverage_through_date:partial?'2026-09-09':'2026-09-30',is_partial_month:partial};const base=s.handle;wire.handler=async(n,a)=>{
+ if(n==='pilot_co_report_import_v1')return {data:{version:'1',as_of:'2026-10-09T00:00:00Z',customer_id:customer,report_month:month,revision_id:revision,report_head_id:id(4),effective_revision_id:id(5),manifest:null,unit_declarations:{},source_amount:null,currency:null,source_filename:null,created_at:'2026-10-09T00:00:00Z',created_by:id(1),author_name:'Operator',reason:null,report_version:'1',previous_revision_id:null},error:null};
+ if(n==='pilot_co_report_allocations_v1')return {data:{version:'1',as_of:'2026-10-09T00:00:00Z',customer_id:customer,customer_version:'1',report_month:month,revision_id:revision,generation_id:null,is_effective:revision===id(5),summary:{quantity:'0',amount:'0'},page:a.p_page,page_size:a.p_page_size,total:'0',rows:[]},error:null};
+ if(n==='pilot_co_report_revision_delta_v1')return {data:{version:'1',as_of:'2026-10-09T00:00:00Z',customer_id:customer,report_month:month,revision_id:revision,previous_revision_id:null,page:a.p_page,page_size:a.p_page_size,total:'0',rows:[]},error:null};
+ const r=await base(n,a);if(n==='pilot_co_report_rows_v1'){r.data.revision_id=revision;r.data.rows=[{...s.rows[0],sold_quantity:'0'}]}return r};return s}

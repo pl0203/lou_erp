@@ -72,6 +72,9 @@ test('preserves all 81 immutable protected hashes and four migration bytes in a 
 })
 
 test.each([
+  ['src/lib/leave/queryKeys.ts', 'queryKeys.ts.snapshot'],
+  ['src/lib/leave/useLeaveContext.ts', 'useLeaveContext.ts.snapshot'],
+  ['src/lib/leave/useOwnRequestAuthority.ts', 'useOwnRequestAuthority.ts.snapshot'],
   ['src/lib/AuthContext.tsx', 'AuthContext.tsx.snapshot'],
   ['src/pages/ForgotPassword.tsx', 'ForgotPassword.tsx.snapshot'],
   ['src/lib/leave/readContracts.ts', 'readContracts.ts.snapshot'],
@@ -92,6 +95,9 @@ test.each([
 })
 
 test.each([
+  ['src/lib/leave/queryKeys.ts', 'queryKeys.ts.snapshot'],
+  ['src/lib/leave/useLeaveContext.ts', 'useLeaveContext.ts.snapshot'],
+  ['src/lib/leave/useOwnRequestAuthority.ts', 'useOwnRequestAuthority.ts.snapshot'],
   ['src/lib/AuthContext.tsx', 'AuthContext.tsx.snapshot'],
   ['src/pages/ForgotPassword.tsx', 'ForgotPassword.tsx.snapshot'],
   ['src/lib/leave/readContracts.ts', 'readContracts.ts.snapshot'],

@@ -15,7 +15,7 @@ test('stock history and source links stay quiet compact with current-stock comma
     const s = stockFixture();
     s.movements = [{ id: id(51), customer_id: customer, stock_key_id: id(1001), generation_id: s.generation, co_line_id: id(3001), batch_id: id(2001), co_id: id(11), effective_date: '2026-09-01', kind: 'delivery', quantity_delta: '30', delivery_revision_line_id: id(5001), return_revision_line_id: null, report_revision_line_id: null }];
     mountApp(<App/>, `/athel/co/stock?customer=${customer}`);
-    const history = await screen.findByRole('button', { name: 'Lihat pergerakan Store A · SKU-1' });
+    const history = await screen.findByRole('button', { name: 'Lihat mutasi Store A · SKU-1' });
     variant(history, 'quiet'); expect(history.classList.contains('ui-action--compact')).toBe(true);
     variant(screen.getByRole('button', { name: 'Stok terkini' }), 'quiet');
     variant(screen.getByRole('link', { name: 'Catat penjualan' }), 'primary');

@@ -5,19 +5,25 @@ import { isPOConflict, POConflictError } from './poConflict'
 import { parsePromoStockWarning, PromoStockWarningError } from './promotionStock'
 
 export type TransactionResult = { id: string; po_id?: string; updated_at?: string; stock_version?: number }
-export type Recovery = { state: 'committed' | 'abandoned' | 'unknown'; result?: TransactionResult; operation?: string }
-export type TransactionSender = ((operation: string, payload: unknown) => Promise<TransactionResult>) & {
+export type Recovery<Result = TransactionResult> = { state: 'committed' | 'abandoned' | 'unknown'; result?: Result; operation?: string }
+export type TransactionSender<Result = TransactionResult> = ((operation: string, payload: unknown) => Promise<Result>) & {
   /** Live request state is separate from durable uncertainty, which must survive a reload. */
   isInFlight?: () => boolean
   hasUnresolved: () => boolean
-  reconcile: () => Promise<Recovery>
+  reconcile: () => Promise<Recovery<Result>>
   acknowledgeRecovered: () => void
 }
-export type TransactionOptions = {
+export type TransactionOptions<Result = TransactionResult> = {
+  /** Reuses this sender's UUID and uncertainty bookkeeping; never generates another identity. */
+  transport?: {
+    send: (requestId: string, operation: string, payload: unknown) => Promise<{ data: any; error: { code?: string; message: string; details?: string } | null }>
+    reconcile: (requestId: string, abandon: boolean) => Promise<{ data: any; error: { code?: string; message: string; details?: string } | null }>
+  }
   /** Opt-in UI import contract. Keep exact success metadata until the owner accepts canonical state. */
   retainCommitted?: boolean
-  validateResult?: (result: TransactionResult, expectedOperation?: string, expectedPayload?: unknown) => boolean | Promise<boolean>
-  decodeRecovery?: (data: unknown) => Recovery
+  resultIdentity?: (result: Result) => string
+  validateResult?: (result: Result, expectedOperation?: string, expectedPayload?: unknown) => boolean | Promise<boolean>
+  decodeRecovery?: (data: unknown) => Recovery<Result>
   /** Opt-in domain errors, applied only after the existing refusal/ambiguity bookkeeping. */
   mapError?: (error: { code?: string; message: string; details?: string }) => Error
   storage?: () => Storage
@@ -25,7 +31,7 @@ export type TransactionOptions = {
   rpcName?: 'pilot_co_evidence_transaction_v1' | 'pilot_co_transaction_v1' | 'pilot_order_transaction' | 'pilot_finalize_visit' | 'leave_transaction_v1' | 'pilot_promotion_transaction_v1' | 'pilot_schedule_transaction_v1'
   recoveryRpcName?: 'pilot_reconcile_co_evidence_v1' | 'pilot_reconcile_co_v1' | 'pilot_reconcile_request' | 'pilot_reconcile_visit' | 'leave_reconcile_request_v1' | 'pilot_reconcile_promotion_v1' | 'pilot_reconcile_schedule_v1'
 }
-type Pending = { key: string; id: string; uncertain: boolean; committed?: TransactionResult }
+type Pending<Result> = { key: string; id: string; uncertain: boolean; committed?: Result }
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical)
   if (value !== null && typeof value === 'object') return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, canonical(item)]))
@@ -42,8 +48,10 @@ function compatibilityError(error: { code?: string; message: string; details?: s
 }
 
 /** Durable metadata stores only actor/form-scoped request UUID + hash, never order contents. */
-export function createTransactionSender(options: TransactionOptions = {}): TransactionSender {
-  let pending: Pending | null = null
+export function createTransactionSender<Result = TransactionResult>(options: TransactionOptions<Result> = {}): TransactionSender<Result> {
+  const resultId = (value: Result): unknown => options.resultIdentity ? options.resultIdentity(value) : (value as TransactionResult)?.id
+  const validIdentity = (value: Result): boolean => { const id = resultId(value); return typeof id === 'string' && !!id.trim() }
+  let pending: Pending<Result> | null = null
   let activeSends = 0
   function read() {
     if (options.storage && options.storageKey) {
@@ -56,7 +64,7 @@ export function createTransactionSender(options: TransactionOptions = {}): Trans
     }
     return pending
   }
-  function save(value: Pending | null) {
+  function save(value: Pending<Result> | null) {
     if (options.storage && options.storageKey) {
       if (value) options.storage().setItem(options.storageKey, JSON.stringify(value))
       else options.storage().removeItem(options.storageKey)
@@ -64,7 +72,7 @@ export function createTransactionSender(options: TransactionOptions = {}): Trans
     pending = value
   }
   // Opt-in semantic receipt checks must run before any confirmation consumes recovery identity.
-  async function validateReceipt(value: TransactionResult, request: Pending, operation?: string, payload?: unknown) {
+  async function validateReceipt(value: Result, request: Pending<Result>, operation?: string, payload?: unknown) {
     if (!options.validateResult) return
     try {
       if (!await options.validateResult(value, operation, payload)) throw new Error('Respons penyimpanan tidak valid. Pulihkan hasil sebelum mencoba kembali.')
@@ -80,7 +88,7 @@ export function createTransactionSender(options: TransactionOptions = {}): Trans
     if ((current?.uncertain || current?.committed) && current.key !== key) throw new Error('Hasil penyimpanan sebelumnya belum terkonfirmasi. Pulihkan hasilnya sebelum mengubah pesanan.')
     const request = current?.key === key ? current : { key, id: crypto.randomUUID(), uncertain: true }
     save({ ...request, uncertain: true }) // before the request: survives reload while HTTP is in flight
-    const { data, error } = await supabase.rpc(options.rpcName ?? 'pilot_order_transaction', { p_request_id: request.id, p_operation: operation, p_payload: payload })
+    const { data, error } = await (options.transport ? options.transport.send(request.id, operation, payload) : supabase.rpc(options.rpcName ?? 'pilot_order_transaction', { p_request_id: request.id, p_operation: operation, p_payload: payload }))
     if (error) {
       // A returned SQL error aborts the RPC transaction. Network/gateway ambiguity must stay unresolved.
       const confirmedRefusal = (/^[0-9A-Z]{5}$/.test(error.code ?? '') && !error.code?.startsWith('08') && error.code !== '40003') || error.code === 'PGRST202'
@@ -91,10 +99,10 @@ export function createTransactionSender(options: TransactionOptions = {}): Trans
       }
       throw (options.mapError ?? compatibilityError)(error)
     }
-    if (!data || (typeof data.id !== 'string' || !data.id.trim())) throw new Error('Respons penyimpanan tidak valid. Pulihkan hasil sebelum mencoba kembali.')
-    await validateReceipt(data as TransactionResult, request, operation, payload)
-    if (read()?.id === request.id) save(options.retainCommitted ? { ...request, uncertain: false, committed: data as TransactionResult } : null)
-    return data as TransactionResult
+    if (!data || !validIdentity(data)) throw new Error('Respons penyimpanan tidak valid. Pulihkan hasil sebelum mencoba kembali.')
+    await validateReceipt(data as Result, request, operation, payload)
+    if (read()?.id === request.id) save(options.retainCommitted ? { ...request, uncertain: false, committed: data as Result } : null)
+    return data as Result
   }
   const send = async (operation: string, payload: unknown) => {
     activeSends++
@@ -105,19 +113,19 @@ export function createTransactionSender(options: TransactionOptions = {}): Trans
     isInFlight() { return activeSends > 0 },
     hasUnresolved() { try { const value = read(); return !!(value?.uncertain || value?.committed) } catch { return true } },
     acknowledgeRecovered() { if (read()?.committed) save(null) },
-    async reconcile(): Promise<Recovery> {
+    async reconcile(): Promise<Recovery<Result>> {
       if (activeSends > 0) throw new Error('Penyimpanan masih berlangsung. Tunggu hasilnya sebelum memulihkan.')
       const request = read()
       if (!request) return { state: 'unknown' }
-      const { data: raw, error } = await supabase.rpc(options.recoveryRpcName ?? 'pilot_reconcile_request', { p_request_id: request.id, p_abandon: true })
+      const { data: raw, error } = await (options.transport ? options.transport.reconcile(request.id, true) : supabase.rpc(options.recoveryRpcName ?? 'pilot_reconcile_request', { p_request_id: request.id, p_abandon: true }))
       if (error) throw (options.mapError ?? compatibilityError)(error)
       const data = options.decodeRecovery ? options.decodeRecovery(raw) : raw
       if (!data || !['committed', 'abandoned'].includes(data.state)) throw new Error('Hasil belum dapat dipastikan. Jangan buat permintaan baru.')
-      if (data.state === 'committed' && (typeof data.result?.id !== 'string' || !data.result.id.trim())) throw new Error('Hasil pemulihan tidak valid. Jangan buat permintaan baru.')
-      if (data.state === 'committed') await validateReceipt(data.result as TransactionResult, request)
+      if (data.state === 'committed' && !validIdentity(data.result)) throw new Error('Hasil pemulihan tidak valid. Jangan buat permintaan baru.')
+      if (data.state === 'committed') await validateReceipt(data.result as Result, request)
       // The server either found the committed result or recorded a terminal cancellation tombstone.
       if (read()?.id === request.id) save(data.state === 'committed' ? { ...request, uncertain: false, committed: data.result } : null)
-      return data as Recovery
+      return data as Recovery<Result>
     },
   })
 }

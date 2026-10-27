@@ -19,6 +19,12 @@ vi.mock('../../src/pages/athel/POEdit', () => ({ default: () => { reads('po'); r
 vi.mock('../../src/pages/athel/CustomerList', () => ({ default: () => <p>Customer data</p> }))
 vi.mock('../../src/pages/athel/ProductList', () => ({ default: () => <p>Item data</p> }))
 vi.mock('../../src/pages/ihr/LeaveManagement', () => ({ default: () => <p>HR data</p> }))
+// Employee authority is independently covered; these are outer route tests.
+vi.mock('../../src/lib/employees/useEmployeeContext', () => ({ useEmployeeIdentityBoundary: () => undefined, useEmployeeContext: () => ({ displayAllowed: false }) }))
+vi.mock('../../src/pages/ihr/employees/EmployeeList', () => ({ default: () => <p data-testid="route-leaf">EmployeeList</p> }))
+vi.mock('../../src/pages/ihr/employees/EmployeeDetail', () => ({ default: () => <p data-testid="route-leaf">EmployeeDetail</p> }))
+vi.mock('../../src/pages/ihr/employees/EmployeeEditor', () => ({ default: () => <p data-testid="route-leaf">EmployeeEditor</p> }))
+vi.mock('../../src/pages/ihr/employees/EmployeeReportingEditor', () => ({ default: () => <p data-testid="route-leaf">EmployeeReportingEditor</p> }))
 import App from '../../src/App'
 import AthelNav from '../../src/components/AthelNav'
 import { roleHome, moduleOptions } from '../../src/components/navigationModules'
@@ -32,10 +38,9 @@ test.each(['po_admin', 'co_admin'])('%s cannot mount disallowed data routes', ro
 test.each(['po_admin', 'co_admin'])('%s keeps both master lists and HR', role => { for (const [path, text] of [['/athel/customers','Customer data'], ['/athel/products','Item data'], ['/ihr/leave','HR data']]) { mount(role,path); expect(screen.getByText(text)).toBeTruthy(); cleanup() } })
 test('CO has an authorized minimal route shell and home', () => {
   mount('co_admin','/athel/co')
-  const tabs = screen.getByRole('navigation', { name: 'Bagian pesanan konsinyasi' })
-  const shell = tabs.closest('header')!
-  expect(screen.getAllByRole('banner')).toContain(shell)
-  expect(within(shell).getByText('Pesanan konsinyasi (CO)', { selector: 'p' })).toBeTruthy()
+  expect(screen.queryByRole('navigation', { name: 'Bagian pesanan konsinyasi' })).toBeNull()
+  const submenu = screen.getByRole('group', { name: 'Submenu Consignment Order' })
+  expect(within(submenu).getByRole('link', { name: 'Pesanan CO' }).getAttribute('aria-current')).toBe('page')
   const main = screen.getByRole('main')
   expect(screen.getAllByRole('main')).toHaveLength(1)
   expect(main.id).toBe('main-content')
@@ -45,8 +50,11 @@ test('CO has an authorized minimal route shell and home', () => {
 })
 test.each(['co_admin','po_admin','executive'])('%s has only approved Procurement links', role => {
  auth.profile.role=role; render(<MemoryRouter><AthelNav /></MemoryRouter>);
- const links=within(screen.getByRole('navigation',{name:'Navigasi Procurement'})).getAllByRole('link').map(v=>v.getAttribute('href'));
- expect(links).toEqual(role==='executive'?['/athel/dashboard','/athel/po','/athel/co','/athel/customers','/athel/promotions','/athel/products']: [`/athel/${role==='co_admin'?'co':'po'}`,'/athel/customers','/athel/products'])
+ const nav=screen.getByRole('navigation',{name:'Navigasi Procurement'});
+ expect(!!within(nav).queryByRole('button',{name:'Consignment Order'})).toBe(role!=='po_admin');
+ const links=within(nav).getAllByRole('link').map(v=>v.getAttribute('href'));
+ expect(links).toEqual(role==='executive'?['/athel/dashboard','/athel/po','/athel/customers','/athel/promotions','/athel/products']: [...(role==='po_admin'?['/athel/po']:[]),'/athel/customers','/athel/products'])
+
 })
 test('executive retains Dashboard and legacy administration', () => { mount('executive','/athel/dashboard'); expect(reads).toHaveBeenCalledWith('dashboard'); cleanup(); mount('executive','/athel/sales-orders'); expect(reads).toHaveBeenCalledWith('sales') })
 test('inactive CO cannot enter even the shell', () => { auth.profile.is_active=false; mount('co_admin','/athel/co'); expect(screen.getByText('Login boundary')).toBeTruthy() })
@@ -57,3 +65,5 @@ test('PO cannot enter the CO route family',()=>{
   expect(screen.queryByText('Pesanan konsinyasi (CO)')).toBeNull()
   expect(screen.queryByRole('navigation', { name: 'Bagian pesanan konsinyasi' })).toBeNull()
 })
+
+vi.mock('../../src/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_target, key) => { throw new Error(`Unexpected Supabase access: ${String(key)}`) } }) }))

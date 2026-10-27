@@ -72,15 +72,15 @@ test('same actor scope replacement clears private rejection input and dirty guar
  view.rerender(<QueryClientProvider client={clients[0]}><AssignedApprovalInbox actorId={actor} context={{...context,scopeVersion:'new-scope'}}/></QueryClientProvider>)
  expect(screen.queryByDisplayValue('Ephemeral old scope reason')).toBeNull();event=new Event('beforeunload',{cancelable:true});window.dispatchEvent(event);expect(event.defaultPrevented).toBe(false)
 })
-test.each([false,true])('cancelled private detail refresh keeps retained input hidden until a genuine read completes (offline=%s)',async offline=>{
+test.each([false,true])('private refresh retains disabled same-session display then cancellation hides it until a genuine read completes (offline=%s)',async offline=>{
  mount();fireEvent.click(await screen.findByRole('button',{name:'Tinjau Fictional employee'}));await screen.findByText('Fictional private reason');fireEvent.change(screen.getByLabelText('Alasan penolakan'),{target:{value:'Retained ephemeral reason'}})
  let detailSignal:AbortSignal|undefined,resolveOld:((value:unknown)=>void)|undefined
  rpc.mockImplementation((name:string)=>({abortSignal:(signal:AbortSignal)=>name==='leave_assigned_request_v1'?(detailSignal=signal,new Promise(resolve=>resolveOld=resolve)):Promise.resolve({data:name==='leave_context_v1'?context:{rows,nextBefore:null},error:null})}))
  if(offline)onlineManager.setOnline(false)
  fireEvent.click(screen.getByRole('button',{name:'Muat ulang daftar'}))
- expect(screen.queryByText('Fictional private reason')).toBeNull();expect(screen.queryByRole('button',{name:'Setujui cuti'})).toBeNull()
+ expect(screen.getByText('Fictional private reason')).toBeTruthy();expect((screen.getByRole('button',{name:'Setujui cuti'}) as HTMLButtonElement).disabled).toBe(true)
  await waitFor(()=>expect(detailSignal).toBeDefined())
- expect(screen.queryByText('Fictional private reason')).toBeNull();expect(screen.queryByDisplayValue('Retained ephemeral reason')).toBeNull()
+ expect(screen.getByText('Fictional private reason')).toBeTruthy();expect((screen.getByDisplayValue('Retained ephemeral reason') as HTMLTextAreaElement).disabled).toBe(true)
  await act(async()=>clients[0].cancelQueries({queryKey:leaveKeys.private(actor,context.scopeVersion,'assigned-detail',id),exact:true}))
  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,0))})
  expect(detailSignal!.aborted).toBe(true);expect(screen.queryByText('Fictional private reason')).toBeNull();expect(screen.queryByRole('button',{name:'Setujui cuti'})).toBeNull()
@@ -142,16 +142,16 @@ test('uncertain decision recovery survives hidden cancelled reads and confirms o
  fireEvent.click(screen.getByRole('button',{name:'Pulihkan hasil keputusan'}));expect(await screen.findByText('Keputusan tersimpan.')).toBeTruthy();expect(screen.queryByText('Fictional private reason')).toBeNull();expect(localStorage.length).toBe(0)
  expect(rpc.mock.calls.filter(([name])=>name==='leave_transaction_v1')).toHaveLength(1)
 })
-test.each([false,true])('cancelled assigned-list refresh never revives a cached employee row (offline=%s)',async offline=>{
+test.each([false,true])('assigned-list refresh retains a disabled same-session row but cancellation never revives it (offline=%s)',async offline=>{
  mount();await screen.findByText('Fictional employee');let signal:AbortSignal|undefined
  rpc.mockImplementation((name:string)=>({abortSignal:(s:AbortSignal)=>name==='leave_assigned_inbox_v1'?(signal=s,new Promise(()=>{})):Promise.resolve({data:context,error:null})}))
  if(offline)onlineManager.setOnline(false)
- fireEvent.click(screen.getByRole('button',{name:'Muat ulang daftar'}));expect(screen.queryByText('Fictional employee')).toBeNull();await waitFor(()=>expect(signal).toBeDefined())
+ fireEvent.click(screen.getByRole('button',{name:'Muat ulang daftar'}));expect(screen.getByText('Fictional employee')).toBeTruthy();expect((screen.getByRole('button',{name:'Tinjau Fictional employee'}) as HTMLButtonElement).disabled).toBe(true);await waitFor(()=>expect(signal).toBeDefined())
  await act(async()=>clients[0].cancelQueries({queryKey:leaveKeys.private(actor,context.scopeVersion,'assigned-inbox',null,25),exact:true}));await act(async()=>{await new Promise(resolve=>setTimeout(resolve,0))})
  expect(signal!.aborted).toBe(true);expect(screen.queryByText('Fictional employee')).toBeNull();expect(screen.queryByRole('button',{name:'Tinjau Fictional employee'})).toBeNull()
  onlineManager.setOnline(true);rows=[];serve();fireEvent.click(screen.getByRole('button',{name:'Muat ulang daftar'}));expect(await screen.findByText('Tidak ada permintaan yang menunggu keputusan.')).toBeTruthy()
 })
-test('a decision in one observer immediately invalidates the other selected private detail and refetches authority',async()=>{
+test('a decision in one observer disables the other retained detail until authority and request revalidation',async()=>{
  const first=mount();await screen.findByText('Fictional employee');const second=render(first.element())
  await waitFor(()=>expect(screen.getAllByRole('button',{name:'Tinjau Fictional employee'})).toHaveLength(2))
  fireEvent.click(within(first.view.container).getByRole('button',{name:'Tinjau Fictional employee'}));await within(first.view.container).findByText('Fictional private reason')
@@ -163,21 +163,21 @@ test('a decision in one observer immediately invalidates the other selected priv
  let refreshedDetail:((value:unknown)=>void)|undefined
  rpc.mockImplementation((name:string)=>({abortSignal:()=>name==='leave_assigned_request_v1'?new Promise(resolve=>refreshedDetail=resolve):Promise.resolve({data:name==='leave_context_v1'?context:{rows:[],nextBefore:null},error:null})}))
  await act(async()=>finish!({data:{id,version:2,operation:'approve_request'},error:null}))
- await waitFor(()=>expect(within(second.container).queryByText('Fictional private reason')).toBeNull())
- expect(within(second.container).queryByDisplayValue('Other observer ephemeral reason')).toBeNull();expect(within(second.container).queryByRole('button',{name:'Setujui cuti'})).toBeNull()
+ expect(within(second.container).getByText('Fictional private reason')).toBeTruthy()
+ expect((within(second.container).getByDisplayValue('Other observer ephemeral reason') as HTMLTextAreaElement).disabled).toBe(true);expect((within(second.container).getByRole('button',{name:'Setujui cuti'}) as HTMLButtonElement).disabled).toBe(true)
  await waitFor(()=>expect(refreshedDetail).toBeDefined());expect(removed).toEqual([])
  await act(async()=>refreshedDetail!({data:null,error:{code:'42501'}}));expect(await within(second.container).findByText('Detail tidak tersedia atau penugasan berubah.')).toBeTruthy()
  const unload=new Event('beforeunload',{cancelable:true});window.dispatchEvent(unload);expect(unload.defaultPrevented).toBe(true)
  expect(rpc.mock.calls.filter(([name])=>name==='leave_transaction_v1')).toHaveLength(1);expect(removed).toEqual([]);unsubscribe()
 })
-test.each([false,true])('shared invalidation keeps a cancelled detail hidden until fresh recovery (offline=%s)',async offline=>{
+test.each([false,true])('shared invalidation retains disabled display only until cancellation then requires fresh recovery (offline=%s)',async offline=>{
  mount();fireEvent.click(await screen.findByRole('button',{name:'Tinjau Fictional employee'}));await screen.findByText('Fictional private reason');fireEvent.change(screen.getByLabelText('Alasan penolakan'),{target:{value:'Private draft across invalidation'}})
  const client=clients[0],key=leaveKeys.private(actor,context.scopeVersion,'assigned-detail',id)
  let signal:AbortSignal|undefined,resolveOld:((value:unknown)=>void)|undefined,invalidation:Promise<void>|undefined
  rpc.mockImplementation((name:string)=>({abortSignal:(s:AbortSignal)=>name==='leave_assigned_request_v1'?(signal=s,new Promise(resolve=>resolveOld=resolve)):Promise.resolve({data:name==='leave_context_v1'?context:{rows,nextBefore:null},error:null})}))
  if(offline)onlineManager.setOnline(false)
  await act(async()=>{invalidation=invalidateRequestCaches(client)})
- await waitFor(()=>expect(signal).toBeDefined());expect(screen.queryByText('Fictional private reason')).toBeNull();expect(screen.queryByDisplayValue('Private draft across invalidation')).toBeNull();expect(screen.queryByRole('button',{name:'Setujui cuti'})).toBeNull()
+ await waitFor(()=>expect(signal).toBeDefined());expect(screen.getByText('Fictional private reason')).toBeTruthy();expect((screen.getByDisplayValue('Private draft across invalidation') as HTMLTextAreaElement).disabled).toBe(true);expect((screen.getByRole('button',{name:'Setujui cuti'}) as HTMLButtonElement).disabled).toBe(true)
  await act(async()=>{await client.cancelQueries({queryKey:key,exact:true});await invalidation});await act(async()=>{await new Promise(resolve=>setTimeout(resolve,0))})
  expect(signal!.aborted).toBe(true);expect(screen.queryByText('Fictional private reason')).toBeNull();expect(screen.queryByRole('button',{name:'Setujui cuti'})).toBeNull()
  onlineManager.setOnline(true);serve();fireEvent.click(screen.getByRole('button',{name:'Muat ulang daftar'}));expect(await screen.findByDisplayValue('Private draft across invalidation')).toBeTruthy()
@@ -209,4 +209,30 @@ test('partial weekday and Saturday context refreshes the displayed decision vers
  expect(screen.getByText('Durasi: 3j 45m per hari kerja')).toBeTruthy();expect(screen.getByText(/2026-10-09 · Jadwal 7j 30m · Diminta 3j 45m/)).toBeTruthy();expect(screen.getByText(/2026-10-10 · Jadwal 3j 45m · Diminta 3j 45m/)).toBeTruthy()
  version=8;fireEvent.click(screen.getByRole('button',{name:'Muat ulang daftar'}));await screen.findByText('Versi permohonan: 8')
  fireEvent.click(screen.getByRole('button',{name:'Setujui cuti'}));await waitFor(()=>expect(finish).toBeDefined());expect(rpc.mock.calls.find(([name])=>name==='leave_transaction_v1')?.[1].p_payload.expected_version).toBe(8)
+})
+
+// Approved bounded continuity: display is not authorization, and a transport
+// ignoring abort may not extend the shared ten-second episode or revive it.
+test('retained assigned detail is disabled and cleared at the exact ten-second revalidation bound',async()=>{
+ mount();fireEvent.click(await screen.findByRole('button',{name:'Tinjau Fictional employee'}));await screen.findByText('Fictional private reason')
+ let signal:AbortSignal|undefined,late:((value:unknown)=>void)|undefined
+ rpc.mockImplementation((name:string)=>({abortSignal:(s:AbortSignal)=>name==='leave_assigned_request_v1'?(signal=s,new Promise(resolve=>late=resolve)):Promise.resolve({data:name==='leave_context_v1'?context:{rows,nextBefore:null},error:null})}))
+ vi.useFakeTimers()
+ try {
+  await act(async()=>{fireEvent.click(screen.getByRole('button',{name:'Muat ulang daftar'}));await vi.advanceTimersByTimeAsync(0)})
+  expect(signal).toBeDefined()
+  const originalSignal = signal!, originalLate = late!
+  expect(screen.getByText('Fictional private reason')).toBeTruthy()
+  expect(screen.getByRole('button',{name:'Setujui cuti'}).matches(':disabled')).toBe(true)
+  fireEvent.click(screen.getByRole('button',{name:'Setujui cuti'}))
+  expect(rpc.mock.calls.filter(([name])=>name==='leave_transaction_v1')).toHaveLength(0)
+  await act(async()=>{await vi.advanceTimersByTimeAsync(9_999)})
+  expect(screen.getByText('Fictional private reason')).toBeTruthy()
+  await act(async()=>{await vi.advanceTimersByTimeAsync(1)})
+  expect(screen.queryByText('Fictional private reason')).toBeNull()
+  expect(screen.queryByRole('button',{name:'Setujui cuti'})).toBeNull()
+  expect(originalSignal.aborted).toBe(true)
+  await act(async()=>originalLate({data:{...detail,reason:'Late timeout response'},error:null}))
+  expect(screen.queryByText('Late timeout response')).toBeNull()
+ } finally { vi.useRealTimers() }
 })

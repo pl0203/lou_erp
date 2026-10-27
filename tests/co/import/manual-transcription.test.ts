@@ -1,0 +1,15 @@
+import {describe,it,expect} from 'vitest';
+import {buildManualTranscription,isManualTranscription} from '../../../src/lib/co/import/manual';
+import {input,row,eligible} from './reviewFixture';
+import {validateReview} from '../../../src/lib/co/import/review';
+describe('explicit bounded human transcription',()=>{
+ const original=()=>({...input().extracted,parserVersion:'co-searchable-pdf-3',sourceRows:[],sections:[],warnings:['manual_review:unsupported_layout_or_image_only']});
+ const proposal=()=>({sourceRows:[row()],sections:input().extracted.sections,periodCandidates:[],customerCandidates:[],reason:'Checked physical page and row',confirmed:true as const});
+ it('preserves original failure and source identity with distinct provenance',()=>{const value=buildManualTranscription(original(),proposal());expect(value.warnings).toEqual(original().warnings);expect(value.parserVersion).toBe('co-human-transcribed-1');expect(isManualTranscription(value)).toBe(true);expect(value.manualTranscription?.originalParserVersion).toBe('co-searchable-pdf-3')});
+ it('rejects unsafe or unlisted failures and replacement physical identity',()=>{expect(()=>buildManualTranscription({...original(),parserVersion:'co-searchable-pdf-2'},proposal())).toThrow();for(const warning of ['manual_review:invalid_or_encrypted_pdf','manual_review:byte_limit','manual_review:structural_formula','manual_review:unsupported_layout'])expect(()=>buildManualTranscription({...original(),warnings:[warning]},proposal())).toThrow();expect(()=>buildManualTranscription(original(),{...proposal(),sourceRows:[row({ref:{...row().ref,fileSha256:'b'.repeat(64)}})]})).toThrow()});
+ it('does not waive numeric, mapping, completeness or return checks',()=>{const extracted=buildManualTranscription(original(),proposal());const v=validateReview(input({extracted,mappings:[],completenessConfirmed:false}),eligible);expect(v.canConfirm).toBe(false);expect(v.issues.some(i=>i.code==='mapping_required')).toBe(true);expect(v.issues.some(i=>i.code==='parser_manual_review_required')).toBe(false)});
+});
+
+describe('exact provenance decoder rejects forgery',()=>{
+ it('requires reason, confirmation, matching original warnings, no extra field',async()=>{const {decodeImportManifest}=await import('../../../src/lib/co/import/manifest');const original={...input().extracted,parserVersion:'co-searchable-pdf-3',sourceRows:[],sections:[],warnings:['manual_review:unsupported_layout_or_image_only']};const source=buildManualTranscription(original,{sourceRows:[row()],sections:input().extracted.sections,periodCandidates:[],customerCandidates:[],reason:'Read source',confirmed:true});const uuid='11111111-1111-1111-1111-111111111111';const manifest={schemaVersion:1,evidenceId:uuid,digest:'a'.repeat(64),input:input({scope:{actorId:uuid,customerId:uuid,reportMonth:'2026-08-01',epoch:1},extracted:source,mappings:[]})};for(const patch of [{confirmed:false},{reason:''},{originalWarnings:[]},{extra:'forged'}])expect(()=>decodeImportManifest({...manifest,input:{...manifest.input,extracted:{...source,manualTranscription:{...source.manualTranscription,...patch}}}})).toThrow()});
+});

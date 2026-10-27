@@ -44,3 +44,6 @@ test('cancellation recovery sends the exact reviewed attempt and request version
  edit('Permohonan yang dialihkan',request);edit('ID penugasan efektif baru',assignment);edit('Alasan reassignment','Explicit independent recovery');fireEvent.click(screen.getByRole('button',{name:'Alihkan satu permohonan'}))
  await waitFor(()=>expect(p.send).toHaveBeenCalledWith({operation:'reassign_request',employeeId:employee,requestId:request,expectedVersion:3,assignmentId:assignment,attemptId:attempt,reason:'Explicit independent recovery'}))
 })
+
+// No external client is part of this unit boundary; accidental I/O is a failure.
+vi.mock('../../src/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_target, key) => { throw new Error(`Unexpected Supabase access: ${String(key)}`) } }) }))

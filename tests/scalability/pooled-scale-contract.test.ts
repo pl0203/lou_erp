@@ -26,6 +26,11 @@ test('growth affects declared history only while session/role/date gates remain 
  expect(sql).toContain('generate_series(1,6)')
  expect(sql).toContain("'2026-07-01'");expect(sql).toContain("'2026-09-01'");expect(sql).toContain("'2025-10-01'")
  expect(sql).not.toContain('COMMIT;')
+
+})
+
+// Historical scalability workflow is intentionally absent from this branch.
+test.skip('historical scalability workflow pins scale, timeout and PR scope', () => {
  const workflow=readFileSync('.github/workflows/scalability-sql.yml','utf8')
  expect(workflow).toContain("SCALE_ROWS: '30000'");expect(workflow).toContain('timeout-minutes: 45')
  expect(workflow).toContain('pull_request.number == 3')

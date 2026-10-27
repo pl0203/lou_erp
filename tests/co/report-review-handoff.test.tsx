@@ -1,306 +1,42 @@
+import { beginIntegrated, readyPreview, deferred, extractor, integratedServer } from './workspace/import-acceptance-harness';
 import { expect, test } from 'vitest';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
-import { mount, reportImpact, store, wire } from './report-ui-harness';
-import { choose } from './evidence-ui-harness';
-import COMonthlyReport from '../../src/pages/athel/co/COMonthlyReport';
+import { wire, id, customer, month } from './report-ui-harness';
+const clickReview=()=>fireEvent.click(screen.getByRole('button',{name:'Tinjau pencatatan'}));
+const calls=(f:any,n:string)=>f.requests.filter((r:any)=>r.n===n);
+const ready=()=>waitFor(()=>expect((screen.getByRole('button',{name:'Catat penjualan'}) as HTMLButtonElement).disabled).toBe(false));
+const raw=()=>screen.getByLabelText('Jumlah terjual (tidak dikurangi retur)') as HTMLInputElement;
 
-function gate() {
-    let release!: () => void;
-    const promise = new Promise<void>(resolve => { release = resolve; });
-    return { promise, release };
-}
-
-test('one dirty Review intent survives canonical hydration before a delayed preview response', async () => {
-    const s = store();
-    s.impacts.report = [reportImpact()];
-    const preview = gate();
-    const base = s.handle;
-    wire.handler = async (name: string, args: any) => {
-        if (name === 'pilot_co_preview_v1') await preview.promise;
-        return base(name, args);
-    };
-    mount(<COMonthlyReport />);
-    fireEvent.change(await screen.findByLabelText('Terjual Item 1'), { target: { value: '70' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Tinjau laporan' }));
-    await waitFor(() => expect(s.commands).toHaveLength(1));
-    await waitFor(() => expect(wire.rpc.mock.calls.some(([name]) => name === 'pilot_co_preview_v1')).toBe(true));
-    await screen.findByText('1 dari 1 baris tersimpan terisi · 0 belum diisi');
-    await act(async () => { preview.release(); });
-    expect(await screen.findByRole('button', { name: 'Post laporan' })).toBeTruthy();
-    expect(s.commands).toHaveLength(1);
-    expect(wire.rpc.mock.calls.find(([name]) => name === 'pilot_co_preview_v1')![1].p_payload.expected_draft_version).toBe('2');
+test('one dirty Review intent survives canonical hydration before a delayed preview response',async()=>{
+ const {f}=await beginIntegrated(),gate=deferred();wire.handler=async(n,a)=>{const r=await f.server(n,a);if(n==='pilot_co_import_preview_v1')await gate.promise;return r};clickReview();await waitFor(()=>expect(calls(f,'pilot_co_import_preview_v1')).toHaveLength(1));expect(calls(f,'pilot_co_import_prepare_v1')).toHaveLength(1);expect(screen.queryByRole('button',{name:'Catat penjualan'})).toBeNull();await act(async()=>gate.resolve());await ready();expect(calls(f,'pilot_co_import_prepare_v1')).toHaveLength(1);expect(calls(f,'pilot_co_import_impacts_v1')[0].a.p_binding.draftVersion).toBe('3');
 });
-
-test('dirty Review waits for the acknowledged row snapshot before starting its preview', async () => {
-    const s = store();
-    s.impacts.report = [reportImpact()];
-    const canonical = gate(), rows = gate();
-    const base = s.handle;
-    wire.handler = async (name: string, args: any) => {
-        if (name === 'pilot_co_report_v1' && s.commands.length) await canonical.promise;
-        if (name === 'pilot_co_report_rows_v1' && args.p_expected_draft_version === '2') await rows.promise;
-        return base(name, args);
-    };
-    mount(<COMonthlyReport />);
-    fireEvent.change(await screen.findByLabelText('Terjual Item 1'), { target: { value: '70' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Tinjau laporan' }));
-    await waitFor(() => expect(wire.rpc.mock.calls.some(([name, args]) => name === 'pilot_co_report_rows_v1' && args.p_expected_draft_version === '2')).toBe(true));
-    await act(async () => { canonical.release(); });
-    expect(wire.rpc.mock.calls.filter(([name]) => name === 'pilot_co_preview_v1')).toHaveLength(0);
-    await act(async () => { rows.release(); });
-    expect(await screen.findByRole('button', { name: 'Post laporan' })).toBeTruthy();
-    expect(s.commands).toHaveLength(1);
-    expect(wire.rpc.mock.calls.filter(([name]) => name === 'pilot_co_preview_v1')).toHaveLength(1);
+test('dirty Review waits for the acknowledged row snapshot before starting its preview',async()=>{
+ const {f}=await beginIntegrated(),root=deferred(),rows=deferred();let heldRoot=false,heldRows=false;wire.handler=async(n,a)=>{if(n==='pilot_co_report_v1'&&!heldRoot){heldRoot=true;await root.promise}if(n==='pilot_co_import_eligible_v1'){heldRows=true;await rows.promise}return f.server(n,a)};clickReview();await waitFor(()=>expect(heldRoot).toBe(true));expect(calls(f,'pilot_co_import_preview_v1')).toHaveLength(0);await act(async()=>root.resolve());await waitFor(()=>expect(heldRows).toBe(true));expect(calls(f,'pilot_co_import_prepare_v1')).toHaveLength(0);expect(calls(f,'pilot_co_import_preview_v1')).toHaveLength(0);await act(async()=>rows.resolve());await ready();expect(calls(f,'pilot_co_import_prepare_v1')).toHaveLength(1);expect(calls(f,'pilot_co_import_preview_v1')).toHaveLength(1);
 });
-
-test.each(['metadata', 'quantities and metadata'])('one Review binds the final save when %s are dirty', async kind => {
-    const s = store();
-    s.rows[0].sold_quantity = '70';
-    s.impacts.report = [reportImpact()];
-    const preview = gate();
-    const base = s.handle;
-    wire.handler = async (name: string, args: any) => {
-        if (name === 'pilot_co_preview_v1') await preview.promise;
-        return base(name, args);
-    };
-    mount(<COMonthlyReport />);
-    await screen.findByLabelText('Terjual Item 1');
-    if (kind === 'quantities and metadata')
-        fireEvent.change(screen.getByLabelText('Terjual Item 1'), { target: { value: '71' } });
-    fireEvent.change(screen.getByLabelText('Catatan laporan'), { target: { value: 'Checked sales' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Tinjau laporan' }));
-    await waitFor(() => expect(wire.rpc.mock.calls.some(([name]) => name === 'pilot_co_preview_v1')).toBe(true));
-    await act(async () => { preview.release(); });
-    await screen.findByRole('button', { name: 'Post laporan' });
-    expect(s.metadata.notes).toBe('Checked sales');
-    expect(s.commands.map((command: any) => command.payload.action)).toEqual(kind === 'metadata' ? ['set_metadata'] : ['upsert_lines', 'set_metadata']);
-    expect(wire.rpc.mock.calls.find(([name]) => name === 'pilot_co_preview_v1')![1].p_payload.expected_draft_version).toBe(kind === 'metadata' ? '2' : '3');
-    fireEvent.change(screen.getByLabelText('Catatan laporan'), { target: { value: 'Newer unsaved notes' } });
-    expect(screen.queryByRole('button', { name: 'Post laporan' })).toBeNull();
+test.each(['metadata','quantities and metadata'])('one Review binds the final save when %s are dirty',async kind=>{
+ const {f}=await beginIntegrated(integratedServer(),kind==='metadata'?'70':'69');fireEvent.change(screen.getByLabelText('Alasan perubahan (wajib untuk Edit)'),{target:{value:'Latest deliberate reason'}});await readyPreview();const manifest=calls(f,'pilot_co_import_prepare_v1')[0].a.p_payload.manifest;expect(manifest.input.reason).toBe('Latest deliberate reason');expect(manifest.input.mappings[0].quantity).toBe(kind==='metadata'?'70':'69');expect(calls(f,'pilot_co_import_impacts_v1')[0].a.p_binding.manifestDigest).toBe(manifest.digest);fireEvent.change(screen.getByLabelText('Alasan perubahan (wajib untuk Edit)'),{target:{value:'Later reason'}});expect(screen.queryByRole('button',{name:'Catat penjualan'})).toBeNull();expect(calls(f,'pilot_co_import_commit_v1')).toHaveLength(0);
 });
-
-test('failed post-save row refresh cancels Review intent and retry cannot silently revive it', async () => {
-    const s = store();
-    s.impacts.report = [reportImpact()];
-    const rows = gate();
-    let failRows = true;
-    const base = s.handle;
-    wire.handler = async (name: string, args: any) => {
-        if (name === 'pilot_co_report_rows_v1' && args.p_expected_draft_version === '2' && failRows) {
-            await rows.promise;
-            return { data: null, error: { code: '08006', message: 'Saved rows offline' } };
-        }
-        return base(name, args);
-    };
-    mount(<COMonthlyReport />);
-    fireEvent.change(await screen.findByLabelText('Terjual Item 1'), { target: { value: '70' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Tinjau laporan' }));
-    await waitFor(() => expect(wire.rpc.mock.calls.some(([name, args]) => name === 'pilot_co_report_rows_v1' && args.p_expected_draft_version === '2')).toBe(true));
-    await act(async () => { rows.release(); });
-    await screen.findByText('Saved rows offline');
-    expect(screen.queryByRole('button', { name: 'Post laporan' })).toBeNull();
-    expect(s.previewCount).toBe(0);
-    failRows = false;
-    fireEvent.click(screen.getByRole('button', { name: 'Coba lagi' }));
-    await waitFor(() => expect((screen.getByRole('button', { name: 'Tinjau laporan' }) as HTMLButtonElement).disabled).toBe(false));
-    expect(s.previewCount).toBe(0);
-    expect(screen.queryByRole('button', { name: 'Post laporan' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Tinjau laporan' }));
-    await screen.findByRole('button', { name: 'Post laporan' });
-    expect(s.commands).toHaveLength(1);
+test('failed post-save row refresh cancels Review intent and retry cannot silently revive it',async()=>{
+ const {f}=await beginIntegrated();let fail=true;wire.handler=(n,a)=>n==='pilot_co_import_eligible_v1'&&fail?Promise.resolve({data:null,error:{code:'08006',message:'Canonical rows unavailable'}}):f.server(n,a);clickReview();await screen.findByText('Canonical rows unavailable');expect(raw().value).toBe('70');expect(calls(f,'pilot_co_import_prepare_v1')).toHaveLength(0);expect(calls(f,'pilot_co_import_preview_v1')).toHaveLength(0);fail=false;await act(async()=>{await Promise.resolve()});expect(calls(f,'pilot_co_import_preview_v1')).toHaveLength(0);clickReview();await ready();expect(calls(f,'pilot_co_import_prepare_v1')).toHaveLength(1);expect(calls(f,'pilot_co_import_preview_v1')).toHaveLength(1);
 });
-
-test.each(['canonical', 'rows'])('%s authority denial after saving clears private data and prevents queued preview', async source => {
-    const s = store();
-    s.impacts.report = [reportImpact()];
-    const response = gate();
-    const base = s.handle;
-    wire.handler = async (name: string, args: any) => {
-        if (s.commands.length && (source === 'canonical' ? name === 'pilot_co_report_v1' : name === 'pilot_co_report_rows_v1' && args.p_expected_draft_version === '2')) {
-            await response.promise;
-            return { data: null, error: { code: '42501', message: 'Saved report authority denied' } };
-        }
-        return base(name, args);
-    };
-    const { client } = mount(<COMonthlyReport />);
-    fireEvent.change(await screen.findByLabelText('Terjual Item 1'), { target: { value: '70' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Tinjau laporan' }));
-    await waitFor(() => expect(s.commands).toHaveLength(1));
-    await act(async () => { response.release(); });
-    await screen.findByText('Saved report authority denied');
-    expect(screen.queryByLabelText('Terjual Item 1')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Post laporan' })).toBeNull();
-    expect(s.previewCount).toBe(0);
-    expect(client.getQueryCache().getAll().filter(query => query.queryKey[0] === 'co' && query.state.data)).toHaveLength(0);
+test('rows authority denial after saving clears private data and prevents queued preview',async()=>{
+ const {f,client}=await beginIntegrated();wire.handler=(n,a)=>n==='pilot_co_import_eligible_v1'?Promise.resolve({data:null,error:{code:'42501',message:'Rows authority denied'}}):f.server(n,a);clickReview();await screen.findByText('Rows authority denied');expect(screen.queryByLabelText('Jumlah terjual (tidak dikurangi retur)')).toBeNull();expect(client.getQueryCache().getAll().filter(q=>q.queryKey[0]==='co'&&q.state.data)).toHaveLength(0);expect(calls(f,'pilot_co_import_preview_v1')).toHaveLength(0);expect(calls(f,'pilot_co_import_prepare_v1')).toHaveLength(0);
 });
-
-test.each(['navigate away', 'replace role'])('%s while saved rows reload cannot revive the old Review intent', async interruption => {
-    const s = store();
-    s.impacts.report = [reportImpact()];
-    const rows = gate();
-    const base = s.handle;
-    wire.handler = async (name: string, args: any) => {
-        if (name === 'pilot_co_report_rows_v1' && args.p_expected_draft_version === '2') await rows.promise;
-        return base(name, args);
-    };
-    const { router } = mount(<COMonthlyReport />);
-    fireEvent.change(await screen.findByLabelText('Terjual Item 1'), { target: { value: '70' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Tinjau laporan' }));
-    await screen.findByText('1 dari 1 baris tersimpan terisi · 0 belum diisi');
-    if (interruption === 'navigate away') {
-        await act(() => router.navigate('/athel/co'));
-        await screen.findByText('Destination');
-    } else {
-        wire.role = 'executive';
-        await act(() => router.revalidate());
-    }
-    await act(async () => { rows.release(); });
-    if (interruption === 'replace role') await screen.findByLabelText('Terjual Item 1');
-    expect(screen.queryByRole('button', { name: 'Post laporan' })).toBeNull();
-    expect(s.previewCount).toBe(0);
-    expect(s.commands).toHaveLength(1);
+test.each(['navigate away','replace role'])('%s while saved rows reload cannot revive the old Review intent',async interruption=>{
+ const {f,router}=await beginIntegrated(),gate=deferred();let held=false;wire.handler=async(n,a)=>{if(n==='pilot_co_import_eligible_v1'){held=true;await gate.promise}return f.server(n,a)};clickReview();await waitFor(()=>expect(held).toBe(true));if(interruption==='navigate away'){await act(()=>router.navigate('/away'));fireEvent.click(await screen.findByRole('button',{name:'Buang perubahan'}));await screen.findByText('Destination')}else{wire.role='executive';await act(()=>router.revalidate());await waitFor(()=>expect(screen.queryByLabelText('Jumlah terjual (tidak dikurangi retur)')).toBeNull())}await act(async()=>gate.resolve());expect(calls(f,'pilot_co_import_preview_v1')).toHaveLength(0);expect(calls(f,'pilot_co_import_prepare_v1')).toHaveLength(0);
 });
-
-test.each([false, true])('queued Review waits for root refetch and rejects drift=%s rather than changing its binding', async drift => {
-    const s = store();
-    s.impacts.report = [reportImpact()];
-    const rows = gate(), root = gate();
-    let refreshRoot = false;
-    const base = s.handle;
-    wire.handler = async (name: string, args: any) => {
-        if (name === 'pilot_co_report_rows_v1' && args.p_expected_draft_version === '2') await rows.promise;
-        if (name === 'pilot_co_report_v1' && refreshRoot) await root.promise;
-        return base(name, args);
-    };
-    const { client } = mount(<COMonthlyReport />);
-    fireEvent.change(await screen.findByLabelText('Terjual Item 1'), { target: { value: '70' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Tinjau laporan' }));
-    await screen.findByText('1 dari 1 baris tersimpan terisi · 0 belum diisi');
-    refreshRoot = true;
-    let refreshed!: Promise<void>;
-    await act(async () => { refreshed = client.invalidateQueries({ predicate: query => query.queryKey[4] === 'report' }); });
-    await act(async () => { rows.release(); });
-    expect(s.previewCount).toBe(0);
-    if (drift) { s.version = '3'; s.cv = '2'; }
-    await act(async () => { root.release(); await refreshed; });
-    if (drift) {
-        await screen.findByText(/Versi atau sumber berubah/);
-        expect(s.previewCount).toBe(0);
-        expect(screen.queryByRole('button', { name: 'Post laporan' })).toBeNull();
-    } else {
-        await screen.findByRole('button', { name: 'Post laporan' });
-        expect(s.previewCount).toBe(1);
-        expect(wire.rpc.mock.calls.find(([name]) => name === 'pilot_co_preview_v1')![1].p_payload.expected_draft_version).toBe('2');
-    }
+test.each([false,true])('queued Review waits for root refetch and rejects drift=%s rather than changing its binding',async drift=>{
+ const {f}=await beginIntegrated(),gate=deferred();let held=false;wire.handler=async(n,a)=>{if(n==='pilot_co_report_v1'&&calls(f,'pilot_co_import_prepare_v1').length){held=true;if(drift)f.s.cv='2';await gate.promise}return f.server(n,a)};clickReview();await waitFor(()=>expect(held).toBe(true));expect(calls(f,'pilot_co_import_preview_v1')).toHaveLength(0);await act(async()=>gate.resolve());if(drift){await screen.findByText('Hasil asli ditemukan; konteks sudah berubah');expect(screen.queryByRole('button',{name:'Catat penjualan'})).toBeNull();expect(calls(f,'pilot_co_import_preview_v1')).toHaveLength(0);expect(localStorage.length).toBe(1)}else{await ready();expect(calls(f,'pilot_co_import_preview_v1')).toHaveLength(1);expect(calls(f,'pilot_co_import_impacts_v1')[0].a.p_binding).toMatchObject({customerVersion:'1',draftVersion:'3'})}expect(calls(f,'pilot_co_import_prepare_v1')).toHaveLength(1);
 });
-
-test('source change while delayed dirty-save preview is in flight cannot restore stale review', async () => {
-    const s = store();
-    s.impacts.report = [reportImpact()];
-    const preview = gate();
-    const base = s.handle;
-    wire.handler = async (name: string, args: any) => {
-        if (name === 'pilot_co_preview_v1') {
-            const result = await base(name, args);
-            await preview.promise;
-            return result;
-        }
-        return base(name, args);
-    };
-    const { client } = mount(<COMonthlyReport />);
-    fireEvent.change(await screen.findByLabelText('Terjual Item 1'), { target: { value: '70' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Tinjau laporan' }));
-    await waitFor(() => expect(s.previewCount).toBe(1));
-    s.version = '3';
-    s.cv = '2';
-    await act(async () => { await client.invalidateQueries({ predicate: query => query.queryKey[4] === 'report' }); });
-    await screen.findByText(/Versi atau sumber berubah/);
-    await act(async () => { preview.release(); });
-    await waitFor(() => expect((screen.getByRole('button', { name: 'Siapkan / perbarui draft' }) as HTMLButtonElement).disabled).toBe(false));
-    expect(screen.queryByRole('button', { name: 'Post laporan' })).toBeNull();
-    expect(s.commands).toHaveLength(1);
+test('source change while delayed dirty-save preview is in flight cannot restore stale review',async()=>{
+ const {f,client}=await beginIntegrated(),gate=deferred();wire.handler=async(n,a)=>{const r=await f.server(n,a);if(n==='pilot_co_import_preview_v1')await gate.promise;return r};clickReview();await waitFor(()=>expect(calls(f,'pilot_co_import_preview_v1')).toHaveLength(1));f.s.metadata.source_context_link={operation:'post_sj',target_id:null,draft_id:id(90),original_revision_id:null,expected_source_version:null,expected_co_version:'1',expected_customer_version:'1',expected_draft_version:'3'};f.s.metadata.source_context_fingerprint='c'.repeat(64);await act(()=>client.invalidateQueries({predicate:q=>q.queryKey[4]==='report'}));await screen.findByText('Laporan terikat ke perubahan sumber');await act(async()=>gate.resolve());expect(raw().value).toBe('70');expect(raw().matches(':disabled')).toBe(true);expect(screen.queryByRole('button',{name:'Catat penjualan'})).toBeNull();expect(calls(f,'pilot_co_import_prepare_v1')).toHaveLength(1);expect(calls(f,'pilot_co_import_commit_v1')).toHaveLength(0);
 });
-
-test('choosing then canceling evidence while saved rows reload cannot revive the queued Review', async () => {
-    const s = store();
-    s.impacts.report = [reportImpact()];
-    const rows = gate();
-    const base = s.handle;
-    wire.handler = async (name: string, args: any) => {
-        if (name === 'pilot_co_report_rows_v1' && args.p_expected_draft_version === '2') await rows.promise;
-        return base(name, args);
-    };
-    mount(<COMonthlyReport />);
-    fireEvent.change(await screen.findByLabelText('Terjual Item 1'), { target: { value: '70' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Tinjau laporan' }));
-    await screen.findByText('1 dari 1 baris tersimpan terisi · 0 belum diisi');
-    await choose();
-    fireEvent.click(screen.getByRole('button', { name: 'Batalkan pilihan lampiran' }));
-    await waitFor(() => expect(screen.queryByText('synthetic.pdf · belum terpasang')).toBeNull());
-    await act(async () => { rows.release(); });
-    await waitFor(() => expect((screen.getByRole('button', { name: 'Tinjau laporan' }) as HTMLButtonElement).disabled).toBe(false));
-    expect(s.previewCount).toBe(0);
-    expect(screen.queryByRole('button', { name: 'Post laporan' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Tinjau laporan' }));
-    await screen.findByRole('button', { name: 'Post laporan' });
-    expect(s.commands).toHaveLength(1);
-    expect(wire.invoke).not.toHaveBeenCalled();
+test('choosing then canceling evidence while saved rows reload cannot revive the queued Review',async()=>{
+ const {f}=await beginIntegrated(),gate=deferred();let held=false;wire.handler=async(n,a)=>{if(n==='pilot_co_import_eligible_v1'){held=true;await gate.promise}return f.server(n,a)};clickReview();await waitFor(()=>expect(held).toBe(true));const picker=screen.getByLabelText('Ganti file');expect(picker.matches(':disabled')).toBe(true);fireEvent.change(picker,{target:{files:[new File(['replacement'],'replacement.pdf')]}});fireEvent.click(screen.getByRole('button',{name:'Batal'}));fireEvent.click(await screen.findByRole('button',{name:'Buang perubahan'}));await act(async()=>gate.resolve());expect(extractor.extract).toHaveBeenCalledTimes(1);expect(calls(f,'pilot_co_import_prepare_v1')).toHaveLength(0);expect(calls(f,'pilot_co_import_preview_v1')).toHaveLength(0);expect(wire.invoke).not.toHaveBeenCalled();
 });
-
-test('failed root refetch cancels queued Review and retry requires a fresh explicit Review', async () => {
-    const s = store();
-    s.impacts.report = [reportImpact()];
-    const rows = gate(), root = gate();
-    let failRoot = false;
-    const base = s.handle;
-    wire.handler = async (name: string, args: any) => {
-        if (name === 'pilot_co_report_rows_v1' && args.p_expected_draft_version === '2') await rows.promise;
-        if (name === 'pilot_co_report_v1' && failRoot) {
-            await root.promise;
-            return { data: null, error: { code: '08006', message: 'Saved header offline' } };
-        }
-        return base(name, args);
-    };
-    const { client } = mount(<COMonthlyReport />);
-    fireEvent.change(await screen.findByLabelText('Terjual Item 1'), { target: { value: '70' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Tinjau laporan' }));
-    await screen.findByText('1 dari 1 baris tersimpan terisi · 0 belum diisi');
-    failRoot = true;
-    let refreshed!: Promise<void>;
-    await act(async () => { refreshed = client.invalidateQueries({ predicate: query => query.queryKey[4] === 'report' }); });
-    await act(async () => { rows.release(); });
-    expect(s.previewCount).toBe(0);
-    await act(async () => { root.release(); await refreshed; });
-    await screen.findByText('Saved header offline');
-    failRoot = false;
-    fireEvent.click(screen.getByRole('button', { name: 'Coba lagi' }));
-    await waitFor(() => expect((screen.getByRole('button', { name: 'Tinjau laporan' }) as HTMLButtonElement).disabled).toBe(false));
-    expect(s.previewCount).toBe(0);
-    expect(screen.queryByRole('button', { name: 'Post laporan' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Tinjau laporan' }));
-    await screen.findByRole('button', { name: 'Post laporan' });
-    expect(s.commands).toHaveLength(1);
+test('failed root refetch cancels queued Review and retry requires a fresh explicit Review',async()=>{
+ const {f}=await beginIntegrated();let fail=true;wire.handler=(n,a)=>n==='pilot_co_report_v1'&&calls(f,'pilot_co_import_prepare_v1').length&&fail?Promise.resolve({data:null,error:{code:'08006',message:'Acknowledged root unavailable'}}):f.server(n,a);clickReview();await screen.findByText('Acknowledged root unavailable');expect(raw().value).toBe('70');expect(calls(f,'pilot_co_import_preview_v1')).toHaveLength(0);const key=localStorage.key(0)!,original=JSON.parse(localStorage.getItem(key)!);fail=false;fireEvent.click(screen.getByRole('button',{name:'Periksa hasil pencatatan'}));await screen.findByRole('button',{name:'Tinjau pencatatan'});expect(calls(f,'pilot_co_import_preview_v1')).toHaveLength(0);expect(calls(f,'pilot_co_import_prepare_v1')).toHaveLength(1);clickReview();await ready();expect(calls(f,'pilot_co_import_prepare_v1')).toHaveLength(1);expect(calls(f,'pilot_reconcile_co_import_prepare_v1').every((r:any)=>r.a.p_request_id===original.id)).toBe(true);
 });
-
-test('dirty zero quantity reaches review in one click and still requires zero-sales confirmation', async () => {
-    const s = store();
-    s.impacts.report = [{ ...reportImpact(), after_sold_quantity: '0', after_revenue: '0' }];
-    const preview = gate();
-    const base = s.handle;
-    wire.handler = async (name: string, args: any) => {
-        if (name === 'pilot_co_preview_v1') await preview.promise;
-        return base(name, args);
-    };
-    mount(<COMonthlyReport />);
-    fireEvent.change(await screen.findByLabelText('Terjual Item 1'), { target: { value: '0' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Tinjau laporan' }));
-    await waitFor(() => expect(wire.rpc.mock.calls.some(([name]) => name === 'pilot_co_preview_v1')).toBe(true));
-    await act(async () => { preview.release(); });
-    fireEvent.click(await screen.findByRole('button', { name: 'Post laporan' }));
-    await screen.findByText('Konfirmasi bulan tanpa penjualan');
-    expect(s.commands).toHaveLength(1);
-    expect(s.commands[0].payload.lines[0].sold_quantity).toBe(0);
-    fireEvent.click(screen.getByRole('button', { name: 'Konfirmasi nol' }));
-    await waitFor(() => expect(s.commands).toHaveLength(2));
-    expect(s.commands[1]).toMatchObject({ op: 'post_report', payload: { expected_draft_version: '2' } });
+test('dirty zero quantity reaches review in one click and still requires zero-sales confirmation',async()=>{
+ const {f}=await beginIntegrated(integratedServer(),'0');expect(raw().value).toBe('0');expect((screen.getByLabelText('Saya sudah memeriksa pemetaan dan jumlah ini') as HTMLInputElement).checked).toBe(true);expect((screen.getByLabelText(/Semua barang dan bagian sumber/) as HTMLInputElement).checked).toBe(true);await readyPreview();expect(calls(f,'pilot_co_import_commit_v1')).toHaveLength(0);expect(calls(f,'pilot_co_import_prepare_v1')[0].a.p_payload.manifest.input.mappings[0].quantity).toBe('0');fireEvent.click(screen.getByRole('button',{name:'Catat penjualan'}));await screen.findByRole('button',{name:'Edit'});expect(calls(f,'pilot_co_import_commit_v1')).toHaveLength(1);expect(f.s.rows[0].sold_quantity).toBe('0');
 });

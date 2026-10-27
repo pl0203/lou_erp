@@ -1,0 +1,162 @@
+{
+  "scope": "Task13 reviewed finite CO-only presentation adaptation. Original102 fixture unchanged; no HR/auth exemptions added.",
+  "updates": [
+    {
+      "file": "src/components/co/CORecordedReportTable.tsx",
+      "before": [],
+      "after": [
+        {
+          "file": "src/components/co/CORecordedReportTable.tsx",
+          "title": "Memuat laporan tercatat…",
+          "guards": [
+            "failed ? false",
+            "!source.data||!rows.data||!allocations.data ? true"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "src/components/co/COReportRevisionEvidence.tsx",
+      "before": [
+        {
+          "file": "src/components/co/COReportRevisionEvidence.tsx",
+          "title": "Memuat bukti revisi…",
+          "guards": [
+            "read.isError ? false",
+            "!read.data ? true"
+          ]
+        }
+      ],
+      "after": [
+        {
+          "file": "src/components/co/COReportRevisionEvidence.tsx",
+          "title": "Memuat perubahan baris…",
+          "guards": [
+            "delta.isError ? false",
+            "!delta.data ? true"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "src/components/co/COStockHistory.tsx",
+      "before": [
+        {
+          "file": "src/components/co/COStockHistory.tsx",
+          "title": "Memuat riwayat stok…",
+          "guards": [
+            "read.isError ? false",
+            "!read.data ? true"
+          ]
+        }
+      ],
+      "after": [
+        {
+          "file": "src/components/co/COStockHistory.tsx",
+          "title": "Memuat riwayat stok…",
+          "guards": [
+            "read.isError ? false",
+            "!read.data || read.isFetching ? true"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "src/components/co/COStockTable.tsx",
+      "before": [],
+      "after": [
+        {
+          "file": "src/components/co/COStockTable.tsx",
+          "title": "Memuat batch CO…",
+          "guards": [
+            "if !read.data || read.isFetching"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "src/pages/athel/co/COCustomerStock.tsx",
+      "before": [
+        {
+          "file": "src/pages/athel/co/COCustomerStock.tsx",
+          "title": "Memuat stok…",
+          "guards": [
+            "!stock.data && !stock.isError &&"
+          ]
+        }
+      ],
+      "after": [
+        {
+          "file": "src/pages/athel/co/COCustomerStock.tsx",
+          "title": "Memuat stok…",
+          "guards": [
+            "stock.isError ? false",
+            "!invalidMonth && (!result || stock.isFetching) ? true"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "src/pages/athel/co/COMonthlyReport.tsx",
+      "before": [
+        {
+          "file": "src/pages/athel/co/COMonthlyReport.tsx",
+          "title": "Memuat laporan pelanggan…",
+          "guards": [
+            "if !work.accepted",
+            "work.root.isError ? false"
+          ]
+        }
+      ],
+      "after": [
+        {
+          "file": "src/pages/athel/co/COMonthlyReport.tsx",
+          "title": "Memuat laporan…",
+          "guards": [
+            "active ? false"
+          ]
+        },
+        {
+          "file": "src/pages/athel/co/COMonthlyReport.tsx",
+          "title": "Memuat laporan…",
+          "guards": [
+            "if !report.data"
+          ]
+        },
+        {
+          "file": "src/pages/athel/co/COMonthlyReport.tsx",
+          "title": "Memuat identitas toko…",
+          "guards": [
+            "if !name",
+            "customers.isError ? false",
+            "customers.data ? false"
+          ]
+        },
+        {
+          "file": "src/pages/athel/co/COMonthlyReport.tsx",
+          "title": "Memuat nilai awal Edit…",
+          "guards": [
+            "if initialSeed===undefined",
+            "error ? false"
+          ]
+        },
+        {
+          "file": "src/pages/athel/co/COMonthlyReport.tsx",
+          "title": "Memuat isian tersimpan…",
+          "guards": [
+            "read.isError ? false",
+            "!read.data ? true"
+          ]
+        },
+        {
+          "file": "src/pages/athel/co/COMonthlyReport.tsx",
+          "title": "Memuat riwayat perubahan…",
+          "guards": [
+            "read.isError ? false",
+            "!read.data ? true"
+          ]
+        }
+      ]
+    }
+  ]
+}

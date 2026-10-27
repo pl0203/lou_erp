@@ -79,7 +79,7 @@ test.each([false,true])('cancelled shared preflight keeps private draft and bala
  let signal!:AbortSignal,finishOld!:(value:unknown)=>void
  if(offline)onlineManager.setOnline(false)
  mocks.rpc.mockImplementation((name:string)=>({abortSignal:(s:AbortSignal)=>name==='leave_context_v1'?(signal=s,new Promise(resolve=>finishOld=resolve)):Promise.resolve({data:quoteFixture,error:null})}))
- fireEvent.click(screen.getByRole('button',{name:'Hitung pratinjau'}));await waitFor(()=>expect(signal).toBeDefined());await waitFor(()=>expect(screen.queryByLabelText('Alasan pribadi')).toBeNull());expect(unloadGuarded()).toBe(true)
+ fireEvent.click(screen.getByRole('button',{name:'Hitung pratinjau'}));await waitFor(()=>expect(signal).toBeDefined());expect(screen.getByLabelText('Alasan pribadi').matches(':disabled')).toBe(true);expect(screen.getByText('81j 30m')).toBeTruthy();expect(unloadGuarded()).toBe(true)
  await act(async()=>client.cancelQueries({queryKey:key,exact:true}));expect(signal.aborted).toBe(true);expect(client.getQueryState(key)!.dataUpdatedAt).toBe(updatedAt)
  expect(screen.queryByLabelText('Alasan pribadi')).toBeNull();expect(screen.queryByText('81j 30m')).toBeNull();expect(screen.queryByRole('region',{name:'Pratinjau cuti'})).toBeNull();expect(unloadGuarded()).toBe(true);expect(mocks.rpc.mock.calls.filter(([name])=>name==='leave_quote_v1')).toHaveLength(0)
  onlineManager.setOnline(true);serve();fireEvent.click(await screen.findByRole('button',{name:'Coba lagi'}));expect(await screen.findByDisplayValue(quoteInput.reason)).toBeTruthy();expect(screen.getByText('81j 30m')).toBeTruthy();expect(unloadGuarded()).toBe(true)

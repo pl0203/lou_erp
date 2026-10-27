@@ -24,3 +24,6 @@ test('rota editor hides private draft through shared authority interruption and 
  const view=render(<LeaveRotaSettings {...props}/>);fireEvent.change(screen.getByLabelText('Alasan perubahan'),{target:{value:'Private calendar draft'}});view.rerender(<LeaveRotaSettings {...props} authorityReady={false}/>);expect(screen.queryByDisplayValue('Private calendar draft')).toBeNull();expect(props.onDirtyChange).toHaveBeenLastCalledWith(true)
  view.rerender(<LeaveRotaSettings {...props}/>);expect(screen.getByDisplayValue('Private calendar draft')).toBeTruthy()
 })
+
+// No external client is part of this unit boundary; accidental I/O is a failure.
+vi.mock('../../src/lib/supabase', () => ({ supabase: new Proxy({}, { get: (_target, key) => { throw new Error(`Unexpected Supabase access: ${String(key)}`) } }) }))

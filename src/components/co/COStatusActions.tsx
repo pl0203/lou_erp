@@ -1,4 +1,3 @@
-import { Section } from '../ui/Section';
 import { Field } from '../ui/Field';
 import { FormActions } from '../ui/FormActions';
 import { ActionLink } from '../ui/ActionLink';
@@ -34,18 +33,31 @@ export default function COStatusActions({ id, customerId, allowed, blockers, onS
         : 'Periksa penyelesaian, lalu pilih Tutup CO jika tindakan tersedia.';
     const nextMonth = co.reporting_freshness.next_required_report_month?.slice(0, 7);
     return <div className="space-y-3">
-    <Section title="Pengiriman → Penjualan bulanan → Penyelesaian → Penutupan" role="region" aria-label="Alur CO dan langkah berikutnya" aria-labelledby={undefined}>
-        <p><strong>Langkah berikutnya:</strong> {next}</p>
-        <p className="text-[13px] text-brand-secondary">Surat Jalan yang diposting mencatat pengiriman. Tanggal diterima mencatat penerimaan terpisah. Terkirim penuh tetap aktif sampai CO ditutup; sisa yang diselesaikan juga dihitung dalam progres pengiriman.</p>
-        <p className="text-[13px] text-brand-secondary">Penutupan memerlukan stok tercatat habis, sisa pengiriman selesai, dan seluruh laporan wajib lengkap.</p>
-    </Section>
-    <div className="flex flex-wrap gap-2">{allowed.includes('edit_co') && <ActionLink variant="quiet" size="compact" to={`/athel/co/${id}/edit`}>Ubah CO</ActionLink>}<Button type="button"  disabled={pending || !allowed.includes('save_sj_draft')} onClick={onSJ}>Tambah Surat Jalan</Button>
-    <ActionLink variant="quiet" size="compact" to={`/athel/co/reports?customer=${customerId}${nextMonth ? `&month=${nextMonth}` : ''}`}>Catat penjualan bulanan</ActionLink>
-    <ActionLink variant="quiet" size="compact" to={`/athel/co/stock?customer=${customerId}&co=${id}`}>Retur barang belum terjual</ActionLink>{allowed.includes('cancel_co') && <Button type="button" variant="danger-quiet" size="compact" disabled={pending} onClick={onCancel}>Batalkan CO</Button>}</div>
-    <div className="flex flex-wrap gap-2">
-        <Button type="button" variant="secondary" size="compact" disabled={pending || !allowed.includes('resolve_undelivered')} onClick={onResolve}>Selesaikan sisa belum dikirim</Button>
-        <Button type="button" variant="secondary" size="compact" disabled={pending || !allowed.includes('close_co') || blockers.stock_remains || blockers.undelivered_remains || blockers.missing_month_count !== '0'} onClick={onClose}>Tutup CO</Button>
-    </div>{blockers.stock_remains && <p className="text-[13px] text-amber-800">Stok tercatat masih tersisa.</p>}{blockers.undelivered_remains && <p className="text-[13px] text-amber-800">Sisa belum dikirim belum diselesaikan.</p>}{blockers.missing_month_count !== '0' && <p className="text-[13px] text-amber-800">{blockers.missing_month_count} laporan bulan belum lengkap.</p>}</div>;
+    <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-brand-secondary">{co.status === 'active' && BigInt(co.summary.pending_quantity) === 0n ? 'Tidak ada sisa untuk dikirim; CO tetap aktif sampai penutupan disetujui.' : co.status === 'closed' ? 'CO ditutup' : co.status === 'cancelled' ? 'CO dibatalkan' : 'Siapkan surat jalan untuk pengiriman berikutnya.'}</p>
+        <Button type="button" disabled={pending || co.status !== 'active' || BigInt(co.summary.pending_quantity) === 0n || !allowed.includes('save_sj_draft')} onClick={onSJ}>Buat surat jalan</Button>
+    </div>
+    <div className="flex flex-wrap items-start gap-2">
+        {!pending && allowed.includes('edit_co') && <ActionLink variant="secondary" size="compact" to={`/athel/co/${id}/edit`}>Edit CO</ActionLink>}
+        <ActionLink variant="secondary" size="compact" to={`/athel/co/stock?customer=${customerId}&co=${id}`}>Lihat stok toko</ActionLink>
+        <ActionLink variant="quiet" size="compact" to={`/athel/co/reports?customer=${customerId}${nextMonth ? `&month=${nextMonth}` : ''}`}>Lihat laporan bulanan</ActionLink>
+        <details className="rounded-lg border border-brand-divider px-3 py-2">
+            <summary className="ui-action ui-action--quiet ui-action--compact list-item cursor-pointer text-sm font-medium">Tindakan lainnya</summary>
+            <div className="mt-3 space-y-3 max-w-lg">
+                <p className="text-sm text-brand-secondary">{next}</p>
+                <ActionLink variant="quiet" size="compact" to={`/athel/co/stock?customer=${customerId}&co=${id}`}>Retur barang belum terjual</ActionLink>
+                <div className="flex flex-wrap gap-2">
+                    <Button type="button" variant="secondary" size="compact" disabled={pending || !allowed.includes('resolve_undelivered')} onClick={onResolve}>Selesaikan sisa belum dikirim</Button>
+                    <Button type="button" variant="secondary" size="compact" disabled={pending || !allowed.includes('close_co') || blockers.stock_remains || blockers.undelivered_remains || blockers.missing_month_count !== '0'} onClick={onClose}>Tutup CO</Button>
+                    {allowed.includes('cancel_co') && <Button type="button" variant="danger-quiet" size="compact" disabled={pending} onClick={onCancel}>Batalkan CO</Button>}
+                </div>
+                {blockers.stock_remains && <p className="text-sm text-amber-800">Stok tercatat masih tersisa.</p>}
+                {blockers.undelivered_remains && <p className="text-sm text-amber-800">Sisa belum dikirim belum diselesaikan.</p>}
+                {blockers.missing_month_count !== '0' && <p className="text-sm text-amber-800">{blockers.missing_month_count} laporan bulan belum lengkap.</p>}
+            </div>
+        </details>
+    </div></div>;
+
 }
 export function COCancelDialog({ editorKey, pending, blocked = false, readFailure, error, onClose, onConfirm, returnFocus }: {
     editorKey: string;

@@ -74,3 +74,13 @@ test('generation replacement during acknowledgement retains the original committ
     await vi.waitFor(() => expect(release).toBeTypeOf('function')); owner = false; await release();
     await expect(acknowledgement).rejects.toThrow('recovery owner changed'); expect(localStorage.getItem(key)).toBe(before);
 });
+
+test('legacy effective seed uses original save_report_draft UUID/recovery family and never persists source quantities',async()=>{
+ const p={action:'initialize',customer_id:customer,report_month:'2026-09-01',expected_customer_version:'3',draft_id:co,expected_draft_version:'2',seed_effective_revision_id:actor};
+ const r={...receipt,operation:'save_report_draft',version:'3'};writeResult=r;canonicalResult={status:'committed',operation:'save_report_draft',receipt:r};lost=true;
+ const send=createCOTransactionSender({...options,coId:undefined,scope:'report:2026-09-01'});
+ await expect(send('save_report_draft',p)).rejects.toThrow('response lost');const saved=localStorage.getItem(localStorage.key(0)!)!;
+ expect(saved).not.toMatch(/seed_effective_revision_id|sold_quantity|source_context/);lost=false;
+ expect(await send('save_report_draft',p)).toEqual(r);expect(writes).toHaveLength(1);
+ expect(mock.rpc.mock.calls.filter(([n])=>n==='pilot_reconcile_co_v1').every(([,a])=>a.p_request_id===writes[0].p_request_id)).toBe(true);
+});

@@ -5,12 +5,15 @@ import { customer, id, mount, mountApp, stockFixture, wire } from './stock-ui-ha
 import App from '../../src/App';
 import * as catalog from '../../src/lib/co/catalog';
 import CODetail from '../../src/pages/athel/co/CODetail';
+import { readFileSync } from 'node:fs';
+const stockCSS = readFileSync('src/components/co/COStockTable.css','utf8');
 
 test('stock route shows current equation, old overdue month and separate partial coverage', async () => {
     stockFixture();
     mountApp(<App />, `/athel/co/stock?customer=${customer}`);
-    await screen.findByRole('heading', { name: 'Stok pelanggan' });
-    await screen.findAllByText('30 + 0 − 0 − 0 = 30');
+    await screen.findByRole('heading', { name: 'Stok Pelanggan' });
+    const table = await screen.findByRole('table',{name:'Stok pelanggan tercatat'});
+    expect(Array.from(table.querySelectorAll('tbody tr:first-child td.co-stock-number'),cell=>cell.textContent)).toEqual(['30','0','0','0','30']);
     expect(screen.getAllByText(/September 2026/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Cakupan.*9 Oktober 2026/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Laporan terakhir: Oktober 2026/).length).toBeGreaterThan(0);
@@ -18,14 +21,14 @@ test('stock route shows current equation, old overdue month and separate partial
 });
 test('canonical stock-key URL opens movement scope without using UUID as SKU text search', async () => {
     stockFixture();
-    mountApp(<App />, `/athel/co/stock?customer=${customer}&sku=${id(1002)}`);
+    mountApp(<App />, `/athel/co/stock?customer=${customer}&sku=SKU-2&stockKey=${id(1002)}&movementCustomer=${customer}`);
     await screen.findByRole('heading', { name: /Riwayat stok pelanggan\/SKU/ });
     expect(wire.rpc.mock.calls.some(([n, a]) => n === 'pilot_co_stock_movements_v1' && a.p_stock_key_id === id(1002))).toBe(true);
-    expect(wire.rpc.mock.calls.filter(([n]) => n === 'pilot_co_customer_stock_v1').every(([, a]) => a.p_search === '')).toBe(true);
+    expect(wire.rpc.mock.calls.filter(([n]) => n === 'pilot_co_customer_stock_v2').every(([, a]) => a.p_search === '')).toBe(true);
 });
 test('failed stock read is unavailable rather than recorded zero', async () => {
     const s = stockFixture();
-    s.fail = (n: string) => n === 'pilot_co_customer_stock_v1' ? { data: null, error: { code: '08006', message: 'Stock offline' } } : null;
+    s.fail = (n: string) => n === 'pilot_co_customer_stock_v2' ? { data: null, error: { code: '08006', message: 'Stock offline' } } : null;
     mountApp(<App />, `/athel/co/stock?customer=${customer}`);
     await screen.findByText('Stock offline');
     expect(screen.queryByText(/= 0$/)).toBeNull();
@@ -79,12 +82,13 @@ test.each([
 test('month-end filter is a calendar month end and future month end is refused', async () => {
     stockFixture();
     mountApp(<App />, `/athel/co/stock?customer=${customer}`);
-    await screen.findAllByText('30 + 0 − 0 − 0 = 30');
+    const table = await screen.findByRole('table',{name:'Stok pelanggan tercatat'});
+    expect(Array.from(table.querySelectorAll('tbody tr:first-child td.co-stock-number'),cell=>cell.textContent)).toEqual(['30','0','0','0','30']);
     fireEvent.change(screen.getByLabelText('Bulan akhir stok'), { target: { value: '2026-09' } });
-    await waitFor(() => expect(wire.rpc.mock.calls.some(([n, a]) => n === 'pilot_co_customer_stock_v1' && a.p_as_of === '2026-09-30')).toBe(true));
+    await waitFor(() => expect(wire.rpc.mock.calls.some(([n, a]) => n === 'pilot_co_customer_stock_v2' && a.p_as_of === '2026-09-30')).toBe(true));
     fireEvent.change(screen.getByLabelText('Bulan akhir stok'), { target: { value: '2026-10' } });
     await screen.findByText(/Pilih akhir bulan yang sudah selesai/);
-    expect(wire.rpc.mock.calls.some(([n, a]) => n === 'pilot_co_customer_stock_v1' && a.p_as_of === '2026-10-31')).toBe(false);
+    expect(wire.rpc.mock.calls.some(([n, a]) => n === 'pilot_co_customer_stock_v2' && a.p_as_of === '2026-10-31')).toBe(false);
 });
 test('recorded never-delivered zero remains visible and is qualified', async () => {
     const s = stockFixture(1);
@@ -92,8 +96,9 @@ test('recorded never-delivered zero remains visible and is qualified', async () 
     Object.assign(rows[0], { opening_quantity: '0', recorded_quantity: '0', has_delivery_history: false });
     s.stockRows = () => rows;
     mountApp(<App />, `/athel/co/stock?customer=${customer}`);
-    await screen.findByText('0 + 0 − 0 − 0 = 0');
-    expect(screen.getByText(/Nol tercatat tidak membuktikan saldo fisik awal/)).toBeTruthy();
+    const table=await screen.findByRole('table',{name:'Stok pelanggan tercatat'});
+    expect(Array.from(table.querySelectorAll('tbody tr:first-child td.co-stock-number'),cell=>cell.textContent)).toEqual(['0','0','0','0','0']);
+    expect(within(table).getByText(/Belum dikirim/).parentElement?.title).toContain('nol tercatat tidak membuktikan saldo fisik awal');
 });
 
 test('movement pagination refuses mixing effective generations and explicit reload starts a new binding', async () => {
@@ -102,7 +107,7 @@ test('movement pagination refuses mixing effective generations and explicit relo
         stock_key_id: id(1001), generation_id: s.generation, batch_id: id(2001), co_id: id(11), co_line_id: id(3001),
         kind: 'delivery', quantity_delta: '1', effective_date: '2026-09-01', delivery_revision_line_id: id(51000 + i),
         return_revision_line_id: null, report_revision_line_id: null }));
-    mountApp(<App />, `/athel/co/stock?customer=${customer}&sku=${id(1001)}`);
+    mountApp(<App />, `/athel/co/stock?customer=${customer}&sku=SKU-1&stockKey=${id(1001)}&movementCustomer=${customer}`);
     await screen.findAllByRole('link', { name: 'Bukti CO sumber' });
     s.generation = id(8001); s.movements.forEach((r: any) => r.generation_id = s.generation);
     const next = screen.getAllByRole('button', { name: 'Berikutnya' }).find(b => !b.matches(':disabled'))!;
@@ -115,13 +120,15 @@ test('movement pagination refuses mixing effective generations and explicit relo
 test('stock filters and page totals remain server scoped across more than 100 keys', async () => {
     stockFixture(101);
     mountApp(<App />, `/athel/co/stock?customer=${customer}`);
-    await screen.findByText('Halaman 1 dari 6');
+    await screen.findByText('Halaman 1 dari 5');
     fireEvent.click(screen.getByRole('button', { name: 'Berikutnya' }));
-    await screen.findByText('SKU-21 · Item 21');
+    await screen.findByText('SKU-30');
+    expect(wire.rpc.mock.calls.some(([n,a])=>n==='pilot_co_customer_stock_v2' && a.p_page===2 && a.p_page_size===25)).toBe(true);
     fireEvent.change(screen.getByLabelText('Cari SKU stok'), { target: { value: 'SKU-101' } });
-    await screen.findByText('SKU-101 · Item 101');
+    await screen.findByText('SKU-101');
+    expect(screen.getByText('Item 101')).toBeTruthy();
     expect(screen.getByText('Halaman 1 dari 1')).toBeTruthy();
-    expect(wire.rpc.mock.calls.some(([n, a]) => n === 'pilot_co_customer_stock_v1' && a.p_search === 'SKU-101' && a.p_page === 1)).toBe(true);
+    expect(wire.rpc.mock.calls.some(([n, a]) => n === 'pilot_co_customer_stock_v2' && a.p_search === 'SKU-101' && a.p_page === 1)).toBe(true);
 });
 test('return draft section authority denial clears the containing detail private source', async () => {
     const s = stockFixture();
@@ -140,7 +147,7 @@ test('stock has one semantic desktop table with responsive rows and exact large 
     s.stockRows = () => rows;
     mountApp(<App />, `/athel/co/stock?customer=${customer}`);
     await screen.findByRole('table', { name: 'Stok pelanggan tercatat' });
-    expect(screen.getByText('9007199254740993 + 0 − 0 − 0 = 9007199254740993')).toBeTruthy();
+    expect(screen.getAllByText('9.007.199.254.740.993')).toHaveLength(2);
 });
 
 test('newer authoritative CO version freezes retained settlement until explicit refresh', async () => {
@@ -171,23 +178,23 @@ test('same-SKU stock rows identify canonical customers in responsive cells and m
     expect(table.textContent).toContain('Store B');
     expect(table.querySelectorAll('tbody tr')).toHaveLength(2);
     for (const row of table.querySelectorAll('tbody tr')) {
-        expect(row.className).toContain('md:table-row');
-        expect(row.querySelector('td')?.className).toContain('md:table-cell');
+        expect(row.querySelector('th[scope=\"row\"]')?.textContent).toMatch(/Store [AB]/);
+        expect(row.querySelectorAll('td.co-stock-number')).toHaveLength(5);
     }
-    const button = screen.getByRole('button', { name: 'Lihat pergerakan Store B · SKU-1' });
+    const button = screen.getByRole('button', { name: 'Lihat mutasi Store B · SKU-1' });
     fireEvent.click(button);
-    await waitFor(() => expect(router.state.location.search).toContain(`customer=${second}`));
-    expect(router.state.location.search).toContain(`sku=${id(1002)}`);
+    await waitFor(() => expect(router.state.location.search).toContain(`movementCustomer=${second}`));
+    expect(router.state.location.search).toContain(`stockKey=${id(1002)}`);
     directory.mockRestore();
 });
 
-test('missing authorized directory identity is explicit on the row and accessible action', async () => {
+test('authorized stock response provides row identity independently of directory availability', async () => {
     const s = stockFixture(1), rows = s.stockRows();
-    rows[0].customer_id = id(98); s.stockRows = () => rows;
+    rows[0].customer_id = id(98); rows[0].customer_name='Authorized source store'; s.stockRows = () => rows;
     mountApp(<App/>, '/athel/co/stock');
     const table = await screen.findByRole('table', { name: 'Stok pelanggan tercatat' });
-    await waitFor(() => expect(table.textContent).toContain('Identitas pelanggan tidak tersedia'));
-    expect(screen.getByRole('button', { name: `Lihat pergerakan Identitas pelanggan tidak tersedia (${id(98)}) · SKU-1` })).toBeTruthy();
+    await waitFor(() => expect(table.textContent).toContain('Authorized source store'));
+    expect(screen.getByRole('button', { name: 'Lihat mutasi Authorized source store · SKU-1' })).toBeTruthy();
 });
 
 test('stock shares the physical-stock caveat once and uses aligned quantity labels with compact per-row reporting', async () => {
@@ -195,11 +202,12 @@ test('stock shares the physical-stock caveat once and uses aligned quantity labe
     const table = await screen.findByRole('table', { name: 'Stok pelanggan tercatat' });
     await waitFor(() => expect(table.querySelectorAll('tbody tr')).toHaveLength(3));
     expect(screen.getAllByText('Angka tercatat berdasarkan laporan, bukan verifikasi stok fisik saat ini.')).toHaveLength(1);
-    expect(table.querySelectorAll('dl[aria-label="Jumlah stok"]')).toHaveLength(3);
-    expect(screen.getByRole('button', { name: 'Lihat pergerakan Store A · SKU-1' }).textContent).toBe('Pergerakan');
+    for(const row of table.querySelectorAll('tbody tr')) expect(row.querySelectorAll('td.co-stock-number')).toHaveLength(5);
+    expect(table.querySelectorAll('dl')).toHaveLength(0);
+    expect(screen.getByRole('button', { name: 'Lihat mutasi Store A · SKU-1' }).textContent).toBe('Lihat mutasi');
 });
 
-test('stock filters and contained table state customer-wide scope with exact totals across unopened pages', async () => {
+test('stock filters and contained table show customer-wide scope without summing incompatible units', async () => {
     const s = stockFixture(21), rows = s.stockRows();
     rows[20].opening_quantity = '9007199254740993'; rows[20].recorded_quantity = '9007199254740993';
     s.stockRows = () => rows;
@@ -210,11 +218,13 @@ test('stock filters and contained table state customer-wide scope with exact tot
     const filters = screen.getByRole('region', { name: 'Filter stok pelanggan' });
     const month = within(filters).getByLabelText('Bulan akhir stok') as HTMLInputElement;
     expect(month.labels?.[0].htmlFor).toBe(month.id);
-    expect(screen.getByText('Stok pelanggan mencakup semua CO pada cakupan dipilih. Retur berlaku untuk pelanggan.')).toBeTruthy();
-    expect(screen.getByText('Total seluruh hasil filter: 9007199254741593 + 0 − 0 − 0 = 9007199254741593')).toBeTruthy();
-    expect(table.querySelectorAll('tbody tr')).toHaveLength(20);
+    expect(screen.getByText('Store A · stok seluruh CO pelanggan')).toBeTruthy();
+    expect(screen.queryByText(/Total seluruh hasil filter/)).toBeNull();
+    expect(screen.getByText('21 baris toko/SKU')).toBeTruthy();
+    expect(screen.getAllByText('9.007.199.254.740.993')).toHaveLength(2);
+    expect(table.querySelectorAll('tbody tr')).toHaveLength(21);
     expect(screen.getByText(/Akhir bulan, riwayat efektif dinyatakan ulang/)).toBeTruthy();
-    expect(wire.rpc.mock.calls.some(([n, a]) => n === 'pilot_co_customer_stock_v1' && a.p_as_of === '2026-09-30')).toBe(true);
+    expect(wire.rpc.mock.calls.some(([n, a]) => n === 'pilot_co_customer_stock_v2' && a.p_as_of === '2026-09-30')).toBe(true);
     expect(document.querySelectorAll('main#main-content')).toHaveLength(1);
 });
 
@@ -224,11 +234,10 @@ test('never-delivered recorded zero retains qualified meaning and native stock q
     s.stockRows = () => rows;
     mountApp(<App/>, `/athel/co/stock?customer=${customer}`);
     const table = await screen.findByRole('table', { name: 'Stok pelanggan tercatat' });
-    expect(within(table).getByText('Belum dikirim')).toBeTruthy();
-    expect(screen.getByText(/Nol tercatat tidak membuktikan saldo fisik awal/)).toBeTruthy();
-    const list = table.querySelector('dl[aria-label="Jumlah stok"]')!;
-    expect(list.className).toContain('ui-summary-list');
-    expect(within(list as HTMLElement).getByText('Sisa tercatat').nextElementSibling?.textContent).toBe('0');
+    expect(within(table).getByText(/Belum dikirim/)).toBeTruthy();
+    expect(within(table).getByText(/Belum dikirim/).parentElement?.title).toContain('nol tercatat tidak membuktikan saldo fisik awal');
+    expect(within(table).getByRole('columnheader',{name:/Sisa tercatat/})).toBeTruthy();
+    expect(Array.from(table.querySelectorAll('tbody tr td.co-stock-number')).at(-1)?.textContent).toBe('0');
     expect(screen.queryByText(/Saldo historis awal tidak diasumsikan/)).toBeNull();
 });
 
@@ -242,28 +251,24 @@ test('empty stock filter uses an explicit empty state without inventing historic
 test('effective stock movement history names its source list and preserves customer stock-key binding', async () => {
     const s = stockFixture(1);
     s.movements = [{ id: id(91), customer_id: customer, stock_key_id: id(1001), generation_id: s.generation, co_line_id: id(3001), effective_date: '2026-09-30', kind: 'sold', quantity_delta: '-7', co_id: id(11), batch_id: id(2001), delivery_revision_line_id: null, return_revision_line_id: null, report_revision_line_id: id(92) }];
-    mountApp(<App/>, `/athel/co/stock?customer=${customer}&sku=${id(1001)}`);
+    mountApp(<App/>, `/athel/co/stock?customer=${customer}&sku=SKU-1&stockKey=${id(1001)}&movementCustomer=${customer}`);
     const link = await screen.findByRole('link', { name: 'Bukti CO sumber' });
     expect(screen.getByRole('list', { name: 'Pergerakan stok tercatat' }).contains(link)).toBe(true);
     expect(link.getAttribute('href')).toBe(`/athel/co/${id(11)}`);
     expect(screen.getByText(/Penjualan dicatat pada batas cakupan laporan, bukan tanggal penjualan harian/)).toBeTruthy();
 });
 
-test('stock table data values stay 14px beneath the shared 16px description-value rule', async () => {
-    // An unlayered normal rule is stronger than the primitive's components-layer rule.
-    // The native value text must still use the approved table size beneath that ancestor.
+test('dense stock quantity cells use scoped table styling rather than the description-value layout', async () => {
     const style = document.createElement('style');
-    style.textContent = '.ui-summary-list dd { font-size: 16px; }';
+    style.textContent = '.ui-summary-list dd { font-size: 16px; }' + stockCSS;
     document.head.append(style);
     try {
         stockFixture(1); mountApp(<App/>, `/athel/co/stock?customer=${customer}`);
         const table = await screen.findByRole('table', { name: 'Stok pelanggan tercatat' });
-        const values = table.querySelectorAll('dl[aria-label="Jumlah stok"] dd');
-        expect(values).toHaveLength(5);
-        expect(Array.from(values, value => value.textContent)).toEqual(['30', '0', '0', '0', '30']);
-        for (const value of values) {
-            const text = value.firstElementChild ?? value;
-            expect(getComputedStyle(text).fontSize).toBe('14px');
-        }
+        expect(table.querySelectorAll('dl dd')).toHaveLength(0);
+        const values=table.querySelectorAll('tbody td.co-stock-number');
+        expect(Array.from(values,value=>value.textContent)).toEqual(['30','0','0','0','30']);
+        expect(getComputedStyle(table).fontSize).toBe('13px');
+        for(const value of values) expect(getComputedStyle(value).textAlign).toBe('right');
     } finally { style.remove(); }
 });

@@ -1,3 +1,4 @@
+import { assertNoOtherCORequest } from './import/recoveryScope';
 import { useContext, useEffect, useMemo, useRef } from 'react';
 import { COSourceAuthorityContext } from './authority';
 import { useAuth } from '../AuthContext';
@@ -85,7 +86,8 @@ export function createCOTransactionSender(options: COSenderOptions): COTransacti
     const storage: Storage = { get length() { return options.storage().length; }, clear() { invalid('unscoped recovery clear'); }, key: i => options.storage().key(i), getItem: k => { if (k !== key)
             invalid('storage scope'); const r = readRaw(); return r === null ? null : JSON.stringify(r); }, setItem: (k, raw) => { current(); if (k !== key)
             invalid('storage scope'); const v = record(JSON.parse(raw)), old = readRaw(), binding = old?.id === v.id ? old.binding : active; if (!binding)
-            invalid('missing request identity'); const saved = { id: parseUUID(v.id), key: parseHash(v.key), uncertain: parseBoolean(v.uncertain), binding: identity(binding), ...(v.committed === undefined ? {} : { committed: parseCOReceipt(v.committed) }) }; // Shared validation can report uncertainty after rejecting a response. A previously
+            invalid('missing request identity'); if (!old || old.id !== v.id || !old.uncertain && !old.committed)
+            assertNoOtherCORequest(options.storage(),options.actorId,options.customerId,options.scope,key); const saved = { id: parseUUID(v.id), key: parseHash(v.key), uncertain: parseBoolean(v.uncertain), binding: identity(binding), ...(v.committed === undefined ? {} : { committed: parseCOReceipt(v.committed) }) }; // Shared validation can report uncertainty after rejecting a response. A previously
         // confirmed receipt stays pinned until this domain explicitly acknowledges it.
         if (old?.id === saved.id && old.committed) {
             if (saved.key !== old.key || saved.committed && !sameReceipt(saved.committed, old.committed)) invalid('changed committed recovery');
@@ -137,6 +139,9 @@ export function createCOTransactionSender(options: COSenderOptions): COTransacti
     const send = async (operation: COOperation, payload: unknown): Promise<COReceipt> => { if (inFlight)
         throw new Error('Penyimpanan CO masih berjalan.'); inFlight = true; try {
         await authorize();
+        const ownPending = readRaw();
+        if (!ownPending?.uncertain && !ownPending?.committed)
+            assertNoOtherCORequest(options.storage(),options.actorId,options.customerId,options.scope,key);
         const p = record(payload);
         active = identity({ operation, customer_id: options.customerId, ...(options.coId ? { co_id: options.coId } : {}), ...(typeof p.draft_id === 'string' ? { draft_id: p.draft_id } : {}), ...(target(operation, p) !== undefined ? { target_id: target(operation, p) } : {}) });
         if (p.customer_id && p.customer_id !== options.customerId || p.co_id && p.co_id !== options.coId)

@@ -4,7 +4,7 @@ import {store,mount,wire,customer,month,draftId,id} from './report-ui-harness';
 import { evidenceId, fixture, choose } from './evidence-ui-harness';
 import COEvidenceAttachment, { CORevisionAttachment } from '../../src/components/co/COEvidenceAttachment';
 import {useCOReportWorkspace,COReportFields} from '../../src/components/co/COReportWorkspace';
-import COMonthlyReport from '../../src/pages/athel/co/COMonthlyReport';
+import COMonthlyReport from './legacy-evidence-owner';
 let workspace:any;
 function Probe(){const work=useCOReportWorkspace(customer,month);workspace=work;return work.header?<COReportFields work={work}/>:null;}
 function binding(work:any){return {customerId:customer,month,draftId,previousDraftVersion:work.header.draft_version,customerVersion:work.header.customer_version,generation:work.generation};}
@@ -28,7 +28,7 @@ test('failed confirmation keeps old binding and a later identical finalized impo
 test('authority failure during evidence import clears the source and cannot restore private fields',async()=>{
  const s=store();mount(<Probe/>);await screen.findByLabelText('Terjual Item 1');const b=binding(workspace);s.version='2';await act(async()=>{await expect(workspace.rebindDraftAfterEvidence(b,async()=>{throw {code:'42501',message:'denied'};})).rejects.toMatchObject({code:'42501'});});expect(screen.queryByLabelText('Terjual Item 1')).toBeNull();expect(workspace.denied).toBe(true);
 });
-test('optional evidence is present in standalone report and a sidecar authority denial clears the full source',async()=>{
+test('retained legacy evidence owner propagates sidecar authority denial and clears the full source',async()=>{
  const s=store(),base=s.handle;wire.handler=async(n:string,a:any)=>n==='pilot_co_evidence_selection_v1'?{data:null,error:{code:'42501',message:'Evidence denied'}}:base(n,a);mount(<COMonthlyReport/>);await screen.findByText('Evidence denied');expect(screen.queryByLabelText('Terjual Item 1')).toBeNull();
 });
 
@@ -121,7 +121,7 @@ test.each(['register_evidence','finalize_evidence'])('nested %s conflict uses th
  await choose();fireEvent.click(screen.getByText('Verifikasi dan pasang lampiran'));await screen.findByText('Pulihkan permintaan lampiran');await waitFor(()=>expect((screen.getByRole('button', { name: 'Pulihkan permintaan lampiran' }) as HTMLButtonElement).disabled).toBe(false));
  f.s.version='4';f.s.rows[0].sold_quantity='4';fireEvent.click(screen.getByText('Pulihkan permintaan lampiran'));fireEvent.click(await screen.findByText('Buka hasil lampiran tersimpan'));await screen.findByText('Coba buka hasil lampiran');await waitFor(()=>expect((screen.getByRole('button', { name: 'Selesaikan konflik lampiran' }) as HTMLButtonElement).disabled).toBe(false));expect(pending).toHaveBeenLastCalledWith(true);expect((screen.getByRole('button', { name: 'Kembali ke sumber' }) as HTMLButtonElement).disabled).toBe(true);
  fireEvent.click(screen.getByText('Selesaikan konflik lampiran'));fireEvent.click(await screen.findByText('Tetap mengedit'));expect(localStorage.length).toBe(1);await waitFor(()=>expect((screen.getByRole('button', { name: 'Selesaikan konflik lampiran' }) as HTMLButtonElement).disabled).toBe(false));fireEvent.click(screen.getByText('Selesaikan konflik lampiran'));fireEvent.click(await screen.findByText('Buang perubahan'));
- await waitFor(()=>expect(localStorage.length).toBe(0));await waitFor(()=>expect(pending).toHaveBeenLastCalledWith(false));expect((screen.getByLabelText('Terjual Item 1') as HTMLInputElement).value).toBe('4');fireEvent.change(screen.getByLabelText('Terjual Item 1'),{target:{value:'5'}});fireEvent.click(screen.getByText('Simpan Draft periode'));await waitFor(()=>expect(f.s.commands).toHaveLength(2));expect(f.s.commands[1].payload.expected_draft_version).toBe('4');expect(f.commands).toHaveLength(operation==='register_evidence'?1:2);
+ await waitFor(()=>expect(localStorage.length).toBe(0));await waitFor(()=>expect(pending).toHaveBeenLastCalledWith(false));expect((screen.getByLabelText('Terjual Item 1') as HTMLInputElement).value).toBe('4');fireEvent.change(screen.getByLabelText('Terjual Item 1'),{target:{value:'5'}});fireEvent.click(screen.getByText('Lanjutkan peninjauan periode'));await waitFor(()=>expect(f.s.commands).toHaveLength(2));expect(f.s.commands[1].payload.expected_draft_version).toBe('4');expect(f.commands).toHaveLength(operation==='register_evidence'?1:2);
 });
 
 test.each(['pending', 'verified'])('another actor’s %s duplicate is an actionable conflict preserving dirty report fields', async () => {
@@ -205,4 +205,9 @@ test('registration conflict retains receipt and dirty fields if a later canonica
     await waitFor(() => expect(localStorage.length).toBe(0));
     await waitFor(() => expect((screen.getByLabelText('Terjual Item 1') as HTMLInputElement).value).toBe('4'));
     expect(f.commands).toHaveLength(1);
+});
+test('evidence picker advertises exact XLSX MIME and extension while preserving legacy types',async()=>{
+ fixture();mount(<AttachmentProbe/>);const picker=await screen.findByLabelText('Pilih lampiran');
+ expect(picker.getAttribute('accept')?.split(',')).toEqual(['.pdf','.png','.jpg','.jpeg','.xlsx','application/pdf','image/png','image/jpeg','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']);
+ expect(screen.getByText(/PDF, PNG, JPEG, atau XLSX, maksimum 10 MiB/)).toBeTruthy();
 });

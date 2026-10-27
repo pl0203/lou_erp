@@ -1,6 +1,7 @@
+import { classifyManualWorkbook, validateWorkbook } from './workbook-guard.ts';
 /** Bounded, download-only untrusted documents. This is not malware/active-content screening. */
 export const MAX_EVIDENCE_BYTES = 10 * 1024 * 1024;
-export const MIME_EXT = { 'application/pdf': 'pdf', 'image/png': 'png', 'image/jpeg': 'jpg' } as const;
+export const MIME_EXT = { 'application/pdf': 'pdf', 'image/png': 'png', 'image/jpeg': 'jpg', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx' } as const;
 export type EvidenceMime = keyof typeof MIME_EXT;
 export const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export async function inspectEvidenceBytes(bytes: Uint8Array<ArrayBuffer>) {
@@ -40,7 +41,9 @@ export async function inspectEvidenceBytes(bytes: Uint8Array<ArrayBuffer>) {
    if(marker===218){scan=true;while(offset<bytes.length){if(bytes[offset]===255&&bytes[offset+1]!==0&&bytes[offset+1]!==255&&!(bytes[offset+1]>=208&&bytes[offset+1]<=215))break;if(bytes[offset]===255)offset++;offset++;}}
   }
   if(!end)throw new Error('JPEG tidak lengkap.');mime_type='image/jpeg';
- } else throw new Error('Hanya PDF, PNG, atau JPEG lengkap yang didukung.');
+ } else if(bytes[0]===0x50&&bytes[1]===0x4b) {
+  await validateWorkbook(bytes);mime_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+ } else throw new Error('Hanya PDF, PNG, JPEG, atau XLSX lengkap yang didukung.');
  const sha256=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');
  return {mime_type,byte_size:bytes.length,sha256};
 }
@@ -76,7 +79,15 @@ export function connection(config:Config,authorization:string,fetcher:Fetch){
  const object=(c:Context,write?:Uint8Array<ArrayBuffer>)=>fetcher(`${origin}/storage/v1/object/${write?'':'authenticated/'}co-evidence/${c.path}`,{method:write?'POST':'GET',headers:{Authorization:`Bearer ${config.serviceKey}`,apikey:config.serviceKey,...(write?{'Content-Type':c.mime_type,'x-upsert':'false'}:{})},...(write?{body:write}:{}),redirect:'error',signal:AbortSignal.timeout(30000)});
  return {rpc,context,object};
 }
-export function sameObject(a:Context,b:Context){return a.id===b.id&&a.actor_id===b.actor_id&&a.path===b.path&&a.sha256===b.sha256&&a.byte_size===b.byte_size&&a.mime_type===b.mime_type&&!!a.object&&a.object.id===b.object?.id&&a.object.version===b.object?.version;}
+export function sameEvidenceBinding(a:Context,b:Context){return a.id===b.id&&a.actor_id===b.actor_id&&a.path===b.path&&a.sha256===b.sha256&&a.byte_size===b.byte_size&&a.mime_type===b.mime_type;}
+export function sameObject(a:Context,b:Context){return sameEvidenceBinding(a,b)&&!!a.object&&a.object.id===b.object?.id&&a.object.version===b.object?.version;}
 export async function verifyObject(response:Response,c:Context){if(!response.ok)throw new Error('Stored evidence unavailable');const bytes=await boundedBytes(response);const facts=await inspectEvidenceBytes(bytes);if(facts.sha256!==c.sha256||facts.mime_type!==c.mime_type||facts.byte_size!==c.byte_size)throw new Error('Stored evidence changed');return {bytes,facts};}
 export const failure=(error:unknown)=>error instanceof BoundaryError?answer(error.status,error.code,error.message):answer(502,'CO_EVIDENCE_UNAVAILABLE','Evidence verification unavailable; reconcile before retry');
 export function platformStart(handler:(config:Config)=>(request:Request)=>Promise<Response>){const platform=(globalThis as unknown as {Deno?:{env:{get(n:string):string|undefined};serve(h:(r:Request)=>Promise<Response>):void}}).Deno;if(platform)platform.serve(handler({url:platform.env.get('SUPABASE_URL')??'',anonKey:platform.env.get('SUPABASE_ANON_KEY')??'',serviceKey:platform.env.get('SUPABASE_SERVICE_ROLE_KEY')??''}));}
+
+/** Optional manual receipt facts are derived ONLY from the downloaded verified object.
+ * Classification failure never grants manual authority or breaks normal extraction. */
+export async function manualWorkbookEvidence(bytes:Uint8Array, mime:string, signal:AbortSignal){
+ if(mime!=='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')return null;
+ try{return await classifyManualWorkbook(bytes,signal)}catch{signal.throwIfAborted();return null}
+}

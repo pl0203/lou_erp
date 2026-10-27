@@ -1,0 +1,10 @@
+{
+  "added": [
+    {"file":"src/components/co/COLegacyReportEdit.tsx","title":"Memuat dasar Edit…","guards":["if !work.accepted"]},
+    {"file":"src/components/co/COLegacyReportEdit.tsx","title":"Memuat semua nilai laporan tercatat…","guards":["!canonical.data&&!canonical.isError&&pinned &&"]},
+    {"file":"src/components/co/COSourceProposalResume.tsx","title":"Memeriksa usulan sumber asli…","guards":["active ? false"]},
+    {"file":"src/components/co/COSourceProposalResume.tsx","title":"Memeriksa usulan sumber asli…","guards":["if !read.data&&!retained.current"]},
+    {"file":"src/components/co/COSourceProposalResume.tsx","title":"Memuat sumber retur…","guards":["if !stock.data&&!retainedVersion.current"]},
+    {"file":"src/components/co/COSourceProposalResume.tsx","title":"Memuat sumber laporan…","guards":["if !work.accepted"]}
+  ]
+}

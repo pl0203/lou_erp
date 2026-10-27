@@ -1,0 +1,6 @@
+{
+  "nodeModulesDir": "manual",
+  "lock": false,
+  "imports": { "saxes": "npm:saxes@6.0.0" },
+  "compilerOptions": { "strict": true }
+}

@@ -60,6 +60,7 @@ function MobileDrawer({ children, onClose, opener }: { children: ReactNode; onCl
 }
 
 function linkIsActive(link: NavigationLink, location: { pathname: string; search: string }) {
+  if (link.activeExcludePaths?.some(path => matchPath({ path, end: false }, location.pathname))) return false
   if (!(link.activePaths ?? [link.to.split('?')[0]]).some(path => matchPath({ path, end: false }, location.pathname))) return false
   if (!link.activeSearch) return true
   const { key, value, fallback, allowed } = link.activeSearch

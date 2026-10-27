@@ -1,5 +1,5 @@
 import React from 'react';
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { customer, id, mount, mountApp, stockFixture, wire } from './stock-ui-harness';
 import App from '../../src/App';
@@ -10,6 +10,7 @@ test('customer-wide return saves a draft without ledger effect then posts throug
     mountApp(<App />, `/athel/co/stock?customer=${customer}`);
     await click('Retur barang belum terjual');
     fireEvent.change(await screen.findByLabelText('Jumlah retur SJ-1 Item 1'), { target: { value: '5' } });
+    expect((screen.getByLabelText('Tanggal retur') as HTMLInputElement).value).toBe(new Date().toISOString().slice(0, 10));
     fireEvent.change(screen.getByLabelText('Referensi retur'), { target: { value: 'RET-5' } });
     fireEvent.click(screen.getByRole('button', { name: 'Simpan Draft retur' }));
     await waitFor(() => expect(s.commands).toHaveLength(1));
@@ -29,6 +30,7 @@ test('detail draft discovery restores all customer-wide lines across COs and pag
     mount(<CODetail />, `/athel/co/${s.co.id}`);
     fireEvent.click(await screen.findByRole('button', { name: 'Buka draft retur' }));
     await screen.findByText(/101 sumber tersimpan/);
+    expect((screen.getByLabelText('Tanggal retur') as HTMLInputElement).value).toBe('2026-10-09');
     fireEvent.change(screen.getByLabelText('Referensi retur'), { target: { value: 'RESTORED' } });
     fireEvent.click(screen.getByRole('button', { name: 'Simpan Draft retur' }));
     await waitFor(() => expect(s.commands).toHaveLength(1));
@@ -101,7 +103,7 @@ test('direct shared-preview authority denial clears the entire return and stock 
     await click('Tinjau semua dampak');
     await screen.findByText('Return authority denied');
     expect(screen.queryByDisplayValue('RET-5')).toBeNull();
-    expect(screen.queryByText('SKU-1 · Item 1')).toBeNull();
+    expect(screen.queryByRole('table',{name:'Stok pelanggan tercatat'})).toBeNull();
     expect(screen.queryByText('Return original stock')).toBeNull();
     expect(client.getQueryCache().getAll().filter(q => q.queryKey[0] === 'co' && q.state.data)).toHaveLength(0);
 });
@@ -120,7 +122,10 @@ test('known committed canonical retry does not resend and repeated failures pres
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Buka hasil retur tersimpan' })).toBeNull());
     expect(state.commands).toHaveLength(1);
 });
-test('dirty return blocks tabs, Keep retains fields and Discard leaves without a late save', async () => {
+test('dirty return blocks sidebar navigation, Keep retains fields and Discard leaves without a late save', async () => {
+    const navigation = await import('../../src/components/AthelNav');
+    const { default: ActualNav } = await vi.importActual<typeof navigation>('../../src/components/AthelNav');
+    vi.spyOn(navigation, 'default').mockImplementation(ActualNav);
     const { router, state } = await openReturn();
     change('Referensi retur', 'DIRTY');
     fireEvent.click(screen.getByRole('link', { name: 'Pesanan CO' }));
@@ -195,15 +200,15 @@ test('nested return completion denial removes both nested and source-private con
     change('Terjual Item 1', '7');
     state.report.fail = (n: string) => n === 'pilot_co_report_v1' && state.report.commands.some((c: any) => c.payload.action === 'upsert_lines')
         ? { data: null, error: { code: '42501', message: 'Nested return authority denied' } } : null;
-    await click('Simpan Draft periode');
+    await click('Lanjutkan peninjauan periode');
     await screen.findByText('Nested return authority denied');
     expect(screen.queryByDisplayValue('NESTED PRIVATE')).toBeNull();
-    expect(screen.queryByText('SKU-1 · Item 1')).toBeNull();
+    expect(screen.queryByRole('table',{name:'Stok pelanggan tercatat'})).toBeNull();
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(client.getQueryCache().getAll().filter(q => q.queryKey[0] === 'co' && q.state.data)).toHaveLength(0);
     state.report.fail = null;
     await click('Coba lagi');
-    await screen.findByText('SKU-1 · Item 1');
+    await screen.findByRole('table',{name:'Stok pelanggan tercatat'});
     expect(screen.queryByDisplayValue('NESTED PRIVATE')).toBeNull();
 });
 test('nested known-committed return completion retries canonical reads without repeating the write', async () => {
@@ -215,7 +220,7 @@ test('nested known-committed return completion retries canonical reads without r
     change('Terjual Item 1', '7'); change('Catatan laporan', 'UNSENT REPORT NOTE');
     state.report.fail = (n: string) => n === 'pilot_co_report_v1' && state.report.commands.some((c: any) => c.payload.action === 'upsert_lines')
         ? { data: null, error: { code: '08006', message: 'Nested canonical offline' } } : null;
-    await click('Simpan Draft periode');
+    await click('Lanjutkan peninjauan periode');
     await screen.findAllByText('Nested canonical offline');
     const count = state.report.commands.length;
     await click('Buka hasil laporan tersimpan');
@@ -253,13 +258,13 @@ test.each(['42501', '08006'])('paged impact %s clears only confirmed authority d
     const { state } = await openReturn();
     await saveReturn(); await click('Tinjau semua dampak');
     await screen.findByRole('button', { name: 'Stok (0)' });
-    state.fail = (n: string, a: any) => n === 'pilot_co_preview_impacts_v1' && a.p_kind === 'stock'
+    state.fail = (n: string, a: any) => n === 'pilot_co_preview_labeled_impacts_v1' && a.p_kind === 'stock'
         ? { data: null, error: { code, message: 'Impact read failed' } } : null;
     await click('Stok (0)');
     await screen.findByText('Impact read failed');
-    if (code === '42501') expect(screen.queryByText('SKU-1 · Item 1')).toBeNull();
+    if (code === '42501') expect(screen.queryByRole('table',{name:'Stok pelanggan tercatat'})).toBeNull();
     else {
-        expect(screen.getByText('SKU-1 · Item 1')).toBeTruthy();
+        expect(screen.getByRole('table',{name:'Stok pelanggan tercatat'})).toBeTruthy();
         expect(screen.getByDisplayValue('Return original stock')).toBeTruthy();
         state.fail = null; await click('Coba lagi');
         await screen.findByText('Tidak ada stok.');
@@ -295,7 +300,7 @@ test('authority denial during return canonical import hides parent stock and ret
     await click('Simpan Draft retur');
     await screen.findByText('Canonical return denied');
     expect(screen.queryByDisplayValue('PRIVATE RETURN')).toBeNull();
-    expect(screen.queryByText('SKU-1 · Item 1')).toBeNull();
+    expect(screen.queryByRole('table',{name:'Stok pelanggan tercatat'})).toBeNull();
     expect(client.getQueryCache().getAll().filter(q => q.queryKey[0] === 'co' && q.state.data)).toHaveLength(0);
 });
 test('malformed incomplete saved return pages cannot enable replacement saving', async () => {
@@ -392,7 +397,7 @@ test('nested acknowledgement pending locks the return dialog until recovery is a
         if (n === 'pilot_reconcile_co_v1' && ++reconciles === 2) return deferred;
         return null;
     };
-    await click('Simpan Draft periode'); await screen.findAllByText('Nested reply lost');
+    await click('Lanjutkan peninjauan periode'); await screen.findAllByText('Nested reply lost');
     await click('Pulihkan hasil penyimpanan'); await click('Lihat hasil tersimpan'); await click('Buang perubahan');
     await waitFor(() => expect(reconciles).toBe(2));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Tutup retur' }).matches(':disabled')).toBe(true));
@@ -443,7 +448,7 @@ test('newer authoritative parent version freezes a retained return before stale 
     change('Referensi retur', 'PARENT DRIFT'); change('Jumlah retur SJ-1 Item 1', '5');
     const field = screen.getByDisplayValue('PARENT DRIFT');
     state.cv = '2';
-    await act(async () => { await client.invalidateQueries({ predicate: q => q.queryKey[4] === 'customer-stock' }); });
+    await act(async () => { await client.invalidateQueries({ predicate: q => q.queryKey[4] === 'customer-stock-v2' }); });
     await screen.findByText(/Sumber berubah/);
     expect(screen.getByDisplayValue('PARENT DRIFT')).toBe(field);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Simpan Draft retur' }).matches(':disabled')).toBe(true));

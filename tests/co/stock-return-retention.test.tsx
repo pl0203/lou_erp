@@ -14,7 +14,7 @@ function change(name: string, value: string) {
     fireEvent.change(screen.getByLabelText(name), { target: { value } });
 }
 const sourceReads = () => wire.rpc.mock.calls.filter(([name]) =>
-    name === 'pilot_co_customer_stock_v1' || name === 'pilot_co_customer_batches_v1').length;
+    name === 'pilot_co_customer_stock_v2' || name === 'pilot_co_customer_batches_v1').length;
 async function reviewReturn(nested = false) {
     const state = stockFixture();
     if (nested) state.report.impacts.missing_month = [{
@@ -96,7 +96,7 @@ test.each(['unknown', 'committed'] as const)('nested %s result keeps outer sourc
         }
         return null;
     };
-    await click('Simpan Draft periode');
+    await click('Lanjutkan peninjauan periode');
     await screen.findAllByText(outcome === 'unknown' ? 'Nested reply lost before refresh' : 'Nested import unavailable before refresh');
     const refresh = screen.getByRole('button', { name: 'Muat sumber retur terbaru' });
     await waitFor(() => expect(refresh.matches(':disabled')).toBe(true));

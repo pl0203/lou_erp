@@ -1,3 +1,5 @@
+import { inspectCOReportCorrection } from '../../lib/co/reportCorrectionResult';
+import { Button } from '../ui/Button';
 import { LoadingState } from '../ui/LoadingState'
 import { useEffect, useId, useRef, useState } from 'react';
 import { coKeys } from '../../lib/co/queryKeys';
@@ -20,6 +22,8 @@ export function reportBinding(header: COReportHeader): COReportPreviewPayload {
         throw new Error('Draft perlu diperbarui sebelum dilanjutkan.');
     return { draft_id: header.draft_id, expected_draft_version: header.draft_version, expected_customer_version: header.customer_version, eligible_set_fingerprint: header.eligible_set_fingerprint };
 }
+/** Immutable operator-visible baseline, including explicit absence of a pending draft. */
+export type LegacySeedBaseline = {revisionId:string;customerVersion:string;draftId:string|null;draftVersion:string|null};
 export type EvidenceDraftBinding = {customerId:string;month:string;draftId:string;previousDraftVersion:string;customerVersion:string;generation:number};
 const metadata = (h: COReportHeader | null) => ({ report_reference: h?.report_reference ?? '', received_date: h?.received_date ?? '', notes: h?.notes ?? '' });
 export { isCOAuthorityError } from '../../lib/co/authority';
@@ -49,6 +53,7 @@ export function useCOReportWorkspace(customerId: string, month: string, onAuthor
     const [evidenceState,setEvidenceState] = useState({dirty:false,pending:false,unresolved:false});
     const [error, setError] = useState<unknown>(null);
     const [stale, setStale] = useState(false);
+    const [correctionAcceptance,setCorrectionAcceptance]=useState<(Awaited<ReturnType<typeof inspectCOReportCorrection>> & {receipt:COReceipt;recovered:boolean})|null>(null);
     const [confirmed, setConfirmed] = useState<COReceipt | null>(null);
     const [generation, setGeneration] = useState(0);
     const [focusTarget, setFocusTarget] = useState<string | null>(null);
@@ -75,6 +80,7 @@ export function useCOReportWorkspace(customerId: string, month: string, onAuthor
         setBaseMeta(metadata(null));
         setEditing(false);
         setConfirmed(null);
+        setCorrectionAcceptance(null);
         setPending(false);
         generationRef.current++;
         setGeneration(generationRef.current);
@@ -195,11 +201,18 @@ export function useCOReportWorkspace(customerId: string, month: string, onAuthor
                 setPending(false);
         }
     }
-    async function initialize(context?: COSourceContext) {
+    async function initialize(context?: COSourceContext, seed?: LegacySeedBaseline) {
         return run(async (live) => {
             const fresh = await readCanonical(undefined, { isCurrent: live });
+            if (!live()) return;
             const d = fresh.draft as COReportHeader | null;
-            const payload: COSaveReportDraftPayload = { action: 'initialize', customer_id: customerId, report_month: month, expected_customer_version: fresh.customer_version, ...(d ? { draft_id: d.draft_id!, expected_draft_version: d.draft_version! } : {}), ...(context ? { source_context: context } : {}) } as COSaveReportDraftPayload;
+            if (seed && (context || fresh.customer_version !== seed.customerVersion || fresh.effective?.revision_id !== seed.revisionId
+                || (d?.draft_id ?? null) !== seed.draftId || (d?.draft_version ?? null) !== seed.draftVersion
+                || d?.source_context_link || (d?.context_issue && d.context_issue !== 'CO_ELIGIBLE_SET_STALE'))) {
+                setStale(true);
+                throw new Error('Dasar Edit berubah; muat ulang dan konfirmasi penggantian kembali.');
+            }
+            const payload: COSaveReportDraftPayload = { action: 'initialize', customer_id: customerId, report_month: month, expected_customer_version: fresh.customer_version, ...(d ? { draft_id: d.draft_id!, expected_draft_version: d.draft_version! } : {}), ...(context ? { source_context: context } : {}), ...(seed ? { seed_effective_revision_id: seed.revisionId } : {}) } as COSaveReportDraftPayload;
             const receipt = await sendCOCommand(sender, 'save_report_draft', payload);
             if (!live())
                 return;
@@ -207,8 +220,8 @@ export function useCOReportWorkspace(customerId: string, month: string, onAuthor
             const value = await readCanonical(receipt, { isCurrent: live });
             if (!live())
                 return;
-            // Refresh never drops local quantities or metadata. Saving them is a separate deliberate step.
-            hydrate(value, true);
+            // Ordinary refresh preserves overlays. Explicit ledger replacement discards them only after exact consent checks.
+            hydrate(value, true, !!seed);
             const nextMeta=metadata(value.draft);
             if (JSON.stringify(latest.current.meta)===JSON.stringify(baseMeta)) setMeta(nextMeta);
             setBaseMeta(nextMeta);
@@ -263,17 +276,28 @@ export function useCOReportWorkspace(customerId: string, month: string, onAuthor
     const fillZero = () => run(async (live) => { const h = await flushInside(live); const receipt = await sendCOCommand(sender, 'save_report_draft', { action: 'fill_remaining_zero', ...reportBinding(h) }); if (!live())
         return; setConfirmed(receipt); const value = await readCanonical(receipt, { isCurrent: live }); if (live())
         hydrate(value, true); return value.draft as COReportHeader; });
-    async function acceptCanonical(receipt: COReceipt, recovered = false) {
+    async function acceptCanonical(receipt: COReceipt, recovered = false, confirmedSnapshot?:string) {
+        // A recovered correction stays recovery-owned even through the confirmed retry control.
         if (accepting.current || !current()) return false;
+        recovered = recovered || receipt.operation === 'correct_report' && sender.hasUnresolved();
         const g = generationRef.current;
         const live = () => current() && generationRef.current === g;
         accepting.current = true;
         setPending(true);
         setError(null);
         try {
-            const value = await readCanonical(receipt, { isCurrent: live });
+            let value:COReadResult;
+            if(receipt.operation==='correct_report'){
+                setConfirmed(receipt);
+                if(recovered){const pin=sender.getCommittedIdentity(receipt);if(pin.operation!=='correct_report'||pin.customer_id!==customerId||pin.target_id!==receipt.id)invalid('original correction receipt scope')}
+                const checked=await inspectCOReportCorrection(customerId,month,receipt,live);
+                if(!live())return false;
+                if((checked.changed||confirmedSnapshot)&&confirmedSnapshot!==checked.snapshot){setCorrectionAcceptance({...checked,receipt,recovered});return false}
+                value=checked.value;
+            }else value = await readCanonical(receipt, { isCurrent: live });
             if (!live()) return false;
-            if (recovered) await sender.acknowledgeRecovered();
+            if (recovered) await sender.acknowledgeRecovered(live);
+            setCorrectionAcceptance(null);
             if (!live()) return false;
             hydrate(value, receipt.operation === 'save_report_draft',
                 recovered || receipt.operation !== 'save_report_draft');
@@ -391,7 +415,7 @@ export function useCOReportWorkspace(customerId: string, month: string, onAuthor
         accepted, header, editing, entries, meta, page, setPage, pending, evidenceState, setEvidenceState, evidenceBlocked, verifyRegisteredEvidence, rebindDraftAfterEvidence, discardOverlayAfterEvidenceConflict,
         frozen: frozen || rowsRead.isError || rowsRead.isFetching,
         dirty, error, setError: handleFailure, stale: stale || drift,
-        confirmed, setConfirmed, generation,
+        confirmed, setConfirmed, correctionAcceptance, generation,
         isGenerationCurrent: (g: number) => current() && generationRef.current === g,
         current, denied: denied.current || !!authorityFailure,
         rowsRead, rows, editRow, editMeta, initialize, save, fillZero, run, acceptCanonical,
@@ -412,4 +436,15 @@ export function COReportFields({ work, allocation }: {
         ]}/>}
     {work.rowsRead.isError && <COFailure error={work.rowsRead.error} retry={() => void work.rowsRead.refetch()}/>} {work.rowsRead.data ? <COMonthlySalesGrid rows={work.rows} entries={work.entries} editable={work.editing} disabled={work.frozen || work.rowsRead.isFetching} onChange={work.editRow} page={work.page} total={work.header!.row_count} onPage={work.setPage} allocation={allocation}/> : !work.rowsRead.isError && <LoadingState title="Memuat baris laporan…" shape="compact" />}
     {work.header && <p className="mt-4 text-sm">{work.header.entered_count} dari {work.header.row_count} baris tersimpan terisi · {work.header.missing_count} belum diisi</p>}{work.error && <COFailure error={work.error}/>} {work.stale && <Notice tone="warning" title="Versi atau sumber berubah. Isian tetap disimpan di editor; perbarui sumber dan tinjau kembali."/>}</Section>;
+}
+
+/** Table-first monthly import workspace; sole evidence upload owner. */
+export { default as COReportUpload } from "./COReportUpload";
+
+/** Render inside the active source dialog, sharing its existing workspace/sender. */
+export function COReportCorrectionConsent({work,onAccepted}:{work:ReturnType<typeof useCOReportWorkspace>;onAccepted:()=>void}){
+ const [ack,setAck]=useState(false),checked=work.correctionAcceptance;
+ useEffect(()=>setAck(false),[checked]);
+ if(!checked)return null;
+ return <section><h2>Hasil koreksi asli ditemukan; keadaan terkini telah berubah</h2><p>Hasil asli: {checked.receipt.id} · versi laporan {checked.receipt.version} · revisi {checked.originalRevisionId}. Keadaan terkini: versi laporan {checked.reportVersion} · versi pelanggan {checked.customerVersion} · revisi {checked.currentRevisionId}. Hasil asli tetap tercatat; penerimaan tidak menimpa keadaan terkini.</p><label><input type="checkbox" disabled={work.pending} checked={ack} onChange={e=>setAck(e.target.checked)}/>Saya memahami keadaan terkini dapat berbeda dari hasil asli</label><Button disabled={!ack||work.pending} onClick={()=>void work.acceptCanonical(checked.receipt,checked.recovered,checked.snapshot).then(ok=>{if(ok&&work.current())onAccepted()}).catch(work.setError)}>Terima hasil koreksi asli</Button>{work.error&&<COFailure error={work.error}/>}</section>;
 }

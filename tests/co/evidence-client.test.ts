@@ -48,3 +48,8 @@ test('installed FunctionsClient sends the exact upload bytes, including bounded 
  await uploadEvidence(evidence,backing.subarray(2,2+expected.length),()=>true);
  expect(received).toHaveLength(1);expect(Array.from(received[0])).toEqual(Array.from(expected));
 });
+
+test('XLSX metadata requires its exact canonical generated extension',()=>{
+ const e={id:evidence,version:'1',customer_id:customer,customer_version:'1',draft_id:draft,draft_version:'1',report_month:'2026-09-01',filename:`evidence-${evidence}.xlsx`,mime_type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',byte_size:12,state:'pending',finalized_draft_version:null};
+ expect(parseEvidenceRecord(e)).toEqual(e);for(const ext of ['jpg','xlsm','pdf'])expect(()=>parseEvidenceRecord({...e,filename:`evidence-${evidence}.${ext}`})).toThrow();
+});

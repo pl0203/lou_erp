@@ -33,7 +33,7 @@ test.each(['sales_person', 'sales_manager', 'sales_head', 'po_admin'])('%s canno
 test('inactive identity remains denied', () => { mocks.auth.profile.is_active = false; mount(<App />); expect(screen.getByText('/login')).toBeTruthy(); expect(screen.queryByText('Leave route')).toBeNull() })
 test.each(['sales_person', 'sales_manager', 'po_admin'])('%s iHR switch offers only their module home', role => {
   mocks.auth.profile.role = role; mount(<IHRNav />)
-  expect(screen.queryByText('Manajemen Pengguna')).toBeNull()
+  expect(screen.queryByText('Karyawan')).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: 'HR' }))
   expect(screen.getByRole('button', { name: 'HR' }).getAttribute('aria-expanded')).toBe('true')
   const choices = screen.getByRole('group', { name: 'Pilihan modul' })
@@ -49,7 +49,7 @@ test.each(['sales_person', 'sales_manager', 'po_admin'])('%s iHR switch offers o
   fireEvent.click(accountHome)
   expect(screen.queryByText('/landing')).toBeNull()
 })
-test('executive retains existing user-management entry', () => { mocks.auth.profile.role = 'executive'; mount(<IHRNav />); expect(screen.getAllByRole('link', { name: 'Manajemen Pengguna' })[0].getAttribute('href')).toBe('/ihr/users') })
+test('executive retains existing user-management entry', () => { mocks.auth.profile.role = 'executive'; mount(<IHRNav />); expect(screen.getAllByRole('link', { name: 'Karyawan' })[0].getAttribute('href')).toBe('/ihr/users') })
 test.each(['sales_person', 'sales_manager'])('%s has an independent iHR module entry opening Ajukan Cuti without PO access', role => {
   mocks.auth.profile.role = role; mount(<GirardNav />)
   expect(screen.queryByRole('link', { name: 'HR' })).toBeNull()
@@ -65,7 +65,7 @@ test.each(['sales_person', 'sales_manager'])('%s has an independent iHR module e
 test.each(['sales_person', 'sales_manager'])('%s iHR page navigation labels the default leave page Ajukan Cuti', role => {
   mocks.auth.profile.role = role; mount(<IHRNav />)
   expect(screen.getAllByRole('link', { name: 'Ajukan Cuti' })[0].getAttribute('href')).toBe('/ihr/leave?tab=mine')
-  expect(screen.queryByText('Manajemen Pengguna')).toBeNull()
+  expect(screen.queryByText('Karyawan')).toBeNull()
 })
 test('PO admin reaches leave through the HR module switch without sales access', () => {
   mocks.auth.profile.role = 'po_admin'; mount(<AthelNav />)

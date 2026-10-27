@@ -40,7 +40,7 @@ function consumers() {
   }
   return { result, invalidParents }
 }
-test('all 102 loading surfaces retain exact branch predicates, including the reviewed shared SJ date mode', () => {
+test('immutable 102-branch baseline plus explicitly approved SJ, HR continuity and employee surfaces retain exact predicates', () => {
   const { result } = consumers()
   const identity = result.filter(row => row.file === 'src/pages/athel/Promotions.tsx' && row.title === 'Memuat identitas…')
   expect(identity).toEqual([{ file: 'src/pages/athel/Promotions.tsx', title: 'Memuat identitas…', guards: ['if !actorKey', 'loading ? true'] }])
@@ -52,7 +52,53 @@ test('all 102 loading surfaces retain exact branch predicates, including the rev
   const oldDate = original.filter(row => row.file === 'src/pages/athel/PODetail.tsx' && row.title === 'Memuat SJ dan versi PO terbaru…')
   expect(oldDate).toEqual([{ file: 'src/pages/athel/PODetail.tsx', title: 'Memuat SJ dan versi PO terbaru…', guards: ['returnedTarget &&', "returnedReview?.status === 'loading' &&"] }])
   const expected = original.map(row => oldDate.includes(row) ? { ...row, guards: ['dateTarget &&', "dateReview?.status === 'loading' &&"] } : row)
-  expect(sorted(rest)).toEqual(sorted(expected))
+  // Approval and recovery provenance: docs/employee-fields-recovery/harness-recovery.md.
+  // This is a separate, finite reviewed delta, never regeneration of old pins.
+  const continuity = JSON.parse(readFileSync('tests/ui/fixtures/hr-continuity-loading-guards.json', 'utf8')) as { updates: { file: string; before: Guard[]; after: Guard[] }[]; added: Guard[] }
+  expect(continuity.updates).toHaveLength(12)
+  for (const update of continuity.updates) {
+    expect(update.file.startsWith('src/pages/ihr/leave/')).toBe(true)
+    expect(sorted(original.filter(row => row.file === update.file))).toEqual(sorted(update.before))
+    expect(update.after.every(row => row.file === update.file)).toBe(true)
+    const indices = expected.map((row, index) => row.file === update.file ? index : -1).filter(index => index >= 0)
+    expect(indices).toHaveLength(update.after.length)
+    indices.forEach((index, offset) => { expected[index] = update.after[offset] })
+  }
+  expect(continuity.added).toHaveLength(2)
+  expect(continuity.added.every(row => row.file === 'src/pages/ihr/employees/EmployeeUI.tsx')).toBe(true)
+  // Approved authentication presentation replaces exactly these three generic
+  // skeletons. Existing authorization branches are covered by live flow tests.
+  const authFiles = ['src/App.tsx', 'src/pages/Login.tsx', 'src/components/ProtectedRoute.tsx']
+  expect(expected.filter(row => authFiles.includes(row.file))).toHaveLength(3)
+  // Reviewed finite CO presentation delta; never regenerate the immutable102 baseline.
+  const co = JSON.parse(readFileSync('tests/ui/fixtures/co-workspace-loading-guards.json','utf8')) as { updates:{file:string;before:Guard[];after:Guard[]}[] }
+  expect(co.updates.map(update=>update.file).sort()).toEqual([
+    'src/components/co/COReportRevisionEvidence.tsx','src/components/co/CORecordedReportTable.tsx',
+    'src/components/co/COStockHistory.tsx','src/components/co/COStockTable.tsx',
+    'src/pages/athel/co/COCustomerStock.tsx','src/pages/athel/co/COMonthlyReport.tsx',
+  ].sort())
+  for(const update of co.updates){
+    expect(sorted(original.filter(row=>row.file===update.file))).toEqual(sorted(update.before))
+    expect(update.after.every(row=>row.file===update.file)).toBe(true)
+  }
+  // F5 adds exactly one checked reopen-identity loading branch; prior pins stay immutable.
+  const finalFix=JSON.parse(readFileSync('tests/ui/fixtures/co-final-fix-loading-guards.json','utf8')) as {added:Guard[]};
+  expect(finalFix.added).toEqual([{file:'src/components/co/COChangePreview.tsx',title:'Memeriksa identitas pesanan terdampak…',guards:['needsReopen &&','reopen.isError ? false','!reopen.data ? true']}]);
+  // Reviewed remaining A1/A4 adds exactly six complete source predicates; all prior fixtures stay immutable.
+  const remaining=JSON.parse(readFileSync('tests/ui/fixtures/co-remaining-loading-guards.json','utf8')) as {added:Guard[]};
+  expect(remaining.added).toEqual([
+    {file:'src/components/co/COLegacyReportEdit.tsx',title:'Memuat dasar Edit…',guards:['if !work.accepted']},
+    {file:'src/components/co/COLegacyReportEdit.tsx',title:'Memuat semua nilai laporan tercatat…',guards:['!canonical.data&&!canonical.isError&&pinned &&']},
+    {file:'src/components/co/COSourceProposalResume.tsx',title:'Memeriksa usulan sumber asli…',guards:['active ? false']},
+    {file:'src/components/co/COSourceProposalResume.tsx',title:'Memeriksa usulan sumber asli…',guards:['if !read.data&&!retained.current']},
+    {file:'src/components/co/COSourceProposalResume.tsx',title:'Memuat sumber retur…',guards:['if !stock.data&&!retainedVersion.current']},
+    {file:'src/components/co/COSourceProposalResume.tsx',title:'Memuat sumber laporan…',guards:['if !work.accepted']},
+  ]);
+  const coFiles=new Set(co.updates.map(update=>update.file))
+  expect(sorted(rest)).toEqual(sorted([
+    ...expected.filter(row=>!authFiles.includes(row.file)&&!coFiles.has(row.file)),
+    ...continuity.added,...co.updates.flatMap(update=>update.after),...finalFix.added,...remaining.added,
+  ]))
 })
 test('block loading surfaces never nest in inline/table controls or duplicate a live status region', () => {
   expect(consumers().invalidParents).toEqual([])
@@ -74,7 +120,7 @@ test('review inventory covers every registered page exactly once and explains st
   const paths = [...titles.matchAll(/\['([^']+)'\s*,/g)].map(match => match[1]).sort()
   const document = readFileSync('docs/all-page-motion-coverage.md', 'utf8')
   const documented = [...document.matchAll(/^\| `([^`]+)` \|/gm)].map(match => match[1]).sort()
-  expect(paths).toHaveLength(38)
+  expect(paths).toHaveLength(43)
   expect(documented).toEqual(paths)
   expect(document).toContain('Native browser visual/accessibility/device QA is NOT RUN')
   expect(document).toContain('Existing quiet reads are deliberately not turned into new blocking branches')

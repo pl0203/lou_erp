@@ -12,12 +12,13 @@ test('stock sale handoff carries selected customer without historical month and 
     const returns = screen.getByRole('group', { name: 'Pengembalian barang' });
     expect(within(returns).getByRole('button', { name: 'Retur barang belum terjual' })).toBeTruthy();
     expect(returns.contains(link)).toBe(false);
-    await screen.findByText('Total seluruh hasil filter: 60 + 0 − 0 − 0 = 60');
+    await screen.findByRole('table',{name:'Stok pelanggan tercatat'});
+    expect(screen.queryByText(/Total seluruh hasil filter/)).toBeNull();
     expect(screen.queryByText(/Barang diterima/)).toBeNull();
     fireEvent.click(link);
-    await screen.findByLabelText('Pelanggan laporan');
+    await screen.findByRole('combobox',{name:'Pelanggan'});
     expect(router.state.location.search).toBe(`?customer=${customer}`);
-    expect((screen.getByLabelText('Pelanggan laporan') as HTMLSelectElement).value).toBe(customer);
+    expect((screen.getByRole('combobox',{name:'Pelanggan'}) as HTMLInputElement).value).toBe('Store A');
     expect((screen.getByLabelText('Bulan laporan') as HTMLInputElement).value).toBe('');
     expect(s.commands).toHaveLength(0); expect(s.report.commands).toHaveLength(0);
 });

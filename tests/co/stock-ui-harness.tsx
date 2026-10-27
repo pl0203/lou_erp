@@ -59,6 +59,18 @@ export function stockFixture(count = 2) {
         const ok = (data: any) => ({ data, error: null });
         const page = (rows: any[]) => ({ ...root, page: a.p_page, page_size: a.p_page_size, total: String(rows.length),
             rows: rows.slice((a.p_page - 1) * a.p_page_size, a.p_page * a.p_page_size) });
+        if (name === 'pilot_co_customer_stock_v2') {
+            const coverage=a.p_as_of ?? '2026-10-09';
+            const f={...freshness,cutoff_date:coverage,...(coverage==='2026-09-30'?{pending_report_month_count:'1',days_since_pending_month_end:'0'}:{})};
+            const rows=s.stockRows().map((r:any)=>({...r,stock_key_id:r.id,customer_name:r.customer_name ?? (r.customer_id===customer?'Store A':'Store B'),
+                unit:null,unit_basis:'unknown',unit_declaration:null,contract_stock_value:null,contract_currency:null,contract_unit_price:null,price_state:'unknown',valuation_basis:null,
+                ...(r.coverage_through_date>coverage?{last_report_month:null,coverage_through_date:null}:{}),reporting_freshness:f}))
+                .filter((r:any)=>(!a.p_customer_id||r.customer_id===a.p_customer_id)&&(!a.p_sku||r.normalized_sku===a.p_sku.toLowerCase())&&(!a.p_search||`${r.display_sku} ${r.product_name}`.toLowerCase().includes(a.p_search.toLowerCase())));
+            rows.sort((x:any,y:any)=>{const key=a.p_sort==='customer'?'customer_name':a.p_sort==='balance'?'recorded_quantity':'normalized_sku';const order=key==='recorded_quantity'?(BigInt(x[key])<BigInt(y[key])?-1:BigInt(x[key])>BigInt(y[key])?1:0):x[key]<y[key]?-1:x[key]>y[key]?1:0;return order*(a.p_direction==='asc'?1:-1)||x.customer_id.localeCompare(y.customer_id)||x.id.localeCompare(y.id)});
+            return ok({...page(rows),version:'2',customer_id:a.p_customer_id,customer_version:a.p_customer_id?s.cv:null,generation_id:a.p_customer_id?s.generation:null,
+                sku:a.p_sku?.toLowerCase() ?? null,normalized_search:a.p_search.trim().toLowerCase(),stock_as_of:a.p_as_of,period_start:coverage.slice(0,7)+'-01',coverage_date:coverage,
+                sort:a.p_sort,direction:a.p_direction,reporting_freshness:a.p_customer_id?f:null});
+        }
         if (name === 'pilot_co_customer_stock_v1') {
             const coverage = a.p_as_of ?? '2026-10-09';
             const f = coverage === '2026-10-09' ? freshness : { ...freshness, cutoff_date: coverage,

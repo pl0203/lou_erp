@@ -12,7 +12,8 @@
       "feat/consignment-orders-reviewed-20261010": false,
       "fix/usability-findings-local-20261010": false,
       "feat/padiwan-ui-reviewed-checkpoint-20261012": false,
-      "feat/catalogue-mutations-20261014": false
+      "feat/catalogue-mutations-20261014": false,
+      "test/co-workspace-runtime-20261027": false
     }
   },
   "rewrites": [

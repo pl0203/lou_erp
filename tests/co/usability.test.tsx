@@ -54,31 +54,30 @@ test('new CO distinguishes lifetime order totals from older customer-wide report
     state.header.coverage_through_date = '2026-09-30';
     mount(<CODetail/>, `/athel/co/${ids.co}`);
     await screen.findByText('CO-A');
-    const summary = screen.getByRole('heading', { name: 'Ringkasan CO ini' }).closest('section')!;
-    expect(within(summary).getByText(/Sejak pembuatan CO/)).toBeTruthy();
-    expect(within(summary).queryByText(/Laporan terakhir/)).toBeNull();
-    const reports = screen.getByRole('heading', { name: 'Pelaporan pelanggan (semua CO)' }).closest('section')!;
-    expect(within(reports).getByText(/termasuk aktivitas sebelum CO ini dibuat/)).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'Audit CO dan laporan pelanggan' })).toBeTruthy();
+    expect(screen.getByText(/Nilai CO:/)).toBeTruthy();
+    expect(screen.queryByText('Pelaporan pelanggan (semua CO)')).toBeNull();
+    expect(screen.getByRole('link', { name: 'Lihat laporan bulanan' }).getAttribute('href')).toContain(`/reports?customer=${ids.customer}`);
+    const audit = screen.getByText('Audit CO dan laporan pelanggan').closest('details')!;
+    expect(audit.open).toBe(false);
 });
 
 test('lifecycle guide explains the next delivery step without equating full delivery and closure', async () => {
     mount(<CODetail/>, `/athel/co/${ids.co}`);
     await screen.findByText('CO-A');
-    const guide = screen.getByRole('region', { name: 'Alur CO dan langkah berikutnya' });
-    expect(guide.textContent).toMatch(/Pengiriman → Penjualan bulanan → Penyelesaian → Penutupan/);
-    expect(guide.textContent).toMatch(/Langkah berikutnya:.*Surat Jalan/);
-    expect(guide.textContent).toMatch(/Terkirim penuh.*tetap aktif/);
+    const actions = screen.getByText('Tindakan lainnya').closest('details')!;
+    expect(actions.open).toBe(false);
+    expect(actions.textContent).toMatch(/Surat Jalan/);
+    expect(screen.getByRole('button', { name: 'Buat surat jalan' }).matches(':disabled')).toBe(false);
     expect(state.commands).toHaveLength(0);
 });
 
-test('audit summarizes the actor and customer reporting scope with readable UTC time, retaining exact metadata', async () => {
+test('audit summarizes the actor and customer reporting scope with readable WIB time, retaining exact metadata', async () => {
     state.sections.audit = [{ id: 'audit-1', operation: 'post_report', actor_id: ids.actor,
         created_at: '2026-10-10T23:10:00Z', report_revision_id: 'report-revision', reason: 'Laporan September' }];
     mount(<CODetail/>, `/athel/co/${ids.co}`);
     await screen.findByText(/memposting laporan penjualan bulanan/);
     expect(screen.getByText(/Pengguna tercatat memposting/)).toBeTruthy();
-    expect(screen.getByText(/10 Oktober 2026.*23.10.*UTC/)).toBeTruthy();
+    expect(screen.getByText(/11 Oktober 2026.*06.10.*WIB/)).toBeTruthy();
     const details = screen.getByText('Detail teknis audit').closest('details')!;
     expect(details.open).toBe(false);
     expect(details.textContent).toContain('post_report');
@@ -105,25 +104,19 @@ test.each([
     state.header.close_blockers = { stock_remains: stock !== '0', undelivered_remains: pending !== '0', missing_month_count: missing };
     mount(<CODetail/>, `/athel/co/${ids.co}`);
     await screen.findByText('CO-A');
-    expect(screen.getByRole('region', { name: 'Alur CO dan langkah berikutnya' }).textContent).toMatch(next);
+    expect(screen.getByText('Tindakan lainnya').closest('details')!.textContent).toMatch(next);
 });
 
-test('CO tabs share Indonesian labels across report and stock destinations', async () => {
+test('CO layout has one main landmark and task heading without redundant top tabs', async () => {
     const { mountRoutes } = await import('./ui-harness');
     mountRoutes([{ path: '/athel/co', element: <COLayout/>, children: [{ index: true, element: <COOrders/> }] }], '/athel/co');
     const main = screen.getByRole('main');
-    const tabs = screen.getByRole('navigation', { name: 'Bagian pesanan konsinyasi' });
-    const shell = tabs.closest('header')!;
-    expect(screen.getAllByRole('banner')).toContain(shell);
-    expect(within(shell).getByText('Pesanan konsinyasi (CO)', { selector: 'p' })).toBeTruthy();
-    expect(within(main).getByRole('heading', { level: 1, name: 'Pesanan Konsinyasi' })).toBeTruthy();
+    expect(screen.queryByRole('navigation', { name: 'Bagian pesanan konsinyasi' })).toBeNull();
+    expect(within(main).getByRole('heading', { level: 1, name: 'Pesanan CO' })).toBeTruthy();
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
     expect(screen.getAllByRole('main')).toHaveLength(1);
     expect(main.id).toBe('main-content');
     await within(main).findByRole('article');
-    expect(screen.getByRole('link', { name: 'Pesanan CO' }).getAttribute('aria-current')).toBe('page');
-    expect(screen.getByRole('link', { name: 'Laporan penjualan bulanan' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Stok pelanggan' })).toBeTruthy();
 });
 
 test('known committed CO result uses its specific readback notice instead of uncertain recovery warning', () => {
@@ -153,7 +146,9 @@ test('failed acceptance of a known CO receipt keeps the precise recovery error v
 test('absence of a posted customer report does not claim that no draft has been saved', async () => {
     state.header.last_report_month = null;
     mount(<CODetail/>, `/athel/co/${ids.co}`);
-    expect(await screen.findByText(/Belum ada laporan yang diposting/)).toBeTruthy();
+    await screen.findByText('CO-A');
+    expect(screen.queryByText(/Belum ada laporan yang diposting/)).toBeNull();
+    expect(screen.getByRole('link', { name: 'Lihat laporan bulanan' })).toBeTruthy();
     expect(screen.queryByText(/Belum ada laporan tersimpan/)).toBeNull();
 });
 
@@ -192,8 +187,8 @@ test('CO list labels older reports as customer-wide and renders calendar dates w
     mount(<COOrders/>, '/athel/co/list');
     const mobile = await screen.findByRole('article');
     expect(within(mobile).getByText(/Store A · 1 Oktober 2026/)).toBeTruthy();
-    expect(within(mobile).getByText('Laporan pelanggan (semua CO)').nextElementSibling?.textContent).toBe('September 2026');
-    expect(screen.getByRole('columnheader', { name: 'Laporan pelanggan (semua CO)' })).toBeTruthy();
+    expect(within(mobile).queryByText('Laporan pelanggan (semua CO)')).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: 'Laporan pelanggan (semua CO)' })).toBeNull();
     expect(screen.getByRole('table').textContent).toContain('1 Oktober 2026');
     expect(screen.getByRole('table').textContent).not.toContain('2026-10-01');
 });
