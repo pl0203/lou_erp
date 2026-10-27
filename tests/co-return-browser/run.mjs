@@ -31,7 +31,14 @@ try{
  socket.addEventListener('message',event=>{const message=JSON.parse(String(event.data));if(message.id){const call=calls.get(message.id);if(call){calls.delete(message.id);message.error?call.reject(Error(message.error.message)):call.resolve(message.result)}return}const task=(async()=>{
   if(message.method==='Target.attachedToTarget'){const {sessionId,targetInfo}=message.params;if(!['page','worker'].includes(targetInfo.type)){violations.push('unexpected-target');await cdp('Target.closeTarget',{targetId:targetInfo.targetId});return}await cdp('Network.enable',{},sessionId);await cdp('Runtime.enable',{},sessionId);if(targetInfo.type==='page')await cdp('Fetch.enable',{patterns:[{urlPattern:'*'}]},sessionId);if(targetInfo.type==='page')await cdp('Target.setAutoAttach',{autoAttach:true,waitForDebuggerOnStart:true,flatten:true,filter},sessionId);await cdp('Runtime.runIfWaitingForDebugger',{},sessionId);sessions.set(targetInfo.targetId,sessionId)}
   if(message.method==='Fetch.requestPaused'){const {requestId,request}=message.params;let allowed=false;try{allowed=new URL(request.url).origin===origin}catch{}if(!allowed){violations.push(blockedNetworkDiagnostic('off-origin-request',request.url,message.params.resourceType));await cdp('Fetch.failRequest',{requestId,errorReason:'BlockedByClient'},message.sessionId)}else await cdp('Fetch.continueRequest',{requestId},message.sessionId)}
-  if(message.method==='Network.requestWillBeSent'){let allowed=false;try{allowed=new URL(message.params.request.url).origin===origin}catch{}if(!allowed)violations.push(blockedNetworkDiagnostic('off-origin-network-attempt',message.params.request.url,message.params.type))}
+  if(message.method==='Network.requestWillBeSent'){let allowed=false;try{allowed=new URL(message.params.request.url).origin===origin}catch{}if(!allowed){
+   const diagnostic=blockedNetworkDiagnostic('off-origin-network-attempt',message.params.request.url,message.params.type,message.params.initiator?.type);
+   // Attribution only: never permits a request, changes CSP, or exposes image bytes.
+   if(diagnostic.scheme==='data:'&&diagnostic.resourceType==='Image'){
+    try{diagnostic.calendarIndicatorMatch=await evaluate(message.sessionId,`(()=>{const needle=${JSON.stringify(message.params.request.url)};return Array.from(document.querySelectorAll('input[type=date]')).some(e=>{const image=getComputedStyle(e,'::-webkit-calendar-picker-indicator').backgroundImage;return image.includes(needle)})})()`)}catch{diagnostic.calendarIndicatorMatch='unavailable'}
+   }
+   violations.push(diagnostic)
+  }}
   if(message.method==='Network.webSocketCreated')violations.push('unexpected-websocket');
   if(message.method==='Runtime.exceptionThrown')fatal='Uncaught native browser exception';
  })().catch(error=>{fatal??=error.message});events.add(task);void task.finally(()=>events.delete(task))});

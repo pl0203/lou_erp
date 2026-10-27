@@ -30,7 +30,14 @@ test('blocked network diagnostics omit credentials, query, fragments and opaque 
  const value=blockedNetworkDiagnostic('off-origin-network-attempt','https://alice:password@example.invalid/private-token?secret=value#fragment','Fetch');
  assert.deepEqual(value,{kind:'off-origin-network-attempt',scheme:'https:',origin:'https://example.invalid',path:'[redacted]',resourceType:'Fetch'});
  for(const secret of ['alice','password','private-token','secret','value','fragment'])assert.ok(!JSON.stringify(value).includes(secret));
- assert.deepEqual(blockedNetworkDiagnostic('off-origin-network-attempt','data:text/plain,secret','Image'),{kind:'off-origin-network-attempt',scheme:'data:',origin:'[opaque]',path:'[redacted]',resourceType:'Image'});
+ const opaque=blockedNetworkDiagnostic('off-origin-network-attempt','data:text/plain,secret','Image');
+ assert.equal(opaque.scheme,'data:');assert.equal(opaque.origin,'[opaque]');assert.equal(opaque.path,'[redacted]');assert.equal(opaque.dataMediaType,'[other]');assert.match(opaque.dataUrlSha256,/^[a-f0-9]{64}$/);assert.ok(!JSON.stringify(opaque).includes('secret'));
  assert.equal(blockedNetworkDiagnostic('off-origin-network-attempt','about:blank','Document').path,'blank');
  assert.equal(blockedNetworkDiagnostic('off-origin-request','not a URL token','unexpected token').resourceType,'Other');
+});
+test('opaque image diagnostics fingerprint bytes without exposing SVG or data payload',async()=>{
+ const {blockedNetworkDiagnostic}=await import('./network-diagnostic.mjs');
+ const value=blockedNetworkDiagnostic('off-origin-network-attempt','data:image/svg+xml,%3Csvg%3Esecret%3C/svg%3E','Image','other');
+ assert.equal(value.dataMediaType,'image/svg+xml');assert.match(value.dataUrlSha256,/^[a-f0-9]{64}$/);assert.ok(value.dataUrlBytes>0);assert.equal(value.initiatorType,'other');
+ assert.ok(!JSON.stringify(value).includes('secret'));assert.ok(!JSON.stringify(value).includes('%3Csvg'));
 });
