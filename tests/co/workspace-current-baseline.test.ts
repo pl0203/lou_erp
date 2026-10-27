@@ -66,3 +66,14 @@ test('service-role manual attestation denies both real-trigger-restricted actors
  expect(service).toContain('IF NOT denied THEN RAISE EXCEPTION')
  expect(service).toContain("md5('workspace-current-unknown-evidence')::uuid")
 })
+test('HR fixture mutations use the genuine executive without changing co-admin service control',()=>{
+ const seed=readFileSync('tests/database/co/fixture.sql','utf8')
+ expect(seed).toContain("WHEN 1 THEN 'co_admin' WHEN 2 THEN 'executive'")
+ const fixture=readFileSync('tests/database/co/workspace-current-authority.sql','utf8')
+ const setup=fixture.split('SET LOCAL ROLE authenticated;')[0]
+ expect(setup).toContain("set_config('request.jwt.claim.sub',md5('co-user-2')::uuid::text,true)")
+ const mutation=fixture.split('RESET ROLE;')[1]?.split('SET LOCAL ROLE authenticated;')[0]
+ expect(mutation).toContain("set_config('request.jwt.claim.sub',md5('co-user-2')::uuid::text,true)")
+ const service=fixture.split('SET LOCAL ROLE service_role;')[1]
+ expect(service).toContain("md5('co-user-1')::uuid,md5('workspace-current-unknown-evidence')::uuid")
+})

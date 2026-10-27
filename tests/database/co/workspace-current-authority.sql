@@ -1,6 +1,6 @@
 -- Synthetic rollback proof of real installed HR triggers and already-issued sessions.
 BEGIN;
-SELECT set_config('request.jwt.claim.sub',md5('co-user-1')::uuid::text,true);
+SELECT set_config('request.jwt.claim.sub',md5('co-user-2')::uuid::text,true);
 INSERT INTO auth.users(id) SELECT md5('workspace-current-actor-'||n)::uuid FROM generate_series(1,2)n;
 INSERT INTO public.users(id,full_name,email,role,is_active)
  SELECT md5('workspace-current-actor-'||n)::uuid,'Synthetic current actor','current-'||n||'@example.invalid','co_admin',true FROM generate_series(1,2)n;
@@ -12,7 +12,7 @@ SELECT set_config('request.jwt.claim.sub',md5('workspace-current-actor-1')::uuid
 SET LOCAL ROLE authenticated;
 SELECT public.pilot_co_page_v1('all','',1,20,NULL);
 RESET ROLE;
-SELECT set_config('request.jwt.claim.sub',md5('co-user-1')::uuid::text,true);
+SELECT set_config('request.jwt.claim.sub',md5('co-user-2')::uuid::text,true);
 UPDATE private.employee_records SET recorded_status='inactive' WHERE id=md5('workspace-current-employee-1')::uuid;
 INSERT INTO private.employee_episodes(employee_id,end_date) VALUES(md5('workspace-current-employee-2')::uuid,'2000-01-01');
 DO $$ BEGIN
