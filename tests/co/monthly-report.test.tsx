@@ -51,9 +51,9 @@ test('source-context draft retains rows and explicitly returns to original prepa
 function listContext(){const s=store(),base=s.handle;wire.handler=async(n,a)=>n==='pilot_co_reports_page_v2'?{data:{version:'2',as_of:'2026-10-09T00:00:00Z',customer_id:a.p_customer_id,report_month:a.p_month,status:a.p_status,page:a.p_page,page_size:a.p_page_size,total:'1',rows:[{id:id(4),customer_id:customer,customer_name:'Store A',report_month:a.p_month??month,status:'posted',revision_id:id(5),report_head_id:id(4),legacy_pending:true,source_filename:'synthetic.pdf',updated_at:'2026-10-09T00:00:00Z'}]},error:null}:base(n,a);return s}
 test('reports list applies real customer month and posted filters with revised a badge', async () => {
     const s=listContext();mount(<COMonthlyReports/>,`/athel/co/reports?customer=${customer}&month=2026-09`);
-    await screen.findByRole('link',{name:'Buka laporan'});fireEvent.change(screen.getByLabelText('Status laporan'),{target:{value:'posted'}});
+    await screen.findByRole('link',{name:'Buka laporan'});
     await waitFor(()=>expect(wire.rpc.mock.calls.some(([n,a])=>n==='pilot_co_reports_page_v2'&&a.p_status==='posted'&&a.p_customer_id===customer&&a.p_month===month)).toBe(true));
-    expect(await screen.findAllByRole('link',{name:'Buka laporan'})).toHaveLength(1);expect(screen.getByRole('link',{name:'Periksa pekerjaan lama'})).toBeTruthy();expect(screen.queryByRole('option',{name:'Revised'})).toBeNull();expect(s.commands).toHaveLength(0);
+    expect(await screen.findAllByRole('link',{name:'Buka laporan'})).toHaveLength(1);expect(screen.queryByRole('link',{name:'Periksa pekerjaan lama'})).toBeNull();expect(screen.queryByRole('option',{name:'Revised'})).toBeNull();expect(s.commands).toHaveLength(0);
 });
 test('all 601 stored rows save in sequential 500+101 chunks and post only complete draft bindings', async () => { const s = store(601); s.impacts.report = [{ ...reportImpact(), row_count: '601', after_sold_quantity: '601' }]; await mountNested(s); for (let p = 1; p <= 7; p++) {
     await soldInput((p - 1) * 100 + 1);

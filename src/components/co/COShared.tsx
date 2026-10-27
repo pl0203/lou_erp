@@ -90,10 +90,9 @@ export function COBadges({ status, progress }: {
     status: keyof typeof CO_LIFECYCLE;
     progress: keyof typeof CO_PROGRESS;
 }) {
-    return <div className="flex flex-wrap gap-2">
-    <StatusBadge tone={status === 'cancelled' ? 'warning' : status === 'closed' ? 'success' : 'neutral'}>{CO_LIFECYCLE[status]}</StatusBadge>
-    <StatusBadge tone="neutral">{CO_PROGRESS[progress]}</StatusBadge>
-    </div>;
+    const active = status === 'active';
+    const color = !active ? 'inactive' : progress === 'complete' ? 'green' : progress === 'partial' ? 'blue' : 'amber';
+    return <StatusBadge tone="neutral" className={`co-status--${color}`}>{active ? CO_PROGRESS[progress] : 'Non-aktif'}</StatusBadge>;
 }
 export function COFreshness({ value, compact = false }: {
     value: COReportingFreshness;

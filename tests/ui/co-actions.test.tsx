@@ -179,10 +179,10 @@ test('detail preserves independent exact ordered value and revenue without mixed
     Object.assign(state.header.summary, { planned_value: '9007199254740993.01', revenue: '0.01', delivery_progress: 'complete', pending_quantity: '0' });
     mount(<CODetail/>, `/athel/co/${ids.co}`);
     expect(await screen.findByText('Nilai CO: Rp 9.007.199.254.740.993,01')).toBeTruthy();
-    expect(screen.getByText(/Pendapatan terjual: Rp 0,01/)).toBeTruthy();
-    expect(screen.getByText('Informasi pesanan dan penjualan').closest('details')!.open).toBe(false);
+    expect(screen.queryByText(/Pendapatan terjual: Rp 0,01/)).toBeNull();
+    expect(screen.queryByText('Informasi pesanan dan penjualan')).toBeNull();
     expect(screen.queryByText('Sisa stok tercatat')).toBeNull();
-    expect(screen.getByText('Aktif').classList.contains('ui-status-badge')).toBe(true);
+    expect(screen.getByText('Terkirim penuh').classList.contains('ui-status-badge')).toBe(true);
     expect(screen.getByText('Terkirim penuh')).toBeTruthy();
     sharedAction(screen.getByRole('link', { name: 'Edit CO' }));
 });
@@ -194,6 +194,7 @@ test.each([
 ])('close keeps the authoritative blocker %j even when recorded stock is zero', blockers => {
     const close = vi.fn();
     mount(<COStatusActions co={state.header} id={ids.co} customerId={ids.customer} allowed={['close_co']} blockers={blockers} pending={false} onSJ={vi.fn()} onCancel={vi.fn()} onResolve={vi.fn()} onClose={close}/>);
+    fireEvent.click(screen.getByRole('button', { name: 'Actions' }));
     const button = screen.getByRole('button', { name: 'Tutup CO' });
     sharedAction(button);
     expect(button.matches(':disabled')).toBe(true); fireEvent.click(button); expect(close).not.toHaveBeenCalled();

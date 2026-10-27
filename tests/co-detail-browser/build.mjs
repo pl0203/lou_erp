@@ -1,0 +1,3 @@
+import {build} from 'vite';import tailwind from '@tailwindcss/vite';import {fileURLToPath} from 'node:url';
+const root=fileURLToPath(new URL('.',import.meta.url));
+export const buildFixture=outDir=>build({root,worker:{format:'es'},configFile:false,envDir:false,publicDir:false,plugins:[tailwind(),{name:'local-synthetic-boundary',enforce:'pre',resolveId(source){if(/(?:^|\/)lib\/(supabase|AuthContext)$/.test(source)||/^\.\.?\/(supabase|AuthContext)$/.test(source))return root+'boundary.ts';if(source.endsWith('/AthelNav'))return root+'nav.tsx'}}],css:{postcss:{plugins:[]}},esbuild:{jsx:'automatic'},build:{outDir,emptyOutDir:true,minify:false}});

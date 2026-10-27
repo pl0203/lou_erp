@@ -119,6 +119,9 @@ jobs:
           set -euo pipefail
           node --test tests/co-browser/cleanup.node.mjs
           node tests/co-browser/run.mjs
+          CHROME_BINARY=/usr/bin/google-chrome node tests/co-usability-browser/run.mjs
+          CHROME_BINARY=/usr/bin/google-chrome node tests/co-detail-browser/run.mjs
+          CHROME_BINARY=/usr/bin/google-chrome node tests/co-stock-browser/run.mjs
       - run: npm test -- --maxWorkers=1
       - run: npm run typecheck
       - run: npm run build

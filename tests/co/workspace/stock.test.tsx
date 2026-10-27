@@ -76,7 +76,7 @@ test('all-store same SKU identifies toko; movement UUID is separate from exact S
     fireEvent.click(screen.getByRole('button',{name:'Lihat mutasi Store B · SKU-1'}));
     await waitFor(()=>expect(router.state.location.search).toContain(`stockKey=${id(999)}`));
     expect(router.state.location.search).toContain('sku=SKU-1'); expect(router.state.location.search).toContain(`movementCustomer=${id(99)}`);
-    await screen.findByRole('heading',{name:'Riwayat stok pelanggan/SKU'});
+    await screen.findByRole('heading',{name:'Mutasi stok'});
     expect(wire.rpc.mock.calls.some(([n,a])=>n==='pilot_co_stock_movements_v1' && a.p_stock_key_id===id(999) && a.p_customer_id===id(99))).toBe(true);
 });
 test('selected toko has one freshness notice, null unit/value is not zero, zero quantity remains explicit', async () => {

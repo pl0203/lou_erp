@@ -94,10 +94,20 @@ test('immutable 102-branch baseline plus explicitly approved SJ, HR continuity a
     {file:'src/components/co/COSourceProposalResume.tsx',title:'Memuat sumber retur…',guards:['if !stock.data&&!retainedVersion.current']},
     {file:'src/components/co/COSourceProposalResume.tsx',title:'Memuat sumber laporan…',guards:['if !work.accepted']},
   ]);
+  // Reviewed modal-shell correction: preserve all earlier fixture pins and
+  // explicitly add the blocked-parent branch while retaining history guards.
+  const modalFile='src/components/co/COStockHistory.tsx';
+  expect(co.updates.find(update=>update.file===modalFile)?.after).toEqual([
+    {file:modalFile,title:'Memuat riwayat stok…',guards:['read.isError ? false','!read.data || read.isFetching ? true']},
+  ]);
+  const modalAfter:Guard[]=[
+    {file:modalFile,title:'Memuat riwayat stok…',guards:['blocked ? true']},
+    {file:modalFile,title:'Memuat riwayat stok…',guards:['blocked ? false','read.isError ? false','!read.data || read.isFetching ? true']},
+  ];
   const coFiles=new Set(co.updates.map(update=>update.file))
   expect(sorted(rest)).toEqual(sorted([
     ...expected.filter(row=>!authFiles.includes(row.file)&&!coFiles.has(row.file)),
-    ...continuity.added,...co.updates.flatMap(update=>update.after),...finalFix.added,...remaining.added,
+    ...continuity.added,...co.updates.flatMap(update=>update.file===modalFile?modalAfter:update.after),...finalFix.added,...remaining.added,
   ]))
 })
 test('block loading surfaces never nest in inline/table controls or duplicate a live status region', () => {

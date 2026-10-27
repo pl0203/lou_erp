@@ -13,7 +13,7 @@ import './COStockTable.css';
 
 export default function COStockTable({ result, filters, onFiltersChange, onOpenMovement }: {
     result: COStockPageV2; filters: StockFilters; onFiltersChange: (next: StockFilters) => void;
-    onOpenMovement: (customerId: string, stockKeyId: string) => void;
+    onOpenMovement: (customerId: string, stockKeyId: string, trigger?: HTMLElement) => void;
 }) {
     const [showValue, setShowValue] = useState(false);
     const [expanded, setExpanded] = useState<string | null>(null);
@@ -39,7 +39,7 @@ export default function COStockTable({ result, filters, onFiltersChange, onOpenM
         <COPagination page={filters.page} total={result.total} pageSize={filters.pageSize} pending={false} onPage={page => onFiltersChange({...filters,page})}/>
     </div>;
 }
-function StockRow({ row, selected, showValue, expanded, onExpand, asOf, onOpenMovement }: {row:COStockRowV2; selected:boolean; showValue:boolean; expanded:boolean; onExpand:()=>void; asOf:string; onOpenMovement:(customerId:string,stockKeyId:string)=>void}) {
+function StockRow({ row, selected, showValue, expanded, onExpand, asOf, onOpenMovement }: {row:COStockRowV2; selected:boolean; showValue:boolean; expanded:boolean; onExpand:()=>void; asOf:string; onOpenMovement:(customerId:string,stockKeyId:string,trigger?:HTMLElement)=>void}) {
     const unitLabel = row.unit ?? (row.unit_basis === 'declared_after_cutoff' ? 'Satuan belum tersedia pada tanggal acuan' : 'Belum tersedia');
     const provenance = row.unit_basis === 'declared_after_cutoff' && row.unit_declaration ? `Dikonfirmasi kemudian: ${row.unit_declaration.unit} · ${formatAuditTimestamp(row.unit_declaration.declared_at,'WIB')}. Bukan bukti satuan laporan historis.` : undefined;
     return <><tr>
@@ -49,7 +49,7 @@ function StockRow({ row, selected, showValue, expanded, onExpand, asOf, onOpenMo
         <td title={provenance}>{unitLabel}</td>
         {[row.opening_quantity,row.delivered_quantity,row.sold_quantity,row.returned_quantity,row.recorded_quantity].map((value,index) => <td key={index} className="co-stock-number">{quantityText(value)}</td>)}
         {showValue && <><td className="co-stock-number">{row.price_state === 'mixed' ? <Button variant="quiet" size="compact" className="co-stock-link" aria-expanded={expanded} onClick={onExpand} aria-label={`Harga Beragam ${row.customer_name} · ${row.display_sku}`}>Beragam</Button> : row.contract_unit_price === null ? 'Belum tersedia' : `Rp ${formatMoney(row.contract_unit_price,'full')}`}</td><td className="co-stock-number">{row.contract_stock_value === null ? 'Belum tersedia' : `Rp ${formatMoney(row.contract_stock_value,'full')}`}</td></>}
-        <td><Button variant="quiet" size="compact" className="co-stock-link" aria-label={`Lihat mutasi ${row.customer_name} · ${row.display_sku}`} onClick={() => onOpenMovement(row.customer_id,row.stock_key_id)}>Lihat mutasi</Button></td>
+        <td><Button variant="quiet" size="compact" className="co-stock-link" aria-label={`Lihat mutasi ${row.customer_name} · ${row.display_sku}`} onClick={event => onOpenMovement(row.customer_id,row.stock_key_id,event.currentTarget)}>Lihat mutasi</Button></td>
     </tr>{showValue && expanded && <tr className="co-stock-detail"><td colSpan={(selected ? 9 : 10) + 2}><StockBatches key={`${row.customer_version}:${row.generation_id}:${asOf}`} row={row} asOf={asOf}/></td></tr>}</>;
 }
 function StockBatches({row,asOf}:{row:COStockRowV2;asOf:string}) {

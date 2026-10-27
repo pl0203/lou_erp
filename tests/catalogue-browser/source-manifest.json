@@ -125,9 +125,9 @@
     },
     {
       "path": "src/styles/ui.css",
-      "sha": "370204d9595c0057c51e6b3811bd6e6a91d0becc",
-      "sha256": "daf141feb7a632bf1789b599bdd5c4fe6193f932804b804273077bd88907347c",
-      "bytes": 14873
+      "sha": "82f1c51bef3ee30e6e34012c2e5eb2d220831aa8",
+      "sha256": "22998a397ad2bedcc65159479044702791b9afcf8ed78c40ec44f24d90424ef0",
+      "bytes": 15276
     },
     {
       "path": "src/components/CustomerCategorySelect.tsx",

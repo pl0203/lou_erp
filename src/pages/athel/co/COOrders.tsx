@@ -49,7 +49,7 @@ function OrdersOwner() {
         <div className="hidden md:block min-w-0 overflow-x-auto rounded-[14px] border border-brand-divider bg-brand-surface" role="region" aria-label="Daftar CO" tabIndex={0}>
         <table className="w-full min-w-[56rem] text-sm">
         <thead className="bg-gray-50 text-brand-secondary">
-        <tr>{['Nomor CO', 'Toko', 'Tanggal CO', 'Status / pengiriman', 'Jumlah SKU', 'Nilai CO', 'Aksi'].map(t => <th key={t} className="px-4 py-3 text-left font-medium">{t}</th>)}</tr>
+        <tr>{['Nomor CO', 'Toko', 'Tanggal CO', 'Status', 'Jumlah SKU', 'Nilai CO', 'Aksi'].map(t => <th key={t} className="px-4 py-3 text-left font-medium">{t}</th>)}</tr>
         </thead>
         <tbody>{rows.map(co => <tr key={co.id} className="border-t border-brand-divider">
             <td className="px-4 py-3 font-medium">{co.co_number}</td>

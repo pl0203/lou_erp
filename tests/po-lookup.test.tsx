@@ -73,3 +73,17 @@ test('input-owned combobox options are excluded from Tab order while arrows and 
  fireEvent.keyDown(input, { key: 'Escape' }); expect(screen.queryByRole('listbox')).toBeNull()
  expect(document.activeElement).toBe(input)
 })
+
+test('selection readiness does not disable typing or discard the search when Enter or pointer is blocked', () => {
+ const select = vi.fn(); const products = [product('SKU-1')];
+ const view = render(<POProductLookup products={products} onSelect={select} selectionDisabled />);
+ const input = screen.getByRole('combobox') as HTMLInputElement; input.focus();
+ expect(input.disabled).toBe(false);
+ fireEvent.change(input, { target: { value: 'SKU-1' } });
+ expect((screen.getByRole('option') as HTMLButtonElement).disabled).toBe(true);
+ fireEvent.keyDown(input, { key: 'Enter' }); fireEvent.click(screen.getByRole('option'));
+ expect(input.value).toBe('SKU-1'); expect(select).not.toHaveBeenCalled();
+ view.rerender(<POProductLookup products={products} onSelect={select} selectionDisabled={false} />);
+ expect(input.value).toBe('SKU-1'); expect(document.activeElement).toBe(input);
+ fireEvent.keyDown(input, { key: 'Enter' }); expect(select).toHaveBeenCalledWith(products[0]);
+});

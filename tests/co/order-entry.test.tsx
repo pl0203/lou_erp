@@ -107,7 +107,13 @@ async function staleDirtyEdit() {
     return view;
 }
 function expectRefreshFrozen() {
-    for (const label of ['Nomor CO', 'Tanggal CO', 'Tanggal akhir CO', 'Catatan', 'Qty Item 1', 'Cari SKU atau nama barang']) {
+    const search = screen.getByRole('combobox', { name: 'Cari SKU atau nama barang' });
+    expect(search.matches(':disabled')).toBe(false);
+    fireEvent.change(search, { target: { value: 'SKU-1' } });
+    fireEvent.keyDown(search, { key: 'Enter' });
+    expect((search as HTMLInputElement).value).toBe('SKU-1');
+    expect(state.commands).toHaveLength(0);
+    for (const label of ['Nomor CO', 'Tanggal CO', 'Tanggal akhir CO', 'Catatan', 'Qty Item 1']) {
         expect(screen.getByLabelText(label).matches(':disabled'), label).toBe(true);
     }
     for (const label of ['Hapus Item 1', 'Simpan Perubahan']) {

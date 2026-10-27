@@ -26,7 +26,7 @@ test('CO pilot keeps balanced filters, seven order-fulfilment meanings, and comp
     }
     expect(screen.getAllByRole('link',{name:'Lihat CO'})[0].closest('td')?.classList.contains('min-w-36')).toBe(true);
     expect(screen.getByRole('link', { name: 'Buat CO' }).classList.contains('ui-action--primary')).toBe(true);
-    expect(screen.getAllByRole('columnheader').map(n => n.textContent)).toEqual(['Nomor CO', 'Toko', 'Tanggal CO', 'Status / pengiriman', 'Jumlah SKU', 'Nilai CO', 'Aksi']);
+    expect(screen.getAllByRole('columnheader').map(n => n.textContent)).toEqual(['Nomor CO', 'Toko', 'Tanggal CO', 'Status', 'Jumlah SKU', 'Nilai CO', 'Aksi']);
     expect(screen.getByRole('table').classList.contains('min-w-[56rem]')).toBe(true);
     expect(screen.getByRole('region', { name: 'Daftar CO' }).tabIndex).toBe(0);
     for (const [label, basis] of [['Cari CO', 'basis-72'], ['Status CO', 'basis-44'], ['Filter pelanggan', 'basis-60']]) {
@@ -73,11 +73,13 @@ test('CO status commands distinguish one delivery progression from quiet routing
     const onCancel = vi.fn();
     mount(<COStatusActions co={state.header} id={ids.co} customerId={ids.customer} allowed={['edit_co', 'save_sj_draft', 'cancel_co', 'resolve_undelivered', 'close_co']} blockers={state.header.close_blockers} pending={false} onSJ={vi.fn()} onCancel={onCancel} onResolve={vi.fn()} onClose={vi.fn()}/>);
     expect(screen.getByRole('button', { name: 'Buat surat jalan' }).classList.contains('ui-action--primary')).toBe(true);
-    for (const name of ['Lihat laporan bulanan', 'Retur barang belum terjual']) compact(screen.getByRole('link', { name }), 'quiet');
+    expect(screen.getByRole('button', { name: 'Actions' }).getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(screen.getByRole('button', { name: 'Actions' }));
+    for (const name of ['Lihat laporan bulanan', 'Retur barang belum terjual']) compact(screen.getByRole('link', { name }), 'secondary');
     for (const name of ['Edit CO', 'Lihat stok toko']) compact(screen.getByRole('link', { name }), 'secondary');
-    expect(screen.getByText('Tindakan lainnya').closest('details')!.open).toBe(false);
     const cancel = screen.getByRole('button', { name: 'Batalkan CO' });
     compact(cancel, 'danger-quiet'); fireEvent.click(cancel); expect(onCancel).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Actions' }));
     expect(screen.getByRole('button', { name: 'Tutup CO' }).matches(':disabled')).toBe(true);
 });
 

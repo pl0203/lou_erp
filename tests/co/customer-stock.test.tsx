@@ -22,7 +22,7 @@ test('stock route shows current equation, old overdue month and separate partial
 test('canonical stock-key URL opens movement scope without using UUID as SKU text search', async () => {
     stockFixture();
     mountApp(<App />, `/athel/co/stock?customer=${customer}&sku=SKU-2&stockKey=${id(1002)}&movementCustomer=${customer}`);
-    await screen.findByRole('heading', { name: /Riwayat stok pelanggan\/SKU/ });
+    await screen.findByRole('heading', { name: /Mutasi stok/ });
     expect(wire.rpc.mock.calls.some(([n, a]) => n === 'pilot_co_stock_movements_v1' && a.p_stock_key_id === id(1002))).toBe(true);
     expect(wire.rpc.mock.calls.filter(([n]) => n === 'pilot_co_customer_stock_v2').every(([, a]) => a.p_search === '')).toBe(true);
 });
@@ -37,6 +37,7 @@ test('resolution uses reasoned additional quantities and closure has its own rea
     const s = stockFixture();
     s.co.summary.sold_quantity = '70'; s.co.summary.remaining_quantity = '0'; s.blockers.stock_remains = false;
     mount(<CODetail />, `/athel/co/${s.co.id}`);
+    fireEvent.click(await screen.findByRole('button', { name: 'Actions' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Selesaikan sisa belum dikirim' }));
     fireEvent.change(await screen.findByLabelText('Jumlah dibatalkan Item 1'), { target: { value: '5' } });
     fireEvent.change(screen.getByLabelText('Alasan penyelesaian'), { target: { value: 'Customer reduced plan' } });
@@ -45,6 +46,7 @@ test('resolution uses reasoned additional quantities and closure has its own rea
         co_id: s.co.id, expected_co_version: '1', expected_customer_version: '1', reason: 'Customer reduced plan', lines: [{ co_line_id: id(3001), quantity: 5 }],
     } }));
     await waitFor(() => expect(screen.queryByLabelText('Alasan penyelesaian')).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: 'Actions' }));
     expect(screen.getByRole('button', { name: 'Tutup CO' }).matches(':disabled')).toBe(true);
     expect(s.co.summary.pending_quantity).toBe('25');
     expect(s.co.status).toBe('active');
@@ -55,6 +57,7 @@ test('resolution uses reasoned additional quantities and closure has its own rea
     fireEvent.change(screen.getByLabelText('Alasan penyelesaian'), { target: { value: 'Cancel remaining plan' } });
     fireEvent.click(screen.getByRole('button', { name: 'Konfirmasi penyelesaian' }));
     await waitFor(() => expect(screen.queryByLabelText('Alasan penyelesaian')).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: 'Actions' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Tutup CO' }).matches(':disabled')).toBe(false));
     expect(s.commands[1].payload.lines).toEqual([{ co_line_id: id(3001), quantity: 25 }]);
     expect(s.co.summary.resolved_undelivered_quantity).toBe('30');
@@ -74,6 +77,7 @@ test.each([
 ])('every authoritative closure blocker independently disables Close: %j', async blockers => {
     const s = stockFixture(); s.blockers = blockers;
     mount(<CODetail />, `/athel/co/${s.co.id}`);
+    fireEvent.click(await screen.findByRole('button', { name: 'Actions' }));
     const close = await screen.findByRole('button', { name: 'Tutup CO' });
     expect(close.matches(':disabled')).toBe(true);
     fireEvent.click(close);
@@ -108,14 +112,14 @@ test('movement pagination refuses mixing effective generations and explicit relo
         kind: 'delivery', quantity_delta: '1', effective_date: '2026-09-01', delivery_revision_line_id: id(51000 + i),
         return_revision_line_id: null, report_revision_line_id: null }));
     mountApp(<App />, `/athel/co/stock?customer=${customer}&sku=SKU-1&stockKey=${id(1001)}&movementCustomer=${customer}`);
-    await screen.findAllByRole('link', { name: 'Bukti CO sumber' });
+    await screen.findAllByRole('link', { name: 'Lihat CO sumber' });
     s.generation = id(8001); s.movements.forEach((r: any) => r.generation_id = s.generation);
     const next = screen.getAllByRole('button', { name: 'Berikutnya' }).find(b => !b.matches(':disabled'))!;
     fireEvent.click(next);
     await screen.findByText('Riwayat berubah di antara halaman. Muat ulang seluruh riwayat.');
-    expect(screen.queryByRole('link', { name: 'Bukti CO sumber' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Lihat CO sumber' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Coba lagi' }));
-    await screen.findAllByRole('link', { name: 'Bukti CO sumber' });
+    await screen.findAllByRole('link', { name: 'Lihat CO sumber' });
 });
 test('stock filters and page totals remain server scoped across more than 100 keys', async () => {
     stockFixture(101);
@@ -130,9 +134,9 @@ test('stock filters and page totals remain server scoped across more than 100 ke
     expect(screen.getByText('Halaman 1 dari 1')).toBeTruthy();
     expect(wire.rpc.mock.calls.some(([n, a]) => n === 'pilot_co_customer_stock_v2' && a.p_search === 'SKU-101' && a.p_page === 1)).toBe(true);
 });
-test('return draft section authority denial clears the containing detail private source', async () => {
+test('visible delivery section authority denial clears the containing detail private source', async () => {
     const s = stockFixture();
-    s.fail = (n: string, a: any) => n === 'pilot_co_detail_section_v1' && a.p_section === 'return_drafts'
+    s.fail = (n: string, a: any) => n === 'pilot_co_detail_section_v1' && a.p_section === 'deliveries'
         ? { data: null, error: { code: '42501', message: 'Return discovery denied' } } : null;
     mount(<CODetail />, `/athel/co/${s.co.id}`);
     await screen.findByText('Return discovery denied');
@@ -153,6 +157,7 @@ test('stock has one semantic desktop table with responsive rows and exact large 
 test('newer authoritative CO version freezes retained settlement until explicit refresh', async () => {
     const s = stockFixture();
     const { client } = mount(<CODetail />, `/athel/co/${s.co.id}`);
+    fireEvent.click(await screen.findByRole('button', { name: 'Actions' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Selesaikan sisa belum dikirim' }));
     const field = await screen.findByLabelText('Jumlah dibatalkan Item 1');
     await waitFor(() => expect(field.matches(':disabled')).toBe(false));
@@ -252,10 +257,10 @@ test('effective stock movement history names its source list and preserves custo
     const s = stockFixture(1);
     s.movements = [{ id: id(91), customer_id: customer, stock_key_id: id(1001), generation_id: s.generation, co_line_id: id(3001), effective_date: '2026-09-30', kind: 'sold', quantity_delta: '-7', co_id: id(11), batch_id: id(2001), delivery_revision_line_id: null, return_revision_line_id: null, report_revision_line_id: id(92) }];
     mountApp(<App/>, `/athel/co/stock?customer=${customer}&sku=SKU-1&stockKey=${id(1001)}&movementCustomer=${customer}`);
-    const link = await screen.findByRole('link', { name: 'Bukti CO sumber' });
-    expect(screen.getByRole('list', { name: 'Pergerakan stok tercatat' }).contains(link)).toBe(true);
+    const link = await screen.findByRole('link', { name: 'Lihat CO sumber' });
+    expect(screen.getByRole('table', { name: 'Pergerakan stok tercatat' }).contains(link)).toBe(true);
     expect(link.getAttribute('href')).toBe(`/athel/co/${id(11)}`);
-    expect(screen.getByText(/Penjualan dicatat pada batas cakupan laporan, bukan tanggal penjualan harian/)).toBeTruthy();
+    expect(screen.getByText(/Tanggal penjualan adalah batas cakupan laporan, bukan tanggal transaksi harian/)).toBeTruthy();
 });
 
 test('dense stock quantity cells use scoped table styling rather than the description-value layout', async () => {

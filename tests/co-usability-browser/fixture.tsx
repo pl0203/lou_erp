@@ -1,0 +1,12 @@
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import {createMemoryRouter,RouterProvider} from 'react-router-dom';
+import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
+import COForm from '../../src/pages/athel/co/COForm';
+import COMonthlyReports from '../../src/pages/athel/co/COMonthlyReports';
+import {fixture} from './boundary';
+import '../../src/index.css';
+const client=new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}});
+const router=createMemoryRouter([{path:'/form',element:<COForm mode="create"/>},{path:'/reports',element:<COMonthlyReports/>}],{initialEntries:[new URLSearchParams(location.search).get('view')==='reports'?'/reports':'/form']});
+Object.assign(window,{fixture,refreshCatalogue:()=>client.invalidateQueries({queryKey:['catalogue']})});
+createRoot(document.getElementById('root')!).render(<QueryClientProvider client={client}><main style={{padding:24}}><p style={{fontSize:12,color:'#475569',marginBottom:16}}>LOCAL SYNTHETIC TEST — no hosted account or data</p><RouterProvider router={router}/></main></QueryClientProvider>);

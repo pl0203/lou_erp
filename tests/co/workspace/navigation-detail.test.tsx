@@ -47,18 +47,23 @@ test('detail prioritises order lines with exact agreed values and honest unavail
     mount(<CODetail/>, `/athel/co/${ids.co}`);
     const table = await screen.findByRole('table', { name: 'Barang pesanan CO' });
     for (const heading of ['Satuan', 'Dipesan', 'Dikirim', 'Belum dikirim', 'Harga satuan CO', 'Total baris CO']) expect(within(table).getByRole('columnheader', { name: heading })).toBeTruthy();
-    expect(within(table).getByText('Satuan tidak tersedia pada pembacaan ini')).toBeTruthy();
+    const unavailable = within(table).getByLabelText('Satuan tidak tersedia pada pembacaan ini');
+    expect(unavailable.textContent).toBe('—');
+    expect(unavailable.title).toBe('Satuan tidak tersedia pada pembacaan ini');
+    expect(within(table).queryByText('pcs')).toBeNull();
     expect(within(table).getByText('Rp 90.071.992.547.409,93')).toBeTruthy();
     expect(within(table).getByText('9.007.199.254.740.991')).toBeTruthy();
     expect(screen.queryByText('Pelaporan pelanggan (semua CO)')).toBeNull();
     expect(screen.queryByText('Sisa stok tercatat')).toBeNull();
-    expect(screen.getByText(/Nilai CO.*bukan pendapatan/)).toBeTruthy();
+    expect(screen.getByText(/Nilai CO:/)).toBeTruthy();
 });
 test('shipping prepares without mutations, rare actions are collapsed and closure remains explicit', async () => {
     mount(<CODetail/>, `/athel/co/${ids.co}`);
     const prepare = await screen.findByRole('button', { name: 'Buat surat jalan' });
-    const other = screen.getByText('Tindakan lainnya').closest('details')!;
-    expect(other.open).toBe(false);
+    const toggle = screen.getByRole('button', { name: 'Actions' });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(toggle);
+    const other = screen.getByRole('group', { name: 'Actions CO' });
     expect(within(other).getByRole('button', { name: 'Batalkan CO' })).toBeTruthy();
     expect(document.querySelector('details[data-co-history]')?.hasAttribute('open')).toBe(false);
     fireEvent.click(prepare);
@@ -71,7 +76,7 @@ test('fully dispatched retains active status but no enabled shipping preparation
     Object.assign(state.header.summary, { pending_quantity: '0', delivered_quantity: '2', delivery_progress: 'complete' });
     mount(<CODetail/>, `/athel/co/${ids.co}`);
     await screen.findByText('CO-A');
-    expect(screen.getByText('Aktif')).toBeTruthy();
+    expect(screen.queryByText('Aktif')).toBeNull();
     expect(screen.getByRole('button', { name: 'Buat surat jalan' }).matches(':disabled')).toBe(true);
     expect(state.commands).toHaveLength(0);
 });
@@ -119,4 +124,13 @@ test('order editor labels its price basis explicitly without inventing a unit', 
     expect(screen.getByText('Harga satuan CO (Rp)')).toBeTruthy();
     expect(screen.getByText(/Total baris CO:/)).toBeTruthy();
     expect(screen.queryByText(/PCS|BOX|DOS/)).toBeNull();
+});
+
+test('detail omits requested secondary return, audit and information panels without changing records', async () => {
+    mount(<CODetail/>, `/athel/co/${ids.co}`);
+    await screen.findByText('CO-A');
+    for (const label of ['Draft retur pelanggan (semua sumber CO)', 'Retur barang CO (bagian sumber CO ini)', 'Audit CO dan laporan pelanggan', 'Informasi pesanan dan penjualan']) expect(screen.queryByText(label)).toBeNull();
+    expect(screen.queryByText(/SJ Kembali adalah pengembalian dokumen/)).toBeNull();
+    expect(screen.getByText('Draft Surat Jalan')).toBeTruthy();
+    expect(state.commands).toHaveLength(0);
 });

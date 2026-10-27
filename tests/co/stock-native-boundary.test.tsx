@@ -1,0 +1,21 @@
+import React from 'react';
+import {transferableAbortController} from 'node:util';
+import {test,vi,expect,afterEach} from 'vitest';
+import {render,screen,fireEvent,within,cleanup} from '@testing-library/react';
+import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
+import {createMemoryRouter,RouterProvider} from 'react-router-dom';
+vi.mock('../../src/lib/supabase',()=>import('../co-stock-browser/boundary'));
+vi.mock('../../src/lib/AuthContext',()=>import('../co-stock-browser/boundary'));
+import COCustomerStock from '../../src/pages/athel/co/COCustomerStock';
+import {customer} from '../co-stock-browser/boundary';
+afterEach(()=>{cleanup();vi.unstubAllGlobals();});
+test('native stock synthetic boundary satisfies actual page and movement decoders',async()=>{
+ vi.stubGlobal('AbortController',class {constructor(){return transferableAbortController();}});
+ const client=new QueryClient({defaultOptions:{queries:{retry:false}}});
+ const router=createMemoryRouter([{path:'/athel/co/stock',element:<COCustomerStock/>}],{initialEntries:[`/athel/co/stock?customer=${customer}&sku=SKU-1`]});
+ const view=render(<QueryClientProvider client={client}><RouterProvider router={router}/></QueryClientProvider>);
+ fireEvent.click(await screen.findByRole('button',{name:'Lihat mutasi Toko Contoh Nusantara · SKU-1'}));
+ const dialog=await screen.findByRole('dialog');const t=await within(dialog).findByRole('table',{name:'Pergerakan stok tercatat'});expect(t.querySelectorAll('tbody tr')).toHaveLength(20);
+ fireEvent.click(within(dialog).getByRole('button',{name:'Berikutnya'}));await within(dialog).findByText('Halaman 2 dari 2');
+ view.unmount();router.dispose();client.clear();vi.unstubAllGlobals();
+});

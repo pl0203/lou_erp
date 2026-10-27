@@ -54,35 +54,30 @@ test('new CO distinguishes lifetime order totals from older customer-wide report
     state.header.coverage_through_date = '2026-09-30';
     mount(<CODetail/>, `/athel/co/${ids.co}`);
     await screen.findByText('CO-A');
-    expect(screen.getByText(/Nilai CO:/)).toBeTruthy();
+    expect(await screen.findByText(/Nilai CO:/)).toBeTruthy();
     expect(screen.queryByText('Pelaporan pelanggan (semua CO)')).toBeNull();
     expect(screen.getByRole('link', { name: 'Lihat laporan bulanan' }).getAttribute('href')).toContain(`/reports?customer=${ids.customer}`);
-    const audit = screen.getByText('Audit CO dan laporan pelanggan').closest('details')!;
-    expect(audit.open).toBe(false);
+    expect(screen.queryByText('Audit CO dan laporan pelanggan')).toBeNull();
 });
 
 test('lifecycle guide explains the next delivery step without equating full delivery and closure', async () => {
     mount(<CODetail/>, `/athel/co/${ids.co}`);
     await screen.findByText('CO-A');
-    const actions = screen.getByText('Tindakan lainnya').closest('details')!;
-    expect(actions.open).toBe(false);
-    expect(actions.textContent).toMatch(/Surat Jalan/);
+    const actions = screen.getByRole('button', { name: 'Actions' });
+    expect(actions.getAttribute('aria-expanded')).toBe('false');
     expect(screen.getByRole('button', { name: 'Buat surat jalan' }).matches(':disabled')).toBe(false);
     expect(state.commands).toHaveLength(0);
 });
 
-test('audit summarizes the actor and customer reporting scope with readable WIB time, retaining exact metadata', async () => {
-    state.sections.audit = [{ id: 'audit-1', operation: 'post_report', actor_id: ids.actor,
-        created_at: '2026-10-10T23:10:00Z', report_revision_id: 'report-revision', reason: 'Laporan September' }];
+test('removed audit panel does not remove stored audit data', async () => {
+    const audit = { id: 'audit-1', operation: 'post_report', actor_id: ids.actor,
+        created_at: '2026-10-10T23:10:00Z', report_revision_id: 'report-revision', reason: 'Laporan September' };
+    state.sections.audit = [audit];
     mount(<CODetail/>, `/athel/co/${ids.co}`);
-    await screen.findByText(/memposting laporan penjualan bulanan/);
-    expect(screen.getByText(/Pengguna tercatat memposting/)).toBeTruthy();
-    expect(screen.getByText(/11 Oktober 2026.*06.10.*WIB/)).toBeTruthy();
-    const details = screen.getByText('Detail teknis audit').closest('details')!;
-    expect(details.open).toBe(false);
-    expect(details.textContent).toContain('post_report');
-    expect(details.textContent).toContain(ids.actor);
-    expect(screen.getByRole('button', { name: 'Lihat perubahan' })).toBeTruthy();
+    await screen.findByText('CO-A');
+    expect(screen.queryByText('Audit CO dan laporan pelanggan')).toBeNull();
+    expect(state.sections.audit).toEqual([audit]);
+    expect(state.commands).toHaveLength(0);
 });
 
 test('new-item guidance requires active catalogue selection while retaining old manual history', async () => {
@@ -94,17 +89,20 @@ test('new-item guidance requires active catalogue selection while retaining old 
 });
 
 test.each([
-    { status: 'active', pending: '0', stock: '2', missing: '1', next: /laporan penjualan bulanan/ },
-    { status: 'active', pending: '0', stock: '0', missing: '0', next: /Tutup CO/ },
-    { status: 'closed', pending: '0', stock: '0', missing: '0', next: /CO sudah ditutup/ },
-])('lifecycle next step follows existing state and blockers: %j', async ({ status, pending, stock, missing, next }) => {
+    { status: 'active', pending: '0', stock: '2', missing: '1' },
+    { status: 'active', pending: '0', stock: '0', missing: '0' },
+    { status: 'closed', pending: '0', stock: '0', missing: '0' },
+])('compact actions retain lifecycle capability and blockers: %j', async ({ status, pending, stock, missing }) => {
     state.header.status = status;
+    state.header.allowed_operations = status === 'active' ? ['close_co'] : [];
     state.header.summary.pending_quantity = pending;
     state.header.summary.remaining_quantity = stock;
     state.header.close_blockers = { stock_remains: stock !== '0', undelivered_remains: pending !== '0', missing_month_count: missing };
     mount(<CODetail/>, `/athel/co/${ids.co}`);
     await screen.findByText('CO-A');
-    expect(screen.getByText('Tindakan lainnya').closest('details')!.textContent).toMatch(next);
+    fireEvent.click(screen.getByRole('button', { name: 'Actions' }));
+    expect(screen.getByRole('button', { name: 'Tutup CO' }).matches(':disabled')).toBe(status !== 'active' || missing !== '0');
+    expect(state.commands).toHaveLength(0);
 });
 
 test('CO layout has one main landmark and task heading without redundant top tabs', async () => {

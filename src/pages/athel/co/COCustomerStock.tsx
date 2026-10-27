@@ -45,6 +45,7 @@ function StockOwner() {
     const [returning, setReturning] = useState(false);
     const [error, setError] = useState('');
     const trigger = useRef<HTMLElement | null>(null);
+    const movementTrigger = useRef<HTMLElement | null>(null);
     const directoryActor = useCOActor('stock-directory');
     const customers = useCORead(directoryActor, 'customers', {}, fetchCOCustomers);
     const stock = useCORead(actor, 'customer-stock-v2', filters, async options => await fetchCOStockV2(filters, options) as COStockPageV2, !invalidMonth);
@@ -65,6 +66,8 @@ function StockOwner() {
     const movementCustomer = params.get('movementCustomer');
     const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const movementValid = !!stockKey && !!movementCustomer && uuid.test(stockKey) && uuid.test(movementCustomer);
+    const movementRow = result?.rows.find(row => row.customer_id === movementCustomer && row.stock_key_id === stockKey);
+    const closeMovement = () => {const next=new URLSearchParams(params);next.delete('stockKey');next.delete('movementCustomer');next.delete('movementPage');setParams(next);};
     const blocked = stock.isFetching || stock.isError || !result || !!filters.asOf;
     if (!actor.enabled) return null;
     return <div className="min-w-0 max-w-7xl mx-auto space-y-3">
@@ -86,11 +89,13 @@ function StockOwner() {
         {stock.isError ? <COFailure error={stock.error} retry={() => void stock.refetch()}/> : !invalidMonth && (!result || stock.isFetching) ? <LoadingState title="Memuat stok…" shape="list"/> : result && !invalidMonth ? <>
             <p className="text-[13px] text-brand-secondary">Pergerakan periode {formatDisplayDate(result.period_start)}–{formatDisplayDate(result.coverage_date)} (UTC): Dikirim, Terjual, Retur. Awal = saldo sebelum periode. Saldo tercatat per {formatDisplayDate(result.coverage_date)} (UTC). {filters.asOf ? 'Akhir bulan, riwayat efektif dinyatakan ulang.' : 'Bulan berjalan sampai cakupan server.'}</p>
             {result.reporting_freshness ? <div className="co-stock-freshness" role="note" aria-label="Cakupan pelaporan toko">{result.rows[0] && <p>Laporan terakhir: {formatCOReportMonth(result.rows[0].last_report_month)} · Cakupan sampai: {result.rows[0].coverage_through_date ? formatDisplayDate(result.rows[0].coverage_through_date) : 'Belum ada'} (tanggal UTC)</p>}<COFreshness value={result.reporting_freshness} compact/><p>Angka tercatat berdasarkan laporan, bukan verifikasi stok fisik saat ini.</p></div> : <p className="text-[13px] text-brand-secondary">Angka tercatat berdasarkan laporan, bukan verifikasi stok fisik saat ini.</p>}
-            <COStockTable key={`${actor.scope}:table`} result={result} filters={filters} onFiltersChange={update} onOpenMovement={(customerId,stockKeyId) => {
+            <COStockTable key={`${actor.scope}:table`} result={result} filters={filters} onFiltersChange={update} onOpenMovement={(customerId,stockKeyId,element) => {
+                movementTrigger.current = element ?? null;
                 const next = new URLSearchParams(params); next.set('movementCustomer',customerId); next.set('stockKey',stockKeyId); next.delete('movementPage'); setParams(next);
             }}/>
         </> : null}
-        {movementValid && !stock.isError && !stock.isFetching && <div className="space-y-2"><Button variant="quiet" size="compact" onClick={() => {const next=new URLSearchParams(params);next.delete('stockKey');next.delete('movementCustomer');next.delete('movementPage');setParams(next);}}>Tutup mutasi</Button><COStockHistory key={`${actor.scope}:${movementCustomer}:${stockKey}`} customerId={movementCustomer} stockKeyId={stockKey} asOf={filters.asOf} onAuthorityFailure={actor.rejectAuthority}/></div>}
+        {movementValid && !stock.isError && <COStockHistory key={`${actor.scope}:${movementCustomer}:${stockKey}`} customerId={movementCustomer} stockKeyId={stockKey} asOf={filters.asOf} blocked={stock.isFetching || !result} context={movementRow} customerName={customers.data?.find(c=>c.id===movementCustomer)?.name} onClose={closeMovement} returnFocus={movementTrigger.current} fallbackFocus={()=>document.getElementById('co-stock-sku-filter')} onAuthorityFailure={actor.rejectAuthority}/>}
+
         {returning && result && filters.customerId && !filters.asOf && <COReturnDialog key={`${actor.scope}:return`} customerId={filters.customerId} customerVersion={result.customer_version!} returnFocus={trigger.current} onClose={() => setReturning(false)} blocked={blocked} readFailure={stock.isError ? <COFailure error={stock.error}/> : null} onAuthorityFailure={actor.rejectAuthority} onSaved={() => {void stock.refetch();}}/>}
     </div>;
 }

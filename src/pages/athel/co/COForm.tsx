@@ -41,11 +41,25 @@ function COFormOwner({ mode, id }: { mode: 'create' | 'edit'; id?: string }) {
     const actor = useCOActor(`form:${mode}:${id ?? 'new'}`);
     return <COFormEditor key={actor.scope} mode={mode} id={id} actor={actor}/>;
 }
-function COFormEditor({ mode, id, actor }: {
-    mode: 'create' | 'edit';
-    id?: string;
-    actor: Actor;
-}) {
+type FormEditorProps = { mode: 'create' | 'edit'; id?: string; actor: Actor };
+type CustomerOptions = ReturnType<typeof useCatalogueOrderOptions<'customer'>>;
+type ProductOptions = ReturnType<typeof useCatalogueOrderOptions<'product'>>;
+type FormCatalogue = { customerOptions: CustomerOptions; productOptions: ProductOptions; customerRead: CustomerOptions; catalog: ProductOptions };
+// Create needs one owner-bound collection per kind. Edit alone additionally
+// loads historical rows; keep the catalogue hook's epoch/observer guards intact.
+function COFormEditor(props: FormEditorProps) {
+    const customerOptions = useCatalogueOrderOptions('customer', 'enabled-for-order');
+    const productOptions = useCatalogueOrderOptions('product', 'enabled-for-order');
+    return props.mode === 'edit'
+        ? <COEditFormCatalogue {...props} customerOptions={customerOptions} productOptions={productOptions}/>
+        : <COFormFields {...props} customerOptions={customerOptions} productOptions={productOptions} customerRead={customerOptions} catalog={productOptions}/>;
+}
+function COEditFormCatalogue(props: FormEditorProps & Pick<FormCatalogue, 'customerOptions' | 'productOptions'>) {
+    const customerRead = useCatalogueOrderOptions('customer', 'all-for-history');
+    const catalog = useCatalogueOrderOptions('product', 'all-for-history');
+    return <COFormFields {...props} customerRead={customerRead} catalog={catalog}/>;
+}
+function COFormFields({ mode, id, actor, customerOptions, productOptions, customerRead, catalog }: FormEditorProps & FormCatalogue) {
     const navigate = useNavigate();
     const today = useRef(new Date().toISOString().slice(0, 10)).current;
     const [customer, setCustomer] = useState('');
@@ -78,10 +92,6 @@ function COFormEditor({ mode, id, actor }: {
     } | null>(null);
     const unsaved = useUnsavedChanges(initialized && snapshot(customer, number, date, end, notes, lines) !== baseline);
     useBeforeSignOut(signal => unsaved.confirmDiscardDecision({ signal }), `${actor.scope}:${generation}`);
-    const customerRead = useCatalogueOrderOptions('customer', mode === 'edit' ? 'all-for-history' : 'enabled-for-order');
-    const catalog = useCatalogueOrderOptions('product', mode === 'edit' ? 'all-for-history' : 'enabled-for-order');
-    const customerOptions = useCatalogueOrderOptions('customer', 'enabled-for-order');
-    const productOptions = useCatalogueOrderOptions('product', 'enabled-for-order');
     useEffect(() => {
         if (!actor.isCurrent()) return;
         for (const error of [customerRead.error, catalog.error, customerOptions.error, productOptions.error])
@@ -386,11 +396,28 @@ function COFormEditor({ mode, id, actor }: {
     }
     catch { }
     const disabled = pending || unresolved || !ready;
+    const productSelectionDisabled = disabled || !selectedCustomer?.is_enabled;
+    const productSearchMessage = pending ? 'Menunggu proses selesai sebelum memilih barang.'
+        : unresolved ? 'Selesaikan pemeriksaan transaksi sebelumnya sebelum menambahkan barang.'
+        : !customer ? 'Pilih pelanggan sebelum menambahkan barang.'
+        : productOptions.isError ? 'Katalog barang gagal dimuat. Coba lagi untuk memilih barang.'
+        : productOptions.isFetching || !productOptions.data ? 'Memuat katalog barang… Anda tetap dapat mengetik pencarian.'
+        : customerRead.isError || customerOptions.isError || stock.isError || header.isError || complete.isError ? 'Data pelanggan atau CO gagal dimuat. Coba lagi sebelum menambahkan barang.'
+        : customerOptions.isFetching || customerRead.isFetching || stock.isFetching || !customerVersion ? 'Memeriksa data pelanggan… Anda tetap dapat mencari barang.'
+        : !selectedCustomer?.is_enabled ? 'Pelanggan nonaktif: barang baru tidak dapat ditambahkan.'
+        : !ready ? 'Memeriksa data CO terbaru sebelum barang dapat ditambahkan.'
+        : 'Cari SKU atau nama, lalu pilih barang. Tekan Enter untuk SKU yang cocok.';
+    const retryProductOptions = () => {
+        // Deduplicate identical create-mode projections without sharing query ownership.
+        for (const query of new Set([customerRead, catalog, customerOptions, productOptions])) void query.refetch();
+        if (customer && !editing) void stock.refetch();
+        if (editing && (header.isError || complete.isError)) void reload();
+    };
     const visible = lines.slice((page - 1) * 100, page * 100);
     if (editing && !initialized)
         return <div className="max-w-4xl mx-auto space-y-4">{unsaved.dialog}{header.isError || complete.isError ? <COFailure error={header.error ?? complete.error} retry={refreshing ? undefined : reload}/> : <LoadingState title="Memuat seluruh barang CO…" shape="form" />}</div>;
     return <div className="max-w-4xl mx-auto space-y-6">{unsaved.dialog}<PageHeader title={editing ? `Ubah ${number}` : 'CO Baru'} actions={<ActionLink variant="quiet" size="compact" to={editing ? `/athel/co/${id}` : '/athel/co'}>Kembali</ActionLink>}/>
-    {(header.isError || complete.isError || editing && (co?.co_version !== initialVersion.current || co?.customer_version !== initialCustomerVersion.current)) && <COFailure error={header.error ?? complete.error ?? new Error('CO atau sumber pelanggan berubah. Periksa isian dan muat ulang sebelum menyimpan.')} retry={refreshing ? undefined : reload}/>} {(customerRead.isError || catalog.isError || customerOptions.isError || productOptions.isError || stock.isError) && <COFailure error={customerRead.error ?? catalog.error ?? customerOptions.error ?? productOptions.error ?? stock.error} retry={refreshing ? undefined : () => { void customerRead.refetch(); void catalog.refetch(); void customerOptions.refetch(); void productOptions.refetch(); void stock.refetch(); }}/>}
+    {(header.isError || complete.isError || editing && (co?.co_version !== initialVersion.current || co?.customer_version !== initialCustomerVersion.current)) && <COFailure error={header.error ?? complete.error ?? new Error('CO atau sumber pelanggan berubah. Periksa isian dan muat ulang sebelum menyimpan.')} retry={refreshing ? undefined : reload}/>} {(customerRead.isError || catalog.isError || customerOptions.isError || productOptions.isError || stock.isError) && <COFailure error={customerRead.error ?? catalog.error ?? customerOptions.error ?? productOptions.error ?? stock.error} retry={refreshing ? undefined : retryProductOptions}/>}
     <COCard title="Detail Pesanan">
     <fieldset disabled={pending || unresolved || refreshing || editing && !ready} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
     <div>
@@ -406,8 +433,12 @@ function COFormEditor({ mode, id, actor }: {
     </COCard>
     <COCard title="Daftar Barang">
     <div className="mb-4">
-    <POProductLookup products={productOptions.data ?? []} onSelect={p => void addProduct(p)} inputRef={search} disabled={disabled || !selectedCustomer?.is_enabled}/>
-    <p className="text-[13px] text-brand-secondary mt-2">Cari SKU tepat lalu Enter, atau pilih hasil. Masukkan harga kesepakatan untuk barang baru; harga barang yang sudah tercatat tetap dipertahankan.</p>{notice && <p role="status" className="mt-2 text-[13px] text-blue-700">{notice}</p>}</div>
+    <POProductLookup products={productOptions.data ?? []} onSelect={p => void addProduct(p)} inputRef={search}
+        disabled={pending || unresolved || !actor.isCurrent()} selectionDisabled={productSelectionDisabled}
+        emptyMessage={productOptions.isFetching || !productOptions.data ? 'Katalog barang belum tersedia.' : undefined}
+        aria-describedby="co-product-search-help"/>
+    <p id="co-product-search-help" role={pending ? undefined : "status"} className="text-[13px] text-brand-secondary mt-2">{productSearchMessage}</p>
+    {(productOptions.isError || customerRead.isError || customerOptions.isError || stock.isError) && <Button type="button" variant="secondary" size="compact" className="mt-2" disabled={pending || unresolved || refreshing} onClick={retryProductOptions} aria-label="Muat ulang pilihan barang">Coba lagi</Button>}{notice && <p role="status" className="mt-2 text-[13px] text-blue-700">{notice}</p>}</div>
       {collision && <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 mb-3 text-base">
         <p>SKU sudah memiliki identitas stok: {collision.source.display_sku} · {collision.source.product_name}. Pilihan katalog tidak mengganti identitas lama.</p>
         <div className="mt-2 flex flex-wrap gap-2">
