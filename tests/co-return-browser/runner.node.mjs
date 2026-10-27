@@ -41,3 +41,26 @@ test('opaque image diagnostics fingerprint bytes without exposing SVG or data pa
  assert.equal(value.dataMediaType,'image/svg+xml');assert.match(value.dataUrlSha256,/^[a-f0-9]{64}$/);assert.ok(value.dataUrlBytes>0);assert.equal(value.initiatorType,'other');
  assert.ok(!JSON.stringify(value).includes('secret'));assert.ok(!JSON.stringify(value).includes('%3Csvg'));
 });
+
+// Exact upstream Chromium calendar_icon.svg, not a generic data-image fixture.
+const calendarSvg='<svg xmlns="http://www.w3.org/2000/svg" width="16" height="15" viewBox="0 0 24 24"><path fill="WindowText" d="M20 3h-1V1h-2v2H7V1H5v2H4c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 18H4V8h16v13z"/><path fill="none" d="M0 0h24v24H0z"/></svg>';
+const calendarUrl='data:image/svg+xml;base64,'+Buffer.from(calendarSvg).toString('base64');
+test('only the proven Chromium calendar image Network event is classified as built-in',async()=>{
+ const {blockedNetworkDiagnostic,isBuiltinCalendarImageDiagnostic}=await import('./network-diagnostic.mjs');
+ assert.equal(typeof isBuiltinCalendarImageDiagnostic,'function');
+ const event=blockedNetworkDiagnostic('off-origin-network-attempt',calendarUrl,'Image','other');
+ assert.equal(event.dataUrlBytes,382);
+ assert.equal(event.dataUrlSha256,'04e449d20d0365d881a54ed24af7ed00fe79dd9f9e601248f4fd7793003924f2');
+ assert.equal(isBuiltinCalendarImageDiagnostic(event),true);
+ for(const change of [{kind:'off-origin-request'},{scheme:'https:'},{resourceType:'Fetch'},{initiatorType:'script'},{initiatorType:'parser'},{initiatorType:undefined},{dataMediaType:'image/png'},{dataUrlBytes:383},{dataUrlSha256:'0'.repeat(64)}])assert.equal(isBuiltinCalendarImageDiagnostic({...event,...change}),false,JSON.stringify(change));
+ for(const value of [calendarUrl+' ',calendarUrl.replace('PHN2','QHN2'),calendarUrl.replace('image/svg+xml','text/html'),'https://example.invalid/calendar.svg'])assert.equal(isBuiltinCalendarImageDiagnostic(blockedNetworkDiagnostic('off-origin-network-attempt',value,'Image','other')),false);
+});
+test('built-in classification never changes Fetch blocking or image CSP and is separately receipted',async()=>{
+ const source=await readFile(url,'utf8');
+ const fetch=source.slice(source.indexOf("if(message.method==='Fetch.requestPaused')"),source.indexOf("if(message.method==='Network.requestWillBeSent')"));
+ assert.ok(fetch.includes("await cdp('Fetch.failRequest',{requestId,errorReason:'BlockedByClient'}"));
+ assert.ok(!fetch.includes('isBuiltinCalendarImageDiagnostic'));
+ assert.ok(source.includes("img-src 'none'"));
+ assert.ok(source.includes('receipt.builtinCalendarImages.push(diagnostic)'));
+ assert.ok(source.includes('if(isBuiltinCalendarImageDiagnostic(diagnostic))'));
+});

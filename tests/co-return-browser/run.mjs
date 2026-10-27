@@ -6,13 +6,13 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join,extname } from 'node:path';
 import { buildFixture } from './build.mjs';
-import { blockedNetworkDiagnostic } from './network-diagnostic.mjs';
+import { blockedNetworkDiagnostic, isBuiltinCalendarImageDiagnostic } from './network-diagnostic.mjs';
 import { observeOwnedBrowser, stopOwnedBrowser } from '../co-browser/cleanup.mjs';
 const git=args=>execFileSync('git',args,{encoding:'utf8',env:{PATH:process.env.PATH},timeout:10000}).trim();
 for(const [key,value] of Object.entries({CI:'true',GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:'pl0203/lou_erp',GITHUB_WORKFLOW:'CO workspace runtime',GITHUB_JOB:'stock-return-native',GITHUB_HEAD_REF:'test/co-workspace-runtime-20261027'}))assert.equal(process.env[key],value,`Fixed return native CI identity: ${key}`);
 for(const key of ['GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT'])assert.match(process.env[key]??'',/^[1-9][0-9]*$/);
 assert.match(process.env.CO_CI_SOURCE_SHA??'',/^[a-f0-9]{40}$/);assert.equal(git(['rev-parse','HEAD']),process.env.CO_CI_SOURCE_SHA);assert.equal(git(['status','--porcelain','--untracked-files=normal']),'','Clean source required');
-const receipt={commit:git(['rev-parse','HEAD']),tree:git(['rev-parse','HEAD^{tree}']),coverage:'Stock Return production page/modal; synthetic Auth transport only, not hosted SQL/E2E',run:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,assertions:[]};
+const receipt={commit:git(['rev-parse','HEAD']),tree:git(['rev-parse','HEAD^{tree}']),coverage:'Stock Return production page/modal; synthetic Auth transport only, not hosted SQL/E2E',run:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,assertions:[],builtinCalendarImages:[]};
 let temporary,server,browser,browserClosed,socket,fatal;let sequence=0;const calls=new Map(),sessions=new Map(),events=new Set(),violations=[];
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function until(fn,label){const end=Date.now()+30000;while(Date.now()<end){if(fatal)throw Error(fatal);assert.deepEqual(violations,[],'Network isolation violation');if(await fn())return;await delay(30)}throw Error(`Timeout: ${label}`)}
@@ -37,7 +37,8 @@ try{
    if(diagnostic.scheme==='data:'&&diagnostic.resourceType==='Image'){
     try{diagnostic.calendarIndicatorMatch=await evaluate(message.sessionId,`(()=>{const needle=${JSON.stringify(message.params.request.url)};return Array.from(document.querySelectorAll('input[type=date]')).some(e=>{const image=getComputedStyle(e,'::-webkit-calendar-picker-indicator').backgroundImage;return image.includes(needle)})})()`)}catch{diagnostic.calendarIndicatorMatch='unavailable'}
    }
-   violations.push(diagnostic)
+   if(isBuiltinCalendarImageDiagnostic(diagnostic))receipt.builtinCalendarImages.push(diagnostic);
+   else violations.push(diagnostic)
   }}
   if(message.method==='Network.webSocketCreated')violations.push('unexpected-websocket');
   if(message.method==='Runtime.exceptionThrown')fatal='Uncaught native browser exception';

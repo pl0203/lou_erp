@@ -50,3 +50,10 @@ node --test tests/co-return-browser/runner.node.mjs tests/co-browser/cleanup.nod
 ```
 
 The build module is import-safe and exports `buildFixture(outDir)` for job-owned temporary output. Its direct CLI still builds the documented local `dist/`.
+
+
+### Browser-owned calendar image provenance
+
+Hosted diagnostic run 40551974569 at exact source ec1383cfe3de89f2f83b408d7510d4803b89ff4d observed one `Network.requestWillBeSent` event with `data:`, `Image`, initiator `other`, 382 URL bytes and SHA-256 `04e449d20d0365d881a54ed24af7ed00fe79dd9f9e601248f4fd7793003924f2`. This exactly equals `data:image/svg+xml;base64,` plus base64 of Chromium's 266-byte [calendar_icon.svg at 1ce8a2aeddccb689188eda0420b90225e857be93](https://raw.githubusercontent.com/chromium/chromium/1ce8a2aeddccb689188eda0420b90225e857be93/third_party/blink/renderer/core/html/resources/images/calendar_icon.svg). Chromium's HTML user-agent stylesheet assigns that asset to the native date-picker indicator. The list page has two date-filter inputs; a normal page `getComputedStyle` pseudo-element query did not expose the matching browser-owned image.
+
+The runner classifies only that exact Network event identity as a built-in local decoration and retains each sanitized diagnostic in `builtinCalendarImages` in the success receipt. The SVG contains only static paths, no script, external reference or image request. This is not a general data-image allowance: different bytes, length, media type, resource type, initiator (including parser/script), or event kind fail closed. The `Fetch.requestPaused` interceptor still rejects every off-origin request, including data URLs, and CSP remains `img-src 'none'`, `connect-src 'none'`. No runtime application, SQL, transport permissions or CSP are changed.

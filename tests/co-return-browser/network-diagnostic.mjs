@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto';
-// Diagnostics only. This helper never decides whether a request is permitted.
+// Sanitized diagnostics; Fetch admission is independently enforced by run.mjs.
 export function blockedNetworkDiagnostic(kind,rawUrl,type,initiator){
  const resourceType=['Document','Stylesheet','Image','Media','Font','Script','TextTrack','XHR','Fetch','Prefetch','EventSource','WebSocket','Manifest','SignedExchange','Ping','CSPViolationReport','Preflight','Other'].includes(type)?type:'Other';
  let scheme='[invalid]',origin='[invalid]',path='[redacted]';
@@ -12,4 +12,13 @@ export function blockedNetworkDiagnostic(kind,rawUrl,type,initiator){
   result.dataUrlSha256=createHash('sha256').update(rawUrl).digest('hex');
  }
  return result;
+}
+
+// Classify one proven browser-owned, local SVG event, never an actual Fetch request.
+// Provenance and exact upstream revision are documented in README.md.
+export function isBuiltinCalendarImageDiagnostic(diagnostic){
+ return diagnostic?.kind==='off-origin-network-attempt'&&diagnostic.scheme==='data:'&&
+  diagnostic.resourceType==='Image'&&diagnostic.initiatorType==='other'&&
+  diagnostic.dataMediaType==='image/svg+xml'&&diagnostic.dataUrlBytes===382&&
+  diagnostic.dataUrlSha256==='04e449d20d0365d881a54ed24af7ed00fe79dd9f9e601248f4fd7793003924f2';
 }
