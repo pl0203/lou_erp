@@ -71,7 +71,14 @@ test('catalogue refresh preserves search/focus, blocks stale choices, and explai
     await waitFor(() => expect(reject).toBeTypeOf('function'));
     expect(lookup().disabled).toBe(false); expect(lookup().value).toBe('SKU-1'); expect(document.activeElement).toBe(lookup());
     expect(screen.getByText('Memuat katalog barang… Anda tetap dapat mengetik pencarian.')).toBeTruthy();
+    // Fetch-start invalidates the accepted catalogue envelope, so stale options
+    // are absent, not merely disabled. The native runner must assert this state.
+    expect(screen.queryAllByRole('option')).toHaveLength(0);
+    expect(document.querySelectorAll('[data-co-line]')).toHaveLength(0);
+    const stockReads = vi.spyOn(rpc, 'resolveCOStockKey');
     fireEvent.keyDown(lookup(), { key: 'Enter' }); expect(screen.queryByDisplayValue('Product 1')).toBeNull();
+    expect(stockReads).not.toHaveBeenCalled();
+    expect(document.querySelectorAll('[data-co-line]')).toHaveLength(0);
     await act(async () => reject(new Error('Offline catalogue')));
     expect(await screen.findByText('Katalog barang gagal dimuat. Coba lagi untuk memilih barang.')).toBeTruthy();
     expect(lookup().value).toBe('SKU-1'); expect(state.commands).toHaveLength(0);
