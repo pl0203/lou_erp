@@ -23,7 +23,7 @@ test('canonical stock-key URL opens movement scope without using UUID as SKU tex
     stockFixture();
     mountApp(<App />, `/athel/co/stock?customer=${customer}&sku=SKU-2&stockKey=${id(1002)}&movementCustomer=${customer}`);
     await screen.findByRole('heading', { name: /Mutasi stok/ });
-    expect(wire.rpc.mock.calls.some(([n, a]) => n === 'pilot_co_stock_movements_v1' && a.p_stock_key_id === id(1002))).toBe(true);
+    await waitFor(() => expect(wire.rpc.mock.calls.some(([n, a]) => n === 'pilot_co_stock_movements_v1' && a.p_stock_key_id === id(1002))).toBe(true));
     expect(wire.rpc.mock.calls.filter(([n]) => n === 'pilot_co_customer_stock_v2').every(([, a]) => a.p_search === '')).toBe(true);
 });
 test('failed stock read is unavailable rather than recorded zero', async () => {

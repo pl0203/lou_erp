@@ -13,6 +13,7 @@ async function begin(kind: 'return' | 'settlement', lost: boolean, sameTarget: b
     const s = stockFixture();
     const path = kind === 'return' ? `/athel/co/stock?customer=${customer}` : `/athel/co/${id(11)}`;
     const owner = mountApp(<App/>, path);
+    if (kind === 'settlement') await click('Actions');
     await click(kind === 'return' ? 'Retur barang belum terjual' : 'Selesaikan sisa belum dikirim');
     await screen.findByLabelText(kind === 'return' ? 'Jumlah retur SJ-1 Item 1' : 'Jumlah dibatalkan Item 1');
     change(kind === 'return' ? 'Jumlah retur SJ-1 Item 1' : 'Jumlah dibatalkan Item 1', '5');
@@ -67,6 +68,7 @@ for (const kind of ['return', 'settlement'] as const) {
             await click(kind === 'return' ? 'Tutup retur' : 'Batal'); await click('Buang perubahan');
             await act(async () => { await client.invalidateQueries({ queryKey: ['co'] }); });
         }
+        if (kind === 'settlement') await click('Actions');
         await click(kind === 'return' ? 'Retur barang belum terjual' : 'Selesaikan sisa belum dikirim');
         await screen.findByLabelText(kind === 'return' ? 'Referensi retur' : 'Alasan penyelesaian');
         await click('Pulihkan hasil penyimpanan'); await click('Lihat hasil tersimpan');
