@@ -18,7 +18,7 @@ export function composeWorkspaceReadFixture(posting, reads) {
   assert.equal(posting.split('\n').filter(line => /^ROLLBACK;\s*$/.test(line)).length, 1, 'One terminal fixture rollback required')
   assert.match(posting, terminal, 'Exact posting fixture terminal required')
   assert.ok(!/^\s*(BEGIN|COMMIT|ROLLBACK);/mi.test(reads), 'Read assertions stay in existing rollback fixture')
-  return posting.replace(terminal, reads + "\nROLLBACK;\nSELECT 'CO_IMPORT_ATOMIC_POST_EDIT_PASSED';\nSELECT 'CO_WORKSPACE_READS_PASSED';\n")
+  return posting.replace(terminal, () => reads + "\nROLLBACK;\nSELECT 'CO_IMPORT_ATOMIC_POST_EDIT_PASSED';\nSELECT 'CO_WORKSPACE_READS_PASSED';\n")
 }
 // Only reached after the fixed synthetic target and immutable identity checks.
 // Keep unexpected PostgreSQL errors diagnosable without dumping exec arguments,

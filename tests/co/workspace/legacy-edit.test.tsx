@@ -57,9 +57,24 @@ test.each(['draft','customer','effective'] as const)('replacement consent never 
 test('legacy correction requires complete input, reason and existing whole-impact preview; failed edit preserves effective revision',async()=>{
  const {s}=legacy();await open();await start();await screen.findByLabelText('Terjual Item 1');
  fireEvent.click(screen.getByRole('button',{name:'Tinjau perubahan'}));await screen.findByText(/Lengkapi semua baris/);expect(s.previewCount).toBe(0);
+ const beforeSaveVersion=s.version,base=wire.handler;let releaseRows!:()=>void;let heldRows=false;const rowsReady=new Promise<void>(resolve=>{releaseRows=resolve});
+ wire.handler=async(n:any,a:any)=>{if(n==='pilot_co_report_rows_v1'&&a.p_view==='draft'&&a.p_expected_draft_version!==beforeSaveVersion){heldRows=true;await rowsReady}return base(n,a)};
  fireEvent.change(screen.getByLabelText('Terjual Item 2'),{target:{value:'0'}});fireEvent.click(screen.getByRole('button',{name:'Tinjau perubahan'}));
- const reason=await screen.findByLabelText('Alasan perubahan');expect(screen.queryByRole('button',{name:'Simpan perubahan'})).toBeNull();
- fireEvent.change(reason,{target:{value:'Koreksi ledger'}});fireEvent.click(screen.getByRole('button',{name:'Tinjau semua dampak'}));
+ const reason=await screen.findByLabelText('Alasan perubahan') as HTMLTextAreaElement;expect(screen.queryByRole('button',{name:'Simpan perubahan'})).toBeNull();
+ // Opening the dialog is not proof that the saved draft's fresh row read has
+ // settled. Keep that read pending and prove the real controls refuse input.
+ await waitFor(()=>expect(heldRows).toBe(true));
+ expect(reason.disabled).toBe(true);
+ fireEvent.change(reason,{target:{value:'Must not enter while blocked'}});
+ fireEvent.click(screen.getByRole('button',{name:'Tinjau semua dampak'}));
+ expect(reason.value).toBe('');expect(s.previewCount).toBe(0);
+ expect(s.commands.some((command:any)=>command.op==='correct_report')).toBe(false);
+ await act(async()=>{releaseRows()});
+ await waitFor(()=>expect(reason.disabled).toBe(false));
+ fireEvent.change(reason,{target:{value:'Koreksi ledger'}});
+ expect(reason.value).toBe('Koreksi ledger');
+ const inspect=screen.getByRole('button',{name:'Tinjau semua dampak'}) as HTMLButtonElement;
+ expect(inspect.disabled).toBe(false);fireEvent.click(inspect);
  const apply=await screen.findByRole('button',{name:'Simpan perubahan'});
  const preview=wire.rpc.mock.calls.find(([n])=>n==='pilot_co_preview_v1')![1];expect(preview.p_operation).toBe('correct_report');expect(preview.p_payload).toMatchObject({report_head_id:id(4),original_revision_id:id(5),expected_report_version:'3',reason:'Koreksi ledger'});
  s.fail=async(n:string,a:any)=>n==='pilot_co_transaction_v1'&&a.p_operation==='correct_report'?{data:null,error:{code:'PT409',message:'Late conflict'}}:null;
@@ -84,7 +99,9 @@ test.each(['revision','count','duplicate','version'] as const)('legacy Edit refu
 test('legacy owner requires fresh exact reopen consent and routes all downstream periods through existing correction review',async()=>{
  const {s}=legacy();await open();await start();await screen.findByLabelText('Terjual Item 1');
  fireEvent.change(screen.getByLabelText('Terjual Item 2'),{target:{value:'0'}});fireEvent.click(screen.getByRole('button',{name:'Tinjau perubahan'}));
- fireEvent.change(await screen.findByLabelText('Alasan perubahan'),{target:{value:'Correct historic values'}});
+ const reason=await screen.findByLabelText('Alasan perubahan') as HTMLTextAreaElement;
+ await waitFor(()=>expect(reason.disabled).toBe(false));
+ fireEvent.change(reason,{target:{value:'Correct historic values'}});expect(reason.value).toBe('Correct historic values');
  s.impacts.reopen=[91,92].map(n=>({co_id:id(n),expected_co_version:'2',remaining_quantity:'0',pending_quantity:'1',missing_month_count:'0',labels:{sku:null,productName:null,coNumber:`CO-legacy-${n}`,sjNumber:null,picName:null}}));
  fireEvent.click(screen.getByRole('button',{name:'Tinjau semua dampak'}));await screen.findByRole('checkbox',{name:/Saya menyetujui pembukaan ulang tepat 2 CO/});expect(screen.queryByRole('button',{name:'Simpan perubahan'})).toBeNull();expect(screen.getByText('CO-legacy-91 · versi 2')).toBeTruthy();expect(screen.getByText('CO-legacy-92 · versi 2')).toBeTruthy();
  fireEvent.click(screen.getByRole('checkbox',{name:/Saya menyetujui pembukaan ulang tepat 2 CO/}));expect(screen.queryByRole('button',{name:'Simpan perubahan'})).toBeNull();
