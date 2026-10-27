@@ -3,7 +3,7 @@
 -- and the private evidence bucket declaration changed by this candidate.
 SELECT jsonb_build_object(
  'functions',(SELECT jsonb_agg(jsonb_build_object('signature',p.oid::regprocedure::text,'definition',pg_get_functiondef(p.oid),'acl',p.proacl,'owner',p.proowner) ORDER BY n.nspname,p.proname,p.oid::regprocedure::text)
-  FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE (n.nspname='private' AND p.proname LIKE 'co_%') OR (n.nspname='public' AND (p.proname LIKE 'pilot_co_%' OR p.proname LIKE 'pilot_reconcile_co_%'))),
+  FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE (n.nspname='private' AND (p.proname LIKE 'co_%' OR p.proname LIKE 'catalog_%')) OR (n.nspname='public' AND (p.proname LIKE 'pilot_co_%' OR p.proname LIKE 'pilot_reconcile_co_%'))),
  'relations',(SELECT jsonb_agg(jsonb_build_object('name',c.relname,'kind',c.relkind,'acl',c.relacl,'rls',c.relrowsecurity,'owner',c.relowner,
   'columns',(SELECT jsonb_agg(jsonb_build_object('name',a.attname,'type',format_type(a.atttypid,a.atttypmod),'notnull',a.attnotnull) ORDER BY a.attnum) FROM pg_attribute a WHERE a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped),
   'constraints',(SELECT jsonb_agg(jsonb_build_object('name',k.conname,'definition',pg_get_constraintdef(k.oid)) ORDER BY k.conname) FROM pg_constraint k WHERE k.conrelid=c.oid),
