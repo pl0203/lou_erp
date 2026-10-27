@@ -42,3 +42,17 @@ Actual PostgreSQL execution and hosted schema attestation require source-bound r
 The output normalizes function identities/types, source SHA256 (not bodies), owner/security/search path/config/ACL; relevant table columns/default expressions/column ACL, RLS/table ACL, constraints, indexes, policies, trigger definitions, and view hashes. Roles and objects are named, never emitted as local OIDs. Defaults are hashed from deparsed function arguments rather than raw PostgreSQL internal expression trees. The attestation includes PostgreSQL major version and reviewed catalogue profile.
 
 CI emits `CO_RETURN_WORKSPACE_PREFLIGHT` followed by JSON binding the deterministic attestation and its digest to source commit/tree, candidate SHA256 and preflight-SQL SHA256, before executing the candidate. The release owner may later execute this exact SQL read-only against the explicitly authorized target and compare the normalized document/digest to the **current** CI profile bound to the final tested SHA. A mismatch is a stop condition, not permission to overwrite definitions. The script contains no apply path. Its PostgreSQL execution must itself pass before relying on the attestation.
+
+## Runner-owned transaction deployment envelope
+
+For hosted `apply_migration`, preserve the standalone candidate and derive the body
+with the fixed hash-bound `co-return-migration-envelope.mjs` helper. Only its two outer
+transaction-command lines are removed; no function body or other byte changes. Record
+both SHA256 identities and the transformation offsets. Both existing return SQL profiles
+must pass the added external-transaction/late-DDL/history-insert rollback tests on the
+final source. The generated migration file contains exactly this separately identified
+body. Never submit standalone embedded COMMIT to a surrounding migration runner or
+silently equate the derived artifact hash with the original candidate hash. Confirm both
+actual installed schema and observed remote migration history after submission; the API
+may generate a version different from the local filename timestamp. Synthetic history
+fixtures are not a guarantee about hosted service implementation.

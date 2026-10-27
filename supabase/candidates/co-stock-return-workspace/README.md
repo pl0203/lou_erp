@@ -30,3 +30,21 @@ PostgreSQL compile/execution, real lock observations, full composed-suite regres
 
 ## Known date boundary (preserved kernel contract)
 The existing return kernel defines its future-date ceiling using UTC, although app display/default timezone is WIB. This additive adapter intentionally retains that UTC eligibility check. During 00:00–06:59 WIB, WIB's current calendar date is ahead of the ledger ceiling. UI must not silently backdate actual returns: leave the date unset and disclose the ledger cutoff if its default would be invalid. Fixing the kernel business-day semantics requires a separately reviewed change, not session-timezone manipulation or date coercion.
+
+## Hosted migration envelope
+
+The standalone reviewed candidate remains byte-identical, including its own transaction.
+For a migration runner that owns the transaction, `scripts/co-return-migration-envelope.mjs`
+derives SQL by removing only the pinned outer `BEGIN;\n` and final `COMMIT;\n` bytes.
+All remaining bytes, including function bodies, are unchanged. It emits a separate
+candidate/body SHA256 and removal-offset manifest. Create the final filename via CLI,
+then copy the exact tested derived body; do not apply the standalone wrapper via a
+runner that could commit before its migration-history bookkeeping.
+
+Both disposable profiles retain standalone late-failure rollback and additionally test
+runner-owned transaction success plus late-DDL and synthetic history-insert failure.
+They require absent new objects, zero history rows and identical existing schema after
+failure, then exact source-bound history plus existing behavior/ACL/race checks after
+success. Synthetic history tests do not establish private Management API internals;
+hosted deployment still requires exact schema AND actual history readback, with no
+blind retry after an uncertain response. No runtime/authorization rules are changed.

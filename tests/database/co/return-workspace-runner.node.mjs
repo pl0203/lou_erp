@@ -84,3 +84,36 @@ test('late-install fault composition preserves PostgreSQL dollar quoting literal
  assert.doesNotMatch(actual,/DO \$ BEGIN/);
  assert.throws(()=>composeReturnInstallFailure('BEGIN; SELECT 1;'),/Terminal candidate COMMIT required/);
 });
+
+test('derived hosted migration removes only pinned outer transaction bytes',async()=>{
+ const runner=await import('../../../scripts/test-co-return-workspace-db.mjs');
+ assert.equal(typeof runner.deriveReturnMigration,'function','reviewed migration envelope derivation required');
+ const {readFileSync}=await import('node:fs');const {createHash}=await import('node:crypto');
+ const candidate=readFileSync(new URL('../../../supabase/candidates/co-stock-return-workspace/20261027144000_co_stock_return_workspace.sql',import.meta.url),'utf8');
+ const {sql,manifest}=runner.deriveReturnMigration(candidate);
+ const first=candidate.indexOf('\nBEGIN;\n')+1,last=candidate.lastIndexOf('COMMIT;\n');
+ assert.equal(sql,candidate.slice(0,first)+candidate.slice(first+7,last));
+ assert.equal(manifest.candidate_sha256,'7e7601e457ba47178ccc507fca58a5f72bc1b84267232390044e82a8003711f5');
+ assert.equal(manifest.migration_sha256,createHash('sha256').update(sql).digest('hex'));
+ assert.deepEqual(manifest.removed,[{offset:148,bytes:'BEGIN;\n'},{offset:18623,bytes:'COMMIT;\n'}]);
+ assert.equal(manifest.migration_sha256,'9f896e4241bfbc47fd2937fc280b391f156d58ee876d5b673ded91c9b6f41a99');
+ assert.deepEqual([...sql.matchAll(/AS \$\$([\s\S]*?)\$\$;/g)].map(x=>x[1]),[...candidate.matchAll(/AS \$\$([\s\S]*?)\$\$;/g)].map(x=>x[1]));
+ for(const bad of [candidate+'\n',candidate.replace('BEGIN;\n',''),candidate.replace('COMMIT;\n',''),candidate.replace('CREATE TABLE','CREATE UNLOGGED TABLE')])assert.throws(()=>runner.deriveReturnMigration(bad),/candidate identity/);
+});
+
+test('external wrapper keeps exact derived body before synthetic history and commit',async()=>{
+ const runner=await import('../../../scripts/test-co-return-workspace-db.mjs');
+ assert.equal(typeof runner.composeReturnMigrationTest,'function','external wrapper regression required');
+ const {readFileSync}=await import('node:fs');const candidate=readFileSync(new URL('../../../supabase/candidates/co-stock-return-workspace/20261027144000_co_stock_return_workspace.sql',import.meta.url),'utf8');
+ const {sql}=runner.deriveReturnMigration(candidate);
+ for(const mode of ['success','ddl-failure','history-failure']){
+  const wrapped=runner.composeReturnMigrationTest(candidate,mode);
+  assert.ok(wrapped.startsWith('BEGIN;\n'+sql));
+  assert.ok(wrapped.endsWith('COMMIT;\n'));
+  assert.equal(wrapped.split('\n').filter(x=>/^(BEGIN|COMMIT);$/.test(x)).join(','),'BEGIN;,COMMIT;');
+  assert.ok(wrapped.indexOf('INSERT INTO return_envelope_test.history')>wrapped.indexOf(sql));
+ }
+ assert.match(runner.composeReturnMigrationTest(candidate,'ddl-failure'),/PZ703/);
+ assert.match(runner.composeReturnMigrationTest(candidate,'history-failure'),/'rejected'/);
+ assert.throws(()=>runner.composeReturnMigrationTest(candidate,'arbitrary'),/Unsupported/);
+});

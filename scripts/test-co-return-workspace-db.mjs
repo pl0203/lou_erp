@@ -4,6 +4,8 @@ import {execFileSync} from 'node:child_process'
 import {readFileSync} from 'node:fs'
 import {createHash} from 'node:crypto'
 import {fileURLToPath,pathToFileURL} from 'node:url'
+import {deriveReturnMigration,composeReturnMigrationTest} from './co-return-migration-envelope.mjs'
+export {deriveReturnMigration,composeReturnMigrationTest} from './co-return-migration-envelope.mjs'
 import {runCoCi} from './test-co-ci.mjs'
 import {installReturnCurrentFunctions} from './co-return-current-functions.mjs'
 import {installReturnCurrentSchema} from './co-return-current-schema.mjs'
@@ -74,7 +76,21 @@ export function runReturnWorkspace({env=process.env,execute=execFileSync,sourceI
  try{run(composeReturnInstallFailure(candidate))}
  catch(error){assert.match(String(error.stderr??''),/PZ702.*Synthetic return install fault/);failed=true}
  assert.equal(failed,true);assert.equal(run(absent).trim(),'t');assert.equal(run(schemaSnapshot).trim(),schemaBefore,'Failed candidate leaves exact existing schema');verify()
- run(candidate);verify()
+ const {manifest}=deriveReturnMigration(candidate)
+ process.stdout.write('CO_RETURN_MIGRATION_ENVELOPE '+JSON.stringify({baseline:baselineName,source,...manifest})+'\n')
+ run("CREATE SCHEMA return_envelope_test;CREATE TABLE return_envelope_test.history(version text PRIMARY KEY CHECK(version='accepted'),candidate_sha256 text NOT NULL,migration_sha256 text NOT NULL);");verify()
+ for(const mode of ['ddl-failure','history-failure']){
+  let rejected=false
+  try{run(composeReturnMigrationTest(candidate,mode))}
+  catch(error){assert.match(String(error.stderr??''),mode==='ddl-failure'?/PZ703.*Synthetic external migration install fault/:/23514.*history_version_check/);rejected=true}
+  assert.equal(rejected,true,mode+' must fail')
+  assert.equal(run(absent).trim(),'t',mode+' must roll back every new object')
+  assert.equal(run('SELECT count(*) FROM return_envelope_test.history').trim(),'0',mode+' must roll back migration history')
+  assert.equal(run(schemaSnapshot).trim(),schemaBefore,mode+' must preserve exact existing schema');verify()
+ }
+ run(composeReturnMigrationTest(candidate,'success'));verify()
+ assert.equal(run("SELECT count(*)=1 AND bool_and(version='accepted' AND candidate_sha256='"+manifest.candidate_sha256+"' AND migration_sha256='"+manifest.migration_sha256+"') FROM return_envelope_test.history").trim(),'t','Exact derived migration history must commit with schema')
+ process.stdout.write('CO_RETURN_MIGRATION_ENVELOPE_ROLLBACK_PASSED\n')
  assert.equal(run(schemaSnapshot).trim(),schemaBefore,'Additive install preserves exact existing schema')
  const acl=run(read('tests/database/co/return-workspace-acl.sql'))
  assert.equal(acl.trim(),'CO_RETURN_WORKSPACE_ACL_PASSED')
