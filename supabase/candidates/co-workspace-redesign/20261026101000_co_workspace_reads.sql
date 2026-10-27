@@ -20,7 +20,7 @@ BEGIN
  ), combined AS (
   SELECT h.id,h.customer_id,h.report_month,'posted'::text status,r.id revision_id,h.id report_head_id,
    EXISTS(SELECT 1 FROM pending d WHERE d.customer_id=h.customer_id AND d.report_month=h.report_month) legacy_pending,
-   r.created_at updated_at,e.filename source_filename
+   r.created_at updated_at,private.co_evidence_json_v1(e)->>'filename' source_filename
   FROM private.co_report_heads h JOIN private.co_report_revisions r ON r.id=h.current_revision_id AND r.head_id=h.id AND r.customer_id=h.customer_id
   LEFT JOIN private.co_report_evidence l ON l.report_revision_id=r.id AND l.customer_id=h.customer_id
   LEFT JOIN private.co_evidence e ON e.id=l.evidence_id AND e.customer_id=h.customer_id

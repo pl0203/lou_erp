@@ -24,6 +24,7 @@ BEGIN
  PERFORM public.pilot_co_import_review_v1(gen_random_uuid(),co_test.import_review_payload(d));
  PERFORM co_test.assert((SELECT count(*)=3 FROM private.co_report_revisions WHERE customer_id=c),'three immutable revisions retained');
  page:=public.pilot_co_reports_page_v2(c,month::text,'all',1,20);
+ PERFORM co_test.assert(page#>>'{rows,0,source_filename}'=(SELECT private.co_evidence_json_v1(e)->>'filename' FROM private.co_report_evidence l JOIN private.co_evidence e ON e.id=l.evidence_id AND e.customer_id=l.customer_id WHERE l.report_revision_id=latest AND l.customer_id=c),'report list filename is canonical effective evidence metadata');
  PERFORM co_test.assert(page->>'total'='1' AND jsonb_array_length(page->'rows')=1 AND page#>>'{rows,0,revision_id}'=latest::text AND page#>>'{rows,0,status}'='posted','posted plus work plus three revisions gives one effective row');
  PERFORM co_test.assert(public.pilot_co_reports_page_v2(c,month::text,'all',2,20)->>'total'='1' AND jsonb_array_length(public.pilot_co_reports_page_v2(c,month::text,'all',2,20)->'rows')=0,'out of range preserves full count');
  historical:=public.pilot_co_report_import_v1(c,month,original);

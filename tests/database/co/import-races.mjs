@@ -24,6 +24,8 @@ const uid = n => `md5('co-user-${n}')::uuid`
 const auth = (n=1) => `SET LOCAL ROLE authenticated; SELECT set_config('request.jwt.claim.sub',${uid(n)}::text,true);`
 const rpc = (operation,payload,request=randomUUID()) => `SELECT public.pilot_co_transaction_v1(${quote(request)}::uuid,${quote(operation)},${json(payload)})`
 const txn = (body,n=1) => `BEGIN; ${auth(n)} ${body}; COMMIT;`
+// Owner-only synthetic helpers prepare inputs; competing RPC sessions still use authenticated.
+const fixtureTxn = body => `BEGIN; SELECT set_config('request.jwt.claim.sub',${uid(1)}::text,true); ${body}; COMMIT;`
 function start(body, interactive=false) {
   const name=`co-race-${process.pid}-${++serial}`
   const child=spawn('psql',['-X','--no-password','-qAt','-v','ON_ERROR_STOP=1','-v','VERBOSITY=verbose'],{env:{...env,PGAPPNAME:name},stdio:['pipe','pipe','pipe']})
@@ -66,7 +68,7 @@ async function observed(winner,contender,label,lockTypes){
 async function fails(body,state){const r=await start(body).result;assert.notEqual(r.code,0);assert.match(r.stderr,new RegExp(`ERROR:\\s+${state}:`));return r}
 const commit = p => `SELECT public.pilot_co_import_commit_v1(${quote(p.requestId)}::uuid,${json(p)})`
 const setup = async label => resultJson(await start(`BEGIN; SELECT set_config('request.jwt.claim.sub',${uid(1)}::text,true); SELECT co_test.import_setup(${quote(label)}); COMMIT;`).result)
-const payload = async binding => resultJson(await start(txn(`SELECT co_test.import_post_payload(${json(binding)})`)).result)
+const payload = async binding => resultJson(await start(fixtureTxn(`SELECT co_test.import_post_payload(${json(binding)})`)).result)
 try {
  coBindFixtureServer(fixtureProfile,JSON.parse(await sql(CO_FIXTURE_OBSERVATION_SQL)),expectedIdentity)
  assert.equal(await sql(coVerifyFixtureIdentitySql(expectedIdentity)),'t','exact import source/run/server required')
@@ -88,7 +90,7 @@ try {
  success(await release(winner)); assert.match((await other.result).stderr,/ERROR:\s+PT409:/)
  assert.equal(await sql(`SELECT count(*) FROM private.co_report_heads WHERE customer_id=${quote(state.customerId)}::uuid`),'1')
  // Review-open supersession is also version/predecessor bound; loser cannot erase origin.
- const reviewPayload=resultJson(await start(txn(`SELECT co_test.import_review_payload(${quote(state.draftId)}::uuid)`)).result)
+ const reviewPayload=resultJson(await start(fixtureTxn(`SELECT co_test.import_review_payload(${quote(state.draftId)}::uuid)`)).result)
  const reviewCall=req=>`SELECT public.pilot_co_import_review_v1(${quote(req)}::uuid,${json(reviewPayload)})`
  const reviewWinner=await gate(auth()+reviewCall(randomUUID())), reviewOther=start(txn(reviewCall(randomUUID()),2))
  await observed(reviewWinner,reviewOther,'concurrent review predecessor',['transactionid','tuple'])
