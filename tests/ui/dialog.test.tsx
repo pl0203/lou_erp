@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react'
-import { useRef, useState } from 'react'
+import { StrictMode, useRef, useState } from 'react'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
@@ -210,4 +210,102 @@ test('dialog retains native accessibility attributes and opt-in shared styles', 
   const css = readFileSync('src/styles/ui.css', 'utf8')
   expect(css).toMatch(/\.ui-dialog\s*\{[^}]*max-height:\s*90vh/s)
   expect(css).toMatch(/\.ui-dialog::backdrop/)
+})
+
+test.each([[false, false], [true, false], [false, true], [true, true]])('simultaneous draft and discard removal restores the outer trigger (native=%s, strict=%s)', async (native, strict) => {
+  const Dialog = await sharedDialog()
+  if (native) Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: function (this: HTMLDialogElement) { this.setAttribute('open', '') } })
+  const trigger = addFocusTarget('Create stock return')
+  let lowerTarget: HTMLElement | null = null
+  function Owner({ open, confirm }: { open: boolean; confirm: boolean }) {
+    return <>{open && <Dialog labelledBy="simultaneous-draft" pending={false} onClose={() => {}} returnFocus={trigger} fallbackFocus={() => null}>
+      <h2 id="simultaneous-draft">Draft to discard</h2><button ref={node => { if (node) lowerTarget = node }}>Request discard</button>
+    </Dialog>}{open && confirm && <Dialog labelledBy="simultaneous-confirm" pending={false} onClose={() => {}} returnFocus={lowerTarget} fallbackFocus={() => null}>
+      <h2 id="simultaneous-confirm">Confirm discard</h2><button>Discard both</button>
+    </Dialog>}</>
+  }
+  const tree = (open: boolean, confirm: boolean) => strict ? <StrictMode><Owner open={open} confirm={confirm} /></StrictMode> : <Owner open={open} confirm={confirm} />
+  const view = render(tree(true, false))
+  view.rerender(tree(true, true))
+  expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Discard both' }))
+  view.rerender(tree(false, false))
+  expect(screen.queryByRole('dialog')).toBeNull()
+  expect(document.activeElement).toBe(trigger)
+})
+
+test('discarding a lower modal pair cannot steal focus from a newer surviving dialog', async () => {
+  const Dialog = await sharedDialog()
+  const trigger = addFocusTarget('Outer trigger')
+  let lowerTarget: HTMLElement | null = null
+  function Owner({ pair, confirm, newer }: { pair: boolean; confirm: boolean; newer: boolean }) {
+    return <>{pair && <Dialog labelledBy="pair-draft" pending={false} onClose={() => {}} returnFocus={trigger} fallbackFocus={() => null}>
+      <h2 id="pair-draft">Pair draft</h2><button ref={node => { if (node) lowerTarget = node }}>Pair opener</button>
+    </Dialog>}{pair && confirm && <Dialog labelledBy="pair-confirm" pending={false} onClose={() => {}} returnFocus={lowerTarget} fallbackFocus={() => null}>
+      <h2 id="pair-confirm">Pair confirmation</h2><button>Pair discard</button>
+    </Dialog>}{newer && <Dialog labelledBy="newer-context" pending={false} onClose={() => {}} returnFocus={null} fallbackFocus={() => null}>
+      <h2 id="newer-context">Newer context</h2><button>Newer control</button>
+    </Dialog>}</>
+  }
+  const view = render(<Owner pair confirm={false} newer={false} />)
+  view.rerender(<Owner pair confirm newer={false} />)
+  view.rerender(<Owner pair confirm newer />)
+  const control = screen.getByRole('button', { name: 'Newer control' })
+  expect(document.activeElement).toBe(control)
+  view.rerender(<Owner pair={false} confirm={false} newer />)
+  expect(document.activeElement).toBe(control)
+  trigger.focus()
+  expect(document.activeElement).toBe(control)
+})
+
+test.each([false, true])('an unrelated upper dialog never inherits a removed lower dialog trigger (outside opener=%s)', async outside => {
+  const Dialog = await sharedDialog()
+  const trigger = addFocusTarget('Unrelated outer trigger')
+  const outsideOpener = outside ? addFocusTarget('Unrelated upper opener') : null
+  function Owner({ open }: { open: boolean }) {
+    return open ? <><Dialog labelledBy="unrelated-lower" pending={false} onClose={() => {}} returnFocus={trigger} fallbackFocus={() => null}>
+      <h2 id="unrelated-lower">Unrelated lower</h2><button>Lower control</button>
+    </Dialog><Dialog labelledBy="unrelated-upper" pending={false} onClose={() => {}} returnFocus={outsideOpener} fallbackFocus={() => null}>
+      <h2 id="unrelated-upper">Unrelated upper</h2><button>Upper control</button>
+    </Dialog></> : null
+  }
+  const view = render(<Owner open />)
+  outsideOpener?.remove()
+  view.rerender(<Owner open={false} />)
+  expect(document.activeElement).not.toBe(trigger)
+})
+
+test.each(['disabled', 'hidden', 'inert', 'display-none', 'visibility-hidden'])('nested discard bypasses an unavailable outer opener (%s) for its fallback', async unavailable => {
+  const Dialog = await sharedDialog()
+  const trigger = addFocusTarget('Unavailable outer opener'), fallback = addFocusTarget('Available outer fallback')
+  let lowerTarget: HTMLElement | null = null
+  function Owner({ open, confirm }: { open: boolean; confirm: boolean }) {
+    return <>{open && <Dialog labelledBy="unavailable-draft" pending={false} onClose={() => {}} returnFocus={trigger} fallbackFocus={() => fallback}>
+      <h2 id="unavailable-draft">Unavailable opener draft</h2><button ref={node => { if (node) lowerTarget = node }}>Nested opener</button>
+    </Dialog>}{open && confirm && <Dialog labelledBy="unavailable-confirm" pending={false} onClose={() => {}} returnFocus={lowerTarget} fallbackFocus={() => null}>
+      <h2 id="unavailable-confirm">Unavailable opener confirmation</h2><button>Discard unavailable draft</button>
+    </Dialog>}</>
+  }
+  const tree = (open: boolean, confirm: boolean) => <StrictMode><Owner open={open} confirm={confirm} /></StrictMode>
+  const view = render(tree(true, false))
+  view.rerender(tree(true, true))
+  if (unavailable === 'disabled') trigger.setAttribute('disabled', '')
+  else if (unavailable === 'display-none') trigger.style.display = 'none'
+  else if (unavailable === 'visibility-hidden') trigger.style.visibility = 'hidden'
+  else trigger.setAttribute(unavailable, '')
+  view.rerender(tree(false, false))
+  expect(document.activeElement).toBe(fallback)
+})
+
+test('restoration accepts a programmatically focusable tabindex-minus-one heading fallback', async () => {
+  const Dialog = await sharedDialog()
+  const trigger = addFocusTarget('Disabled return trigger')
+  trigger.setAttribute('disabled', '')
+  const heading = document.createElement('h1')
+  heading.tabIndex = -1; heading.textContent = 'Current page heading'
+  document.body.append(heading); focusTargets.push(heading)
+  const view = render(<Dialog labelledBy="heading-fallback-dialog" pending={false} onClose={() => {}} returnFocus={trigger} fallbackFocus={() => heading}>
+    <h2 id="heading-fallback-dialog">Heading fallback dialog</h2><button>Close dialog</button>
+  </Dialog>)
+  view.unmount()
+  expect(document.activeElement).toBe(heading)
 })
