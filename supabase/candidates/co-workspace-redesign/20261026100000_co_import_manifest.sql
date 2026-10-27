@@ -357,7 +357,7 @@ BEGIN
  FOR section IN SELECT value FROM jsonb_array_elements(source->'sections') LOOP
   IF section->'printedTotal'<>'null'::jsonb AND (SELECT count(*) FROM jsonb_array_elements(review->'controls') c
     WHERE c->'amount'=section->'printedTotal' AND jsonb_array_length(c->'rowIds')=jsonb_array_length(section->'rowIds')
-    AND c->'rowIds' @> section->'rowIds' AND section->'rowIds' @> c->'rowIds'
+    AND (c->'rowIds') @> (section->'rowIds') AND (section->'rowIds') @> (c->'rowIds')
     AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(source->'sourceRows') r WHERE section->'rowIds'?(r->>'id') AND r->'ref'->>'sheet' IS DISTINCT FROM c->'ref'->>'sheet'))<>1
   THEN RAISE EXCEPTION 'Manual whole-section amount control required' USING ERRCODE='22023'; END IF;
  END LOOP;

@@ -13,3 +13,12 @@ test('manual physical reference loop does not shadow SQL source-row aliases',()=
  expect(body).toContain("RAISE EXCEPTION 'Unattested manual physical reference' USING ERRCODE='22023'")
  expect(body).toContain("RAISE EXCEPTION 'Manual control explicit coverage mismatch' USING ERRCODE='22023'")
 })
+test('whole-section controls compare extracted JSON arrays, not a boolean extraction chain',()=>{
+ // -> and @> are same-precedence left-associative operators in PostgreSQL.
+ // Both containment operands must stay complete JSON expressions.
+ const coverage=body.split('\n').find(line=>line.includes('@>'))
+ expect(coverage).toContain("(c->'rowIds') @> (section->'rowIds') AND (section->'rowIds') @> (c->'rowIds')")
+ expect((body.match(/@>/g)||[])).toHaveLength(2)
+ expect(body).toContain("jsonb_array_length(c->'rowIds')=jsonb_array_length(section->'rowIds')")
+ expect(body).toContain("RAISE EXCEPTION 'Manual whole-section amount control required' USING ERRCODE='22023'")
+})
