@@ -80,6 +80,7 @@ try{
   for(const text of ['Harga satuan','Nilai retur','Sumber CO','CO-CONTOH-2','10.000','30.000'])assert.equal(await contains(text),true,text);
   await geometry();await noUUID();await key('Escape','Escape',27);
   await until(()=>ev(`!document.querySelector('dialog')`),'detail escape');
+  await until(()=>ev(`document.activeElement===(${button('Buka')})`),'detail trigger focus restored');
   assert.equal(await ev(`document.activeElement===(${button('Buka')})`),true);
  });
  await scenario('success',390,async({ev,tap,button,key,type,waitButton,contains,geometry})=>{
@@ -97,6 +98,7 @@ try{
   assert.equal(await ev(`document.activeElement===(${button('Catat retur')})`),true);await key('Tab','Tab',9);
   assert.equal(await ev(`document.activeElement===(${button('Tutup form retur')})`),true);
   await key('Escape','Escape',27);await waitButton('Tetap mengedit');
+  await until(()=>ev(`document.activeElement===(${button('Tetap mengedit')})`),'discard confirmation focus established');
   assert.equal(await ev(`document.activeElement===(${button('Tetap mengedit')})`),true);
   await key('Tab','Tab',9);assert.equal(await ev(`document.activeElement===(${button('Buang perubahan')})`),true);
   await tap(button('Tetap mengedit'));await until(()=>ev(`document.querySelectorAll('dialog').length===1`),'keep edits');
@@ -111,6 +113,11 @@ try{
   assert.equal(await ev(`document.querySelector('dialog').contains(document.activeElement)`),true);
   await key('Escape','Escape',27);await waitButton('Buang perubahan');await tap(button('Buang perubahan'));
   await until(()=>ev(`!document.querySelector('dialog')`),'discard form');
+  try{await until(()=>ev(`document.activeElement===(${button('Create Stock Return')})`),'discard trigger focus restored')}
+  catch(error){
+   const diagnostic=await ev(`(()=>{const a=document.activeElement,d=document.querySelector('dialog'),trigger=${button('Create Stock Return')};return {activeTag:['BODY','BUTTON','INPUT','TEXTAREA','DIALOG'].includes(a?.tagName)?a.tagName:'other',activeId:['return-customer-search','return-date','return-reason','return-reference','return-item-search','return-notes'].includes(a?.id)?a.id:'other',dialogPresent:!!d,dialogOpen:d?.open===true,dialogModal:d?.matches(':modal')===true,triggerConnected:trigger?.isConnected===true,triggerDisabled:trigger?.disabled===true,triggerFocused:a===trigger}})()`);
+   console.error('DISCARD_TRIGGER_FOCUS_DIAGNOSTIC '+JSON.stringify(diagnostic));throw error;
+  }
   assert.equal(await ev(`document.activeElement===(${button('Create Stock Return')})`),true);
   assert.equal(await ev('returnFixture.commits'),0);
  });

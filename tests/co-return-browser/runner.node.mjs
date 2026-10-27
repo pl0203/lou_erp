@@ -80,3 +80,16 @@ test('stock browser cleanup proves owned process close before bounded profile re
  assert.ok(!source.includes("browser?.kill('SIGTERM')"));
  assert.ok(source.indexOf('console.log(JSON.stringify(receipt,null,2))')>source.indexOf('await rm(temp,'));
 });
+test('discard waits for exact Create Stock Return trigger focus and retains strict assertion',async()=>{
+ const source=await readFile(url,'utf8');
+ assert.ok(source.includes("await until(()=>ev(`document.activeElement===(${button('Create Stock Return')})`),'discard trigger focus restored')"));
+ assert.ok(source.includes("assert.equal(await ev(`document.activeElement===(${button('Create Stock Return')})`),true)"));
+ assert.ok(source.includes('DISCARD_TRIGGER_FOCUS_DIAGNOSTIC'));
+});
+test('detail dismissal and nested confirmation mounting wait for exact effect-owned focus',async()=>{
+ const source=await readFile(url,'utf8');
+ for(const [label,target] of [['detail trigger focus restored','Buka'],['discard confirmation focus established','Tetap mengedit']]){
+  assert.ok(source.includes("await until(()=>ev(`document.activeElement===(${button('"+target+"')})`),'"+label+"')"));
+  assert.ok(source.includes("assert.equal(await ev(`document.activeElement===(${button('"+target+"')})`),true)"));
+ }
+});
