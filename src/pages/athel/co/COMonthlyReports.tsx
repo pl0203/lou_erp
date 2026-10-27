@@ -22,10 +22,12 @@ export default function COMonthlyReports() {
         if ((key === 'month' ? month : key === 'status' ? status : customer) === value) return;
         const next = new URLSearchParams(params);
         next.delete('page');
+        next.delete('status');
         if (value) next.set(key, value); else next.delete(key);
         setParams(next);
     }
-    const status = ['posted','historical_pending'].includes(params.get('status') ?? '') ? params.get('status')! : 'all';
+    // A monthly report is a recorded result, never an internal preparation row.
+    const status = 'posted';
     const requestedPage = params.get('page') ?? '';
     const page = /^[1-9][0-9]*$/.test(requestedPage) && Number.isSafeInteger(Number(requestedPage)) && Number(requestedPage) <= 2147483647 ? Number(requestedPage) : 1;
     const setPage = (value:number) => { const next = new URLSearchParams(params); value === 1 ? next.delete('page') : next.set('page',String(value)); setParams(next); };
@@ -39,14 +41,12 @@ export default function COMonthlyReports() {
     if (!actor.enabled) return null;
     return <div className="min-w-0 mx-auto max-w-6xl space-y-5">
         <PageHeader title="Laporan penjualan bulanan" description="Satu laporan per toko dan bulan. Upload PDF/XLSX, periksa sumber, lalu catat penjualan."/>
-        <p className="text-sm">Cari toko dan pilih bulan laporan. Tidak perlu memilih nomor CO.</p>
+        <p className="text-sm">Pilih toko dan periode untuk mengunggah laporan.</p>
         <FilterBar label="Filter laporan penjualan">
             <Field id="co-report-customer-filter" label="Toko laporan" className="flex-1 basis-56">{control => <POCustomerLookup {...control} customers={customers.data??[]} selectedId={customer} disabled={customers.isFetching||customers.isError} onSelect={c=>updateFilter('customer',c.id)}/>}</Field>
             <Field id="co-report-month-filter" label="Bulan laporan" className="flex-1 basis-56">{control => <input {...control} aria-label="Bulan laporan" className={CO_INPUT} type="month" value={month} onChange={e => { updateFilter('month', e.target.value); }}/>}</Field>
-            <Field id="co-report-status-filter" label="Status laporan" className="flex-1 basis-56">{control => <select {...control} aria-label="Status laporan" className={CO_INPUT} value={status} onChange={e => { updateFilter('status', e.target.value); }}><option value="all">Semua</option><option value="historical_pending">Pekerjaan lama perlu diperiksa</option><option value="posted">Tercatat</option></select>}</Field>
         </FilterBar>
         {customers.isError && <COFailure error={customers.error} retry={() => void customers.refetch()}/>}
-        {!customer && <p className="text-sm">Pilih toko dan periode untuk mengunggah laporan.</p>}
         {customer && <Section title="Periode laporan pelanggan" aria-label="Periode laporan pelanggan" aria-labelledby={undefined} className="space-y-3">
             {months.isFetching && <LoadingState title="Memeriksa periode laporan berikutnya…" shape="compact" />}
             {months.isError && <COFailure error={months.error} retry={() => void months.refetch()}/>}
@@ -62,12 +62,11 @@ export default function COMonthlyReports() {
         </Section>}
         {customer && (month || !months.isFetching && !months.isError && nextMonth) && <ActionLink variant="primary" to={`/athel/co/reports/${customer}/${month ? `${month}-01` : nextMonth}?upload=1&returnTo=${returnTo}`}>Unggah laporan bulanan</ActionLink>}
         {reports.isError ? <COFailure error={reports.error} retry={() => void reports.refetch()}/> : !reports.data ? <LoadingState title="Memuat laporan…" shape="list" /> : <>
-            <p className="text-sm text-brand-secondary">Cakupan daftar: {customer ? 'pelanggan dipilih, semua CO' : 'semua pelanggan yang dapat diakses'} · {month ? formatCOReportMonth(month) : 'semua periode tercatat'} · {status === 'all' ? 'semua status' : status === 'posted' ? 'tercatat' : 'pekerjaan lama perlu diperiksa'}. Daftar kosong berarti belum ada laporan sesuai filter, bukan penjualan terverifikasi nol.</p>
-            <div className="overflow-x-auto"><table className="w-full text-sm text-left"><caption className="sr-only">Laporan penjualan pelanggan</caption><thead><tr>{['Toko','Periode','Status','Sumber','Waktu catatan (WIB)','Tindakan'].map(label=><th key={label} scope="col" className="p-3 border-b whitespace-nowrap">{label}</th>)}</tr></thead><tbody>{reports.data.rows.map(h=><tr key={h.id}>
+            <div className="overflow-x-auto"><table className="w-full text-sm text-left"><caption className="sr-only">Laporan penjualan pelanggan</caption><thead><tr>{['Toko','Periode','Status','Sumber','Waktu catatan (WIB)','Actions'].map(label=><th key={label} scope="col" className="p-3 border-b whitespace-nowrap">{label}</th>)}</tr></thead><tbody>{reports.data.rows.map(h=><tr key={h.id}>
                 <th scope="row" className="p-3 border-b font-medium">{h.customer_name}</th><td className="p-3 border-b whitespace-nowrap">{formatCOReportMonth(h.report_month)}</td>
                 <td className="p-3 border-b"><StatusBadge tone={h.status==='posted'?'success':'warning'}>{h.status==='posted'?'Tercatat':'Pekerjaan lama · perlu diperiksa'}</StatusBadge></td>
                 <td className="p-3 border-b">{h.source_filename??'Tidak tersedia'}</td><td className="p-3 border-b whitespace-nowrap">{formatAuditTimestamp(h.updated_at,'WIB')}</td>
-                <td className="p-3 border-b"><ActionLink variant="quiet" size="compact" to={`/athel/co/reports/${h.customer_id}/${h.report_month}?returnTo=${returnTo}`}>Buka laporan</ActionLink>{h.legacy_pending&&<ActionLink variant="quiet" size="compact" to={`/athel/co/reports/${h.customer_id}/${h.report_month}?recovery=legacy&returnTo=${returnTo}`}>Periksa pekerjaan lama</ActionLink>}</td>
+                <td className="p-3 border-b"><div className="flex flex-nowrap items-center gap-2"><ActionLink variant="secondary" size="compact" className="whitespace-nowrap" aria-label="Buka laporan" title={`Buka laporan ${h.customer_name}, ${formatCOReportMonth(h.report_month)}`} to={`/athel/co/reports/${h.customer_id}/${h.report_month}?returnTo=${returnTo}`}>Buka</ActionLink></div></td>
             </tr>)}</tbody></table></div>
             {reports.data.total === '0' && <EmptyState title="Belum ada laporan sesuai filter."/>}
             <COPagination page={page} total={reports.data.total} pending={reports.isFetching} onPage={setPage}/>

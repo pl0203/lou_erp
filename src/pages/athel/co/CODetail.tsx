@@ -2,7 +2,6 @@ import COSourceProposalResume from '../../../components/co/COSourceProposalResum
 import { coSourceProposalRequest } from '../../../lib/co/workspaceReads';
 import COOrderDetailTable from '../../../components/co/COOrderDetailTable';
 import { LoadingState } from '../../../components/ui/LoadingState'
-import { PageHeader } from '../../../components/ui/PageHeader';
 import { ActionLink } from '../../../components/ui/ActionLink';
 import { Button } from '../../../components/ui/Button';
 import { Fragment, useEffect, useRef, useState } from 'react';
@@ -120,12 +119,11 @@ function DetailReady({ co, allowed, blockers, reload, refreshing, readError, onA
     const sections: [
         COSection,
         string
-    ][] = [['lines', 'Barang CO'], ['sj_drafts', 'Draft Surat Jalan'], ['deliveries', 'Riwayat Surat Jalan'], ['return_drafts', 'Draft retur pelanggan (semua sumber CO)'], ['returns', 'Retur barang CO (bagian sumber CO ini)'], ['audit', 'Audit CO dan laporan pelanggan']];
-    return <div className="max-w-6xl mx-auto space-y-6">
+    ][] = [['lines', 'Barang pesanan'], ['deliveries', 'Surat jalan'], ['sj_drafts', 'Draft Surat Jalan']];
+    return <div className="co-detail max-w-6xl mx-auto">
     <nav aria-label="Jejak halaman CO"><ActionLink variant="quiet" size="compact" to={listURL}>Pesanan CO</ActionLink><span aria-hidden="true"> / </span><span aria-current="page">Detail pesanan</span></nav>
-    <PageHeader title={co.co_number} description={`${co.customer_name} · ${formatDisplayDate(co.order_date)}`} actions={<COBadges status={co.status} progress={co.summary.delivery_progress}/>}/>
     {!sj && !cancel && !returnSelection && !settlement && readFailure}
-    <COStatusActions co={co} id={co.id} customerId={co.customer_id} allowed={allowed} blockers={blockers} pending={pending || refreshing || sender.hasUnresolved()} onSJ={() => { trigger.current = document.activeElement as HTMLElement; setSJ({}); }} onCancel={() => { trigger.current = document.activeElement as HTMLElement; setCancel(true); }}
+    <COStatusActions heading={<div className="co-detail-heading"><div className="co-detail-heading__title"><h1>{co.co_number}</h1><COBadges status={co.status} progress={co.summary.delivery_progress}/></div><p>{co.customer_name} · {formatDisplayDate(co.order_date)}</p></div>} co={co} id={co.id} customerId={co.customer_id} allowed={allowed} blockers={blockers} pending={pending || refreshing || sender.hasUnresolved()} onSJ={() => { trigger.current = document.activeElement as HTMLElement; setSJ({}); }} onCancel={() => { trigger.current = document.activeElement as HTMLElement; setCancel(true); }}
         onResolve={() => { trigger.current = document.activeElement as HTMLElement; setSettlement('resolve_undelivered'); }}
         onClose={() => { trigger.current = document.activeElement as HTMLElement; setSettlement('close_co'); }}/>
 
@@ -136,8 +134,6 @@ function DetailReady({ co, allowed, blockers, reload, refreshing, readError, onA
         reload();
         return true;
     } return false; }}/>
-    <p className="text-sm text-brand-secondary">Harga kesepakatan CO · IDR. Nilai CO = jumlah dipesan × harga satuan CO; bukan pendapatan.</p>
-    <p className="text-right font-semibold">Nilai CO: Rp {formatMoney(co.summary.planned_value, 'full')}</p>
     {sections.map(([section, title]) => <COHistorySection key={section} co={co} section={section} title={title} collapsed={!['lines', 'deliveries'].includes(section)} onAuthorityFailure={onAuthorityFailure} renderRow={row => {
                 if (section === 'sj_drafts')
                     return <div className="flex flex-wrap justify-between gap-2">
@@ -186,13 +182,6 @@ function DetailReady({ co, allowed, blockers, reload, refreshing, readError, onA
                 <Button type="button" variant="quiet" size="compact" onClick={() => setSelected({ section: 'audit_changes', parent: row.id, title: 'Detail perubahan audit' })}>Lihat perubahan</Button>
                 </div>;
             }}/>)}
-    <details className="rounded-[14px] border border-brand-divider bg-brand-surface p-4">
-        <summary className="ui-action ui-action--quiet ui-action--compact list-item cursor-pointer font-medium">Informasi pesanan dan penjualan</summary>
-        <p className="mt-3 text-sm">PIC asli: <span>{co.sales_person_name ?? 'Belum ditetapkan'}</span></p>
-        <p className="text-sm">Pendapatan terjual: Rp {formatMoney(co.summary.revenue, 'full')} · berdasarkan alokasi penjualan bulanan, bukan pengiriman.</p>
-        {co.notes && <p className="mt-3 whitespace-pre-wrap break-words">{co.notes}</p>}
-    </details>
-    <p className="text-[13px] text-brand-secondary">SJ Kembali adalah pengembalian dokumen. Retur barang belum terjual adalah tindakan stok yang terpisah.</p>
     {selected && <COCard title={selected.title}>
         <Button type="button" variant="quiet" size="compact" onClick={() => setSelected(null)}>Tutup rincian</Button>
         <COHistorySection co={co} section={selected.section} parent={selected.parent} title={selected.title} onAuthorityFailure={onAuthorityFailure} renderRow={r => <p>{r.display_sku ?? r.path} · {r.product_name ?? (r.side === 'before' ? 'Sebelum' : r.side === 'after' ? 'Sesudah' : r.side)} · {r.quantity ?? r.value ?? '—'}</p>}/>
@@ -236,7 +225,7 @@ export function COHistorySection({ co, section, title, parent = null, renderRow,
         if (BigInt(page) > last) setPage(Number(last));
     }, [query.isFetching, query.data?.total, page]);
     const body = <>{section === 'audit' && <p className="mb-3 text-sm text-brand-secondary">Perubahan CO dan laporan seluruh pelanggan; identitas lengkap tersedia pada detail teknis.</p>}{query.isError ? <COFailure error={query.error} retry={() => void query.refetch()}/> : query.isPending ? <LoadingState title="Memuat riwayat…" shape="list" /> : <>
-        {section === 'lines' ? <COOrderDetailTable lines={(query.data?.rows ?? []) as COOrderLine[]} customerId={co.customer_id}/> : section === 'deliveries' ? <div className="overflow-x-auto" role="region" aria-label="Tabel riwayat surat jalan" tabIndex={0}><table aria-label="Riwayat surat jalan" className="w-full min-w-[36rem] text-sm"><thead className="bg-gray-50 text-brand-secondary"><tr>{['Nomor surat jalan', 'Tanggal', 'Status', 'Aksi'].map(label => <th key={label} scope="col" className="px-3 py-2 text-left font-medium">{label}</th>)}</tr></thead><tbody>{query.data?.rows.map((r: Record<string, any>) => <Fragment key={r.id}>{renderRow(r)}</Fragment>)}</tbody></table></div> : <div className="divide-y divide-gray-100">{query.data?.rows.map((r: Record<string, any>) => <div className="py-3 text-sm break-words" key={r.id}>{renderRow(r)}</div>)}</div>}
+        {section === 'lines' ? <><p className="co-detail-price-context">Harga kesepakatan CO · IDR</p><COOrderDetailTable lines={(query.data?.rows ?? []) as COOrderLine[]} customerId={co.customer_id}/><div className="co-detail-total"><span>{query.data?.total ?? '0'} barang</span><strong>Nilai CO: Rp {formatMoney(co.summary.planned_value, 'full')}</strong></div></> : section === 'deliveries' ? <div className="overflow-x-auto" role="region" aria-label="Tabel riwayat surat jalan" tabIndex={0}><table aria-label="Riwayat surat jalan" className="w-full min-w-[36rem] text-sm"><thead className="bg-gray-50 text-brand-secondary"><tr>{['Nomor surat jalan', 'Tanggal', 'Status', 'Actions'].map(label => <th key={label} scope="col" className="px-3 py-2 text-left font-medium">{label}</th>)}</tr></thead><tbody>{query.data?.rows.map((r: Record<string, any>) => <Fragment key={r.id}>{renderRow(r)}</Fragment>)}</tbody></table></div> : <div className="divide-y divide-gray-100">{query.data?.rows.map((r: Record<string, any>) => <div className="py-3 text-sm break-words" key={r.id}>{renderRow(r)}</div>)}</div>}
         {query.data?.rows.length === 0 && <p className="text-sm text-brand-secondary">Belum ada catatan.</p>}
         {BigInt(query.data?.total ?? '0') > 20n && <COPagination page={page} total={query.data?.total ?? '0'} pending={query.isFetching} onPage={setPage}/>}
     </>}</>;
