@@ -113,7 +113,10 @@ jobs:
         if: ${{ !cancelled() && steps.native-dependencies.outcome == 'success' }}
         env:
           CO_NATIVE_SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
-        run: node tests/co-browser/run.mjs
+        run: |
+          set -euo pipefail
+          node --test tests/co-browser/cleanup.test.mjs
+          node tests/co-browser/run.mjs
       - run: npm test -- --maxWorkers=1
       - run: npm run typecheck
       - run: npm run build

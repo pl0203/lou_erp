@@ -6,12 +6,13 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join,extname } from 'node:path';
 import { buildHarness } from './build.mjs';
+import { observeOwnedBrowser, stopOwnedBrowser } from './cleanup.mjs';
 const git=args=>execFileSync('git',args,{encoding:'utf8',env:{PATH:process.env.PATH},timeout:10000}).trim();
 for(const [key,value] of Object.entries({CI:'true',GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:'pl0203/lou_erp',GITHUB_WORKFLOW:'CO workspace runtime',GITHUB_JOB:'native-runtime'}))assert.equal(process.env[key],value,`Fixed native CI identity: ${key}`);
 for(const key of ['GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT'])assert.match(process.env[key]??'',/^[1-9][0-9]*$/);
 assert.match(process.env.CO_NATIVE_SOURCE_SHA??'',/^[a-f0-9]{40}$/);assert.equal(git(['rev-parse','HEAD']),process.env.CO_NATIVE_SOURCE_SHA);assert.equal(git(['status','--porcelain','--untracked-files=normal']),'','Clean source required');
 const receipt={commit:git(['rev-parse','HEAD']),tree:git(['rev-parse','HEAD^{tree}']),coverage:'native component/worker only; no Auth/Storage/backend E2E',assertions:[]};
-let temporary,server,browser,socket,fatal;let sequence=0;const calls=new Map(),sessions=new Map(),events=new Set(),violations=[];
+let temporary,server,browser,browserClosed,socket,fatal;let sequence=0;const calls=new Map(),sessions=new Map(),events=new Set(),violations=[];
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function until(fn,label){const end=Date.now()+30000;while(Date.now()<end){if(fatal)throw Error(fatal);assert.deepEqual(violations,[],'Network isolation violation');if(await fn())return;await delay(30)}throw Error(`Timeout: ${label}`)}
 let cdp;
@@ -23,7 +24,7 @@ try{
  server=createServer((request,response)=>{const path=new URL(request.url,'http://127.0.0.1').pathname;const target=path==='/'?'/index.html':path;if(request.method!=='GET'||(!files.has(target)&&path!=='/favicon.ico')){violations.push('unapproved-local-path');response.writeHead(403).end();return}response.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'none'; worker-src 'self'; img-src 'none'; font-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'");response.setHeader('Cache-Control','no-store');if(path==='/favicon.ico'){response.writeHead(204).end();return}response.setHeader('Content-Type',({'.html':'text/html','.js':'text/javascript','.css':'text/css'})[extname(target)]??'application/octet-stream');response.end(files.get(target))});
  await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve)});const origin=`http://127.0.0.1:${server.address().port}`;
  const chrome=await realpath('/usr/bin/google-chrome');assert.ok(chrome.startsWith('/opt/google/chrome/'),'Official preinstalled Chrome required');const safeEnv={PATH:process.env.PATH,HOME:temporary,TMPDIR:temporary,LANG:'C.UTF-8'};receipt.browser=execFileSync(chrome,['--version'],{env:safeEnv,encoding:'utf8',timeout:10000}).trim();
- browser=spawn(chrome,['--headless=new','--remote-debugging-address=127.0.0.1','--remote-debugging-port=0',`--user-data-dir=${join(temporary,'profile')}`,'--no-first-run','--no-default-browser-check','--disable-background-networking','--disable-extensions','--disable-component-extensions-with-background-pages','--disable-default-apps','about:blank'],{env:safeEnv,stdio:['ignore','ignore','pipe']});let endpoint;browser.once('error',e=>{fatal=e.message});browser.once('exit',code=>{if(!endpoint)fatal=`Chrome exited ${code}`});browser.stderr.on('data',b=>{const m=/DevTools listening on (ws:\/\/127\.0\.0\.1:\d+\/devtools\/browser\/[\w-]+)/.exec(String(b));if(m)endpoint=m[1]});await until(()=>!!endpoint,'sandboxed Chrome');socket=new WebSocket(endpoint);await new Promise((resolve,reject)=>{socket.addEventListener('open',resolve,{once:true});socket.addEventListener('error',reject,{once:true})});
+ browser=spawn(chrome,['--headless=new','--remote-debugging-address=127.0.0.1','--remote-debugging-port=0',`--user-data-dir=${join(temporary,'profile')}`,'--no-first-run','--no-default-browser-check','--disable-background-networking','--disable-extensions','--disable-component-extensions-with-background-pages','--disable-default-apps','about:blank'],{env:safeEnv,stdio:['ignore','ignore','pipe']});browserClosed=observeOwnedBrowser(browser);let endpoint;browser.once('error',e=>{fatal=e.message});browser.once('exit',code=>{if(!endpoint)fatal=`Chrome exited ${code}`});browser.stderr.on('data',b=>{const m=/DevTools listening on (ws:\/\/127\.0\.0\.1:\d+\/devtools\/browser\/[\w-]+)/.exec(String(b));if(m)endpoint=m[1]});await until(()=>!!endpoint,'sandboxed Chrome');socket=new WebSocket(endpoint);await new Promise((resolve,reject)=>{socket.addEventListener('open',resolve,{once:true});socket.addEventListener('error',reject,{once:true})});
  cdp=(method,params={},sessionId)=>new Promise((resolve,reject)=>{const id=++sequence;const timer=setTimeout(()=>{calls.delete(id);reject(Error(`CDP timeout ${method}`))},30000);calls.set(id,{resolve:r=>{clearTimeout(timer);resolve(r)},reject:e=>{clearTimeout(timer);reject(e)}});socket.send(JSON.stringify({id,method,params,...(sessionId?{sessionId}:{})}))});
  const filter=[{type:'browser',exclude:true},{type:'tab',exclude:true},{type:'browser_ui',exclude:true},{}];
  socket.addEventListener('message',event=>{const message=JSON.parse(String(event.data));if(message.id){const call=calls.get(message.id);if(call){calls.delete(message.id);message.error?call.reject(Error(message.error.message)):call.resolve(message.result)}return}const task=(async()=>{
@@ -43,5 +44,13 @@ try{
  await click(session,checkbox('Tampilkan yang perlu diperiksa'));await until(()=>evaluate(session,'document.querySelectorAll("tbody>tr").length===100'),'filter restores rows');
  await click(session,'document.querySelector(".co-import__issues a")');await until(()=>evaluate(session,'document.activeElement?.closest(".co-import__editor")!==null'),'error summary keyboard focus');receipt.assertions.push('real clicks preserve completeness across issue filtering and focus first error editor');
  const worker=await evaluate(session,'window.runNativeWorkerCases()');assert.deepEqual(worker,['stored','deflated','crc','cancel-and-new-scope']);receipt.assertions.push(...worker.map(name=>'native XLSX worker '+name));
- await Promise.all([...events]);assert.deepEqual(violations,[]);assert.ok(!fatal,fatal);console.log('CO_NATIVE_COMPONENT_WORKER_PASSED '+JSON.stringify(receipt));
-}finally{if(socket){for(const call of calls.values())call.reject(Error('Browser cleanup'));calls.clear();socket.close()}if(browser&&browser.exitCode===null){browser.kill('SIGTERM');await Promise.race([new Promise(resolve=>browser.once('exit',resolve)),delay(5000)]);if(browser.exitCode===null)browser.kill('SIGKILL')}if(server)await new Promise(resolve=>server.close(resolve));if(temporary)await rm(temporary,{recursive:true,force:true})}
+ await Promise.all([...events]);assert.deepEqual(violations,[]);assert.ok(!fatal,fatal);
+}finally{
+ // Never delete a profile while the owned Chrome may still be writing it.
+ try{if(browser)await stopOwnedBrowser(browser,browserClosed,()=>cdp?cdp('Browser.close'):Promise.resolve())}
+ finally{if(socket){for(const call of calls.values())call.reject(Error('Browser cleanup'));calls.clear();socket.close()}if(server)await new Promise(resolve=>server.close(resolve))}
+ // Chromium child processes can finish a final profile rename just after close.
+ // Retry only the exact mkdtemp-owned tree, bounded; exhaustion remains failure.
+ if(temporary)await rm(temporary,{recursive:true,force:true,maxRetries:5,retryDelay:100});
+}
+console.log('CO_NATIVE_COMPONENT_WORKER_PASSED '+JSON.stringify(receipt));

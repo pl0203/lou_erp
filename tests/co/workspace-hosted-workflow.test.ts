@@ -51,3 +51,8 @@ test('native diagnostics run before the slow aggregate without masking failures'
  expect(native).toContain("if: ${{ !cancelled() && steps.native-dependencies.outcome == 'success' }}")
  expect(native).not.toContain('continue-on-error')
 })
+
+test('native cleanup regressions must pass before hosted Chrome starts',()=>{
+ const native=workflow.slice(workflow.indexOf('  native-runtime:'))
+ expect(native).toContain('node --test tests/co-browser/cleanup.test.mjs\n          node tests/co-browser/run.mjs')
+})

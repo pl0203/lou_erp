@@ -325,7 +325,7 @@ BEGIN
  END LOOP;
 END $$;
 CREATE FUNCTION private.co_manual_workbook_physical_v1(source jsonb,facts jsonb) RETURNS void LANGUAGE plpgsql IMMUTABLE SET search_path='' AS $$
-DECLARE review jsonb:=source->'manualPrintedControls'; r jsonb; control jsonb; section jsonb; refs jsonb; control_rows jsonb;
+DECLARE review jsonb:=source->'manualPrintedControls'; physical_ref jsonb; control jsonb; section jsonb; refs jsonb; control_rows jsonb;
 BEGIN
  PERFORM private.co_manual_workbook_facts_v1(facts);
  IF source->'manualWorkbook' IS DISTINCT FROM facts OR source?'printedControls'
@@ -339,11 +339,11 @@ BEGIN
  IF (SELECT count(DISTINCT (x->>'sheet',x->>'row')) FROM jsonb_array_elements(refs) x)<>jsonb_array_length(refs)
  OR (SELECT count(DISTINCT x->>'id') FROM jsonb_array_elements(source->'sourceRows') x)<>jsonb_array_length(source->'sourceRows')
  THEN RAISE EXCEPTION 'Duplicate manual physical identity' USING ERRCODE='22023'; END IF;
- FOR r IN SELECT value FROM jsonb_array_elements(refs) LOOP
-  IF r->>'fileSha256' IS DISTINCT FROM source->>'sha256' OR r->'page' IS DISTINCT FROM 'null'::jsonb
-  OR r->>'sheet' IS NULL OR r->>'row' !~ '^r[1-9][0-9]*$'
+ FOR physical_ref IN SELECT value FROM jsonb_array_elements(refs) LOOP
+  IF physical_ref->>'fileSha256' IS DISTINCT FROM source->>'sha256' OR physical_ref->'page' IS DISTINCT FROM 'null'::jsonb
+  OR physical_ref->>'sheet' IS NULL OR physical_ref->>'row' !~ '^r[1-9][0-9]*$'
   OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(facts->'sheets') s CROSS JOIN LATERAL jsonb_array_elements(s->'rows') n
-    WHERE s->>'name'=r->>'sheet' AND 'r'||(n#>>'{}')=r->>'row')
+    WHERE s->>'name'=physical_ref->>'sheet' AND 'r'||(n#>>'{}')=physical_ref->>'row')
   THEN RAISE EXCEPTION 'Unattested manual physical reference' USING ERRCODE='22023'; END IF;
  END LOOP;
  FOR control IN SELECT value FROM jsonb_array_elements(review->'controls') LOOP
