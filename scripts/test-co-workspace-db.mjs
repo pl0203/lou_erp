@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { runCoCi } from './test-co-ci.mjs'
+import { runWorkspaceCurrentBaseline, WORKSPACE_CURRENT_AUTHORITY_SNAPSHOT } from './co-workspace-current-baseline.mjs'
 import { coWorkspaceConnection, coSourceIdentity, coBindFixtureServer, CO_FIXTURE_OBSERVATION_SQL, coVerifyFixtureIdentitySql, coFixtureChildEnv } from './co-fixture-target.mjs'
 const root = fileURLToPath(new URL('../', import.meta.url))
 export function workspaceCase(args) {
@@ -12,6 +13,14 @@ export function workspaceCase(args) {
   assert.equal(args[0], '--case', 'Only fixed cases accepted')
   assert.ok(['import-manifest','import-posting','import-races','workspace-reads'].includes(args[1]), 'Unknown fixed case')
   return args[1]
+}
+export function workspaceOptions(args) {
+  assert.ok(args.length === 2 || args.length === 4, 'Only fixed case and optional fixed baseline accepted')
+  const caseName = workspaceCase(args.slice(0, 2))
+  const baselineName = args.length === 2 ? 'legacy' : args[3]
+  if (args.length === 4) assert.equal(args[2], '--baseline', 'Only fixed baseline accepted')
+  assert.ok(['legacy', 'current'].includes(baselineName), 'Unknown fixed baseline')
+  return { caseName, baselineName }
 }
 export function composeWorkspaceReadFixture(posting, reads) {
   const terminal = /ROLLBACK;\s*SELECT 'CO_IMPORT_ATOMIC_POST_EDIT_PASSED';\s*$/
@@ -29,8 +38,8 @@ export function assertWorkspaceInstallFailure(error) {
   const diagnostic = stderr.slice(-8192).replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '')
   throw new Error(`Must reach the deliberately late installation failure; unexpected PostgreSQL diagnostic:\n${diagnostic || 'No PostgreSQL stderr available'}`)
 }
-export function runCoWorkspaceDb({ env = process.env, execute = execFileSync, sourceIdentity = coSourceIdentity, caseName = 'import-manifest' } = {}) {
-  workspaceCase(['--case',caseName])
+export function runCoWorkspaceDb({ env = process.env, execute = execFileSync, sourceIdentity = coSourceIdentity, caseName = 'import-manifest', baselineName = 'legacy' } = {}) {
+  workspaceOptions(['--case',caseName,'--baseline',baselineName])
   const source = sourceIdentity()
   // Fail before any SQL or process execution for unverified source/target context.
   const expectedConnection = coWorkspaceConnection(env, source)
@@ -47,6 +56,11 @@ export function runCoWorkspaceDb({ env = process.env, execute = execFileSync, so
     assert.equal(run(coVerifyFixtureIdentitySql(identity)).trim(), 't', 'Exact independently marked source/server/run required')
   }
   verify()
+  if (baselineName === 'current') {
+    runWorkspaceCurrentBaseline({ run, verify, read: path => readFileSync(new URL('../' + path, import.meta.url), 'utf8') })
+    verify()
+  }
+  const currentAuthorityBefore = baselineName === 'current' ? run(WORKSPACE_CURRENT_AUTHORITY_SNAPSHOT).trim() : null
   const candidate = readFileSync(new URL('../supabase/candidates/co-workspace-redesign/20261026100000_co_import_manifest.sql', import.meta.url), 'utf8')
   assert.equal(candidate.split('\n').filter(line => /^(BEGIN|COMMIT);\s*$/.test(line)).join(','), 'BEGIN;,COMMIT;', 'One whole-candidate transaction required')
   assert.ok(candidate.trimEnd().endsWith('COMMIT;'), 'Terminal candidate COMMIT required')
@@ -110,9 +124,20 @@ export function runCoWorkspaceDb({ env = process.env, execute = execFileSync, so
     process.stdout.write(raced)
     verify()
   }
+  if (baselineName === 'current') {
+    assert.equal(run(WORKSPACE_CURRENT_AUTHORITY_SNAPSHOT).trim(), currentAuthorityBefore, 'HR authority, public routers, generation-two engines and inactive cutover must remain exact')
+    const authority = run(readFileSync(new URL('../tests/database/co/workspace-current-authority.sql', import.meta.url), 'utf8'))
+    assert.equal(authority.split('\n').filter(x => x === 'CO_WORKSPACE_CURRENT_AUTHORITY_PASSED').length, 1, 'Real current authority assertions required')
+    verify()
+    process.stdout.write(authority)
+    const history = run(readFileSync(new URL('../tests/database/co/workspace-current-history.sql', import.meta.url), 'utf8'))
+    assert.equal(history.split('\n').filter(x => x === 'CO_WORKSPACE_CURRENT_HISTORY_PASSED').length, 1, 'Real current history assertions required')
+    verify()
+    process.stdout.write(history)
+  }
   // Lifecycle assertions are not real race/Edge/browser acceptance. No money-safety checkpoint marker.
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  try { runCoWorkspaceDb({caseName:workspaceCase(process.argv.slice(2))}) }
+  try { runCoWorkspaceDb(workspaceOptions(process.argv.slice(2))) }
   catch (error) { process.stderr.write(`${error.message}\n`); process.exitCode = 1 }
 }

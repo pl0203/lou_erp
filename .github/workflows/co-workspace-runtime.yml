@@ -20,6 +20,7 @@ jobs:
       fail-fast: false
       max-parallel: 2
       matrix:
+        baseline: [legacy, current]
         case: [import-manifest, import-posting, import-races, workspace-reads]
     services:
       postgres:
@@ -69,7 +70,8 @@ jobs:
       - name: Execute fixed rollback and real race case
         env:
           FIXED_CASE: ${{ matrix.case }}
-        run: node scripts/test-co-workspace-db.mjs --case "$FIXED_CASE"
+          FIXED_BASELINE: ${{ matrix.baseline }}
+        run: node scripts/test-co-workspace-db.mjs --case "$FIXED_CASE" --baseline "$FIXED_BASELINE"
   native-runtime:
     if: >-
       github.repository == 'pl0203/lou_erp' &&

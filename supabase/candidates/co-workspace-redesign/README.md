@@ -35,6 +35,22 @@ adds atomic post/Edit assertions; races adds observed real-session blockers;
 workspace reads composes read assertions inside a rolled-back posting fixture.
 Existing baseline race results do not establish candidate race behavior.
 
+## Composed profile boundary
+
+The fixed runner also accepts `--baseline legacy|current` (default `legacy`).
+Each case/profile gets a fresh isolated service. `current` composes the pinned
+catalogue, capability-off sales-target and employee access migrations before
+the workspace candidates; it is not a hosted database export.
+
+The workspace supports catalogue **generation one only**. Public routers,
+generation-two engines and frozen history validators are preserved. New import
+relations and operation families are not certified for generation-two history
+collection or cutover; that future transition requires a separate finite
+history-contract extension and verification. Existing validators must refuse
+unsupported topology rather than falsely certify it. Current-generation native
+delete/lifecycle capabilities must remain intact. Do not activate cutover as
+part of this candidate installation.
+
 All data used by public CI is generated synthetic data. Customer uploads and
 private sample verification are not included. SQL metadata checks do not prove
 browser parsing, actual Deno execution, or complete Edge/Auth/Storage behavior.

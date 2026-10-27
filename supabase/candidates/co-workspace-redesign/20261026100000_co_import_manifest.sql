@@ -1,11 +1,86 @@
 -- CANDIDATE ONLY: future destination supabase/migrations/20261026100000_co_import_manifest.sql.
 -- Promotion requires completed review/execution gates and separate rollout authorization.
--- LOCAL AUTHORSHIP ONLY. Actual disposable PG17 execution/races remain blocked.
+-- Exact composed-baseline runtime verification required before promotion.
 -- Additive immutable import evidence; never modifies historical quantity meaning.
 BEGIN;
 SET LOCAL search_path='';
 SET LOCAL lock_timeout='5s';
 SET LOCAL statement_timeout='120s';
+
+-- The workspace supports the historical bare engine and the complete catalogue
+-- generation-one profile only. Generation-two engines and public routers remain
+-- unchanged. Fresh workspace work holds the cutover drain lock; receipt recovery
+-- deliberately runs before this guard. A partial catalogue is never a bare engine.
+CREATE FUNCTION private.co_workspace_generation_guard_v1() RETURNS void
+LANGUAGE plpgsql SET search_path='' AS $$
+DECLARE catalogue boolean:=to_regclass('private.catalog_cutover_v1') IS NOT NULL; signature text; relation text; present boolean; generation smallint;
+BEGIN
+ FOREACH relation IN ARRAY ARRAY['private.catalog_identity_v1','private.catalog_requests_v1','private.catalog_co_active_v2','private.catalog_writer_active_v2'] LOOP
+  IF (to_regclass(relation) IS NOT NULL) IS DISTINCT FROM catalogue THEN RAISE EXCEPTION 'Partial catalogue workspace profile' USING ERRCODE='55000'; END IF;
+ END LOOP;
+ FOREACH signature IN ARRAY ARRAY[
+  'private.catalog_co_legacy_transaction_v1(uuid,text,jsonb)',
+  'private.catalog_co_transaction_v2(uuid,text,jsonb)',
+  'private.catalog_co_dispatch_v2(uuid,text,jsonb)',
+  'private.catalog_co_monthly_transaction_v2(uuid,text,jsonb)',
+  'private.catalog_evidence_legacy_v1(uuid,text,jsonb)',
+  'private.catalog_evidence_core_v2(uuid,text,jsonb,boolean)',
+  'private.catalog_history_producers_v1()',
+  'private.catalog_history_foreign_keys_v1()'
+ ] LOOP
+  present:=to_regprocedure(signature) IS NOT NULL;
+  IF present IS DISTINCT FROM catalogue THEN RAISE EXCEPTION 'Partial catalogue workspace profile' USING ERRCODE='55000'; END IF;
+ END LOOP;
+ IF NOT catalogue THEN RETURN; END IF;
+ EXECUTE 'SELECT execution_generation FROM private.catalog_cutover_v1 WHERE singleton FOR SHARE' INTO STRICT generation;
+ IF generation IS DISTINCT FROM 1 THEN
+  RAISE EXCEPTION 'CO workspace supports catalogue generation one only' USING ERRCODE='55000',DETAIL='CO_WORKSPACE_GENERATION_UNSUPPORTED';
+ END IF;
+END $$;
+REVOKE ALL ON FUNCTION private.co_workspace_generation_guard_v1() FROM PUBLIC,anon,authenticated,service_role;
+DO $workspace_profile$ BEGIN PERFORM private.co_workspace_generation_guard_v1(); END $workspace_profile$;
+
+-- Complete current-profile hook preimages, authored from public catalogue sources
+-- new06/new07 and the immutable 110008 evidence hook's reviewed result hash.
+-- Never learn an expected pin from the destination. Unknown pg_proc metadata fails.
+DO $workspace_current_preimages$
+DECLARE x record; original text; semantic_meta jsonb; reviewed_meta jsonb;
+BEGIN
+ IF to_regclass('private.catalog_cutover_v1') IS NULL THEN RETURN; END IF;
+ FOR x IN SELECT * FROM (VALUES
+  ('catalog_co_legacy_transaction_v1','2fe1a0188e2d64eaadce590c947e4358ac6e620117b5470abde87eb8dd6fdace'),
+  ('catalog_evidence_legacy_v1','09b0bece164b911bb6a25114ab76b5ef5ba2ff1a46020c9747a88e9141dd6fb7'),
+  ('co_monthly_transaction_v1','0442408fd2b5cee0326495e155f75f62ae96a30bd02e1888fcebdb3204ddf61f')
+ ) AS pins(name,body_sha256) LOOP
+  SELECT prosrc INTO STRICT original FROM pg_proc WHERE oid=('private.'||x.name||'(uuid,text,jsonb)')::regprocedure;
+  IF encode(sha256(convert_to(original,'UTF8')),'hex') IS DISTINCT FROM x.body_sha256 THEN RAISE EXCEPTION 'Unreviewed workspace hook body: %',x.name; END IF;
+  reviewed_meta:='{"probin":null,"procost":100,"prokind":"f","prorows":0,"proconfig":["search_path=\"\""],"proretset":false,"prosqlbody":null,"prosupport":"-","proargmodes":null,"proisstrict":false,"proparallel":"u","protrftypes":null,"provariadic":"0","provolatile":"v","proleakproof":false,"proallargtypes":null,"proargdefaults":null,"pronargdefaults":0,"proowner":"postgres","pronamespace":"private","prolang":"plpgsql","prorettype":"jsonb","proacl":[{"grantor":"postgres","grantee":"postgres","privilege":"EXECUTE","grantable":false}],"pronargs":3,"prosecdef":true,"proargnames":["p_request_id","p_operation","p_payload"],"proargtypes":["uuid","text","jsonb"]}'::jsonb || jsonb_build_object('proname',x.name);
+  SELECT (to_jsonb(p)-ARRAY['oid','prosrc','proowner','pronamespace','prolang','prorettype','proargtypes','proacl'])
+   || jsonb_build_object('proowner',pg_get_userbyid(p.proowner),'pronamespace',n.nspname,'prolang',l.lanname,'prorettype',p.prorettype::regtype::text,
+    'proargtypes',(SELECT jsonb_agg(t::regtype::text ORDER BY ord) FROM unnest(p.proargtypes) WITH ORDINALITY a(t,ord)),
+    'proacl',(SELECT jsonb_agg(jsonb_build_object('grantor',pg_get_userbyid(a.grantor),'grantee',CASE WHEN a.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END,'privilege',a.privilege_type,'grantable',a.is_grantable) ORDER BY a.grantor::regrole::text,a.grantee::regrole::text,a.privilege_type,a.is_grantable) FROM aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a))
+   INTO STRICT semantic_meta FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace JOIN pg_language l ON l.oid=p.prolang WHERE p.oid=('private.'||x.name||'(uuid,text,jsonb)')::regprocedure;
+  IF semantic_meta IS DISTINCT FROM reviewed_meta THEN RAISE EXCEPTION 'Unreviewed workspace hook metadata: %',x.name; END IF;
+ END LOOP;
+END $workspace_current_preimages$;
+
+-- Reuse the exact existing command envelope. Inspect only under its actor/request
+-- lock, replay through its unchanged identity checks, and admit fresh workspace
+-- work before the existing helper can insert a pending command row.
+CREATE FUNCTION private.co_workspace_command_begin_v1(p_request_id uuid,p_operation text,p_payload jsonb) RETURNS jsonb
+LANGUAGE plpgsql SET search_path='' AS $$
+DECLARE actor uuid:=private.co_actor_v1();
+BEGIN
+ IF p_request_id IS NULL OR p_operation IS NULL OR p_operation NOT IN('declare_stock_key_unit','prepare_import','review_import')
+ OR p_payload IS NULL OR jsonb_typeof(p_payload)<>'object' THEN RAISE EXCEPTION 'Invalid workspace command' USING ERRCODE='22023'; END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended('co-command:'||actor::text||':'||p_request_id::text,0));
+ IF EXISTS(SELECT 1 FROM private.co_commands WHERE actor_id=actor AND request_id=p_request_id) THEN
+  RETURN private.co_command_begin_v1(p_request_id,p_operation,p_payload);
+ END IF;
+ PERFORM private.co_workspace_generation_guard_v1();
+ RETURN private.co_command_begin_v1(p_request_id,p_operation,p_payload);
+END $$;
+REVOKE ALL ON FUNCTION private.co_workspace_command_begin_v1(uuid,text,jsonb) FROM PUBLIC,anon,authenticated,service_role;
 
 CREATE FUNCTION private.co_manifest_canonical_v1(v jsonb, depth integer DEFAULT 0) RETURNS text
 LANGUAGE plpgsql IMMUTABLE SET search_path='' AS $$
@@ -92,7 +167,8 @@ BEGIN
  c:=private.co_input_uuid_v1(p_payload->'customer_id'); k:=private.co_input_uuid_v1(p_payload->'stock_key_id');
  u:=private.co_input_text_v1(p_payload->'unit'); why:=private.co_input_text_v1(p_payload->'reason');
  IF NOT private.co_unit_label_valid_v1(u) OR NOT private.co_unit_reason_valid_v1(why) THEN RAISE EXCEPTION 'Invalid unit confirmation' USING ERRCODE='22023'; END IF;
- r:=private.co_command_begin_v1(p_request_id,'declare_stock_key_unit',p_payload); IF r IS NOT NULL THEN RETURN r; END IF;
+ r:=private.co_workspace_command_begin_v1(p_request_id,'declare_stock_key_unit',p_payload); IF r IS NOT NULL THEN RETURN r; END IF;
+ PERFORM private.co_workspace_generation_guard_v1();
  cv:=private.co_lock_customer_v1(c,private.co_input_version_v1(p_payload->'expected_customer_version'));
  IF NOT EXISTS(SELECT 1 FROM private.co_stock_keys WHERE id=k AND customer_id=c) THEN RAISE EXCEPTION 'Invalid unit stock identity' USING ERRCODE='22023'; END IF;
  IF EXISTS(SELECT 1 FROM private.co_stock_key_unit_declarations WHERE customer_id=c AND stock_key_id=k) THEN RAISE EXCEPTION 'CO_UNIT_ALREADY_DECLARED' USING ERRCODE='PT409'; END IF;
@@ -376,13 +452,24 @@ REVOKE ALL ON private.co_evidence_manual_workbook_checks FROM PUBLIC,anon,authen
 CREATE TRIGGER co_manual_workbook_immutable BEFORE UPDATE OR DELETE ON private.co_evidence_manual_workbook_checks FOR EACH ROW EXECUTE FUNCTION private.co_immutable_v1();
 CREATE FUNCTION public.pilot_co_evidence_manual_workbook_attest_v1(p_actor_id uuid,p_evidence_id uuid,p_object_id uuid,p_object_version text,p_sha256 text,p_facts jsonb) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path='' AS $$
-DECLARE e private.co_evidence%ROWTYPE; d private.co_drafts%ROWTYPE; a private.co_evidence_verifications%ROWTYPE; receipt private.co_evidence_manual_workbook_checks%ROWTYPE; cv bigint;
+DECLARE e private.co_evidence%ROWTYPE; d private.co_drafts%ROWTYPE; a private.co_evidence_verifications%ROWTYPE; receipt private.co_evidence_manual_workbook_checks%ROWTYPE; cv bigint; account_allowed boolean;
 BEGIN
  PERFORM 1 FROM public.users WHERE id=p_actor_id AND is_active AND role IN('co_admin','executive') FOR SHARE;
  IF NOT FOUND THEN RAISE EXCEPTION 'CO authority required' USING ERRCODE='42501'; END IF;
+ -- A service caller's actor must satisfy the same installed employee gate as
+ -- the ordinary evidence attestation wrapper; absent bare-baseline HR is explicit.
+ IF to_regprocedure('private.employee_account_allowed(uuid)') IS NOT NULL THEN
+  EXECUTE 'SELECT private.employee_account_allowed($1)' INTO account_allowed USING p_actor_id;
+  IF account_allowed IS DISTINCT FROM true THEN RAISE EXCEPTION 'CO authority required' USING ERRCODE='42501'; END IF;
+ ELSIF to_regclass('private.employee_records') IS NOT NULL OR to_regclass('private.employee_access_guard') IS NOT NULL THEN
+  RAISE EXCEPTION 'Incomplete employee account authority' USING ERRCODE='42501';
+ END IF;
  SELECT * INTO e FROM private.co_evidence WHERE id=p_evidence_id AND created_by=p_actor_id;
  IF e.id IS NULL THEN RAISE EXCEPTION 'Invalid evidence identity' USING ERRCODE='22023'; END IF;
  PERFORM pg_advisory_xact_lock(hashtextextended('co-command:'||p_actor_id::text||':'||e.request_id::text,0));
+ IF NOT EXISTS(SELECT 1 FROM private.co_evidence_manual_workbook_checks WHERE evidence_id=e.id) THEN
+  PERFORM private.co_workspace_generation_guard_v1();
+ END IF;
  SELECT version INTO cv FROM private.co_customer_state WHERE customer_id=e.customer_id FOR UPDATE;
  SELECT * INTO d FROM private.co_drafts WHERE id=e.draft_id FOR UPDATE;
  SELECT * INTO e FROM private.co_evidence WHERE id=p_evidence_id FOR UPDATE;
@@ -871,12 +958,13 @@ BEGIN
  PERFORM private.co_input_object_v1(p_payload,ARRAY['manifest','expected_customer_version','expected_draft_version','expected_evidence_version'],ARRAY['manifest','expected_customer_version','expected_draft_version','expected_evidence_version','expected_selection_id']);
  m:=p_payload->'manifest';PERFORM private.co_import_decode_v1(m);
  IF p_payload->'expected_evidence_version' IS DISTINCT FROM '"2"'::jsonb THEN RAISE EXCEPTION 'Finalized evidence version required' USING ERRCODE='22023'; END IF;
- receipt:=private.co_command_begin_v1(p_request_id,'prepare_import',p_payload);
+ receipt:=private.co_workspace_command_begin_v1(p_request_id,'prepare_import',p_payload);
  IF receipt IS NOT NULL THEN
   SELECT r.binding INTO binding FROM private.co_import_prepare_results r WHERE r.actor_id=actor AND r.request_id=p_request_id AND r.import_id=(receipt->>'id')::uuid;
   IF binding IS NULL THEN RAISE EXCEPTION 'Missing immutable prepare result' USING ERRCODE='55000'; END IF;
   RETURN binding;
  END IF;
+ PERFORM private.co_workspace_generation_guard_v1();
  SELECT * INTO e FROM private.co_evidence WHERE id=(m->>'evidenceId')::uuid;
  c:=e.customer_id;
  IF c IS NULL OR m->'input'->'scope'->>'customerId' IS DISTINCT FROM c::text THEN RAISE EXCEPTION 'Import evidence customer mismatch' USING ERRCODE='22023'; END IF;
@@ -1019,7 +1107,9 @@ DECLARE definition text;
  mime_anchor text:=$anchor$mime NOT IN('application/pdf','image/png','image/jpeg')$anchor$;
  path_anchor text:=$anchor$WHEN 'image/png' THEN '^[^.].*\.png$' ELSE '^[^.].*\.jpe?g$'$anchor$;
 BEGIN
- SELECT pg_get_functiondef('public.pilot_co_evidence_transaction_v1(uuid,text,jsonb)'::regprocedure) INTO definition;
+ SELECT pg_get_functiondef((CASE WHEN to_regclass('private.catalog_cutover_v1') IS NULL
+  THEN 'public.pilot_co_evidence_transaction_v1(uuid,text,jsonb)'
+  ELSE 'private.catalog_evidence_legacy_v1(uuid,text,jsonb)' END)::regprocedure) INTO definition;
  IF (length(definition)-length(replace(definition,mime_anchor,'')))/length(mime_anchor)<>1
  OR (length(definition)-length(replace(definition,path_anchor,'')))/length(path_anchor)<>1 THEN RAISE EXCEPTION 'Evidence registration MIME anchor drift'; END IF;
  definition:=replace(definition,mime_anchor,$new$mime NOT IN('application/pdf','image/png','image/jpeg','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')$new$);
@@ -1139,6 +1229,7 @@ BEGIN
   IF context.import_payload IS DISTINCT FROM p_payload THEN RAISE EXCEPTION 'Import request payload mismatch' USING ERRCODE='22023'; END IF;
   RETURN public.pilot_co_transaction_v1(p_request_id,context.operation,context.ordinary_payload);
  END IF;
+ PERFORM private.co_workspace_generation_guard_v1();
  SELECT * INTO command FROM private.co_commands WHERE actor_id=actor AND request_id=p_request_id;
  IF command.status='abandoned' THEN RAISE EXCEPTION 'CO request abandoned' USING ERRCODE='55000'; END IF;
  IF command.request_id IS NOT NULL THEN RAISE EXCEPTION 'Import request family mismatch' USING ERRCODE='22023'; END IF;
@@ -1181,12 +1272,13 @@ BEGIN
  PERFORM private.co_input_object_v1(p_payload,ARRAY['draft_id','expected_draft_version','expected_customer_version','expected_selection_id','original_revision_id','expected_report_version','action','reason'],ARRAY['draft_id','expected_draft_version','expected_customer_version','expected_selection_id','original_revision_id','expected_report_version','action','reason']);
  action:=private.co_input_text_v1(p_payload->'action');
  IF action NOT IN('open','abandon') OR nullif(private.co_import_trim_v1(private.co_input_text_v1(p_payload->'reason')),'') IS NULL THEN RAISE EXCEPTION 'Explicit review action and reason required' USING ERRCODE='22023'; END IF;
- receipt:=private.co_command_begin_v1(p_request_id,'review_import',p_payload);
+ receipt:=private.co_workspace_command_begin_v1(p_request_id,'review_import',p_payload);
  IF receipt IS NOT NULL THEN
   SELECT * INTO next_selection FROM private.co_import_selections WHERE id=(receipt->>'id')::uuid AND actor_id=actor AND request_id=p_request_id;
   IF next_selection.id IS NULL THEN RAISE EXCEPTION 'Missing review result' USING ERRCODE='55000'; END IF;
   RETURN private.co_import_review_result_v1(next_selection);
  END IF;
+ PERFORM private.co_workspace_generation_guard_v1();
  SELECT * INTO d FROM private.co_drafts WHERE id=private.co_input_uuid_v1(p_payload->'draft_id') AND kind='report';
  cv:=private.co_lock_customer_v1(d.customer_id,private.co_input_version_v1(p_payload->'expected_customer_version'));
  PERFORM id FROM private.co_orders WHERE customer_id=d.customer_id ORDER BY id FOR UPDATE;
@@ -1311,6 +1403,7 @@ CREATE OR REPLACE FUNCTION private.co_link_import_v1(c uuid,head uuid,revision u
 DECLARE chosen uuid; s private.co_import_selections%ROWTYPE; x private.co_import_post_requests%ROWTYPE;
 BEGIN
  IF did IS NOT NULL AND EXISTS(SELECT 1 FROM private.co_draft_import_origins WHERE draft_id=did) THEN
+  PERFORM private.co_workspace_generation_guard_v1();
   s:=private.co_import_selection_v1(did);
   SELECT r.* INTO x FROM private.co_import_post_requests r JOIN private.co_commands q ON q.actor_id=r.actor_id AND q.request_id=r.request_id AND q.status='pending' WHERE r.actor_id=auth.uid() AND r.import_id=s.import_id;
   IF x.request_id IS NULL OR NOT EXISTS(SELECT 1 FROM private.co_import_manifests m JOIN private.co_drafts d ON d.id=m.draft_id AND d.customer_id=m.customer_id JOIN private.co_report_heads h ON h.customer_id=m.customer_id AND h.report_month=m.report_month WHERE m.id=s.import_id AND s.state='selected' AND m.customer_id=c AND m.draft_id=did AND m.draft_version=dv AND d.version=dv AND h.id=head) THEN RAISE EXCEPTION 'Atomic import commit required' USING ERRCODE='55000'; END IF;
@@ -1319,7 +1412,7 @@ BEGIN
   INSERT INTO private.co_report_imports(report_revision_id,report_head_id,customer_id,import_id) VALUES(revision,head,c,s.import_id);
  ELSIF did IS NULL AND original IS NOT NULL THEN
   SELECT import_id INTO chosen FROM private.co_report_imports WHERE report_revision_id=original AND report_head_id=head AND customer_id=c;
-  IF chosen IS NOT NULL THEN INSERT INTO private.co_report_imports(report_revision_id,report_head_id,customer_id,import_id) VALUES(revision,head,c,chosen); END IF;
+  IF chosen IS NOT NULL THEN PERFORM private.co_workspace_generation_guard_v1(); INSERT INTO private.co_report_imports(report_revision_id,report_head_id,customer_id,import_id) VALUES(revision,head,c,chosen); END IF;
  END IF;
 END $$;
 
@@ -1329,7 +1422,7 @@ DECLARE item record; definition text;
 BEGIN
  FOR item IN SELECT * FROM (VALUES
  ('private.co_monthly_transaction_v1(uuid,text,jsonb)', '   plan:=private.co_build_plan_v1(c,''post_report'',p_payload-''preview_fingerprint'');', '   PERFORM private.co_import_publication_guard_v1(p_request_id,p_operation,p_payload);'),
- ('public.pilot_co_transaction_v1(uuid,text,jsonb)', '  plan:=private.co_build_plan_v1(c,p_operation,p_payload-''preview_fingerprint'');', '  PERFORM private.co_import_publication_guard_v1(p_request_id,p_operation,p_payload);')
+ (CASE WHEN to_regclass('private.catalog_cutover_v1') IS NULL THEN 'public.pilot_co_transaction_v1(uuid,text,jsonb)' ELSE 'private.catalog_co_legacy_transaction_v1(uuid,text,jsonb)' END, '  plan:=private.co_build_plan_v1(c,p_operation,p_payload-''preview_fingerprint'');', '  PERFORM private.co_import_publication_guard_v1(p_request_id,p_operation,p_payload);')
  ) AS x(signature,anchor,insertion) LOOP
   SELECT pg_get_functiondef(item.signature::regprocedure) INTO definition;
   IF (length(definition)-length(replace(definition,item.anchor,'')))/length(item.anchor)<>1 THEN RAISE EXCEPTION 'Import publication guard anchor drift'; END IF;

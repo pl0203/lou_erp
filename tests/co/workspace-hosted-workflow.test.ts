@@ -63,3 +63,10 @@ test('native Node cleanup tests stay outside Vitest automatic discovery',()=>{
  expect(files).toContain('cleanup.node.mjs')
  expect(files.filter(name=>/\.(?:test|spec)\.[cm]?[jt]sx?$/.test(name))).toEqual([])
 })
+
+test('every fixed SQL case runs on fresh legacy and current composed baselines',()=>{
+ expect(workflow).toContain('baseline: [legacy, current]')
+ expect(workflow).toContain('FIXED_BASELINE: ${{ matrix.baseline }}')
+ expect(workflow).toContain('node scripts/test-co-workspace-db.mjs --case "$FIXED_CASE" --baseline "$FIXED_BASELINE"')
+ expect(workflow).not.toMatch(/\b(?:include|exclude):/)
+})
