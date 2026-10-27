@@ -83,6 +83,7 @@ END $$;
 CREATE FUNCTION co_test.import_setup(label text) RETURNS jsonb LANGUAGE plpgsql AS $$
 DECLARE c uuid:=co_test.monthly_customer(label); m date:=(date_trunc('month',now())-interval '1 month')::date; k uuid; d uuid; binding jsonb;
 BEGIN
+ INSERT INTO auth.users(id) VALUES(md5(label||'-pic-a')::uuid),(md5(label||'-pic-b')::uuid);
  INSERT INTO public.users(id,full_name,email,role) VALUES(md5(label||'-pic-a')::uuid,'Import A',label||'-a@example.invalid','sales_person'),(md5(label||'-pic-b')::uuid,'Import B',label||'-b@example.invalid','sales_person');
  INSERT INTO public.customer_manager_assignments(customer_id,manager_id,assigned_by) VALUES(c,md5(label||'-pic-a')::uuid,auth.uid());
  PERFORM co_test.monthly_delivery(c,label||'-A','SYNTHETIC',4,'100',m);
