@@ -896,7 +896,7 @@ BEGIN
  ELSIF p_payload?'expected_selection_id' THEN RAISE EXCEPTION 'Unexpected import predecessor' USING ERRCODE='22023'; END IF;
  IF e.version<>2 OR e.finalized_draft_version<>d.version OR e.customer_version<>cv OR d.evidence_id IS DISTINCT FROM e.id THEN RAISE EXCEPTION 'CO_VERSION_CONFLICT' USING ERRCODE='PT409'; END IF;
  IF e.report_month<>d.report_month OR m->'input'->'scope'->>'reportMonth' IS DISTINCT FROM d.report_month::text OR m->'input'->'extracted'->>'sha256' IS DISTINCT FROM e.sha256
- OR e.mime_type IS DISTINCT FROM CASE m->'input'->'extracted'->>'format' WHEN 'pdf' THEN 'application/pdf' WHEN 'xlsx' THEN 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' END THEN RAISE EXCEPTION 'Import evidence source mismatch' USING ERRCODE='22023'; END IF;
+ OR e.mime_type IS DISTINCT FROM (CASE m->'input'->'extracted'->>'format' WHEN 'pdf' THEN 'application/pdf' WHEN 'xlsx' THEN 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' END) THEN RAISE EXCEPTION 'Import evidence source mismatch' USING ERRCODE='22023'; END IF;
  SELECT * INTO a FROM private.co_evidence_verifications WHERE evidence_id=e.id;
  IF a.evidence_id IS NULL THEN RAISE EXCEPTION 'Verified evidence object required' USING ERRCODE='55000'; END IF;
  PERFORM private.co_evidence_object_v1(e,a.object_id,a.object_version,a.byte_size,a.mime_type,a.sha256);
@@ -1151,7 +1151,7 @@ BEGIN
  PERFORM id FROM private.co_report_heads WHERE customer_id=m.customer_id ORDER BY id FOR UPDATE;
  PERFORM id FROM private.co_drafts WHERE customer_id=m.customer_id ORDER BY id FOR UPDATE;
  fresh:=private.co_import_fresh_v1(m.id,p_payload->'binding'->>'importVersion',private.co_import_acknowledgements_v1(coalesce(p_payload->'acknowledgedReopenOrders','[]'::jsonb))); op:=fresh->>'operation';p:=fresh->'payload';
- IF fresh->'binding' IS DISTINCT FROM p_payload->'binding' OR fresh->>'previewFingerprint' IS DISTINCT FROM p_payload->>'previewFingerprint' OR p_payload->>'mode' IS DISTINCT FROM CASE op WHEN 'post_report' THEN 'post' ELSE 'edit' END OR p_payload->'reason' IS DISTINCT FROM m.canonical_json->'input'->'reason' THEN RAISE EXCEPTION 'CO_PREVIEW_STALE' USING ERRCODE='PT409'; END IF;
+ IF fresh->'binding' IS DISTINCT FROM p_payload->'binding' OR fresh->>'previewFingerprint' IS DISTINCT FROM p_payload->>'previewFingerprint' OR p_payload->>'mode' IS DISTINCT FROM (CASE op WHEN 'post_report' THEN 'post' ELSE 'edit' END) OR p_payload->'reason' IS DISTINCT FROM m.canonical_json->'input'->'reason' THEN RAISE EXCEPTION 'CO_PREVIEW_STALE' USING ERRCODE='PT409'; END IF;
  INSERT INTO private.co_import_post_requests(actor_id,request_id,customer_id,import_id,import_payload,import_fingerprint,operation,ordinary_payload,ordinary_fingerprint)
  VALUES(actor,p_request_id,m.customer_id,m.id,p_payload,encode(sha256(convert_to(E'co-import-post-v1\n'||private.co_manifest_canonical_v1(p_payload),'UTF8')),'hex'),op,p,encode(sha256(convert_to(jsonb_build_object('operation',op,'payload',p)::text,'UTF8')),'hex'));
  -- The existing accounting executor owns the ONLY begin and commit, and the UUID.

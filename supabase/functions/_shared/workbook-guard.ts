@@ -5,7 +5,7 @@ class WorkbookError extends Error {
     readonly code: string;
     constructor(code: string) { super(code); this.code = code; }
 }
-const fail = (code: string): never => { throw new WorkbookError(code); };
+const fail: (code: string) => never = (code: string): never => { throw new WorkbookError(code); };
 export const workbookErrorCode = (e: unknown) => e instanceof WorkbookError ? e.code : 'invalid_workbook';
 const mainNS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
 const relNS = 'http://schemas.openxmlformats.org/package/2006/relationships';
@@ -618,10 +618,10 @@ function manualPackageStructure(guarded: Omit<GuardedWorkbook, 'canonicalBytes'>
             const prefix = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/';
             const type = Type?.startsWith(prefix) ? Type.slice(prefix.length) : Type === 'http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties' ? 'core-properties' : '';
             const resolved = path.startsWith('xl/') ? `xl/${Target}` : Target;
-            const expected = path.startsWith('xl/')
+            const expected: Readonly<Record<string, RegExp>> = path.startsWith('xl/')
                 ? { worksheet: /^xl\/worksheets\/sheet[1-9][0-9]*\.xml$/, styles: /^xl\/styles\.xml$/, sharedStrings: /^xl\/sharedStrings\.xml$/, theme: /^xl\/theme\/theme[1-9][0-9]*\.xml$/ }
                 : { officeDocument: /^xl\/workbook\.xml$/, 'core-properties': /^docProps\/core\.xml$/, 'extended-properties': /^docProps\/app\.xml$/ };
-            if (!Object.hasOwn(expected, type) || !(expected as Record<string, RegExp>)[type].test(resolved) || !guarded.entries.has(resolved) || targets.has(resolved)) fail('manual_structure');
+            if (!Object.hasOwn(expected, type) || !expected[type].test(resolved) || !guarded.entries.has(resolved) || targets.has(resolved)) fail('manual_structure');
             targets.add(resolved);
             if (type === 'officeDocument') primary++;
         }, () => {});
