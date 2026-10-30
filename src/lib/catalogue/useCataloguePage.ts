@@ -73,6 +73,7 @@ export function useCataloguePage<K extends CatalogueKind>(options: { kind: K; se
   })
   const [pending, setPending] = useState<{ sender: CatalogueTransactionSender; busy: boolean; recovery: boolean } | null>(null)
   const ownerSequence = useRef(0)
+  const successfulStatus = useRef<null | { sender: CatalogueTransactionSender; accept(receipt: CatalogueReceipt): Promise<boolean> }>(null)
   const operation = useMemo(() => {
     if (!backend || !identity || !maintainers.has(identity.role)) return null
     const owner: CatalogueOwner = {
@@ -84,8 +85,22 @@ export function useCataloguePage<K extends CatalogueKind>(options: { kind: K; se
     // Notify the stable page owner, not a row that may have disappeared while sending.
     const sender: CatalogueTransactionSender = Object.assign(async (...args: Parameters<CatalogueTransactionSender>) => {
       if (identityCurrent()) setPending({ sender, busy: true, recovery: true })
-      try { return await core(...args) }
-      finally { if (identityCurrent()) setPending({ sender, busy: false, recovery: core.hasUnresolved() }) }
+      let completionFailed = false
+      try {
+        const receipt = await core(...args)
+        // A successful status receipt still needs canonical reads, never an
+        // optimistic receipt-derived row. Keep durable recovery on any failure.
+        if (args[0] === 'set_enabled' && owner.isCurrent()) {
+          const completion = successfulStatus.current
+          try {
+            if (completion?.sender === sender && await completion.accept(receipt) && owner.isCurrent()) {
+              await core.acknowledgeRecovered()
+            }
+          } catch { completionFailed = true /* Retain the hold even if lock release failed after storage removal. */ }
+        }
+        return receipt
+      }
+      finally { if (identityCurrent()) setPending({ sender, busy: false, recovery: completionFailed || core.hasUnresolved() }) }
     }, { hasUnresolved: core.hasUnresolved, reconcile: core.reconcile, acknowledgeRecovered: core.acknowledgeRecovered, acknowledgeAbandoned: core.acknowledgeAbandoned })
     return { owner, sender }
   }, [backend, identity, identityCurrent, access.isCurrent, access.authorize])
@@ -144,6 +159,9 @@ export function useCataloguePage<K extends CatalogueKind>(options: { kind: K; se
     // No receipt-derived cache write: a newer canonical row must never be overwritten.
     return current()
   }
+  useLayoutEffect(() => {
+    successfulStatus.current = operation ? { sender: operation.sender, accept: acceptCanonical } : null
+  })
   const acceptAbandoned = async () => {
     if (!identity || !operation || !identityCurrent()) return false
     await access.refetch({ throwOnError: true })
@@ -169,3 +187,4 @@ export function useCataloguePage<K extends CatalogueKind>(options: { kind: K; se
     busy, unresolved, acceptCanonical, acceptAbandoned, onConfirmed: settled, onAbandoned: settled, refresh,
   }
 }
+

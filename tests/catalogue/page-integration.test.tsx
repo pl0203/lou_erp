@@ -8,7 +8,7 @@ const state = vi.hoisted(() => ({
   actor: '11111111-1111-4111-8111-111111111111', role: 'co_admin', backend: 'https://catalogue.example.invalid',
   customers: [] as any[], products: [] as any[], receipts: new Map<string, any>(), abandoned: new Set<string>(),
   command: vi.fn(), writes: vi.fn(), reads: vi.fn(), authority: vi.fn(),
-  missingRpc: false, conflict: false, deny: false, ready: true, commandGate: null as Promise<void> | null,
+  lostReply: false, historyDenied: false, missingRpc: false, conflict: false, deny: false, ready: true, commandGate: null as Promise<void> | null,
   readGate: null as Promise<void> | null, readinessGate: null as Promise<void> | null, count: null as string | null, client: null as any,
 }))
 vi.mock('../../src/components/AthelNav', () => ({ default: () => null }))
@@ -37,6 +37,7 @@ vi.mock('../../src/lib/supabase', () => {
         }
         if (name === 'pilot_catalog_page_v1') {
           state.reads(args)
+          if (state.historyDenied && args.p_purpose === 'all-for-history') return { data: null, error: { message: 'denied' } }
           if (state.readGate) await state.readGate
           let rows = [...(args.p_kind === 'customer' ? state.customers : state.products)].sort((a, b) => a.id.localeCompare(b.id))
           rows = rows.filter(row => (!args.p_search || row.name.includes(args.p_search)) && (args.p_status === 'all' || row.is_enabled === (args.p_status === 'enabled')))
@@ -69,6 +70,7 @@ vi.mock('../../src/lib/supabase', () => {
             kind: args.p_payload.kind, id: target.id, before, after: args.p_operation === 'delete_unused' ? null : { catalog_version: target.catalog_version, is_enabled: target.is_enabled }, committed_at: '2026-10-15T00:00:00Z' }
           state.receipts.set(args.p_request_id, receipt)
           if (state.commandGate) await state.commandGate
+          if (state.lostReply) throw new Error('response lost')
           return { data: receipt, error: null }
         }
         if (name === 'pilot_reconcile_catalog_v1') {
@@ -107,7 +109,7 @@ function mount(Page: React.ComponentType, client = new QueryClient({ defaultOpti
 beforeEach(() => {
   state.actor = '11111111-1111-4111-8111-111111111111'; state.role = 'co_admin'; state.customers = [customer(1)]; state.products = [product(1)]
   state.receipts.clear(); state.abandoned.clear(); state.command.mockClear(); state.writes.mockClear(); state.reads.mockClear(); state.authority.mockClear()
-  state.ready = true; state.missingRpc = false; state.conflict = false; state.deny = false; state.commandGate = null; state.readGate = null; state.readinessGate = null; state.count = null; state.client = null
+  state.lostReply = false; state.historyDenied = false; state.ready = true; state.missingRpc = false; state.conflict = false; state.deny = false; state.commandGate = null; state.readGate = null; state.readinessGate = null; state.count = null; state.client = null
   localStorage.clear()
   Object.defineProperty(navigator, 'locks', { configurable: true, value: { request: async (name: string, _options: unknown, action: any) => action({ name, mode: 'exclusive' }) } })
 })
@@ -136,10 +138,9 @@ describe.each(pages)('$kind status page integration', ({ Page, kind, desktop, mo
     }
     if (role === 'co_admin') expect(screen.getAllByRole('button', { name: 'Ubah' })).toHaveLength(2)
     await begin(desktop)
-    await screen.findByText('Hasil belum terkonfirmasi')
+    await waitFor(() => expect(within(screen.getByRole('region', { name: desktop })).getByText('Nonaktif')).toBeTruthy())
     expect(state.command).toHaveBeenCalledOnce()
     expect(state.command.mock.calls[0][0]).toMatchObject({ p_operation: 'set_enabled', p_payload: { kind, expected_version: version, is_enabled: false } })
-    fireEvent.click(screen.getByRole('button', { name: 'Periksa hasil' }))
     await waitFor(() => expect(screen.queryByText('Hasil belum terkonfirmasi')).toBeNull())
     expect(localStorage.length).toBe(0); expect(state.writes).not.toHaveBeenCalled()
     expect(state.authority.mock.calls.length).toBeGreaterThan(2)
@@ -161,6 +162,7 @@ describe.each(pages)('$kind status page integration', ({ Page, kind, desktop, mo
 })
 
 it('keeps one recovery owner after a row leaves the filter and never invalidates saved PO/CO history', async () => {
+  state.lostReply = true // A committed write with a lost response must still require recovery.
   // These unobserved sentinels must survive normal cache GC to test invalidation.
   const { client } = mount(CustomerList, new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } }))
   const histories = [['purchase_orders'], ['co', state.backend, state.actor, state.role, 'history']] as const
@@ -198,8 +200,10 @@ it('requires explicit terminal abandonment after a definitive stale-version refu
   await waitFor(() => expect((within(screen.getByRole('region', { name: 'Daftar pelanggan' })).getByRole('button', { name: 'Nonaktifkan' }) as HTMLButtonElement).disabled).toBe(false))
 })
 it('never acknowledges a canonical read older than its receipt and accepts a newer version without overwriting it', async () => {
-  mount(CustomerList); await begin('Daftar pelanggan'); await screen.findByText('Hasil belum terkonfirmasi')
+  const gate = deferred(); state.commandGate = gate.promise
+  mount(CustomerList); await begin('Daftar pelanggan'); await waitFor(() => expect(state.command).toHaveBeenCalledOnce())
   state.customers[0].catalog_version = version; state.customers[0].is_enabled = true
+  await act(async () => gate.resolve()); await screen.findByText('Hasil belum terkonfirmasi')
   fireEvent.click(screen.getByRole('button', { name: 'Periksa hasil' })); await screen.findByText('Data terbaru belum dapat diverifikasi. Periksa hasil kembali.')
   expect(localStorage.length).toBe(1)
   state.customers[0].catalog_version = '9007199254740995'
@@ -208,8 +212,8 @@ it('never acknowledges a canonical read older than its receipt and accepts a new
   expect(state.customers[0].is_enabled).toBe(true); expect(state.customers[0].catalog_version).toBe('9007199254740995')
 })
 it('retains recovery when storage cannot durably acknowledge', async () => {
-  mount(CustomerList); await begin('Daftar pelanggan'); await screen.findByText('Hasil belum terkonfirmasi')
   vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => { throw new Error('blocked') })
+  mount(CustomerList); await begin('Daftar pelanggan'); await screen.findByText('Hasil belum terkonfirmasi')
   fireEvent.click(screen.getByRole('button', { name: 'Periksa hasil' })); await screen.findByText(/Pemulihan belum berhasil/)
   expect(localStorage.length).toBe(1); expect(state.command).toHaveBeenCalledOnce()
 })
@@ -265,6 +269,7 @@ it('old controller callbacks cannot revive across actor A-B-A', async () => {
 })
 
 it('keeps recovery reachable while moving to a different catalogue page', async () => {
+  state.lostReply = true // A committed write with a lost response must still require recovery.
   state.customers = Array.from({ length: 12 }, (_, index) => customer(index + 1))
   mount(CustomerList); await begin('Daftar pelanggan'); await screen.findByText('Hasil belum terkonfirmasi')
   fireEvent.click(screen.getByRole('button', { name: 'Berikutnya' }))
@@ -498,4 +503,66 @@ it('offline readiness refetch then cancellation cannot revive previously accepte
   await act(async () => { await view.client.refetchQueries({ queryKey: key, exact: true }) })
   await waitFor(() => expect(controller.guardedDeleteAvailable).toBe(true))
   expect(view.client.getQueryData(key)).not.toBe(previouslyAccepted)
+})
+
+
+describe.each(pages)('$kind automatic successful status confirmation', ({Page,kind,desktop})=>{
+  it('renders canonical Nonaktif and clears recovery without Periksa hasil after one successful command',async()=>{
+    mount(Page);await begin(desktop);
+    await waitFor(()=>expect(within(screen.getByRole('region',{name:desktop})).getByText('Nonaktif')).toBeTruthy());
+    await waitFor(()=>expect(screen.queryByText('Hasil belum terkonfirmasi')).toBeNull());
+    expect(localStorage.length).toBe(0);expect(state.command).toHaveBeenCalledOnce();expect(state.writes).not.toHaveBeenCalled();
+    expect(state.command.mock.calls[0][0]).toMatchObject({p_operation:'set_enabled',p_payload:{kind,expected_version:version,is_enabled:false}});
+    expect(state.reads).toHaveBeenCalledWith(expect.objectContaining({p_kind:kind,p_purpose:'all-for-history'}));
+  });
+});
+
+it('retains recovery after a successful command when canonical history is denied, without resending', async () => {
+  state.historyDenied = true
+  mount(CustomerList); await begin('Daftar pelanggan')
+  await screen.findByText('Hasil belum terkonfirmasi')
+  expect(localStorage.length).toBe(1); expect(state.command).toHaveBeenCalledOnce()
+  expect(within(screen.getByRole('region', { name: 'Daftar pelanggan' })).getByText('Aktif')).toBeTruthy()
+  state.historyDenied = false
+  fireEvent.click(screen.getByRole('button', { name: 'Periksa hasil' }))
+  await waitFor(() => expect(screen.queryByText('Hasil belum terkonfirmasi')).toBeNull())
+  expect(within(screen.getByRole('region', { name: 'Daftar pelanggan' })).getByText('Nonaktif')).toBeTruthy()
+  expect(state.command).toHaveBeenCalledOnce(); expect(localStorage.length).toBe(0)
+})
+
+it('does not acknowledge the old actor while automatic canonical acceptance is pending', async () => {
+  const command = deferred(); state.commandGate = command.promise
+  const view = mount(CustomerList); await begin('Daftar pelanggan')
+  await waitFor(() => expect(state.command).toHaveBeenCalledOnce())
+  const read = deferred(); state.readGate = read.promise
+  await act(async () => command.resolve())
+  await waitFor(() => expect(state.reads).toHaveBeenCalledWith(expect.objectContaining({ p_purpose: 'all-for-history' })))
+  state.actor = '33333333-3333-4333-8333-333333333333'
+  view.rerender(<QueryClientProvider client={view.client}><CustomerList /></QueryClientProvider>)
+  state.readGate = null; await act(async () => read.resolve())
+  await waitFor(() => expect(screen.queryByText('Hasil belum terkonfirmasi')).toBeNull())
+  expect(localStorage.length).toBe(1); expect(state.command).toHaveBeenCalledOnce()
+  state.actor = '11111111-1111-4111-8111-111111111111'
+  view.rerender(<QueryClientProvider client={view.client}><CustomerList /></QueryClientProvider>)
+  await screen.findByText('Hasil belum terkonfirmasi')
+  await waitFor(() => expect((screen.getByRole('button', { name: 'Periksa hasil' }) as HTMLButtonElement).disabled).toBe(false))
+  fireEvent.click(screen.getByRole('button', { name: 'Periksa hasil' }))
+  await waitFor(() => expect(screen.queryByText('Hasil belum terkonfirmasi')).toBeNull())
+  expect(localStorage.length).toBe(0); expect(state.command).toHaveBeenCalledOnce()
+})
+
+it('keeps automatic recovery reachable if the acknowledgment lock release fails after storage removal', async () => {
+  let releases = 0
+  Object.defineProperty(navigator, 'locks', { configurable: true, value: { request: async (name: string, _options: unknown, action: any) => {
+    const result = await action({ name, mode: 'exclusive' })
+    if (++releases === 2) throw new Error('lock release failed')
+    return result
+  } } })
+  mount(CustomerList); await begin('Daftar pelanggan')
+  await screen.findByText('Hasil belum terkonfirmasi')
+  expect(releases).toBe(2); expect(localStorage.length).toBe(0)
+  expect((within(screen.getByRole('region', { name: 'Daftar pelanggan' })).getByRole('button', { name: 'Aktifkan' }) as HTMLButtonElement).disabled).toBe(true)
+  fireEvent.click(screen.getByRole('button', { name: 'Periksa hasil' }))
+  await waitFor(() => expect(screen.queryByText('Hasil belum terkonfirmasi')).toBeNull())
+  expect(state.command).toHaveBeenCalledOnce(); expect(state.writes).not.toHaveBeenCalled()
 })

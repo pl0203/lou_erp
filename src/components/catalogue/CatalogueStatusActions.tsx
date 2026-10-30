@@ -57,6 +57,7 @@ function Actions({ kind, row, owner, authority, commandsAvailable, guardedDelete
       } else {
         await sender('set_enabled', { kind, id: intent.row.id, expected_version: intent.row.catalog_version, is_enabled: intent.is_enabled })
       }
+      if (current()) setIntent(null)
     } catch (reason) {
       if (current()) setError(reason instanceof CatalogueCommandError ? reason.message : 'Perubahan belum terkonfirmasi. Periksa hasil di bagian pemulihan katalog.')
     } finally {
@@ -90,3 +91,4 @@ function Actions({ kind, row, owner, authority, commandsAvailable, guardedDelete
     </Dialog>}
   </div>
 }
+
