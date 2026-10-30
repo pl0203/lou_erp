@@ -1,3 +1,4 @@
+import {normalizeReleaseWorkflow} from './release-workflow-contract.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -94,7 +95,7 @@ test('CLI accepts no switches and exposes only constant failure output',()=>{
  }
 });
 test('workflow adds only a fixed post-capture probe and separately scoped generic result upload',()=>{
- const workflow=readFileSync(join(root,'.github/workflows/pilot-safety.yml'),'utf8');const split=workflow.indexOf('\n  catalogue-baseline:');
+ const workflow=normalizeReleaseWorkflow(readFileSync(join(root,'.github/workflows/pilot-safety.yml'),'utf8'));const split=workflow.indexOf('\n  catalogue-baseline:');
  // Preserve the historical application/CO prefix; separately pin both reviewed additions.
  const scheduling='    needs: catalogue-baseline\n    if: ${{ always() }}\n';
  assert.equal(workflow.split(scheduling).length,2);

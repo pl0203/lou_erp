@@ -1,10 +1,11 @@
+import { productionImportFixture } from './import-production-ports-harness';
 import {expect,test,vi} from 'vitest';
 import {act,cleanup,fireEvent,screen,waitFor} from '@testing-library/react';
 import {store,mount,wire,customer,month,draftId,id} from './report-ui-harness';
+import { EvidenceWorkspaceUnit } from './evidence-workspace-unit';
 import { evidenceId, fixture, choose } from './evidence-ui-harness';
 import COEvidenceAttachment, { CORevisionAttachment } from '../../src/components/co/COEvidenceAttachment';
 import {useCOReportWorkspace,COReportFields} from '../../src/components/co/COReportWorkspace';
-import COMonthlyReport from '../../src/pages/athel/co/COMonthlyReport';
 let workspace:any;
 function Probe(){const work=useCOReportWorkspace(customer,month);workspace=work;return work.header?<COReportFields work={work}/>:null;}
 function binding(work:any){return {customerId:customer,month,draftId,previousDraftVersion:work.header.draft_version,customerVersion:work.header.customer_version,generation:work.generation};}
@@ -28,11 +29,30 @@ test('failed confirmation keeps old binding and a later identical finalized impo
 test('authority failure during evidence import clears the source and cannot restore private fields',async()=>{
  const s=store();mount(<Probe/>);await screen.findByLabelText('Terjual Item 1');const b=binding(workspace);s.version='2';await act(async()=>{await expect(workspace.rebindDraftAfterEvidence(b,async()=>{throw {code:'42501',message:'denied'};})).rejects.toMatchObject({code:'42501'});});expect(screen.queryByLabelText('Terjual Item 1')).toBeNull();expect(workspace.denied).toBe(true);
 });
-test('optional evidence is present in standalone report and a sidecar authority denial clears the full source',async()=>{
- const s=store(),base=s.handle;wire.handler=async(n:string,a:any)=>n==='pilot_co_evidence_selection_v1'?{data:null,error:{code:'42501',message:'Evidence denied'}}:base(n,a);mount(<COMonthlyReport/>);await screen.findByText('Evidence denied');expect(screen.queryByLabelText('Terjual Item 1')).toBeNull();
+test('upload evidence sidecar authority denial clears the full source and retains its unacknowledged receipt',async()=>{
+ const f=await productionImportFixture();f.mountRoute();await f.choose();await f.confirmDecisions();
+ const quantity=screen.getByLabelText('Jumlah terjual (tidak dikurangi retur)') as HTMLInputElement;
+ fireEvent.change(screen.getByLabelText('Alasan perubahan (wajib untuk Edit)'),{target:{value:'PRIVATE UPLOAD REVIEW NOTE'}});
+ expect(quantity.value).toBe('1');expect(screen.getByDisplayValue('PRIVATE UPLOAD REVIEW NOTE')).toBeTruthy();
+ expect(screen.getAllByText('TEST ONLY MONTHLY QA').length).toBeGreaterThan(0);
+ const base=wire.handler;
+ wire.handler=(name:string,args:any)=>name==='pilot_co_evidence_selection_v1'?Promise.resolve({data:null,error:{code:'42501',message:'Evidence denied'}}):base(name,args);
+ fireEvent.click(screen.getByRole('button',{name:'Tinjau pencatatan'}));
+ await screen.findByText('Evidence denied');
+ expect(screen.queryByLabelText('Jumlah terjual (tidak dikurangi retur)')).toBeNull();
+ expect(screen.queryByDisplayValue('PRIVATE UPLOAD REVIEW NOTE')).toBeNull();
+ expect(screen.queryAllByText('TEST ONLY MONTHLY QA')).toHaveLength(0);
+ expect(f.writes.map(w=>w.args.p_operation)).toEqual(['save_report_draft','register_evidence','finalize_evidence']);
+ expect(f.writes.some(w=>['pilot_co_import_prepare_v1','pilot_co_import_commit_v1'].includes(w.name))).toBe(false);
+ expect(localStorage.length).toBe(1);
+ expect(JSON.parse(localStorage.getItem(localStorage.key(0)!)!).committed).toMatchObject({id:id(45),operation:'finalize_evidence',version:'2',customer_id:customer,customer_version:'1'});
+ expect(f.s.effective).toBeNull();
 });
 
 function AttachmentProbe(){const work=useCOReportWorkspace(customer,month);workspace=work;return work.header?<><COReportFields work={work}/><COEvidenceAttachment work={work}/></>:null;}
+// Explicit component/hook unit composition, NOT a restored manual-entry route.
+function AttachmentConflictUnit(){return <EvidenceWorkspaceUnit customerId={customer} month={month} onWork={work=>{workspace=work;}}/>;}
+
 
 test('optional upload finalizes exact draft, preserves dirty quantities and metadata, and clears its own guard',async()=>{
  const f=fixture();mount(<AttachmentProbe/>);fireEvent.change(await screen.findByLabelText('Terjual Item 1'),{target:{value:'8'}});fireEvent.change(screen.getByLabelText('Catatan laporan'),{target:{value:'Keep raw'}});await choose();await waitFor(()=>expect(workspace.evidenceState.dirty).toBe(true));
@@ -72,20 +92,20 @@ test('unmount during recovered-finalization acknowledgement retains the original
 });
 
 async function enterFinalizationConflict(reload=false, operation='finalize_evidence'){
- const f=fixture();f.lost=operation;mount(<COMonthlyReport/>);
+ const f=fixture();f.lost=operation;mount(<AttachmentConflictUnit/>);
  fireEvent.change(await screen.findByLabelText('Terjual Item 1'),{target:{value:'12'}});
  await choose();fireEvent.click(screen.getByText('Verifikasi dan pasang lampiran'));
  await screen.findByText('Pulihkan permintaan lampiran');
  await waitFor(()=>expect((screen.getByRole('button', { name: 'Pulihkan permintaan lampiran' }) as HTMLButtonElement).disabled).toBe(false));
  f.s.version='3';f.s.rows[0].sold_quantity='4';f.s.metadata.notes='Latest operator note';
- if(reload){cleanup();mount(<COMonthlyReport/>);await screen.findByLabelText('Terjual Item 1');}
+ if(reload){cleanup();mount(<AttachmentConflictUnit/>);await screen.findByLabelText('Terjual Item 1');}
  fireEvent.click(await screen.findByText('Pulihkan permintaan lampiran'));
  fireEvent.click(await screen.findByText('Buka hasil lampiran tersimpan'));
  await screen.findByText('Coba buka hasil lampiran');
  await waitFor(()=>expect((screen.getByRole('button', { name: 'Coba buka hasil lampiran' }) as HTMLButtonElement).disabled).toBe(false));
  return f;
 }
-test.each([false,true])('explicit evidence conflict Keep/Discard resolves and permits the next business write (reload=%s)',async(reload)=>{
+test.each([false,true])('UNIT attachment/workspace: explicit evidence conflict Keep/Discard resolves and permits the next business write (reload=%s)',async(reload)=>{
  const f=await enterFinalizationConflict(reload),key=localStorage.key(0)!,before=localStorage.getItem(key);
  fireEvent.click(screen.getByText('Selesaikan konflik lampiran'));
  fireEvent.click(await screen.findByText('Tetap mengedit'));
@@ -95,17 +115,17 @@ test.each([false,true])('explicit evidence conflict Keep/Discard resolves and pe
  await waitFor(()=>expect(localStorage.length).toBe(0));
  await waitFor(()=>expect((screen.getByLabelText('Terjual Item 1') as HTMLInputElement).disabled).toBe(false));
  expect((screen.getByLabelText('Terjual Item 1') as HTMLInputElement).value).toBe('4');expect((screen.getByLabelText('Catatan laporan') as HTMLInputElement).value).toBe('Latest operator note');
- fireEvent.change(screen.getByLabelText('Terjual Item 1'),{target:{value:'5'}});fireEvent.click(screen.getByText('Simpan Draft'));
+ fireEvent.change(screen.getByLabelText('Terjual Item 1'),{target:{value:'5'}});await act(async()=>{await workspace.save();});
  await waitFor(()=>expect(f.s.commands).toHaveLength(1));expect(f.s.commands[0].payload).toMatchObject({action:'upsert_lines',expected_draft_version:'3',lines:[{stock_key_id:id(1001),sold_quantity:5}]});expect(f.commands).toHaveLength(2);
 });
-test.each(['register_evidence','finalize_evidence'])('explicit %s conflict interrupted during acknowledgement preserves the original receipt and replacement owner',async(operation)=>{
+test.each(['register_evidence','finalize_evidence'])('UNIT attachment/workspace: explicit %s conflict interrupted during acknowledgement preserves the original receipt and replacement owner',async(operation)=>{
  await enterFinalizationConflict(false,operation);const key=localStorage.key(0)!,before=localStorage.getItem(key),base=wire.handler;let release:any;
  wire.handler=(n:string,a:any)=>n==='pilot_reconcile_co_evidence_v1'?new Promise(resolve=>{release=async()=>resolve(await base(n,a));}):base(n,a);
  fireEvent.click(screen.getByText('Selesaikan konflik lampiran'));fireEvent.click(await screen.findByText('Buang perubahan'));
- await waitFor(()=>expect(release).toBeTypeOf('function'));cleanup();mount(<COMonthlyReport/>);await screen.findByLabelText('Terjual Item 1');
+ await waitFor(()=>expect(release).toBeTypeOf('function'));cleanup();mount(<AttachmentConflictUnit/>);await screen.findByLabelText('Terjual Item 1');
  await act(async()=>{await release();});expect(localStorage.getItem(key)).toBe(before);expect((screen.getByLabelText('Terjual Item 1') as HTMLInputElement).value).toBe('4');expect(screen.queryByText('Buang perubahan')).toBeNull();
 });
-test.each([['receipt','register_evidence'],['authority','register_evidence'],['receipt','finalize_evidence'],['authority','finalize_evidence']])('explicit conflict %s / %s failure never discards the original recovery or stale overlay',async(kind,operation)=>{
+test.each([['receipt','register_evidence'],['authority','register_evidence'],['receipt','finalize_evidence'],['authority','finalize_evidence']])('UNIT attachment/workspace: explicit conflict %s / %s failure never discards the original recovery or stale overlay',async(kind,operation)=>{
  await enterFinalizationConflict(false,operation);const key=localStorage.key(0)!,before=localStorage.getItem(key),base=wire.handler;
  wire.handler=async(n:string,a:any)=>{const result=await base(n,a);if(kind==='receipt'&&n==='pilot_reconcile_co_evidence_v1')result.data.receipt={...result.data.receipt,version:'99'};if(kind==='authority'&&n==='pilot_co_evidence_v1')return {data:null,error:{code:'42501',message:'Conflict authority denied'}};return result;};
  fireEvent.click(screen.getByText('Selesaikan konflik lampiran'));fireEvent.click(await screen.findByText('Buang perubahan'));
@@ -121,14 +141,14 @@ test.each(['register_evidence','finalize_evidence'])('nested %s conflict uses th
  await choose();fireEvent.click(screen.getByText('Verifikasi dan pasang lampiran'));await screen.findByText('Pulihkan permintaan lampiran');await waitFor(()=>expect((screen.getByRole('button', { name: 'Pulihkan permintaan lampiran' }) as HTMLButtonElement).disabled).toBe(false));
  f.s.version='4';f.s.rows[0].sold_quantity='4';fireEvent.click(screen.getByText('Pulihkan permintaan lampiran'));fireEvent.click(await screen.findByText('Buka hasil lampiran tersimpan'));await screen.findByText('Coba buka hasil lampiran');await waitFor(()=>expect((screen.getByRole('button', { name: 'Selesaikan konflik lampiran' }) as HTMLButtonElement).disabled).toBe(false));expect(pending).toHaveBeenLastCalledWith(true);expect((screen.getByRole('button', { name: 'Kembali ke sumber' }) as HTMLButtonElement).disabled).toBe(true);
  fireEvent.click(screen.getByText('Selesaikan konflik lampiran'));fireEvent.click(await screen.findByText('Tetap mengedit'));expect(localStorage.length).toBe(1);await waitFor(()=>expect((screen.getByRole('button', { name: 'Selesaikan konflik lampiran' }) as HTMLButtonElement).disabled).toBe(false));fireEvent.click(screen.getByText('Selesaikan konflik lampiran'));fireEvent.click(await screen.findByText('Buang perubahan'));
- await waitFor(()=>expect(localStorage.length).toBe(0));await waitFor(()=>expect(pending).toHaveBeenLastCalledWith(false));expect((screen.getByLabelText('Terjual Item 1') as HTMLInputElement).value).toBe('4');fireEvent.change(screen.getByLabelText('Terjual Item 1'),{target:{value:'5'}});fireEvent.click(screen.getByText('Simpan Draft periode'));await waitFor(()=>expect(f.s.commands).toHaveLength(2));expect(f.s.commands[1].payload.expected_draft_version).toBe('4');expect(f.commands).toHaveLength(operation==='register_evidence'?1:2);
+ await waitFor(()=>expect(localStorage.length).toBe(0));await waitFor(()=>expect(pending).toHaveBeenLastCalledWith(false));expect((screen.getByLabelText('Terjual Item 1') as HTMLInputElement).value).toBe('4');fireEvent.change(screen.getByLabelText('Terjual Item 1'),{target:{value:'5'}});fireEvent.click(screen.getByText('Lanjutkan peninjauan periode'));await waitFor(()=>expect(f.s.commands).toHaveLength(2));expect(f.s.commands[1].payload.expected_draft_version).toBe('4');expect(f.commands).toHaveLength(operation==='register_evidence'?1:2);
 });
 
-test.each(['pending', 'verified'])('another actor’s %s duplicate is an actionable conflict preserving dirty report fields', async () => {
+test.each(['pending', 'verified'])('UNIT attachment/workspace: another actor’s %s duplicate is an actionable conflict preserving dirty report fields', async () => {
     const f = fixture(), base = wire.handler;
     wire.handler = async (name: string, args: any) => name === 'pilot_co_evidence_transaction_v1'
         ? { data: null, error: { code: 'PT409', message: 'CO_EVIDENCE_REGISTERED_BY_OTHER_ACTOR' } } : base(name, args);
-    mount(<COMonthlyReport/>);
+    mount(<AttachmentConflictUnit/>);
     fireEvent.change(await screen.findByLabelText('Terjual Item 1'), { target: { value: '8' } });
     fireEvent.change(screen.getByLabelText('Catatan laporan'), { target: { value: 'Keep authorized dirty note' } });
     await choose(); fireEvent.click(screen.getByText('Verifikasi dan pasang lampiran'));
@@ -137,8 +157,8 @@ test.each(['pending', 'verified'])('another actor’s %s duplicate is an actiona
     expect((screen.getByLabelText('Catatan laporan') as HTMLTextAreaElement).value).toBe('Keep authorized dirty note');
     expect(wire.invoke).not.toHaveBeenCalled(); expect(f.commands).toHaveLength(0);
     fireEvent.click(screen.getByText('Batalkan pilihan lampiran'));
-    await waitFor(() => expect((screen.getByRole('button', { name: 'Simpan Draft' }) as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(screen.getByText('Simpan Draft'));
+    await waitFor(() => expect(workspace.frozen).toBe(false));
+    await act(async()=>{await workspace.save();});
     await waitFor(() => expect(f.s.commands).toHaveLength(2));
 });
 
@@ -152,14 +172,14 @@ async function enterRegistrationConflict(lost: boolean, reload = false, advanceC
         }
         return base(name, args);
     };
-    mount(<COMonthlyReport/>);
+    mount(<AttachmentConflictUnit/>);
     fireEvent.change(await screen.findByLabelText('Terjual Item 1'), { target: { value: '12' } });
     await choose(); fireEvent.click(screen.getByText('Verifikasi dan pasang lampiran'));
     await screen.findByText(lost ? 'Pulihkan permintaan lampiran' : 'Coba buka hasil lampiran');
     await waitFor(() => expect((screen.getByRole('button', { name: lost ? 'Pulihkan permintaan lampiran' : 'Coba buka hasil lampiran' }) as HTMLButtonElement).disabled).toBe(false));
     if (sameTarget) f.s.version = '2'; if (advanceCustomer) f.s.cv = '3';
     f.s.rows[0].sold_quantity = '4'; f.s.metadata.notes = 'Current canonical note';
-    if (reload) { cleanup(); mount(<COMonthlyReport/>); await screen.findByLabelText('Terjual Item 1'); }
+    if (reload) { cleanup(); mount(<AttachmentConflictUnit/>); await screen.findByLabelText('Terjual Item 1'); }
     if (lost || reload) {
         fireEvent.click(await screen.findByText('Pulihkan permintaan lampiran'));
         fireEvent.click(await screen.findByText('Buka hasil lampiran tersimpan'));
@@ -167,7 +187,7 @@ async function enterRegistrationConflict(lost: boolean, reload = false, advanceC
     }
     return f;
 }
-test.each([[false,false,false,true],[true,false,false,true],[false,true,true,true],[true,true,true,true],[false,false,true,false],[true,true,true,false]])('registration recovery known/lost=%s reload=%s customer advance=%s same-target=%s preserves exact receipt until deliberate discard', async (lost,reload,customerAdvance,sameTarget) => {
+test.each([[false,false,false,true],[true,false,false,true],[false,true,true,true],[true,true,true,true],[false,false,true,false],[true,true,true,false]])('workspace/attachment unit: registration recovery known/lost=%s reload=%s customer advance=%s same-target=%s preserves exact receipt until deliberate discard', async (lost,reload,customerAdvance,sameTarget) => {
     const f = await enterRegistrationConflict(lost,reload,customerAdvance,sameTarget);
     const key = localStorage.key(0)!, before = localStorage.getItem(key);
     expect(JSON.parse(before!).committed).toMatchObject({ operation: 'register_evidence', version: '1', customer_version: '1' });
@@ -183,13 +203,13 @@ test.each([[false,false,false,true],[true,false,false,true],[false,true,true,tru
     expect((screen.getByLabelText('Catatan laporan') as HTMLTextAreaElement).value).toBe('Current canonical note');
     await waitFor(() => expect(screen.getByLabelText('Terjual Item 1').matches(':disabled')).toBe(false));
     fireEvent.change(screen.getByLabelText('Terjual Item 1'), { target: { value: '5' } });
-    await waitFor(() => expect((screen.getByRole('button', { name: 'Simpan Draft' }) as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(screen.getByText('Simpan Draft'));
+    await waitFor(() => expect(workspace.frozen).toBe(false));
+    await act(async()=>{await workspace.save();});
     await waitFor(() => expect(f.s.commands).toHaveLength(1));
     expect(f.s.commands[0].payload.expected_draft_version).toBe(sameTarget ? '2' : '1'); expect(f.commands).toHaveLength(1);
 });
 
-test('registration conflict retains receipt and dirty fields if a later canonical row page cannot be checked', async () => {
+test('UNIT attachment/workspace: registration conflict retains receipt and dirty fields if a later canonical row page cannot be checked', async () => {
     const f = await enterRegistrationConflict(true), key = localStorage.key(0)!, before = localStorage.getItem(key);
     f.s.rows.push(...Array.from({ length: 100 }, (_, index) => ({ ...f.s.rows[0], id: id(1002 + index), stock_key_id: id(1002 + index), product_name: `Item ${index + 2}`, display_sku: `SKU-${index + 2}` })));
     const base = wire.handler; let failed = true;

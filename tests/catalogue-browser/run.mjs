@@ -90,7 +90,13 @@ try {
   assert.equal(process.env.GITHUB_JOB, 'synthetic-safety')
   assert.match(process.env.GITHUB_RUN_ID ?? '', /^[1-9][0-9]*$/)
   assert.match(process.env.GITHUB_RUN_ATTEMPT ?? '', /^[1-9][0-9]*$/)
-  assert.ok(['pull_request', 'workflow_dispatch'].includes(process.env.GITHUB_EVENT_NAME))
+  // Exact release push only; do not widen native proof to arbitrary push events.
+  if (process.env.GITHUB_EVENT_NAME === 'push') {
+    assert.equal(process.env.GITHUB_REF, 'refs/heads/release/padiwan-staging-fixes-20261030')
+    assert.match(process.env.GITHUB_SHA ?? '', /^[a-f0-9]{40}$/)
+    assert.equal(process.env.PILOT_RELEASE_SOURCE_SHA, process.env.GITHUB_SHA)
+    assert.equal(process.env.CATALOGUE_BROWSER_SOURCE_SHA, process.env.GITHUB_SHA)
+  } else assert.ok(['pull_request', 'workflow_dispatch'].includes(process.env.GITHUB_EVENT_NAME))
   report.context = { repository: process.env.GITHUB_REPOSITORY, workflow: process.env.GITHUB_WORKFLOW, job: process.env.GITHUB_JOB, event: process.env.GITHUB_EVENT_NAME, run: process.env.GITHUB_RUN_ID, attempt: process.env.GITHUB_RUN_ATTEMPT }
   const expected = process.env.CATALOGUE_BROWSER_SOURCE_SHA
   assert.match(expected ?? '', /^[0-9a-f]{40}$/, 'Exact immutable head is required')

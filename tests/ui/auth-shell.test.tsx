@@ -73,7 +73,7 @@ test('login associates fields, uses real recovery link, reports validation and o
   expect(screen.getByRole('link', { name: 'Lupa kata sandi?' }).getAttribute('href')).toBe('/forgot-password')
   submit(email)
   expect(screen.getByRole('alert').textContent).toContain('Masukkan email dan kata sandi Anda.')
-  expect(screen.getByRole('button', { name: 'Masuk' }).classList.contains('ui-action--primary')).toBe(true)
+  expect(screen.getByRole('button', { name: 'Coba lagi' }).classList.contains('ui-action--primary')).toBe(true)
   main()
 })
 test('login coalesces same-turn native submits and clicks and permits retry after safe error', async () => {
@@ -84,7 +84,7 @@ test('login coalesces same-turn native submits and clicks and permits retry afte
   fireEvent.change(email, { target: { value: 'a@example.test' } }); fireEvent.change(screen.getByPlaceholderText('••••••••'), { target: { value: 'Synthetic8!' } })
   act(() => { submit(email); submit(email); fireEvent.click(screen.getByRole('button', { name: 'Masuk' })) })
   expect(state.signIn).toHaveBeenCalledTimes(1)
-  expect((screen.getByRole('button', { name: 'Masuk...' }) as HTMLButtonElement).disabled).toBe(true)
+  expect((screen.getByRole('button', { name: 'Sedang masuk…' }) as HTMLButtonElement).disabled).toBe(true)
   expect(email.disabled).toBe(true)
   await act(async () => finish({ error: { message: 'Private provider detail' } }))
   expect(screen.getByRole('alert').textContent).toContain('Email atau kata sandi salah')

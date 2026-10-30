@@ -70,6 +70,10 @@ test('authorization failure never pulls the request byte stream',async()=>{
 });
 test('concurrent uploads reconcile one create-only object; conflict and lost attestation responses never overwrite',async()=>{
  const ctx=await context();let exists=false,created=0,attested=0;let release!:()=>void;const barrier=new Promise<void>(r=>{release=r});let initial=0;
- const f=vi.fn(async(u:any,o:any)=>{if(String(u).includes('context')){if(!exists&&initial++<2){if(initial===2)release();await barrier;return Response.json(ctx);}return Response.json({...ctx,object:{id:oid,version:null}});}if(String(u).includes('attest')){attested++;if(attested===1)throw new Error('Lost attestation');return Response.json({id,state:'verified'});}if(o.method==='POST'){if(exists)return Response.json({error:'exists'},{status:409});exists=true;created++;return Response.json({});}return new Response(pdf);});
- const responses=await Promise.all([createEvidenceUploadHandler(config,f)(request()),createEvidenceUploadHandler(config,f)(request())]);expect(responses.map(r=>r.status).sort()).toEqual([200,502]);expect(created).toBe(1);expect((await createEvidenceUploadHandler(config,f)(request())).status).toBe(200);expect(created).toBe(1);
+ const f=vi.fn(async(u:any,o:any)=>{if(String(u).includes('context')){if(!exists&&initial++<2){if(initial===2)release();await barrier;return Response.json(ctx);}return Response.json({...ctx,object:exists?{id:oid,version:null}:null});}if(String(u).includes('attest')){attested++;if(attested===1)throw new Error('Lost attestation');return Response.json({id,state:'verified'});}if(o.method==='POST'){if(exists)return Response.json({error:'exists'},{status:409});exists=true;created++;return Response.json({});}return new Response(pdf);});
+ const responses=await Promise.all([createEvidenceUploadHandler(config,f)(request()),createEvidenceUploadHandler(config,f)(request())]);expect(responses.map(r=>r.status).sort()).toEqual([200,502]);expect(created).toBe(1);
+ // The mock must report the real store state at every authority reread, including the pre-write check.
+ const writes=f.mock.calls.filter(([url,init])=>String(url).includes('/storage/')&&init.method==='POST');
+ expect(writes.length).toBeGreaterThanOrEqual(1);for(const [,init] of writes){expect(init.headers['x-upsert']).toBe('false');expect(init.redirect).toBe('error');}
+ expect((await createEvidenceUploadHandler(config,f)(request())).status).toBe(200);expect(created).toBe(1);
 });

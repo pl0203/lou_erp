@@ -1,7 +1,7 @@
 {
   "version": 1,
   "repository": "pl0203/lou_erp",
-  "public_source_head": "60bb38a25d004f6076bea34a0623dcca9a418372",
+  "public_source_head": "e95bdaff33b9fcb8cd18114f364e23198c290ba3",
   "files": [
     {
       "path": "src/pages/athel/CustomerList.tsx",
@@ -107,9 +107,9 @@
     },
     {
       "path": "src/components/ui/Dialog.tsx",
-      "sha": "b4214103ad27de376492dbd922364a359ebe3b7b",
-      "sha256": "a02853c77b2681875a95e23a6f2d89d05118bc989198da5f3506178bc66773a0",
-      "bytes": 4232
+      "sha": "4b5823f004ec0e5e48194d7fb20a56981d81ca7e",
+      "sha256": "0affccb652c69a3ee49e42edb16d0f342ccefbd8689fe28d1bc985d5b5963aa2",
+      "bytes": 5400
     },
     {
       "path": "src/components/ui/Feedback.tsx",
@@ -119,15 +119,15 @@
     },
     {
       "path": "src/index.css",
-      "sha": "1c8bd59a1f9c8aaeb85b5985fb6a06e66869b417",
-      "sha256": "9412752a7f6aa72a169adfbd08d17977e8b1f8b444e93e0a8f1329408d9165d4",
-      "bytes": 2315
+      "sha": "fbdc921e811cd043e9e638f8fa8a8487283a4945",
+      "sha256": "4602dfaa82ad6454343c5c6b54425a0ca9946a349f5cfc0cfd6b42c9957d8729",
+      "bytes": 2649
     },
     {
       "path": "src/styles/ui.css",
-      "sha": "370204d9595c0057c51e6b3811bd6e6a91d0becc",
-      "sha256": "daf141feb7a632bf1789b599bdd5c4fe6193f932804b804273077bd88907347c",
-      "bytes": 14873
+      "sha": "82f1c51bef3ee30e6e34012c2e5eb2d220831aa8",
+      "sha256": "22998a397ad2bedcc65159479044702791b9afcf8ed78c40ec44f24d90424ef0",
+      "bytes": 15276
     },
     {
       "path": "src/components/CustomerCategorySelect.tsx",
@@ -191,15 +191,15 @@
     },
     {
       "path": "package.json",
-      "sha": "eebda2f358053faeb86c9c30c2f38e0ceff9a028",
-      "sha256": "a00509f8a767578d265c292ccc78ee6d0319da729e673571549bbc9f2860d7f3",
-      "bytes": 1222
+      "sha": "6e86317036cbb9d47c53c5bc4997f3be46dcd595",
+      "sha256": "ed2e2787df9b98df2f6734c64aa955d3a8f838cf39a77cde7f2500357174a702",
+      "bytes": 1297
     },
     {
       "path": "package-lock.json",
-      "sha": "1d38422028b5432b5b48ecf782d1238fb11c8567",
-      "sha256": "943d730df0724f7e85c7bd4aaff707911bfa92ca4426a264bb91bd4cd972578d",
-      "bytes": 141750
+      "sha": "1ffcc624b57a9eef5ca835575fd5fb09c06816e9",
+      "sha256": "01599e3bfe88c61a9069b4b983d4dea2924bc82cbc1e26ac692470f425168eb3",
+      "bytes": 234771
     },
     {
       "path": "public/fonts/plus-jakarta-sans/PlusJakartaSans-Variable.ttf",

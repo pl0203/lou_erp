@@ -1,3 +1,4 @@
+import {normalizeReleaseWorkflow} from './release-workflow-contract.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -81,7 +82,7 @@ test('CLI has no target or implementation switch and returns only sanitized refu
 });
 test('only dedicated job and source binding include the red checkpoint and condition its exact upload',()=>{
  need();for(const path of ['scripts/catalogue-foundation-red.mjs','tests/database/catalogue/foundation-red.sql','tests/catalogue-ci/foundation-red.node.mjs'])assert.ok(cataloguePublicSourcePaths.includes(path));
- const workflow=readFileSync(join(root,'.github/workflows/pilot-safety.yml'),'utf8'),split=workflow.indexOf('\n  catalogue-baseline:');
+ const workflow=normalizeReleaseWorkflow(readFileSync(join(root,'.github/workflows/pilot-safety.yml'),'utf8')),split=workflow.indexOf('\n  catalogue-baseline:');
  // Preserve the historical application/CO prefix; separately pin both reviewed additions.
  const scheduling='    needs: catalogue-baseline\n    if: ${{ always() }}\n';
  assert.equal(workflow.split(scheduling).length,2);

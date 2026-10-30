@@ -11,6 +11,7 @@ export const cataloguePublicSourcePaths=[
  '.github/workflows/pilot-safety.yml','vercel.json','tests/vercel-routing.test.ts',
  'scripts/catalogue-checkout.mjs','scripts/catalogue-ci-profile.mjs','scripts/catalogue-capture-source.mjs',
  'scripts/catalogue-capture-baseline.mjs','scripts/catalogue-ci-metadata.sql','supabase/catalogue/ci/composition.json',
+ 'tests/catalogue-ci/release-workflow-contract.mjs','tests/catalogue-ci/release-identity.node.mjs',
  'tests/catalogue-ci/checkout.test.ts','tests/catalogue-ci/capture.test.ts',
  'tests/co/ci-workflow.test.ts','tests/co/ci-shallow-checkout.test.ts',
  'scripts/catalogue-failfast-probe.mjs',

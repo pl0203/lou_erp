@@ -6,7 +6,7 @@
 .co-stock-store-coverage summary { cursor: pointer; }
 .co-stock-scroll { max-width: 100%; max-height: 34rem; border: 1px solid var(--color-brand-divider, #dde5e2); border-radius: 8px; }
 .co-stock-scroll:focus-visible { outline: 2px solid var(--color-brand-primary, #186b5a); outline-offset: 2px; }
-.co-stock-table { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 970px; font-size: 13px; line-height: 1.35; }
+.co-stock-table { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 970px; font-size: 14px; line-height: 1.35; }
 .co-stock-table--selected { min-width: 820px; }
 .co-stock-table th, .co-stock-table td { padding: 8px 10px; height: 44px; border-bottom: 1px solid var(--color-brand-divider, #dde5e2); text-align: left; background: var(--color-brand-surface, white); vertical-align: middle; }
 .co-stock-table thead th { position: sticky; top: 0; z-index: 3; background: var(--color-brand-canvas, #f6f8f7); color: var(--color-brand-secondary, #657571); font-weight: 600; white-space: nowrap; }

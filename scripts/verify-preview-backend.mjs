@@ -1,7 +1,7 @@
 // Runs before Vite loads .env. Never print URL/key values in diagnostics.
 // https://vercel.com/docs/environment-variables/system-environment-variables
 const env = process.env
-if (env.VERCEL_ENV === 'preview' && env.VERCEL_GIT_COMMIT_REF === 'fix/pilot-database') {
+if (env.VERCEL_ENV === 'preview' && ['fix/pilot-database', 'release/padiwan-staging-fixes-20261030'].includes(env.VERCEL_GIT_COMMIT_REF)) {
   const fail = () => {
     console.error('Database preview build blocked: explicit staging Supabase URL and publishable/anon client key are required in the build environment.')
     process.exit(1)

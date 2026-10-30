@@ -4,13 +4,13 @@ import { spawnSync } from 'node:child_process'
 import { lstatSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-const target = { VERCEL_ENV: 'preview', VERCEL_GIT_COMMIT_REF: 'fix/pilot-database' }
+const targets = ['fix/pilot-database', 'release/padiwan-staging-fixes-20261030'].map(VERCEL_GIT_COMMIT_REF => ({ VERCEL_ENV: 'preview', VERCEL_GIT_COMMIT_REF }))
 const url = 'https://mqfpupsuthghubkeiuey.supabase.co'
 const jwt = (role: string, ref = 'mqfpupsuthghubkeiuey') => [Buffer.from('{"alg":"HS256"}').toString('base64url'), Buffer.from(JSON.stringify({ role, ref })).toString('base64url'), 'synthetic-signature'].join('.')
 function run(env: Record<string, string> = {}) {
   return spawnSync(process.execPath, ['scripts/verify-preview-backend.mjs'], { encoding: 'utf8', env: { PATH: process.env.PATH, ...env } })
 }
-describe('database preview backend build guard', () => {
+describe.each(targets)('database preview backend build guard $VERCEL_GIT_COMMIT_REF', target => {
   it('leaves local, CI and other branch/production builds unchanged', () => {
     for (const env of [{}, { ...target, VERCEL_ENV: 'production' }, { ...target, VERCEL_GIT_COMMIT_REF: 'fix/pilot-safety' }]) expect(run(env).status).toBe(0)
   })
@@ -36,7 +36,7 @@ describe('database preview backend build guard', () => {
         '--cache', join(fixture, 'cache'),
         '--update-notifier=false',
         'run', 'build',
-      ], { encoding: 'utf8', env: { PATH: process.env.PATH, ...target } })
+      ], { encoding: 'utf8', env: { PATH: process.env.PATH, npm_config_offline: 'true', npm_config_audit: 'false', ...target } })
       expect(result.status).not.toBe(0)
       expect(result.stderr).toContain('Database preview build blocked')
       expect(result.stdout).not.toContain('building for production')

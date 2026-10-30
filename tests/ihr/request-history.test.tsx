@@ -79,7 +79,7 @@ test('real shared page completes history/detail gates and hides frozen reason du
  render(<QueryClientProvider client={client}><LeaveManagement/></QueryClientProvider>)
  fireEvent.click(await screen.findByRole('button',{name:'Riwayat pengajuan'}));await screen.findByText('Menunggu persetujuan');await details()
  let signal!:AbortSignal;mocks.rpc.mockImplementation((name:string,args:Record<string,unknown>)=>({abortSignal:(s:AbortSignal)=>name==='leave_context_v1'?(signal=s,new Promise(()=>{})):Promise.resolve({data:response(name,args),error:null})}))
- fireEvent(window,new Event('focus'));await waitFor(()=>expect(signal).toBeDefined());expect(screen.queryByText(detail.reason)).toBeNull()
+ fireEvent(window,new Event('focus'));await waitFor(()=>expect(signal).toBeDefined());expect(screen.getByText(detail.reason)).toBeTruthy();expect((screen.getByRole('button',{name:'Muat ulang rincian'}) as HTMLButtonElement).disabled).toBe(true)
  await act(async()=>client.cancelQueries({queryKey:leaveKeys.context(employeeA,'current'),exact:true}));expect(screen.queryByText(detail.reason)).toBeNull()
  serve();fireEvent.click(await screen.findByRole('button',{name:'Coba lagi'}));await screen.findByRole('button',{name:'Ajukan cuti'})
  expect(screen.queryByText(detail.reason)).toBeNull();fireEvent.click(screen.getByRole('button',{name:'Coba lagi riwayat pengajuan'}));await screen.findByText('Menunggu persetujuan');fireEvent.click(screen.getByRole('button',{name:'Coba lagi rincian'}));expect(await screen.findByText(detail.reason)).toBeTruthy()
@@ -99,7 +99,7 @@ test('cancelled owner event refetch cannot restore a cached private decision rea
  mocks.rpc.mockImplementation(normal);const {client}=mount();await history();await details();await screen.findByText(event.reason)
  let signal!:AbortSignal,finish!:(value:unknown)=>void
  mocks.rpc.mockImplementation((name:string,args:Record<string,unknown>)=>name==='leave_own_request_history_v1'?{abortSignal:(s:AbortSignal)=>{signal=s;return new Promise(resolve=>finish=resolve)}}:normal(name,args))
- fireEvent(window,new Event('focus'));await waitFor(()=>expect(signal).toBeDefined());expect(screen.queryByText(event.reason)).toBeNull()
+ fireEvent(window,new Event('focus'));await waitFor(()=>expect(signal).toBeDefined());expect(screen.getByText(event.reason)).toBeTruthy();expect((screen.getByRole('button',{name:'Peristiwa lebih lama'}) as HTMLButtonElement).disabled).toBe(true)
  await act(async()=>client.cancelQueries({predicate:q=>q.queryKey.includes('own-request-events')}));expect(signal.aborted).toBe(true)
  await act(async()=>finish({data,error:null}));expect(screen.queryByText(event.reason)).toBeNull()
  mocks.rpc.mockImplementation(normal);fireEvent.click(await screen.findByRole('button',{name:'Muat ulang peristiwa'}));expect(await screen.findByText(event.reason)).toBeTruthy();expect(localStorage.length).toBe(0)

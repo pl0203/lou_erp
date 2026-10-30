@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { readFileSync, existsSync } from 'node:fs'
 import { dirname, resolve, relative } from 'node:path'
 import ts from 'typescript'
@@ -53,6 +54,11 @@ vi.mock('../../src/pages/girard/GirardManagers', () => ({ default: () => <p data
 vi.mock('../../src/pages/ihr/UserManagement', () => ({ default: () => <p data-testid="route-leaf">UserManagement</p> }))
 vi.mock('../../src/pages/ihr/LeaveManagement', () => ({ default: () => <p data-testid="route-leaf">LeaveManagement</p> }))
 
+vi.mock('../../src/pages/ihr/employees/EmployeeList', () => ({ default: () => <p data-testid="route-leaf">EmployeeList</p> }))
+vi.mock('../../src/pages/ihr/employees/EmployeeDetail', () => ({ default: () => <p data-testid="route-leaf">EmployeeDetail</p> }))
+vi.mock('../../src/pages/ihr/employees/EmployeeEditor', () => ({ default: () => <p data-testid="route-leaf">EmployeeEditor</p> }))
+vi.mock('../../src/pages/ihr/employees/EmployeeReportingEditor', () => ({ default: () => <p data-testid="route-leaf">EmployeeReportingEditor</p> }))
+vi.mock('../../src/pages/athel/co/COStockReturns', () => ({ default: () => <p data-testid="route-leaf">COStockReturns</p> }))
 import App from '../../src/App'
 import { roleHome } from '../../src/components/navigationModules'
 
@@ -85,6 +91,7 @@ const PAGES: Page[] = [
   { path: '/athel/co/reports', roles: CO, leaf: 'COMonthlyReports' },
   { path: '/athel/co/reports/:customerId/:month', roles: CO, leaf: 'COMonthlyReport' },
   { path: '/athel/co/stock/*', roles: CO, leaf: 'COCustomerStock' },
+  { path: '/athel/co/returns', roles: CO, leaf: 'COStockReturns' },
   { path: '/girard/schedule', roles: SALES, leaf: 'schedule' },
   { path: '/girard/visit-requests', roles: SALES, leaf: 'VisitRequests' },
   { path: '/girard/visit-history', roles: SALES, leaf: 'OwnVisitHistory' },
@@ -103,6 +110,11 @@ const PAGES: Page[] = [
   { path: '/girard/managers', roles: HEADS, leaf: 'GirardManagers' },
   { path: '/ihr/users', roles: E, leaf: 'UserManagement' },
   { path: '/ihr/leave', roles: ROLES, leaf: 'LeaveManagement' },
+  { path: '/ihr/employees', roles:E, leaf:'EmployeeList' },
+  { path: '/ihr/employees/new', roles:E, leaf:'EmployeeEditor' },
+  { path: '/ihr/employees/:employeeId', roles:E, leaf:'EmployeeDetail' },
+  { path: '/ihr/employees/:employeeId/edit', roles:E, leaf:'EmployeeEditor' },
+  { path: '/ihr/employees/:employeeId/reporting', roles:E, leaf:'EmployeeReportingEditor' },
 ]
 
 beforeEach(() => {
@@ -110,12 +122,14 @@ beforeEach(() => {
   auth.profile = { id: 'route-actor', role: 'sales_person', is_active: true, full_name: 'Synthetic operator' }
   auth.loading = false
 })
-afterEach(cleanup)
+const clients: QueryClient[] = []
+function client(){const value=new QueryClient({defaultOptions:{queries:{retry:false,gcTime:0}}});clients.push(value);return value}
+afterEach(()=>{cleanup();clients.splice(0).forEach(value=>value.clear())})
 function LocationProbe() { return <output data-testid="route-location">{useLocation().pathname}</output> }
 function actualPath(pattern: string) {
-  return pattern.replace(':customerId', 'synthetic-customer').replace(':scheduleId', 'synthetic-schedule').replace(':month', '2026-10').replace(':id', 'synthetic-record').replace('*', 'synthetic-stock')
+  return pattern.replace(':employeeId','synthetic-employee').replace(':customerId', 'synthetic-customer').replace(':scheduleId', 'synthetic-schedule').replace(':month', '2026-10').replace(':id', 'synthetic-record').replace('*', 'synthetic-stock')
 }
-function mount(path: string) { return render(<MemoryRouter initialEntries={[path]}><App /><LocationProbe /></MemoryRouter>) }
+function mount(path: string) { return render(<QueryClientProvider client={client()}><MemoryRouter initialEntries={[path]}><App /><LocationProbe /></MemoryRouter></QueryClientProvider>) }
 function expectedLeaf(page: Page, role: Role) { return page.leaf === 'schedule' ? role === 'sales_person' ? 'DailySchedule' : 'ManagerSchedule' : page.leaf }
 
 for (const page of PAGES) {
@@ -159,7 +173,7 @@ test.each(MANAGERS)('personal own-visits document title matches its scope for %s
   expect(screen.getByTestId('route-leaf').textContent).toBe('MyVisits')
   expect(document.title).toBe('Kunjungan saya | Padiwan')
 })
-test.each(['/', '/unmatched-synthetic-route'])('%s still redirects to login outside the 37-page inventory', path => {
+test.each(['/', '/unmatched-synthetic-route'])('%s still redirects to login outside the 44-page inventory', path => {
   mount(path)
   expect(screen.getByTestId('route-location').textContent).toBe('/login')
   expect(screen.getByTestId('route-leaf').textContent).toBe('Login')
@@ -173,7 +187,7 @@ test('App loading intercepts protected routes before their fallback or leaf can 
   expect(main.id).toBe('main-content'); expect(main.tabIndex).toBe(-1)
   expect(document.querySelectorAll('#main-content')).toHaveLength(1)
   expect(main.querySelector('main')).toBeNull()
-  expect(within(main).getByRole('status').textContent).toMatch(/memuat/i)
+  expect(within(main).getByRole('status').textContent).toMatch(/memeriksa sesi/i)
 })
 test('initial App loading owns one focusable semantic main target', () => {
   auth.loading = true; mount('/girard/visit-history')
@@ -181,7 +195,7 @@ test('initial App loading owns one focusable semantic main target', () => {
   expect(main.id).toBe('main-content'); expect(main.tabIndex).toBe(-1)
   expect(document.querySelectorAll('#main-content')).toHaveLength(1)
   expect(main.querySelector('main')).toBeNull()
-  expect(within(main).getByRole('status').textContent).toMatch(/memuat/i)
+  expect(within(main).getByRole('status').textContent).toMatch(/memeriksa sesi/i)
 })
 test.each(PAGES.filter(page => page.path.startsWith('/athel/co')))('$path keeps one real CO main target after navigation', page => {
   auth.profile!.role = 'co_admin'; mount(actualPath(page.path))
@@ -295,7 +309,7 @@ function elements(inspect: (source: ts.SourceFile, node: Opening) => void) {
   for (const source of reachableSources()) visit(source, node => { if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) inspect(source, node) })
 }
 
-test('real App declares exactly the approved 38 patterns and inherited outer gates', () => {
+test('real App declares exactly the approved 44 patterns and inherited outer gates', () => {
   const source = sourceAt('src/App.tsx'), arrays = new Map<string, string[]>()
   for (const statement of source.statements) if (ts.isVariableStatement(statement)) for (const declaration of statement.declarationList.declarations) {
     if (declaration.initializer && ts.isArrayLiteralExpression(declaration.initializer) && declaration.initializer.elements.every(ts.isStringLiteral)) arrays.set(declaration.name.getText(source), declaration.initializer.elements.map(element => (element as ts.StringLiteral).text))
@@ -320,11 +334,11 @@ test('real App declares exactly the approved 38 patterns and inherited outer gat
       const opening = ts.isJsxElement(node) ? node.openingElement : node
       if (opening.tagName.getText(source) === 'Route') {
         const path = literal(attr(opening, 'path'))
-        const full = attr(opening, 'index') ? parent : path === '*' ? '*' : path!.startsWith('/') ? path! : parent + '/' + path
+        const full = attr(opening, 'index') || path === null ? parent : path === '*' ? '*' : path!.startsWith('/') ? path! : parent + '/' + path
         const roles = gate(opening, inherited)
         const children = ts.isJsxElement(node) ? node.children.filter((child): child is ts.JsxElement | ts.JsxSelfClosingElement => ts.isJsxElement(child) || ts.isJsxSelfClosingElement(child)) : []
         if (children.some(child => (ts.isJsxElement(child) ? child.openingElement : child).tagName.getText(source) === 'Route')) {
-          excluded.push(full + ' shell'); children.forEach(child => collect(child, full, roles))
+          excluded.push((path===null?'pathless':full) + ' shell'); children.forEach(child => collect(child, full, roles))
         } else if (full === '/' || full === '*') excluded.push(full + ' redirect')
         else pages.push({ path: full, roles })
         return
@@ -333,14 +347,14 @@ test('real App declares exactly the approved 38 patterns and inherited outer gat
     ts.forEachChild(node, child => collect(child, parent, inherited))
   }
   collect(source)
-  expect(PAGES).toHaveLength(38)
+  expect(PAGES).toHaveLength(44)
   expect(pages.map(page => page.path).sort()).toEqual(PAGES.map(page => page.path).sort())
-  expect(new Set(pages.map(page => page.path)).size).toBe(38)
+  expect(new Set(pages.map(page => page.path)).size).toBe(44)
   for (const page of PAGES) {
     const actual = pages.find(candidate => candidate.path === page.path)!
     expect(actual.roles === null ? null : [...actual.roles].sort(), page.path).toEqual(page.roles === null ? null : [...page.roles].sort())
   }
-  expect(excluded.sort()).toEqual(['* redirect', '/ redirect', '/athel/co shell'])
+  expect(excluded.sort()).toEqual(['* redirect', '/ redirect', '/athel/co shell', 'pathless shell'])
 })
 test('reachable audit includes lazy charts and embedded dashboard panels, excluding unrouted legacy pages', () => {
   const files = reachableSources().map(source => relative(root, source.fileName))

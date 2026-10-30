@@ -8,29 +8,45 @@ const privateIPv4=address=>{
  const [a,b]=address.split('.').map(Number)
  return a===127 || a===10 || (a===172 && b>=16 && b<=31) || (a===192 && b===168)
 }
+const releaseRef='refs/heads/release/padiwan-staging-fixes-20261030'
+// Event identity is explicit: exact release push/dispatch are never represented as a PR.
+export function catalogueCiEventIdentity(env,source) {
+ assert.equal(env.CI,'true');assert.equal(env.GITHUB_ACTIONS,'true')
+ assert.equal(env.GITHUB_REPOSITORY,'pl0203/lou_erp');assert.equal(env.GITHUB_WORKFLOW,'Pilot safety checks')
+ for(const key of ['GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT'])assert.match(env[key]??'',/^[1-9][0-9]*$/,`Invalid ${key}`)
+ assert.match(env.GITHUB_SHA??'',/^[a-f0-9]{40}$/,'Invalid GitHub event SHA')
+ assert.equal(env.GITHUB_WORKFLOW_REF,`pl0203/lou_erp/.github/workflows/pilot-safety.yml@${env.GITHUB_REF}`,'Exact workflow ref required')
+ const common={repository:env.GITHUB_REPOSITORY,workflow:env.GITHUB_WORKFLOW,workflowRef:env.GITHUB_WORKFLOW_REF,job:env.GITHUB_JOB,
+  event:env.GITHUB_EVENT_NAME,ref:env.GITHUB_REF,eventSha:env.GITHUB_SHA,runId:env.GITHUB_RUN_ID,runAttempt:env.GITHUB_RUN_ATTEMPT}
+ if(env.GITHUB_EVENT_NAME==='pull_request') {
+  assert.match(env.GITHUB_REF??'',/^refs\/pull\/[1-9][0-9]*\/merge$/,'Exact pull request merge ref required')
+  for(const [key,value] of Object.entries({CATALOGUE_CI_HEAD_REPOSITORY:'pl0203/lou_erp',CATALOGUE_CI_BASE_REPOSITORY:'pl0203/lou_erp',CATALOGUE_CI_HEAD_REF:'feat/catalogue-mutations-20261014',CATALOGUE_CI_BASE_REF:'fix/pilot-database'}))assert.equal(env[key],value,`Fixed catalogue CI context required: ${key}`)
+  return {...common,headRef:env.CATALOGUE_CI_HEAD_REF,baseRef:env.CATALOGUE_CI_BASE_REF}
+ }
+ assert.ok(['workflow_dispatch','push'].includes(env.GITHUB_EVENT_NAME),'Unsupported catalogue CI event')
+ assert.equal(env.GITHUB_REF,releaseRef,'Exact staging release ref required')
+ assert.match(env.PILOT_RELEASE_SOURCE_SHA??'',/^[a-f0-9]{40}$/,'Exact expected release source SHA required')
+ assert.equal(env.PILOT_RELEASE_SOURCE_SHA,source.commit,'Release input must match checked source')
+ assert.equal(env.GITHUB_SHA,source.commit,'Release event SHA must match checked source')
+ for(const key of ['CATALOGUE_CI_HEAD_REPOSITORY','CATALOGUE_CI_BASE_REPOSITORY','CATALOGUE_CI_HEAD_REF','CATALOGUE_CI_BASE_REF'])assert.ok(env[key]===undefined||env[key]==='',`Release event cannot claim PR metadata: ${key}`)
+ return {...common,releaseRef,expectedSourceSha:env.PILOT_RELEASE_SOURCE_SHA}
+}
 export function catalogueCiConnection(env,source) {
  assert.equal(source?.clean,true,'CI requires clean source')
  for(const key of ['commit','tree'])assert.match(source[key]??'',/^[a-f0-9]{40}$/,'Verified source identity required')
  assert.match(source.candidate??'',/^[a-f0-9]{64}$/,'Candidate byte digest required')
  const fixed={CI:'true',GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:'pl0203/lou_erp',GITHUB_WORKFLOW:'Pilot safety checks',GITHUB_JOB:'catalogue-baseline',
-  GITHUB_EVENT_NAME:'pull_request',CATALOGUE_CI_PROFILE:profile,CATALOGUE_CI_HEAD_REPOSITORY:'pl0203/lou_erp',CATALOGUE_CI_BASE_REPOSITORY:'pl0203/lou_erp',
-  CATALOGUE_CI_HEAD_REF:'feat/catalogue-mutations-20261014',CATALOGUE_CI_BASE_REF:'fix/pilot-database',
+  CATALOGUE_CI_PROFILE:profile,
   CATALOGUE_CI_SOURCE_SHA:source.commit,CATALOGUE_CI_CANDIDATE_SHA256:source.candidate,
   PGHOST:'127.0.0.1',PGPORT:'5432',PGUSER:'postgres',PGDATABASE:'pilot_test',PGPASSWORD:'synthetic-ci-only'}
  for(const [key,value] of Object.entries(fixed))assert.equal(env[key],value,`Fixed catalogue CI context required: ${key}`)
- for(const key of ['GITHUB_RUN_ID','GITHUB_RUN_ATTEMPT'])assert.match(env[key]??'',/^[1-9][0-9]*$/,`Invalid ${key}`)
- assert.match(env.GITHUB_SHA??'',/^[a-f0-9]{40}$/,'Invalid GitHub event SHA')
- assert.match(env.GITHUB_REF??'',/^refs\/pull\/[1-9][0-9]*\/merge$/,'Exact pull request merge ref required')
- assert.equal(env.GITHUB_WORKFLOW_REF,`pl0203/lou_erp/.github/workflows/pilot-safety.yml@${env.GITHUB_REF}`,'Exact workflow ref required')
+ catalogueCiEventIdentity(env,source)
  const acceptedPg=['PGHOST','PGPORT','PGUSER','PGDATABASE','PGPASSWORD','PGCONNECT_TIMEOUT','PGTZ']
  for(const key of Object.keys(env))assert.ok(!key.startsWith('PG') || acceptedPg.includes(key),`Ambient libpq option refused: ${key}`)
  for(const key of ['DATABASE_URL','SUPABASE_DB_URL','SUPABASE_DB_PASSWORD','LD_PRELOAD','LD_LIBRARY_PATH','NODE_OPTIONS','NODE_PATH','DYLD_LIBRARY_PATH','DYLD_INSERT_LIBRARIES'])assert.equal(env[key],undefined,`Ambient target/runtime option refused: ${key}`)
  return {PATH:env.PATH,PGHOST:'127.0.0.1',PGPORT:'5432',PGUSER:'postgres',PGDATABASE:'pilot_test',PGPASSWORD:'synthetic-ci-only',
   PGCONNECT_TIMEOUT:'5',PGTZ:'UTC',PGPASSFILE:'/dev/null/catalogue-no-password',PGSYSCONFDIR:'/dev/null',GIT_NO_LAZY_FETCH:'1'}
 }
-const ciIdentity=env=>({repository:env.GITHUB_REPOSITORY,workflow:env.GITHUB_WORKFLOW,workflowRef:env.GITHUB_WORKFLOW_REF,job:env.GITHUB_JOB,
- event:env.GITHUB_EVENT_NAME,ref:env.GITHUB_REF,eventSha:env.GITHUB_SHA,runId:env.GITHUB_RUN_ID,runAttempt:env.GITHUB_RUN_ATTEMPT,
- headRef:env.CATALOGUE_CI_HEAD_REF,baseRef:env.CATALOGUE_CI_BASE_REF})
 export function catalogueCiIdentity(env,source,observed,runIdentity) {
  catalogueCiConnection(env,source)
  assert.match(runIdentity??'',/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/,'Run identity required')
@@ -38,7 +54,7 @@ export function catalogueCiIdentity(env,source,observed,runIdentity) {
  assert.ok(privateIPv4(observed.server_address),'Private Docker service IPv4 required')
  assert.equal(observed.server_port,5432);assert.match(observed.server_version_num??'',/^17[0-9]{4}$/)
  assert.match(observed.system_identifier??'',/^[1-9][0-9]*$/)
- return {profile,source,ci:ciIdentity(env),runIdentity,serverAddress:observed.server_address,serverPort:5432,serverVersion:observed.server_version_num,systemIdentifier:observed.system_identifier}
+ return {profile,source,ci:catalogueCiEventIdentity(env,source),runIdentity,serverAddress:observed.server_address,serverPort:5432,serverVersion:observed.server_version_num,systemIdentifier:observed.system_identifier}
 }
 export const catalogueObservationSql=database=> {
  assert.ok(['pilot_test','pilot_catalogue_test'].includes(database),'Unknown fixed fixture target')

@@ -7,47 +7,50 @@ import COOrders from '../../src/pages/athel/co/COOrders';
 import * as rpc from '../../src/lib/co/rpc';
 import * as auth from '../../src/lib/AuthContext';
 import { coKeys } from '../../src/lib/co/queryKeys';
-test('fully delivered remains active with independent revenue and stock', async () => { Object.assign(state.header.summary, { delivered_quantity: '2', pending_quantity: '0', delivery_progress: 'complete', remaining_quantity: '2' }); mount(<CODetail />, `/athel/co/${ids.co}`); await screen.findByText('CO-A'); expect(screen.getByText('Aktif')).toBeTruthy(); expect(screen.getByText('Terkirim penuh')).toBeTruthy(); expect(screen.getByText('Original PIC')).toBeTruthy(); expect(screen.getByText('Nilai rencana CO')).toBeTruthy(); expect(screen.getByText('Pendapatan terjual')).toBeTruthy(); expect(state.commands).toHaveLength(0); });
-test('distinct monthly and stock routes expose truthful later operation seams', async () => { const { router } = mount(<CODetail />, `/athel/co/${ids.co}`); await screen.findByText('CO-A'); expect(screen.getByRole('button', { name: 'Tambah Surat Jalan' })).toBeTruthy(); expect(screen.getByRole('link', { name: 'Catat penjualan bulanan' }).getAttribute('href')).toContain(`/reports?customer=${ids.customer}`); expect(screen.getByRole('link', { name: 'Retur barang belum terjual' }).getAttribute('href')).toContain(`/stock?customer=${ids.customer}`); expect(screen.queryByRole('button', { name: /SJ Kembali/ })).toBeNull(); fireEvent.click(screen.getByRole('link', { name: 'Catat penjualan bulanan' })); await waitFor(() => expect(router.state.location.pathname).toBe('/athel/co/reports')); });
-test('server capabilities disable edit and add SJ; close blockers are explicit', async () => { state.header.allowed_operations = []; state.header.close_blockers = { stock_remains: true, undelivered_remains: true, missing_month_count: '2' }; mount(<CODetail />, `/athel/co/${ids.co}`); await screen.findByText('CO-A'); expect(screen.queryByRole('link', { name: 'Ubah CO' })).toBeNull(); expect((screen.getByRole('button', { name: 'Tambah Surat Jalan' }) as HTMLButtonElement).disabled).toBe(true); expect(screen.getByText(/2 laporan bulan belum lengkap/)).toBeTruthy(); });
+async function openActions() { fireEvent.click(await screen.findByRole('button', { name: /^Actions/ })); }
+test('fully delivered shows delivery progress and disables further shipment', async () => { Object.assign(state.header.summary, { delivered_quantity: '2', pending_quantity: '0', delivery_progress: 'complete', remaining_quantity: '2' }); mount(<CODetail />, `/athel/co/${ids.co}`); await screen.findByText('CO-A'); expect(screen.getByText('Terkirim penuh')).toBeTruthy(); expect(screen.getByRole('button', { name: 'Buat surat jalan' }).matches(':disabled')).toBe(true); expect(await screen.findByText(/Nilai CO:/)).toBeTruthy(); expect(state.commands).toHaveLength(0); });
+test('distinct monthly and stock routes expose truthful later operation seams', async () => { const { router } = mount(<CODetail />, `/athel/co/${ids.co}`); await screen.findByText('CO-A'); expect(screen.getByRole('button', { name: 'Buat surat jalan' })).toBeTruthy(); expect(screen.getByRole('link', { name: 'Lihat laporan bulanan' }).getAttribute('href')).toContain(`/reports?customer=${ids.customer}`); await openActions(); expect(screen.getByRole('link', { name: 'Retur barang belum terjual' }).getAttribute('href')).toContain(`/stock?customer=${ids.customer}`); expect(screen.queryByRole('button', { name: /SJ Kembali/ })).toBeNull(); fireEvent.click(screen.getByRole('link', { name: 'Lihat laporan bulanan' })); await waitFor(() => expect(router.state.location.pathname).toBe('/athel/co/reports')); });
+test('server capabilities disable edit and add SJ; close blockers are explicit', async () => { state.header.allowed_operations = []; state.header.close_blockers = { stock_remains: true, undelivered_remains: true, missing_month_count: '2' }; mount(<CODetail />, `/athel/co/${ids.co}`); await screen.findByText('CO-A'); expect(screen.queryByRole('link', { name: 'Edit CO' })).toBeNull(); expect((screen.getByRole('button', { name: 'Buat surat jalan' }) as HTMLButtonElement).disabled).toBe(true); await openActions(); expect(screen.getByRole('button', { name: 'Tutup CO' }).matches(':disabled')).toBe(true); expect(screen.getByText(/2 laporan bulan belum lengkap/)).toBeTruthy(); });
 test('Orders customer/status filter is sent before pagination', async () => { mount(<COOrders />, '/athel/co/list'); await screen.findAllByText('CO-A'); fireEvent.change(screen.getByLabelText('Status CO'), { target: { value: 'closed' } }); fireEvent.change(screen.getByLabelText('Filter pelanggan'), { target: { value: ids.customer } }); await waitFor(() => expect(state.page.mock.calls.at(-1)[0]).toMatchObject({ p_customer_id: ids.customer, p_status: 'closed', p_page: 1 })); });
-test('history is independently paged and labeled customer report scope', async () => { state.sections.deliveries = Array.from({ length: 21 }, (_, i) => ({ id: `d${i}`, head_id: `h${i}`, sj_number: `SJ-${i}`, sj_date: '2026-10-01', received_date: null, is_effective: true, is_void: false, revision_no: '1' })); mount(<CODetail />, `/athel/co/${ids.co}`); await screen.findByText(/SJ-0 ·/); expect(screen.queryByText(/SJ-20 ·/)).toBeNull(); expect(screen.getByText('Laporan bulanan pelanggan (semua CO)')).toBeTruthy(); const next = screen.getAllByRole('button', { name: 'Berikutnya' }).find(b => !(b as HTMLButtonElement).disabled)!; fireEvent.click(next); await screen.findByText(/SJ-20 ·/); });
-test.each(['grant', 'revoke', 'error'])('Orders Edit uses an actual deferred capability refetch: %s', async outcome => {
-    const { client } = mount(<COOrders />, '/athel/co/list');
-    await screen.findAllByRole('link', { name: 'Ubah' });
+test('shipment history is independently paged in its named table', async () => { state.sections.deliveries = Array.from({ length: 21 }, (_, i) => ({ id: `d${i}`, head_id: `h${i}`, sj_number: `SJ-${i}`, sj_date: '2026-10-01', received_date: null, is_effective: true, is_void: false, revision_no: '1' })); mount(<CODetail />, `/athel/co/${ids.co}`); await screen.findByText('SJ-0'); expect(screen.queryByText('SJ-20')).toBeNull(); expect(screen.getByRole('table', { name: 'Riwayat surat jalan' })).toBeTruthy(); const next = screen.getAllByRole('button', { name: 'Berikutnya' }).find(b => !(b as HTMLButtonElement).disabled)!; fireEvent.click(next); await screen.findByText('SJ-20'); });
+test.each(['grant', 'revoke', 'error'])('Detail Edit uses an actual deferred capability refetch: %s', async outcome => {
+    const { client } = mount(<CODetail />, `/athel/co/${ids.co}`);
+    await screen.findByRole('link', { name: 'Edit CO' });
     let resolve!: (value: any) => void; let reject!: (error: Error) => void;
     const pending = new Promise<any>((yes, no) => { resolve = yes; reject = no; });
     const read = vi.spyOn(rpc, 'fetchCODetail').mockReturnValue(pending);
     try {
         let refetch!: Promise<void>;
-        await act(async () => { refetch = client.invalidateQueries({ queryKey: coKeys.read({ actorId: ids.actor, role: 'co_admin' }, 'order-actions', { id: ids.co, version: '1' }) }); });
-        expect(read).toHaveBeenCalledWith(ids.co, '1', expect.anything());
-        await waitFor(() => expect(screen.queryAllByRole('link', { name: 'Ubah' })).toHaveLength(0));
-        expect(screen.getAllByRole('link', { name: 'Lihat' })).toHaveLength(2);
+        await act(async () => { refetch = client.invalidateQueries({ queryKey: coKeys.read({ actorId: ids.actor, role: 'co_admin' }, 'detail', { id: ids.co }) }); });
+        expect(read).toHaveBeenCalledWith(ids.co, null, expect.anything());
+        await waitFor(() => expect(screen.queryAllByRole('link', { name: 'Edit CO' })).toHaveLength(0));
+        expect(screen.getByRole('button', { name: 'Buat surat jalan' }).matches(':disabled')).toBe(true);
         await act(async () => {
             if (outcome === 'error') reject(new Error('Current authority unavailable'));
             else resolve({ co: state.header, allowed_operations: outcome === 'grant' ? ['edit_co'] : [], close_blockers: state.header.close_blockers });
             await refetch;
         });
-        await waitFor(() => expect(screen.queryAllByRole('link', { name: 'Ubah' })).toHaveLength(outcome === 'grant' ? 2 : 0));
+        await waitFor(() => expect(screen.queryAllByRole('link', { name: 'Edit CO' })).toHaveLength(outcome === 'grant' ? 1 : 0));
         expect(state.commands).toHaveLength(0);
     } finally { read.mockRestore(); }
 });
-test('mobile Orders retains sold quantity alongside revenue and stock', async () => {
+test('mobile Orders shows planned value and SKU count without mislabeling them as revenue or stock', async () => {
     Object.assign(state.header.summary, { sold_quantity: '601', revenue: '606.00', remaining_quantity: '602' });
     mount(<COOrders />, '/athel/co/list');
     const mobile = await screen.findByRole('article');
-    expect(within(mobile).getByText('Jumlah terjual').nextElementSibling?.textContent).toBe('601');
-    expect(within(mobile).getByText('Pendapatan terjual').nextElementSibling?.textContent).toContain('606');
-    expect(within(mobile).getByText('Stok tercatat').nextElementSibling?.textContent).toBe('602');
+    expect(within(mobile).getByText('Jumlah SKU').nextElementSibling?.textContent).toBe('1');
+    expect(within(mobile).getByText('Nilai CO').nextElementSibling?.textContent).toContain('20');
+    expect(within(mobile).queryByText('Pendapatan terjual')).toBeNull();
+    expect(within(mobile).queryByText('Stok tercatat')).toBeNull();
 });
-test('cancellation reason is protected on dirty dismissal', async () => { mount(<CODetail />, `/athel/co/${ids.co}`); fireEvent.click(await screen.findByRole('button', { name: 'Batalkan CO' })); fireEvent.change(screen.getByLabelText('Alasan pembatalan'), { target: { value: 'Keep this reason' } }); fireEvent.click(screen.getByRole('button', { name: 'Batal' })); await screen.findByRole('button', { name: 'Tetap mengedit' }); fireEvent.click(screen.getByRole('button', { name: 'Tetap mengedit' })); expect(screen.getByDisplayValue('Keep this reason')).toBeTruthy(); });
+test('cancellation reason is protected on dirty dismissal', async () => { mount(<CODetail />, `/athel/co/${ids.co}`); await openActions(); fireEvent.click(await screen.findByRole('button', { name: 'Batalkan CO' })); fireEvent.change(screen.getByLabelText('Alasan pembatalan'), { target: { value: 'Keep this reason' } }); fireEvent.click(screen.getByRole('button', { name: 'Batal' })); await screen.findByRole('button', { name: 'Tetap mengedit' }); fireEvent.click(screen.getByRole('button', { name: 'Tetap mengedit' })); expect(screen.getByDisplayValue('Keep this reason')).toBeTruthy(); });
 test('exact pager clamps a now-out-of-range page without lossy total arithmetic',async()=>{const {COPagination}=await import('../../src/components/co/COShared');function Pager(){const [page,setPage]=React.useState(2);return <COPagination page={page} total="20" pending={false} onPage={setPage}/>};mount(<Pager/>,`/athel/co/${ids.co}`);await screen.findByText('Halaman 1 dari 1');expect(screen.getByText('1–20 dari 20')).toBeTruthy()})
 
 // Regression: a background transport failure must not unmount the protected editor.
 test.each(['sj', 'cancel'] as const)('dirty %s survives failed detail refresh, freezes writes, and resumes without initialization', async editor => {
     const { client } = mount(<CODetail />, `/athel/co/${ids.co}`);
-    fireEvent.click(await screen.findByRole('button', { name: editor === 'sj' ? 'Tambah Surat Jalan' : 'Batalkan CO' }));
+    if (editor === 'cancel') await openActions();
+    fireEvent.click(await screen.findByRole('button', { name: editor === 'sj' ? 'Buat surat jalan' : 'Batalkan CO' }));
     const field = await screen.findByLabelText(editor === 'sj' ? 'Nomor SJ' : 'Alasan pembatalan');
     fireEvent.change(field, { target: { value: 'UNSAVED WORK' } });
     if (editor === 'sj') fireEvent.change(screen.getByLabelText('Jumlah dikirim Item 1'), { target: { value: '1' } });
@@ -71,25 +74,25 @@ test.each(['sj', 'cancel'] as const)('dirty %s survives failed detail refresh, f
 
 test('authoritative detail denial clears editors and a later network failure cannot restore private work', async () => {
     const { client } = mount(<CODetail />, `/athel/co/${ids.co}`);
-    fireEvent.click(await screen.findByRole('button', { name: 'Tambah Surat Jalan' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Buat surat jalan' }));
     fireEvent.change(await screen.findByLabelText('Nomor SJ'), { target: { value: 'PRIVATE WORK' } });
     const read = vi.spyOn(rpc, 'fetchCODetail').mockRejectedValue(Object.assign(new Error('CO authority required'), { code: '42501' }));
     const key = coKeys.read({ actorId: ids.actor, role: 'co_admin' }, 'detail', { id: ids.co });
     await act(async () => { await client.invalidateQueries({ queryKey: key }); });
     await screen.findByText('CO authority required');
     expect(screen.queryByDisplayValue('PRIVATE WORK')).toBeNull();
-    expect(screen.queryByText('Original PIC')).toBeNull();
+    expect(screen.queryByText('CO-A')).toBeNull();
     expect(client.getQueryData(key)).toBeUndefined();
     read.mockRejectedValue(new Error('Header network error'));
     fireEvent.click(screen.getByRole('button', { name: 'Coba lagi' }));
     await screen.findByText('Header network error');
-    expect(screen.queryByText('Original PIC')).toBeNull();
+    expect(screen.queryByText('CO-A')).toBeNull();
     expect(state.commands).toHaveLength(0);
 });
 
 test.each(['identity', 'role', 'deactivation'] as const)('%s replacement still clears dirty detail editors and the old private cache', async loss => {
     const { client } = mount(<CODetail />, `/athel/co/${ids.co}`);
-    fireEvent.click(await screen.findByRole('button', { name: 'Batalkan CO' }));
+    await openActions(); fireEvent.click(await screen.findByRole('button', { name: 'Batalkan CO' }));
     fireEvent.change(screen.getByLabelText('Alasan pembatalan'), { target: { value: 'PRIVATE REASON' } });
     const current = auth.useAuth();
     const nextId = '00000000-0000-0000-0000-000000000009';

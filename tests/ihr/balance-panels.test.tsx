@@ -5,6 +5,7 @@ import type { LeaveContext } from '../../src/lib/leave/contracts'
 import { employeeA, employeeB } from './fixtures'
 const mocks=vi.hoisted(()=>({rpc:vi.fn()}))
 vi.mock('../../src/lib/supabase',()=>({supabase:{rpc:mocks.rpc}}))
+import LeaveSetupStatus from '../../src/pages/ihr/leave/LeaveSetupStatus'
 import MyLeave from '../../src/pages/ihr/leave/MyLeave'
 import LeaveBalanceSettings from '../../src/pages/ihr/leave/LeaveBalanceSettings'
 const balance={accountId:employeeA,year:2026,allowanceMinutes:5400,approvedMinutes:450,pendingMinutes:60,availableMinutes:4890,expiredMinutes:0,version:4,reconciled:true}
@@ -186,4 +187,22 @@ test('incomplete opening-only rows cannot poison a valid adjustment after keep-d
  await waitFor(()=>expect(send).toHaveBeenCalledTimes(1))
  expect(send.mock.calls[0][0]).toEqual({operation:'adjust_balance',employeeId:employeeA,year:2026,expectedVersion:4,deltaMinutes:-60,sourceId:employeeB,reason:'Reviewed correction'})
  expect(screen.queryByRole('alert')).toBeNull()
+})
+
+test('incomplete setup warning preserves verified balance visibility without claiming balances unavailable',()=>{
+ render(wrap(<><LeaveSetupStatus context={context}/><MyLeave actorId={employeeA} context={context}/></>))
+ expect(screen.getByText('Pengajuan belum tersedia sampai pengaturan cuti dilengkapi. Saldo dan riwayat yang sudah diverifikasi tetap dapat dilihat.')).toBeTruthy()
+ expect(screen.getByText('Penyetuju belum ada')).toBeTruthy()
+ expect(screen.getByText('81j 30m')).toBeTruthy()
+ expect(screen.queryByText('Pengajuan belum tersedia. Saldo belum dapat ditampilkan sampai pengaturan diverifikasi.')).toBeNull()
+ expect(mocks.rpc).not.toHaveBeenCalled()
+})
+test('director setup warning remains unchanged',()=>{
+ render(<LeaveSetupStatus context={{...context,memberKind:'director'}}/>)
+ expect(screen.getByText('Direktur hanya menyetujui permohonan yang ditugaskan dan tidak menerima saldo cuti.')).toBeTruthy()
+ expect(screen.getByText('Penyetuju belum ada')).toBeTruthy()
+})
+test('ready setup produces no warning',()=>{
+ const {container}=render(<LeaveSetupStatus context={{...context,setup:{ready:true,blockers:[]}}}/>)
+ expect(container.childElementCount).toBe(0)
 })

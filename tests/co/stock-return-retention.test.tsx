@@ -3,9 +3,13 @@ import { expect, test } from 'vitest';
 import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { customer, mount, mountApp, stockFixture, wire } from './stock-ui-harness';
 import App from '../../src/App';
+import {LegacyReturnOwner} from './legacy-return-owner';
+// Historical exported editor-owner contracts; these do not claim current App permits legacy draft creation.
+
 import CODetail from '../../src/pages/athel/co/CODetail';
 
 async function click(name: string) {
+    if(['Selesaikan sisa belum dikirim','Tutup CO'].includes(name)){const t=await screen.findByRole('button',{name:/^Actions/});if(t.getAttribute('aria-expanded')!=='true')fireEvent.click(t)}
     const button = await screen.findByRole('button', { name });
     await waitFor(() => expect(button.matches(':disabled')).toBe(false));
     fireEvent.click(button);
@@ -20,7 +24,7 @@ async function reviewReturn(nested = false) {
     if (nested) state.report.impacts.missing_month = [{
         report_month: '2026-09-01', reason: 'missing', head_id: null, coverage_through_date: null,
     }];
-    mountApp(<App />, `/athel/co/stock?customer=${customer}`);
+    mountApp(<LegacyReturnOwner state={state}/>, `/athel/co/stock?customer=${customer}`);
     await click('Retur barang belum terjual');
     await screen.findByLabelText('Jumlah retur SJ-1 Item 1');
     change('Jumlah retur SJ-1 Item 1', '5');
@@ -96,7 +100,7 @@ test.each(['unknown', 'committed'] as const)('nested %s result keeps outer sourc
         }
         return null;
     };
-    await click('Simpan Draft periode');
+    await click('Lanjutkan peninjauan periode');
     await screen.findAllByText(outcome === 'unknown' ? 'Nested reply lost before refresh' : 'Nested import unavailable before refresh');
     const refresh = screen.getByRole('button', { name: 'Muat sumber retur terbaru' });
     await waitFor(() => expect(refresh.matches(':disabled')).toBe(true));

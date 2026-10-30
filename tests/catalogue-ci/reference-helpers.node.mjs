@@ -1,3 +1,4 @@
+import {normalizeReleaseWorkflow} from './release-workflow-contract.mjs';
 // Unit containment/evidence tests. No fake process result proves SQL behavior.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -294,7 +295,7 @@ test('all nineteen frozen candidate and dependency files and shared harness part
  assert.equal(new Set(cataloguePublicSourcePaths).size,cataloguePublicSourcePaths.length);
 });
 test('public PG17 CI preserves foundation failure and independently gates helper evidence on successful baseline capture',()=>{
- need();const workflow=readFileSync(join(root,'.github/workflows/pilot-safety.yml'),'utf8'),split=workflow.indexOf('\n  catalogue-baseline:'),job=workflow.slice(split);
+ need();const workflow=normalizeReleaseWorkflow(readFileSync(join(root,'.github/workflows/pilot-safety.yml'),'utf8')),split=workflow.indexOf('\n  catalogue-baseline:'),job=workflow.slice(split);
  // Preserve the historical application/CO prefix; separately pin both reviewed additions.
  const scheduling='    needs: catalogue-baseline\n    if: ${{ always() }}\n';
  assert.equal(workflow.split(scheduling).length,2);

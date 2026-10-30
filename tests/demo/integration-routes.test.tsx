@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, expect, test, vi } from 'vitest'
@@ -11,8 +12,10 @@ vi.mock('../../src/pages/athel/Promotions', () => ({ default: () => <p>Admin pro
 vi.mock('../../src/pages/girard/DailySchedule', () => ({ default: () => <p>Sales schedule</p> }))
 vi.mock('../../src/pages/girard/ManagerSchedule', () => ({ default: () => <p>Manager schedule</p> }))
 import App from '../../src/App'
-afterEach(cleanup)
-function mount(role: string, path: string) { state.role = role; render(<MemoryRouter initialEntries={[path]}><App /></MemoryRouter>) }
+const clients: QueryClient[] = []
+function client(){const value=new QueryClient({defaultOptions:{queries:{retry:false,gcTime:0}}});clients.push(value);return value}
+afterEach(()=>{cleanup();clients.splice(0).forEach(value=>value.clear())})
+function mount(role: string, path: string) { state.role = role; render(<QueryClientProvider client={client()}><MemoryRouter initialEntries={[path]}><App /></MemoryRouter></QueryClientProvider>) }
 test.each(['sales_person','sales_manager','sales_head','executive'])('%s reaches read-only highlights and own visit history', role => {
  mount(role, '/girard/promotions'); expect(screen.getByText('Sales highlights')).toBeTruthy(); cleanup(); mount(role, '/girard/visit-history'); expect(screen.getByText('Own visit history')).toBeTruthy()
 })

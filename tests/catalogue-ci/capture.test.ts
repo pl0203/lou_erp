@@ -1,3 +1,4 @@
+import {normalizeReleaseWorkflow} from './release-workflow-contract.mjs';
 // @vitest-environment node
 import { afterEach, describe, expect, test } from 'vitest'
 import { spawnSync } from 'node:child_process'
@@ -83,8 +84,8 @@ describe('strict independent GitHub catalogue capture profile',()=>{
  })
 })
 
-test('capture workflow is independent, same-repository exact-branch PR only, and uploads fixed synthetic directory',()=>{
- const workflow=readFileSync('.github/workflows/pilot-safety.yml','utf8')
+test('historical catalogue PR contract and fixed synthetic directory remain intact after exact release adaptation',()=>{
+ const workflow=normalizeReleaseWorkflow(readFileSync('.github/workflows/pilot-safety.yml','utf8'))
  const job=workflow.slice(workflow.indexOf('\n  catalogue-baseline:'))
  expect(job).toContain("github.event_name == 'pull_request'")
  for(const gate of ["github.repository == 'pl0203/lou_erp'","github.event.pull_request.head.repo.full_name == 'pl0203/lou_erp'","github.event.pull_request.base.repo.full_name == 'pl0203/lou_erp'","github.event.pull_request.head.ref == 'feat/catalogue-mutations-20261014'","github.event.pull_request.base.ref == 'fix/pilot-database'"])expect(job).toContain(gate)
@@ -232,6 +233,7 @@ test('public input list is exact and does not enumerate or read unrelated protec
  '.github/workflows/pilot-safety.yml','vercel.json','tests/vercel-routing.test.ts',
  'scripts/catalogue-checkout.mjs','scripts/catalogue-ci-profile.mjs','scripts/catalogue-capture-source.mjs',
  'scripts/catalogue-capture-baseline.mjs','scripts/catalogue-ci-metadata.sql','supabase/catalogue/ci/composition.json',
+ 'tests/catalogue-ci/release-workflow-contract.mjs','tests/catalogue-ci/release-identity.node.mjs',
  'tests/catalogue-ci/checkout.test.ts','tests/catalogue-ci/capture.test.ts',
  'tests/co/ci-workflow.test.ts','tests/co/ci-shallow-checkout.test.ts',
  'scripts/catalogue-failfast-probe.mjs',

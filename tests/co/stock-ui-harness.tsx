@@ -59,6 +59,47 @@ export function stockFixture(count = 2) {
         const ok = (data: any) => ({ data, error: null });
         const page = (rows: any[]) => ({ ...root, page: a.p_page, page_size: a.p_page_size, total: String(rows.length),
             rows: rows.slice((a.p_page - 1) * a.p_page_size, a.p_page * a.p_page_size) });
+        if (name === 'pilot_co_returns_page_v1') {
+            const h = s.effective?.header;
+            const rows = h && (!a.p_customer_id || a.p_customer_id === customer)
+                && (!a.p_date_from || h.return_date >= a.p_date_from) && (!a.p_date_to || h.return_date <= a.p_date_to)
+                ? [{ id: h.head_id, revision_id: h.revision_id, customer_id: customer, customer_name: 'Store A',
+                    return_date: h.return_date, reference: h.reference, reason: h.reason, is_void: !!h.is_void,
+                    item_count: String(new Set(s.effective.lines.map((l: any) => l.stock_key_id)).size),
+                    quantities: s.effective.lines.length ? [{ unit: null, quantity: s.effective.lines.reduce((n: bigint, l: any) => n + BigInt(l.quantity), 0n).toString() }] : [] }] : [];
+            return ok({ ...page(rows), customer_id: a.p_customer_id, date_from: a.p_date_from, date_to: a.p_date_to });
+        }
+        if (name === 'pilot_co_customer_stock_v2') {
+            const cutoff = a.p_as_of ?? root.as_of.slice(0, 10);
+            const normalize = (value: string) => value.replace(/^ +| +$/g, '').toLowerCase();
+            const f = { ...freshness, cutoff_date: cutoff,
+                pending_report_month_count: cutoff.slice(0, 7) === '2026-09' ? '1' : freshness.pending_report_month_count,
+                days_since_pending_month_end: String(Math.max(0, (Date.parse(cutoff) - Date.parse(freshness.next_required_month_end)) / 86400000)) };
+            const sku = a.p_sku === null ? null : normalize(a.p_sku), search = normalize(a.p_search);
+            // This fixture has no declared unit or retained-price proof: preserve
+            // unknown rather than inventing a unit/value from legacy batch prices.
+            const rows = s.stockRows().filter((r: any) => (a.p_customer_id === null || r.customer_id === a.p_customer_id)
+                && (sku === null || r.normalized_sku === sku)
+                && (!search || r.normalized_sku.includes(search) || r.product_name.toLowerCase().includes(search)))
+                .map((r: any) => ({ ...r, stock_key_id: r.id, customer_name: r.customer_name ?? 'Store A', reporting_freshness: f,
+                    ...(r.coverage_through_date > cutoff ? { coverage_through_date: null, last_report_month: null } : {}),
+                    unit: null, unit_basis: 'unknown', unit_declaration: null, contract_stock_value: null,
+                    contract_currency: null, contract_unit_price: null, price_state: 'unknown', valuation_basis: null }));
+            const compare = (left: string, right: string) => {
+                const aa = Array.from(left), bb = Array.from(right);
+                for (let i = 0; i < Math.min(aa.length, bb.length); i++) { const delta = aa[i].codePointAt(0)! - bb[i].codePointAt(0)!; if (delta) return delta; }
+                return aa.length - bb.length;
+            };
+            rows.sort((l: any, r: any) => {
+                const primary = a.p_sort === 'balance' ? (BigInt(l.recorded_quantity) < BigInt(r.recorded_quantity) ? -1 : BigInt(l.recorded_quantity) > BigInt(r.recorded_quantity) ? 1 : 0)
+                    : compare(a.p_sort === 'sku' ? l.normalized_sku : l.customer_name, a.p_sort === 'sku' ? r.normalized_sku : r.customer_name);
+                return primary * (a.p_direction === 'asc' ? 1 : -1) || compare(l.customer_id, r.customer_id) || compare(l.stock_key_id, r.stock_key_id);
+            });
+            return ok({ ...page(rows), version: '2', customer_id: a.p_customer_id, customer_version: a.p_customer_id === null ? null : s.cv,
+                generation_id: a.p_customer_id === null ? null : s.generation, sku, normalized_search: search, stock_as_of: a.p_as_of,
+                period_start: cutoff.slice(0, 7) + '-01', coverage_date: cutoff, sort: a.p_sort, direction: a.p_direction,
+                reporting_freshness: a.p_customer_id === null ? null : f });
+        }
         if (name === 'pilot_co_customer_stock_v1') {
             const coverage = a.p_as_of ?? '2026-10-09';
             const f = coverage === '2026-10-09' ? freshness : { ...freshness, cutoff_date: coverage,

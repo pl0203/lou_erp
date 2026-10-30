@@ -79,7 +79,7 @@ test.each([false,true])('cancelled shared preflight keeps private draft and bala
  let signal!:AbortSignal,finishOld!:(value:unknown)=>void
  if(offline)onlineManager.setOnline(false)
  mocks.rpc.mockImplementation((name:string)=>({abortSignal:(s:AbortSignal)=>name==='leave_context_v1'?(signal=s,new Promise(resolve=>finishOld=resolve)):Promise.resolve({data:quoteFixture,error:null})}))
- fireEvent.click(screen.getByRole('button',{name:'Hitung pratinjau'}));await waitFor(()=>expect(signal).toBeDefined());await waitFor(()=>expect(screen.queryByLabelText('Alasan pribadi')).toBeNull());expect(unloadGuarded()).toBe(true)
+ fireEvent.click(screen.getByRole('button',{name:'Hitung pratinjau'}));await waitFor(()=>expect(signal).toBeDefined());expect(screen.getByDisplayValue(quoteInput.reason).matches(':disabled')).toBe(true);expect((screen.getByRole('button',{name:'Memeriksa...'}) as HTMLButtonElement).disabled).toBe(true);expect(unloadGuarded()).toBe(true)
  await act(async()=>client.cancelQueries({queryKey:key,exact:true}));expect(signal.aborted).toBe(true);expect(client.getQueryState(key)!.dataUpdatedAt).toBe(updatedAt)
  expect(screen.queryByLabelText('Alasan pribadi')).toBeNull();expect(screen.queryByText('81j 30m')).toBeNull();expect(screen.queryByRole('region',{name:'Pratinjau cuti'})).toBeNull();expect(unloadGuarded()).toBe(true);expect(mocks.rpc.mock.calls.filter(([name])=>name==='leave_quote_v1')).toHaveLength(0)
  onlineManager.setOnline(true);serve();fireEvent.click(await screen.findByRole('button',{name:'Coba lagi'}));expect(await screen.findByDisplayValue(quoteInput.reason)).toBeTruthy();expect(screen.getByText('81j 30m')).toBeTruthy();expect(unloadGuarded()).toBe(true)
@@ -104,4 +104,22 @@ test('explicit account preparation still reaches validated shared context after 
   return Promise.resolve({data:prepared?context:{...context,balances:[]},error:null})
  }}))
  mount();fireEvent.click(await screen.findByRole('button',{name:'Siapkan jatah tahun ini'}));expect(await screen.findByText('81j 30m')).toBeTruthy();expect(screen.queryByRole('alert')).toBeNull();expect(mocks.rpc.mock.calls.filter(([name])=>name==='leave_prepare_self_v1')).toHaveLength(1)
+})
+
+// Removing the display deadline or accepting a late timed-out receipt must fail this test.
+test('pending shared authority expires verified presentation and cannot revive it with a late receipt',async()=>{
+ mount();await openFill()
+ let signal!:AbortSignal,finishOld!:(value:unknown)=>void
+ mocks.rpc.mockImplementation((name:string)=>({abortSignal:(s:AbortSignal)=>name==='leave_context_v1'?(signal=s,new Promise(resolve=>finishOld=resolve)):Promise.resolve({data:quoteFixture,error:null})}))
+ vi.useFakeTimers()
+ try{
+  fireEvent(window,new Event('focus'))
+  await act(async()=>{await vi.advanceTimersByTimeAsync(1)})
+  expect(signal).toBeDefined();expect(screen.getByDisplayValue(quoteInput.reason).matches(':disabled')).toBe(true)
+  expect(screen.getByText('81j 30m')).toBeTruthy()
+  await act(async()=>{await vi.advanceTimersByTimeAsync(10000)})
+  expect(signal.aborted).toBe(true);expect(screen.queryByDisplayValue(quoteInput.reason)).toBeNull();expect(screen.queryByText('81j 30m')).toBeNull();expect(unloadGuarded()).toBe(true)
+  await act(async()=>finishOld({data:context,error:null}))
+  expect(screen.queryByDisplayValue(quoteInput.reason)).toBeNull();expect(screen.queryByRole('region',{name:'Pratinjau cuti'})).toBeNull();expect(mocks.rpc.mock.calls.filter(([name])=>name==='leave_quote_v1')).toHaveLength(0)
+ }finally{vi.useRealTimers()}
 })

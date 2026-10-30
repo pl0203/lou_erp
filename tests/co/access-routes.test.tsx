@@ -1,4 +1,5 @@
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, expect, test, vi } from 'vitest'
 const auth = vi.hoisted(() => ({ user: { id: 'actor' }, profile: { id: 'actor', role: 'co_admin', is_active: true, full_name: 'Operator' }, loading: false, signOut: vi.fn() }))
@@ -22,8 +23,9 @@ vi.mock('../../src/pages/ihr/LeaveManagement', () => ({ default: () => <p>HR dat
 import App from '../../src/App'
 import AthelNav from '../../src/components/AthelNav'
 import { roleHome, moduleOptions } from '../../src/components/navigationModules'
-afterEach(() => { cleanup(); reads.mockClear(); auth.profile.is_active = true })
-function mount(role: string, path: string) { auth.profile.role = role; render(<MemoryRouter initialEntries={[path]}><App /></MemoryRouter>) }
+const clients:QueryClient[]=[]
+afterEach(() => { cleanup();clients.splice(0).forEach(c=>c.clear()); reads.mockClear(); auth.profile.is_active = true })
+function mount(role: string, path: string) { auth.profile.role = role;const client=new QueryClient({defaultOptions:{queries:{retry:false}}});clients.push(client); render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[path]}><App /></MemoryRouter></QueryClientProvider>) }
 test.each(['po_admin', 'co_admin'])('%s cannot mount disallowed data routes', role => {
   for (const path of ['/athel/dashboard', '/athel/promotions', '/athel/sales-orders', '/girard/dashboard', '/ihr/users', ...(role === 'co_admin' ? ['/athel/po/new', '/athel/po/1', '/athel/po/1/edit'] : [])]) {
     mount(role, path); expect(reads).not.toHaveBeenCalled(); cleanup()
@@ -32,10 +34,7 @@ test.each(['po_admin', 'co_admin'])('%s cannot mount disallowed data routes', ro
 test.each(['po_admin', 'co_admin'])('%s keeps both master lists and HR', role => { for (const [path, text] of [['/athel/customers','Customer data'], ['/athel/products','Item data'], ['/ihr/leave','HR data']]) { mount(role,path); expect(screen.getByText(text)).toBeTruthy(); cleanup() } })
 test('CO has an authorized minimal route shell and home', () => {
   mount('co_admin','/athel/co')
-  const tabs = screen.getByRole('navigation', { name: 'Bagian pesanan konsinyasi' })
-  const shell = tabs.closest('header')!
-  expect(screen.getAllByRole('banner')).toContain(shell)
-  expect(within(shell).getByText('Pesanan konsinyasi (CO)', { selector: 'p' })).toBeTruthy()
+  expect(screen.getByRole('navigation',{name:'Navigasi Procurement'})).toBeTruthy()
   const main = screen.getByRole('main')
   expect(screen.getAllByRole('main')).toHaveLength(1)
   expect(main.id).toBe('main-content')
@@ -45,8 +44,11 @@ test('CO has an authorized minimal route shell and home', () => {
 })
 test.each(['co_admin','po_admin','executive'])('%s has only approved Procurement links', role => {
  auth.profile.role=role; render(<MemoryRouter><AthelNav /></MemoryRouter>);
+ if(role!=='po_admin')fireEvent.click(screen.getByRole('button',{name:'Consignment Order',exact:true}));
  const links=within(screen.getByRole('navigation',{name:'Navigasi Procurement'})).getAllByRole('link').map(v=>v.getAttribute('href'));
- expect(links).toEqual(role==='executive'?['/athel/dashboard','/athel/po','/athel/co','/athel/customers','/athel/promotions','/athel/products']: [`/athel/${role==='co_admin'?'co':'po'}`,'/athel/customers','/athel/products'])
+ const co=['/athel/co','/athel/co/reports','/athel/co/stock','/athel/co/returns'];
+ expect(links).toEqual(role==='executive'?['/athel/dashboard','/athel/po',...co,'/athel/customers','/athel/promotions','/athel/products']:role==='co_admin'?[...co,'/athel/customers','/athel/products']:['/athel/po','/athel/customers','/athel/products'])
+
 })
 test('executive retains Dashboard and legacy administration', () => { mount('executive','/athel/dashboard'); expect(reads).toHaveBeenCalledWith('dashboard'); cleanup(); mount('executive','/athel/sales-orders'); expect(reads).toHaveBeenCalledWith('sales') })
 test('inactive CO cannot enter even the shell', () => { auth.profile.is_active=false; mount('co_admin','/athel/co'); expect(screen.getByText('Login boundary')).toBeTruthy() })
@@ -54,6 +56,6 @@ test('inactive CO cannot enter even the shell', () => { auth.profile.is_active=f
 test('PO cannot enter the CO route family',()=>{
   mount('po_admin','/athel/co')
   expect(screen.getByText('PO home')).toBeTruthy()
-  expect(screen.queryByText('Pesanan konsinyasi (CO)')).toBeNull()
+  expect(screen.queryByText('CO home')).toBeNull();expect(screen.queryByRole('button',{name:'Consignment Order',exact:true})).toBeNull()
   expect(screen.queryByRole('navigation', { name: 'Bagian pesanan konsinyasi' })).toBeNull()
 })

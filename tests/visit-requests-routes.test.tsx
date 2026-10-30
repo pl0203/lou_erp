@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
@@ -9,8 +10,10 @@ vi.mock('../src/components/GirardNav', () => ({ default: () => null }))
 vi.mock('../src/components/VisitRequestInbox', () => ({ default: () => <p>Scoped requests</p>, VisitProposalForm: () => null }))
 import App from '../src/App'
 beforeEach(() => { state.user = true })
-afterEach(cleanup)
-function mount() { render(<MemoryRouter initialEntries={['/girard/visit-requests']}><App /></MemoryRouter>) }
+const clients: QueryClient[] = []
+function client(){const value=new QueryClient({defaultOptions:{queries:{retry:false,gcTime:0}}});clients.push(value);return value}
+afterEach(()=>{cleanup();clients.splice(0).forEach(value=>value.clear())})
+function mount() { render(<QueryClientProvider client={client()}><MemoryRouter initialEntries={['/girard/visit-requests']}><App /></MemoryRouter></QueryClientProvider>) }
 test.each(['sales_person', 'sales_manager', 'sales_head', 'executive'])('%s reaches the dedicated requests page', role => {
  state.role = role; mount()
  expect(screen.getByRole('heading', { level: 1, name: 'Permintaan Kunjungan' })).toBeTruthy()

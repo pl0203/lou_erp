@@ -1,0 +1,31 @@
+import { productionImportFixture } from './import-production-ports-harness';
+import { openCommitReview } from './import-commit-transport-harness';
+import { wire } from './report-ui-harness';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { expect, test } from 'vitest';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { extractXlsx } from '../../src/lib/co/import/xlsx';
+const zeroSha='4102366d82624684712f82611c8762b64d9a83b048517cbae9dc25118023f803';
+test('explicit zero is a genuinely parsed synthetic XLSX row, not missing-source inference',async()=>{
+ const bytes=readFileSync('tests/co/fixtures/synthetic-monthly-zero-20261030.xlsx');expect(createHash('sha256').update(bytes).digest('hex')).toBe(zeroSha);
+ const parsed=await extractXlsx(new Uint8Array(bytes),zeroSha,new AbortController().signal);
+ expect(parsed.warnings).not.toContainEqual(expect.stringMatching(/manual_review/));expect(parsed.sourceRows).toHaveLength(1);expect(parsed.sourceRows[0]).toMatchObject({quantity:{decimal:'0'},amount:{decimal:'0'}});
+ const f=await productionImportFixture({zeroSource:true});f.mountRoute();await f.choose();
+ await screen.findByText('Pemetaan memakai konteks pelanggan yang terikat versi.');
+ expect(f.writes).toHaveLength(1);expect(f.writes[0]).toMatchObject({name:'pilot_co_transaction_v1',args:{p_operation:'save_report_draft'}});expect(f.state.previewCount).toBe(0);
+ fireEvent.click(screen.getByRole('button',{name:'Tinjau pencatatan'}));await waitFor(()=>expect(document.activeElement).toBe(screen.getByRole('region',{name:'Hal yang perlu diperiksa'})));
+ expect(f.state.prepareCount).toBe(0);expect(f.state.previewCount).toBe(0);expect(screen.queryByRole('button',{name:'Catat penjualan'})).toBeNull();expect(f.writes).toHaveLength(1);
+});
+test('explicit zero requires review and commit, records zero allocations and leaves eligible stock intact',async()=>{
+ const {f,record}=await openCommitReview({zeroSource:true});
+ expect(f.sourceFixture).toMatchObject({sha:zeroSha,quantity:'0',amount:'0'});expect(f.commitState.commitCalls).toHaveLength(0);
+ const prepare=f.writes.find(w=>w.name==='pilot_co_import_prepare_v1')!;expect(prepare.args.p_payload.manifest.input.extracted.sha256).toBe(zeroSha);
+ fireEvent.click(record);const table=await screen.findByRole('region',{name:'Laporan penjualan tercatat'});
+ await within(table).findByText('Alokasi sesuai jumlah');await within(table).findByText('Sumber: TEST_ONLY_MONTHLY_ZERO_20261030.xlsx');
+ await waitFor(()=>expect(localStorage.length).toBe(0));expect(f.commitState.commitCalls).toHaveLength(1);expect(f.writes).toHaveLength(5);
+ expect(f.s.rows[0]).toMatchObject({sold_quantity:'0',eligible_quantity:'1'});expect(f.s.effective.revenue).toBe('0');
+ const call=wire.rpc.mock.calls.find(([n])=>n==='pilot_co_report_allocations_v1')!;const allocations=await wire.handler(call[0],call[1]);
+ expect(allocations.data).toMatchObject({summary:{quantity:'0',amount:'0'},total:'0',rows:[]});
+ expect(f.writes.every(w=>!JSON.stringify(w.args).includes('create_return'))).toBe(true);
+});

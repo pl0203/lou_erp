@@ -97,6 +97,7 @@ function ReportOwner({checked,month,blocked,readFailure,onClose}:{checked:COSour
  const [dirty,setDirty]=useState(false),unsaved=useUnsavedChanges(dirty),mountedOwner=useRef(false);
  useBeforeSignOut(signal=>unsaved.confirmDiscardDecision({signal}),`source-report:${checked.customer_id}:${month}`);
  if(work.denied)return <COFailure error={work.authorityError}/>;
+ if(!work.accepted&&work.root.isError)return <COFailure error={work.root.error} retry={()=>void work.root.refetch()}/>;
  if(!work.accepted)return <LoadingState title="Memuat sumber laporan…" shape="compact"/>;
  if(c.operation!=='correct_report')return <p>Usulan sumber asli tidak tersedia.</p>;
  const p=c.payload,d=work.accepted.draft,e=work.accepted.effective;

@@ -18,7 +18,7 @@ export const row = (n = 1, sold: string | null = null, m = month) => ({ id: id(1
 export function reportHeader(rows: any[], version = '1', m = month, extra: any = {}) { const missing = rows.filter(r => r.sold_quantity === null).length; return { reporting_freshness: freshness, generation_id: null, source_context_link: null, id: `draft:${draftId}`, customer_id: customer, customer_name: 'Store A', report_month: m, status: 'draft', draft_id: draftId, report_head_id: null, revision_id: null, draft_version: version, report_version: null, customer_version: '1', coverage_through_date: '2026-09-30', is_partial_month: false, report_reference: null, received_date: null, notes: null, row_count: String(rows.length), entered_count: String(rows.length - missing), missing_count: String(missing), sold_quantity: rows.reduce((s, r) => s + BigInt(r.sold_quantity ?? '0'), 0n).toString(), revenue: null, complete: missing === 0, eligible_set_fingerprint: hash, source_context_fingerprint: null, context_issue: null, consumed: false, ...extra }; }
 export function store(count = 1, reportMonth = month, reportDraftId = draftId) {
     const month = reportMonth, draftId = reportDraftId;
-    const s: any = { rows: Array.from({ length: count }, (_, i) => row(i + 1, null, month)), version: '1', cv: '1', draft: true, effective: null, metadata: {}, commands: [], receipt: null, previewCount: 0, fail: null, impacts: { report: [], stock: [], revenue: [], credit: [], reopen: [], issue: [], missing_month: [] }, allocations: [] };
+    const s: any = { rows: Array.from({ length: count }, (_, i) => row(i + 1, null, month)), version: '1', cv: '1', draft: true, effective: null, metadata: {}, commands: [], receipt: null, previewCount: 0, fail: null, impactLabels: new Map(), impacts: { report: [], stock: [], revenue: [], credit: [], reopen: [], issue: [], missing_month: [] }, allocations: [] };
     s.header = () => reportHeader(s.rows, s.version, month, { ...s.metadata, id: `draft:${draftId}`, draft_id: draftId, customer_version: s.cv });
     s.root = () => ({ version: '1', as_of: '2026-10-09T00:00:00Z', customer_id: customer, customer_version: s.cv, generation_id: null, report_month: month, reporting_freshness: freshness, draft: s.draft ? s.header() : null, effective: s.effective, last_report_month: null, coverage_through_date: null });
     s.handle = async (name: string, a: any) => {
@@ -36,10 +36,33 @@ export function store(count = 1, reportMonth = month, reportDraftId = draftId) {
         }
         if (name === 'pilot_my_profile')
             return { data: [{ id: id(1), role: wire.role, is_active: true }], error: null };
+        if (name === 'pilot_co_report_import_v1') {
+            // Explicit ledger-only historical fixture: no invented source provenance.
+            const e = s.effective;
+            if (!e || a.p_customer_id !== customer || a.p_month !== month || a.p_revision_id !== e.revision_id)
+                return { data: null, error: { code: 'PT409', message: 'Immutable report scope changed' } };
+            return { data: { ...root, customer_id: customer, report_month: month, revision_id: e.revision_id,
+                report_head_id: e.report_head_id, effective_revision_id: e.revision_id, manifest: null,
+                unit_declarations: {}, source_amount: null, currency: null, source_filename: null,
+                created_at: root.as_of, created_by: id(1), author_name: 'Historical test author', reason: null,
+                report_version: e.report_version, previous_revision_id: null }, error: null };
+        }
         if (name === 'pilot_co_report_v1')
             return { data: s.root(), error: null };
         if (name === 'pilot_co_report_months_v1')
             return { data: { ...root, customer_id: customer, customer_version: s.cv, first_month: month, last_month: '2026-10-01', reporting_freshness: freshness, last_report_month: null, coverage_through_date: null }, error: null };
+        if (name === 'pilot_co_reports_page_v2') {
+            // Recorded reports and historical pending work are distinct V2 rows;
+            // never reinterpret a legacy draft as a posted report.
+            const source = s.effective ?? (s.draft ? s.header() : null);
+            const rows = source ? [{ id: source.report_head_id ?? draftId, customer_id: customer, customer_name: source.customer_name,
+                report_month: month, status: s.effective ? 'posted' : 'historical_pending', revision_id: s.effective?.revision_id ?? null,
+                report_head_id: s.effective?.report_head_id ?? null, legacy_pending: !!s.draft,
+                source_filename: s.effective?.source_filename ?? null, updated_at: '2026-10-09T00:00:00Z' }].filter(r =>
+                (a.p_customer_id === null || r.customer_id === a.p_customer_id) && (a.p_month === null || r.report_month === a.p_month) &&
+                (a.p_status === 'all' || r.status === a.p_status)) : [];
+            return { data: { ...page(rows), version: '2', customer_id: a.p_customer_id, report_month: a.p_month, status: a.p_status }, error: null };
+        }
         if (name === 'pilot_co_reports_page_v1')
             return { data: { ...page([s.header()]), customer_id: a.p_customer_id, report_month: a.p_month, status: a.p_status }, error: null };
         if (name === 'pilot_co_report_rows_v1')
@@ -48,6 +71,17 @@ export function store(count = 1, reportMonth = month, reportDraftId = draftId) {
             s.previewCount++;
             const sum = { sold_quantity: s.header().sold_quantity, revenue: '720000', remaining_quantity: '30', complete: s.header().complete };
             return { data: { ...root, operation: a.p_operation, customer_id: customer, customer_version: s.cv, draft_version: a.p_payload.expected_draft_version ?? null, preview_fingerprint: fingerprint, source_context_fingerprint: 'c'.repeat(64), can_post: s.header().complete && s.impacts.issue.length === 0 && s.impacts.missing_month.length === 0, before: { ...sum, revenue: '1000000' }, after: { ...sum, revenue: '1720000' }, counts: Object.fromEntries(Object.entries(s.impacts).map(([k, v]: any) => [k, String(v.length)])) }, error: null };
+        }
+        if (name === 'pilot_co_preview_labeled_impacts_v1') {
+            if (a.p_customer_id !== customer || a.p_expected_customer_version !== s.cv || a.p_preview_fingerprint !== fingerprint)
+                return {data:null,error:{code:'PT409',message:'CO_PREVIEW_STALE'}};
+            if (!Object.hasOwn(s.impacts,a.p_kind)) throw new Error('Unknown impact kind');
+            const rows=s.impacts[a.p_kind].map((r:any)=>{
+                const source=s.rows.find((v:any)=>v.stock_key_id===r.stock_key_id);
+                // Explicit synthetic identity fixture only; absent joins remain null.
+                return {...r,labels:{sku:source?.display_sku??null,productName:source?.product_name??null,coNumber:null,sjNumber:null,picName:null,...s.impactLabels.get(r.co_id??r.stock_key_id)}};
+            });
+            return {data:{...page(rows),operation:a.p_operation,payload:a.p_payload,customer_id:customer,customer_version:s.cv,preview_fingerprint:fingerprint,kind:a.p_kind},error:null};
         }
         if (name === 'pilot_co_preview_impacts_v1')
             return { data: { ...page(s.impacts[a.p_kind]), preview_fingerprint: a.p_preview_fingerprint, kind: a.p_kind }, error: null };

@@ -48,7 +48,20 @@ export default function COChangePreview({snapshot,importSnapshot,selectedMonth,o
  const header=snapshot?.header??importSnapshot!.header;
  const fingerprint=importSnapshot?.previewFingerprint??header.preview_fingerprint;
  const actor=useCOActor(`preview:${fingerprint}`),[kind,setKind]=useState<COImpactKind>('issue'),[page,setPage]=useState(1);
- async function guarded<T>(fn:()=>Promise<T>){try{return await fn()}catch(error){if(actor.isCurrent()){if(isCOAuthorityError(error))onAuthorityFailure?.(error);else if(!importSnapshot||(error as {code?:string})?.code==='PT409')onStalePreview?.(fingerprint,error)}throw error}}
+ async function guarded<T>(fn:()=>Promise<T>){
+  try{return await fn()}catch(error){
+   if(actor.isCurrent()){
+    if(isCOAuthorityError(error)){
+     // Revoke the owning source before a child callback can cancel/unmount this
+     // preview. Otherwise useCORead's later protection sees a departed actor and
+     // correctly ignores the failure, leaving the still-mounted root authorized.
+     actor.rejectAuthority(error);
+     onAuthorityFailure?.(error);
+    }else if(!importSnapshot||(error as {code?:string})?.code==='PT409')onStalePreview?.(fingerprint,error);
+   }
+   throw error;
+  }
+ }
  const args={snapshot,importSnapshot,kind,page};
  const read=useCORead(actor,'preview-impact',args,o=>guarded(async()=>{
   const result=importSnapshot?await fetchCOImportImpacts(importSnapshot,kind,page,20,o):await fetchCOOrdinaryImpacts(snapshot!,kind,page,20,o);

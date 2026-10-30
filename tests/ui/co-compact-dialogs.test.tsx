@@ -3,6 +3,9 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { expect, test } from 'vitest';
 import { customer, id, mountApp, stockFixture } from '../co/stock-ui-harness';
 import App from '../../src/App';
+import { LegacyReturnOwner } from '../co/legacy-return-owner';
+import { MainContent } from '../../src/components/ui/MainContent';
+// Legacy return cases exercise the exported editor, not current App creation routes.
 
 const variant = (node: HTMLElement, value: string) => expect(node.classList.contains(`ui-action--${value}`)).toBe(true);
 const click = async (name: string) => {
@@ -11,25 +14,26 @@ const click = async (name: string) => {
     fireEvent.click(node); return node;
 };
 
-test('stock history and source links stay quiet compact with current-stock command and return progression distinct', async () => {
+test('current stock movement and return workspace links retain distinct compact emphasis', async () => {
     const s = stockFixture();
     s.movements = [{ id: id(51), customer_id: customer, stock_key_id: id(1001), generation_id: s.generation, co_line_id: id(3001), batch_id: id(2001), co_id: id(11), effective_date: '2026-09-01', kind: 'delivery', quantity_delta: '30', delivery_revision_line_id: id(5001), return_revision_line_id: null, report_revision_line_id: null }];
     mountApp(<App/>, `/athel/co/stock?customer=${customer}`);
-    const history = await screen.findByRole('button', { name: 'Lihat pergerakan Store A · SKU-1' });
+    const history = await screen.findByRole('button', { name: 'Lihat mutasi Store A · SKU-1' });
     variant(history, 'quiet'); expect(history.classList.contains('ui-action--compact')).toBe(true);
     variant(screen.getByRole('button', { name: 'Stok terkini' }), 'quiet');
     variant(screen.getByRole('link', { name: 'Catat penjualan' }), 'primary');
-    const returns = within(screen.getByRole('group', { name: 'Pengembalian barang' })).getByRole('button', { name: 'Retur barang belum terjual' });
+    const returns = screen.getByRole('link', { name: 'Stock Return' });
+    expect(returns.getAttribute('href')).toBe('/athel/co/returns');
     variant(returns, 'quiet'); expect(returns.classList.contains('ui-action--compact')).toBe(true);
     fireEvent.click(history);
-    const link = await screen.findByRole('link', { name: 'Bukti CO sumber' });
-    variant(link, 'quiet'); expect(link.classList.contains('ui-action--compact')).toBe(true);
+    const link = await screen.findByRole('link', { name: 'Lihat CO sumber' });
+    variant(link, 'secondary'); expect(link.classList.contains('ui-action--compact')).toBe(true);
     expect(link.getAttribute('href')).toBe(`/athel/co/${id(11)}`);
     expect(s.commands).toHaveLength(0);
 });
 
-test('return save, review, and apply each become the single existing progression emphasis', async () => {
-    const s = stockFixture(); mountApp(<App/>, `/athel/co/stock?customer=${customer}`);
+test('legacy return editor save, review, and apply each become the single existing progression emphasis', async () => {
+    const s = stockFixture(); mountApp(<MainContent><LegacyReturnOwner state={s}/></MainContent>, `/athel/co/stock?customer=${customer}`);
     await click('Retur barang belum terjual');
     const quantity = await screen.findByLabelText('Jumlah retur SJ-1 Item 1');
     await waitFor(() => expect(quantity.matches(':disabled')).toBe(false));

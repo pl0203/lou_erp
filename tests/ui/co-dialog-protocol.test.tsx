@@ -3,6 +3,9 @@ import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { expect, test } from 'vitest';
 import { customer, mountApp, stockFixture, id } from '../co/stock-ui-harness';
 import App from '../../src/App';
+import { LegacyReturnOwner } from '../co/legacy-return-owner';
+import { MainContent } from '../../src/components/ui/MainContent';
+// Legacy return cases exercise the exported editor, not current App creation routes.
 
 async function click(name: string) {
     const button = await screen.findByRole('button', { name });
@@ -11,15 +14,17 @@ async function click(name: string) {
 }
 
 for (const kind of ['return', 'settlement'] as const) {
-    test(`${kind} shared native dialog preserves real sender pending dismissal and trigger focus`, async () => {
+    test(`${kind === 'return' ? 'legacy return editor' : 'current settlement'} shared native dialog preserves real sender pending dismissal and trigger focus`, async () => {
         const s = stockFixture();
-        mountApp(<App/>, kind === 'return' ? `/athel/co/stock?customer=${customer}` : `/athel/co/${id(11)}`);
+        mountApp(kind === 'return' ? <MainContent><LegacyReturnOwner state={s}/></MainContent> : <App/>, kind === 'return' ? `/athel/co/stock?customer=${customer}` : `/athel/co/${id(11)}`);
+        const disclosure = kind === 'settlement' ? await click('Actions') : null;
         const trigger = await click(kind === 'return' ? 'Retur barang belum terjual' : 'Selesaikan sisa belum dikirim');
         await screen.findByLabelText(kind === 'return' ? 'Jumlah retur SJ-1 Item 1' : 'Jumlah dibatalkan Item 1');
         let dialog = screen.getByRole('dialog');
         expect(dialog.tagName).toBe('DIALOG'); expect(dialog.classList.contains('ui-dialog')).toBe(true);
         fireEvent.keyDown(dialog, { key: 'Escape' });
-        await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull()); expect(document.activeElement).toBe(trigger);
+        await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull()); expect(document.activeElement).toBe(disclosure ?? trigger);
+        if(disclosure) await click('Actions');
         await click(kind === 'return' ? 'Retur barang belum terjual' : 'Selesaikan sisa belum dikirim');
         const quantity = await screen.findByLabelText(kind === 'return' ? 'Jumlah retur SJ-1 Item 1' : 'Jumlah dibatalkan Item 1');
         expect(quantity.closest('.ui-field')).toBeTruthy();
@@ -49,8 +54,8 @@ for (const kind of ['return', 'settlement'] as const) {
     });
 }
 
-test('return review keeps one native dialog and shared correction fields inside an embedded section', async () => {
-    const s = stockFixture(); mountApp(<App/>, `/athel/co/stock?customer=${customer}`);
+test('legacy return editor review keeps one native dialog and shared correction fields inside an embedded section', async () => {
+    const s = stockFixture(); mountApp(<MainContent><LegacyReturnOwner state={s}/></MainContent>, `/athel/co/stock?customer=${customer}`);
     await click('Retur barang belum terjual');
     const quantity = await screen.findByLabelText('Jumlah retur SJ-1 Item 1');
     await waitFor(() => expect(quantity.matches(':disabled')).toBe(false));

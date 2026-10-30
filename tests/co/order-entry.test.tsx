@@ -107,7 +107,7 @@ async function staleDirtyEdit() {
     return view;
 }
 function expectRefreshFrozen() {
-    for (const label of ['Nomor CO', 'Tanggal CO', 'Tanggal akhir CO', 'Catatan', 'Qty Item 1', 'Cari SKU atau nama barang']) {
+    for (const label of ['Nomor CO', 'Tanggal CO', 'Tanggal akhir CO', 'Catatan', 'Qty Item 1']) {
         expect(screen.getByLabelText(label).matches(':disabled'), label).toBe(true);
     }
     for (const label of ['Hapus Item 1', 'Simpan Perubahan']) {
@@ -125,10 +125,23 @@ test('accepted refresh freezes editable values across slow header and complete-l
     fireEvent.click(await screen.findByRole('button', { name: 'Buang perubahan' }));
     await waitFor(() => expect(headerRelease).toBeTypeOf('function'));
     expectRefreshFrozen();
+    // Query text is browse-only; selection and all persisted draft values stay locked.
+    const search=screen.getByLabelText('Cari SKU atau nama barang') as HTMLInputElement;
+    expect(search.matches(':disabled')).toBe(false);
+    fireEvent.change(search,{target:{value:'SKU-1'}});
+    const option=await screen.findByRole('option',{name:/SKU-1/});
+    expect(option.matches(':disabled')).toBe(true);
+    fireEvent.click(option);fireEvent.keyDown(search,{key:'ArrowDown'});fireEvent.keyDown(search,{key:'Enter'});
+    expect(screen.queryByDisplayValue('Product 1')).toBeNull();
+    expect(screen.getByDisplayValue('Item 1')).toBeTruthy();
+    expect(state.commands).toHaveLength(0);
     expect(screen.getByDisplayValue('Original local work')).toBeTruthy();
     await act(async () => headerRelease({ co: state.header, allowed_operations: state.header.allowed_operations, close_blockers: state.header.close_blockers }));
     await waitFor(() => expect(linesRelease).toBeTypeOf('function'));
     expectRefreshFrozen();
+    expect(screen.getByRole('option',{name:/SKU-1/}).matches(':disabled')).toBe(true);
+    fireEvent.keyDown(search,{key:'Enter'});
+    expect(screen.queryByDisplayValue('Product 1')).toBeNull();expect(state.commands).toHaveLength(0);
     await act(async () => linesRelease(state.lines));
     await waitFor(() => expect(screen.getByLabelText('Catatan').matches(':disabled')).toBe(false));
     expect((screen.getByLabelText('Catatan') as HTMLTextAreaElement).value).toBe('');

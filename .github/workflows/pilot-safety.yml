@@ -1,13 +1,24 @@
 name: Pilot safety checks
 on:
   pull_request:
+  push:
+    branches:
+      - release/padiwan-staging-fixes-20261030
   workflow_dispatch:
+    inputs:
+      expected_source_sha:
+        description: Exact reviewed release commit SHA
+        required: true
+        type: string
+env:
+  npm_config_audit: 'false'
+  PILOT_RELEASE_SOURCE_SHA: ${{ github.event_name == 'push' && github.sha || inputs.expected_source_sha }}
 permissions:
   contents: read
 jobs:
   synthetic-safety:
     needs: catalogue-baseline
-    if: ${{ always() }}
+    if: ${{ always() && (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.repository == 'pl0203/lou_erp' && github.ref == 'refs/heads/release/padiwan-staging-fixes-20261030' && inputs.expected_source_sha != '' && inputs.expected_source_sha == github.sha) || (github.event_name == 'push' && github.repository == 'pl0203/lou_erp' && github.ref == 'refs/heads/release/padiwan-staging-fixes-20261030')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -307,15 +318,17 @@ jobs:
 
       - name: Bind independent read decoder source
         if: >-
-          github.event_name == 'pull_request' &&
+          (github.event_name == 'pull_request' &&
           github.repository == 'pl0203/lou_erp' &&
           github.event.pull_request.head.repo.full_name == 'pl0203/lou_erp' &&
           github.event.pull_request.base.repo.full_name == 'pl0203/lou_erp' &&
           github.event.pull_request.head.ref == 'feat/catalogue-mutations-20261014' &&
-          github.event.pull_request.base.ref == 'fix/pilot-database'
+          github.event.pull_request.base.ref == 'fix/pilot-database') ||
+          (github.event_name == 'workflow_dispatch' && github.repository == 'pl0203/lou_erp' && github.ref == 'refs/heads/release/padiwan-staging-fixes-20261030' && inputs.expected_source_sha != '' && inputs.expected_source_sha == github.sha) ||
+          (github.event_name == 'push' && github.repository == 'pl0203/lou_erp' && github.ref == 'refs/heads/release/padiwan-staging-fixes-20261030')
         env:
           CATALOGUE_CI_PROFILE: github-catalogue-baseline-v1
-          CATALOGUE_CI_SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          CATALOGUE_CI_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           CATALOGUE_CI_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
           CATALOGUE_CI_BASE_REPOSITORY: ${{ github.event.pull_request.base.repo.full_name }}
           CATALOGUE_CI_HEAD_REF: ${{ github.event.pull_request.head.ref }}
@@ -337,27 +350,31 @@ jobs:
           JS
       - name: Download exact same-run attempt read proof
         if: >-
-          github.event_name == 'pull_request' &&
+          (github.event_name == 'pull_request' &&
           github.repository == 'pl0203/lou_erp' &&
           github.event.pull_request.head.repo.full_name == 'pl0203/lou_erp' &&
           github.event.pull_request.base.repo.full_name == 'pl0203/lou_erp' &&
           github.event.pull_request.head.ref == 'feat/catalogue-mutations-20261014' &&
-          github.event.pull_request.base.ref == 'fix/pilot-database'
+          github.event.pull_request.base.ref == 'fix/pilot-database') ||
+          (github.event_name == 'workflow_dispatch' && github.repository == 'pl0203/lou_erp' && github.ref == 'refs/heads/release/padiwan-staging-fixes-20261030' && inputs.expected_source_sha != '' && inputs.expected_source_sha == github.sha) ||
+          (github.event_name == 'push' && github.repository == 'pl0203/lou_erp' && github.ref == 'refs/heads/release/padiwan-staging-fixes-20261030')
         uses: actions/download-artifact@v4
         with:
           name: catalogue-read-proof-${{ github.run_id }}-${{ github.run_attempt }}
           path: scale-results/catalogue-read-proof
       - name: Decode bound rollback-only SQL with actual shared TypeScript
         if: >-
-          github.event_name == 'pull_request' &&
+          (github.event_name == 'pull_request' &&
           github.repository == 'pl0203/lou_erp' &&
           github.event.pull_request.head.repo.full_name == 'pl0203/lou_erp' &&
           github.event.pull_request.base.repo.full_name == 'pl0203/lou_erp' &&
           github.event.pull_request.head.ref == 'feat/catalogue-mutations-20261014' &&
-          github.event.pull_request.base.ref == 'fix/pilot-database'
+          github.event.pull_request.base.ref == 'fix/pilot-database') ||
+          (github.event_name == 'workflow_dispatch' && github.repository == 'pl0203/lou_erp' && github.ref == 'refs/heads/release/padiwan-staging-fixes-20261030' && inputs.expected_source_sha != '' && inputs.expected_source_sha == github.sha) ||
+          (github.event_name == 'push' && github.repository == 'pl0203/lou_erp' && github.ref == 'refs/heads/release/padiwan-staging-fixes-20261030')
         env:
           CATALOGUE_CI_PROFILE: github-catalogue-baseline-v1
-          CATALOGUE_CI_SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          CATALOGUE_CI_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           CATALOGUE_CI_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
           CATALOGUE_CI_BASE_REPOSITORY: ${{ github.event.pull_request.base.repo.full_name }}
           CATALOGUE_CI_HEAD_REF: ${{ github.event.pull_request.head.ref }}
@@ -371,12 +388,14 @@ jobs:
   # Independent of synthetic-safety: capture does not certify the full application suite.
   catalogue-baseline:
     if: >-
-      github.event_name == 'pull_request' &&
+      (github.event_name == 'pull_request' &&
       github.repository == 'pl0203/lou_erp' &&
       github.event.pull_request.head.repo.full_name == 'pl0203/lou_erp' &&
       github.event.pull_request.base.repo.full_name == 'pl0203/lou_erp' &&
       github.event.pull_request.head.ref == 'feat/catalogue-mutations-20261014' &&
-      github.event.pull_request.base.ref == 'fix/pilot-database'
+      github.event.pull_request.base.ref == 'fix/pilot-database') ||
+      (github.event_name == 'workflow_dispatch' && github.repository == 'pl0203/lou_erp' && github.ref == 'refs/heads/release/padiwan-staging-fixes-20261030' && inputs.expected_source_sha != '' && inputs.expected_source_sha == github.sha) ||
+      (github.event_name == 'push' && github.repository == 'pl0203/lou_erp' && github.ref == 'refs/heads/release/padiwan-staging-fixes-20261030')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -405,7 +424,7 @@ jobs:
       PGDATABASE: pilot_test
       PGTZ: UTC
       CATALOGUE_CI_PROFILE: github-catalogue-baseline-v1
-      CATALOGUE_CI_SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+      CATALOGUE_CI_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       CATALOGUE_CI_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
       CATALOGUE_CI_BASE_REPOSITORY: ${{ github.event.pull_request.base.repo.full_name }}
       CATALOGUE_CI_HEAD_REF: ${{ github.event.pull_request.head.ref }}
@@ -413,7 +432,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
           # Metadata only: sparse checkout must not trigger an implicit blob fetch.
           sparse-checkout: /__catalogue_no_files__
@@ -468,7 +487,7 @@ jobs:
       - name: Check foundation behavior harness without a database
         run: node --test tests/catalogue-ci/foundation.node.mjs
       - name: Check reference helper harness and frozen source without a database
-        run: node --test tests/catalogue-ci/reference-helpers.node.mjs tests/catalogue-ci/promotion-owner-extraction.node.mjs tests/catalogue/retired-co-line-resolution.source.mjs tests/catalogue-ci/po-reference-extraction.node.mjs tests/catalogue-ci/visit-reference-extraction.node.mjs tests/catalogue-ci/co-reference-extraction.node.mjs tests/catalogue-ci/nonco-lineage-resolution.node.mjs tests/catalogue-ci/co-draft-reference-extraction.node.mjs
+        run: node --test tests/catalogue-ci/reference-helpers.node.mjs tests/catalogue-ci/promotion-owner-extraction.node.mjs tests/catalogue/retired-co-line-resolution.source.mjs tests/catalogue-ci/po-reference-extraction.node.mjs tests/catalogue-ci/visit-reference-extraction.node.mjs tests/catalogue-ci/co-reference-extraction.node.mjs tests/catalogue-ci/nonco-lineage-resolution.node.mjs tests/catalogue-ci/co-draft-reference-extraction.node.mjs tests/catalogue-ci/release-identity.node.mjs
       - name: Check customer target harness and artifact wrapper without a database
         run: node --test tests/catalogue-ci/customer-target-runtime.node.mjs tests/catalogue-ci/customer-target-tracking.node.mjs tests/catalogue-ci/customer-target-artifact.node.mjs
       - name: Bind clean candidate bytes before capture

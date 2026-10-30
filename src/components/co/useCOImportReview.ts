@@ -280,7 +280,7 @@ export function createImportReviewController(scope: ImportScope, ports: ImportRe
                 }
                 else if (result.status === 'committed' && result.input && result.binding) {
                     prepared = result.binding;
-                    publish({ phase: 'review', input: { ...result.input, scope: bound }, file: null, preview: null });
+                    publish({ phase: 'review', input: { ...result.input, scope: bound }, file: null, preview: null, needsFreshReview: false });
                 }
                 else
                     publish({ phase: ports.hasUnresolved() ? 'unknown' : state.input ? 'review' : 'select', preview: null });

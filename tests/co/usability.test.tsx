@@ -49,7 +49,11 @@ test('shared CO recovery keeps the durable guard while pending and restores the 
     expect(reconcile).not.toHaveBeenCalled();
 });
 
-test('new CO distinguishes lifetime order totals from older customer-wide reporting and audit', async () => {
+// Oct26 approved compact detail removes explanatory/reporting panels, retaining
+// same-toko navigation; this does not supersede quantities/PIC/audit requirements.
+function relatedURL(name: string) { return new URL(screen.getByRole('link', { name }).getAttribute('href')!, 'https://local.test'); }
+async function actions() { fireEvent.click(await screen.findByRole('button', { name: /^Actions/ })); }
+test('compact detail keeps CO totals separate from same-customer report navigation and audit', async () => {
     state.header.last_report_month = '2026-09-01';
     state.header.coverage_through_date = '2026-09-30';
     mount(<CODetail/>, `/athel/co/${ids.co}`);
@@ -57,32 +61,39 @@ test('new CO distinguishes lifetime order totals from older customer-wide report
     const summary = screen.getByRole('heading', { name: 'Ringkasan CO ini' }).closest('section')!;
     expect(within(summary).getByText(/Sejak pembuatan CO/)).toBeTruthy();
     expect(within(summary).queryByText(/Laporan terakhir/)).toBeNull();
-    const reports = screen.getByRole('heading', { name: 'Pelaporan pelanggan (semua CO)' }).closest('section')!;
-    expect(within(reports).getByText(/termasuk aktivitas sebelum CO ini dibuat/)).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'Audit CO dan laporan pelanggan' })).toBeTruthy();
+    const report = relatedURL('Lihat laporan bulanan');
+    expect(report.pathname).toBe('/athel/co/reports');
+    expect(report.searchParams.getAll('customer')).toEqual([ids.customer]);
+    expect(report.searchParams.has('co')).toBe(false);
+    expect(screen.queryByRole('heading', { name: 'Pelaporan pelanggan (semua CO)' })).toBeNull();
+    expect(screen.getByText('Audit CO dan laporan pelanggan', { selector: 'summary' })).toBeTruthy();
 });
 
-test('lifecycle guide explains the next delivery step without equating full delivery and closure', async () => {
+test('compact detail prioritizes permitted delivery while cancellation stays in Actions', async () => {
     mount(<CODetail/>, `/athel/co/${ids.co}`);
     await screen.findByText('CO-A');
-    const guide = screen.getByRole('region', { name: 'Alur CO dan langkah berikutnya' });
-    expect(guide.textContent).toMatch(/Pengiriman → Penjualan bulanan → Penyelesaian → Penutupan/);
-    expect(guide.textContent).toMatch(/Langkah berikutnya:.*Surat Jalan/);
-    expect(guide.textContent).toMatch(/Terkirim penuh.*tetap aktif/);
+    expect(screen.getByRole('button', { name: 'Buat surat jalan' }).matches(':disabled')).toBe(false);
+    expect(screen.queryByRole('button', { name: 'Batalkan CO' })).toBeNull();
+    await actions();
+    expect(screen.getByRole('button', { name: 'Batalkan CO' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Tutup CO' }).matches(':disabled')).toBe(true);
+    expect(screen.getByText('Sisa belum dikirim belum diselesaikan.')).toBeTruthy();
     expect(state.commands).toHaveLength(0);
 });
 
-test('audit summarizes the actor and customer reporting scope with readable UTC time, retaining exact metadata', async () => {
+// Reviewed display contract: audit timestamps explicitly identify WIB.
+test('audit summarizes the actor and customer reporting scope with labeled WIB time, retaining exact metadata', async () => {
     state.sections.audit = [{ id: 'audit-1', operation: 'post_report', actor_id: ids.actor,
         created_at: '2026-10-10T23:10:00Z', report_revision_id: 'report-revision', reason: 'Laporan September' }];
     mount(<CODetail/>, `/athel/co/${ids.co}`);
     await screen.findByText(/memposting laporan penjualan bulanan/);
     expect(screen.getByText(/Pengguna tercatat memposting/)).toBeTruthy();
-    expect(screen.getByText(/10 Oktober 2026.*23.10.*UTC/)).toBeTruthy();
+    expect(screen.getByText(/11 Oktober 2026.*06.10.*WIB/)).toBeTruthy();
     const details = screen.getByText('Detail teknis audit').closest('details')!;
     expect(details.open).toBe(false);
     expect(details.textContent).toContain('post_report');
     expect(details.textContent).toContain(ids.actor);
+    expect(details.textContent).toContain('2026-10-10T23:10:00Z');
     expect(screen.getByRole('button', { name: 'Lihat perubahan' })).toBeTruthy();
 });
 
@@ -95,35 +106,65 @@ test('new-item guidance requires active catalogue selection while retaining old 
 });
 
 test.each([
-    { status: 'active', pending: '0', stock: '2', missing: '1', next: /laporan penjualan bulanan/ },
-    { status: 'active', pending: '0', stock: '0', missing: '0', next: /Tutup CO/ },
-    { status: 'closed', pending: '0', stock: '0', missing: '0', next: /CO sudah ditutup/ },
-])('lifecycle next step follows existing state and blockers: %j', async ({ status, pending, stock, missing, next }) => {
+    { status: 'active', pending: '0', stock: '2', missing: '1', closeAllowed: true, blocked: true },
+    { status: 'active', pending: '0', stock: '0', missing: '0', closeAllowed: true, blocked: false },
+    { status: 'closed', pending: '0', stock: '0', missing: '0', closeAllowed: false, blocked: true },
+])('compact Actions follow authoritative status, capability and blockers: %j', async ({ status, pending, stock, missing, closeAllowed, blocked }) => {
     state.header.status = status;
     state.header.summary.pending_quantity = pending;
     state.header.summary.remaining_quantity = stock;
+    state.header.allowed_operations = closeAllowed ? ['close_co'] : [];
     state.header.close_blockers = { stock_remains: stock !== '0', undelivered_remains: pending !== '0', missing_month_count: missing };
     mount(<CODetail/>, `/athel/co/${ids.co}`);
     await screen.findByText('CO-A');
-    expect(screen.getByRole('region', { name: 'Alur CO dan langkah berikutnya' }).textContent).toMatch(next);
+    expect(screen.getByRole('button', { name: 'Buat surat jalan' }).matches(':disabled')).toBe(true);
+    const report = relatedURL('Lihat laporan bulanan');
+    expect(report.searchParams.getAll('customer')).toEqual([ids.customer]);
+    await actions();
+    const close = screen.getByRole('button', { name: 'Tutup CO' });
+    expect(close.matches(':disabled')).toBe(blocked);
+    if (stock !== '0') expect(screen.getByText('Stok tercatat masih tersisa.')).toBeTruthy();
+    if (missing !== '0') expect(screen.getByText(`${missing} laporan bulan belum lengkap.`)).toBeTruthy();
+    if (blocked) fireEvent.click(close);
+    expect(state.commands).toHaveLength(0);
 });
 
-test('CO tabs share Indonesian labels across report and stock destinations', async () => {
+// Navigation contract replaces redundant tabs
+// with persistent submenus; keep direct scoped navigation and existing role gates.
+test('actual CO sidebar preserves single main/title and selected submenu across deep links and Back/Forward', async () => {
     const { mountRoutes } = await import('./ui-harness');
-    mountRoutes([{ path: '/athel/co', element: <COLayout/>, children: [{ index: true, element: <COOrders/> }] }], '/athel/co');
-    const main = screen.getByRole('main');
-    const tabs = screen.getByRole('navigation', { name: 'Bagian pesanan konsinyasi' });
-    const shell = tabs.closest('header')!;
-    expect(screen.getAllByRole('banner')).toContain(shell);
-    expect(within(shell).getByText('Pesanan konsinyasi (CO)', { selector: 'p' })).toBeTruthy();
-    expect(within(main).getByRole('heading', { level: 1, name: 'Pesanan Konsinyasi' })).toBeTruthy();
-    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    const { default: ActualAthelNav } = await vi.importActual<typeof import('../../src/components/AthelNav')>('../../src/components/AthelNav');
+    const deep = `/athel/co/${ids.co}?origin=list`;
+    const { router } = mountRoutes([{ path: '/athel/co', element: <><ActualAthelNav/><COLayout/></>, children: [
+        { index: true, element: <COOrders/> }, { path: ':id', element: <CODetail/> },
+        { path: 'reports/*', element: <h1>Report route destination</h1> },
+        { path: 'stock', element: <h1>Stock route destination</h1> },
+    ] }], deep);
+    await screen.findByRole('heading', { level: 1, name: 'CO-A' });
     expect(screen.getAllByRole('main')).toHaveLength(1);
-    expect(main.id).toBe('main-content');
-    await within(main).findByRole('article');
-    expect(screen.getByRole('link', { name: 'Pesanan CO' }).getAttribute('aria-current')).toBe('page');
-    expect(screen.getByRole('link', { name: 'Laporan penjualan bulanan' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Stok pelanggan' })).toBeTruthy();
+    expect(screen.getByRole('main').id).toBe('main-content');
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    expect(screen.queryByRole('navigation', { name: 'Bagian pesanan konsinyasi' })).toBeNull();
+    const orders = screen.getAllByRole('link', { name: 'Pesanan CO', exact: true }).find(link => link.getAttribute('aria-current') === 'page')!;
+    // Breadcrumb and sidebar may share a title; select the current navigation entry.
+    expect(screen.getAllByRole('link', { name: 'Pesanan CO', exact: true }).some(link => link.getAttribute('aria-current') === 'page')).toBe(true);
+    const reports = screen.getByRole('link', { name: 'Laporan Penjualan Bulanan' });
+    expect(reports.getAttribute('href')).toBe('/athel/co/reports');
+    expect(screen.getByRole('link', { name: 'Stok Pelanggan' }).getAttribute('href')).toBe('/athel/co/stock');
+    fireEvent.click(reports);
+    await screen.findByRole('heading', { name: 'Report route destination' });
+    expect(reports.getAttribute('aria-current')).toBe('page');
+    expect(orders.getAttribute('aria-current')).not.toBe('page');
+    expect(screen.getAllByRole('main')).toHaveLength(1);
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    await act(() => router.navigate(-1));
+    await screen.findByRole('heading', { name: 'CO-A' });
+    expect(router.state.location.pathname + router.state.location.search).toBe(deep);
+    expect(screen.getAllByRole('link', { name: 'Pesanan CO', exact: true }).some(link => link.getAttribute('aria-current') === 'page')).toBe(true);
+    await act(() => router.navigate(1));
+    await screen.findByRole('heading', { name: 'Report route destination' });
+    expect(screen.getByRole('link', { name: 'Laporan Penjualan Bulanan' }).getAttribute('aria-current')).toBe('page');
+    expect(state.commands).toHaveLength(0);
 });
 
 test('known committed CO result uses its specific readback notice instead of uncertain recovery warning', () => {
@@ -150,11 +191,16 @@ test('failed acceptance of a known CO receipt keeps the precise recovery error v
     expect(screen.queryByText(/Hasil penyimpanan sebelumnya perlu dipulihkan/)).toBeNull();
 });
 
-test('absence of a posted customer report does not claim that no draft has been saved', async () => {
+test('compact detail with no posted report still links to the customer without claiming no saved drafts', async () => {
     state.header.last_report_month = null;
     mount(<CODetail/>, `/athel/co/${ids.co}`);
-    expect(await screen.findByText(/Belum ada laporan yang diposting/)).toBeTruthy();
+    await screen.findByText('CO-A');
+    const report = relatedURL('Lihat laporan bulanan');
+    expect(report.pathname).toBe('/athel/co/reports');
+    expect(report.searchParams.getAll('customer')).toEqual([ids.customer]);
     expect(screen.queryByText(/Belum ada laporan tersimpan/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Simpan draf' })).toBeNull();
+    expect(state.commands).toHaveLength(0);
 });
 
 test('owner acknowledgement clears panel result and error while a later unresolved request still offers recovery', async () => {
@@ -186,16 +232,22 @@ test('owner acknowledgement clears panel result and error while a later unresolv
     expect(screen.queryByText('Canonical read unavailable')).toBeNull();
 });
 
-test('CO list labels older reports as customer-wide and renders calendar dates without shifting the day', async () => {
+test('approved Orders columns show planned value not revenue and preserve date-only display', async () => {
     state.header.last_report_month = '2026-09-01';
-    const { default: COOrders } = await import('../../src/pages/athel/co/COOrders');
+    state.header.summary.planned_value = '20.00';
+    state.header.summary.revenue = '999.99';
     mount(<COOrders/>, '/athel/co/list');
     const mobile = await screen.findByRole('article');
     expect(within(mobile).getByText(/Store A · 1 Oktober 2026/)).toBeTruthy();
-    expect(within(mobile).getByText('Laporan pelanggan (semua CO)').nextElementSibling?.textContent).toBe('September 2026');
-    expect(screen.getByRole('columnheader', { name: 'Laporan pelanggan (semua CO)' })).toBeTruthy();
+    expect(within(mobile).getByText('Nilai CO').nextElementSibling?.textContent).toBe('Rp 20');
+    expect(within(mobile).queryByText(/999,99/)).toBeNull();
+    expect(screen.getByText(/Nilai CO · IDR · jumlah dipesan × harga kesepakatan CO, bukan pendapatan/)).toBeTruthy();
+    for (const name of ['Nomor CO', 'Toko', 'Tanggal CO', 'Status', 'Jumlah SKU', 'Nilai CO', 'Aksi']) expect(screen.getByRole('columnheader', { name, exact: true })).toBeTruthy();
+    expect(screen.queryByRole('columnheader', { name: 'Laporan pelanggan (semua CO)' })).toBeNull();
     expect(screen.getByRole('table').textContent).toContain('1 Oktober 2026');
     expect(screen.getByRole('table').textContent).not.toContain('2026-10-01');
+    for (const link of screen.getAllByRole('link', { name: 'Lihat CO' })) expect(link.getAttribute('href')).toBe(`/athel/co/${ids.co}`);
+    expect(state.commands).toHaveLength(0);
 });
 
 test('safely abandoned reconciliation shows a terminal result without an unresolved recovery warning', async () => {

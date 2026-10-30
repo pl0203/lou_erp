@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { existsSync, readFileSync } from 'node:fs'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, expect, test, vi } from 'vitest'
@@ -6,14 +7,16 @@ import { MemoryRouter } from 'react-router-dom'
 const auth = vi.hoisted(() => ({ profile: null as null | { role: string; full_name: string } }))
 vi.mock('../src/lib/supabase', () => ({ supabase: { auth: {} } }))
 vi.mock('../src/lib/AuthContext', () => ({ useAuth: () => ({ ...auth, loading: false, signOut: vi.fn() }) }))
-vi.mock('@tanstack/react-query', () => ({ useQuery: () => ({ data: 2 }) }))
+
 import Login from '../src/pages/Login'
 import Landing from '../src/pages/Landing'
 import AthelNav from '../src/components/AthelNav'
 import GirardNav from '../src/components/GirardNav'
 import IHRNav from '../src/components/IHRNav'
 
-afterEach(() => { cleanup(); auth.profile = null })
+const clients: QueryClient[]=[]
+function client(){const value=new QueryClient({defaultOptions:{queries:{retry:false,gcTime:0}}});clients.push(value);return value}
+afterEach(() => { cleanup();clients.splice(0).forEach(value=>value.clear()); auth.profile = null })
 
 const css = readFileSync('src/index.css', 'utf8')
 const actionCss = existsSync('src/styles/ui.css') ? readFileSync('src/styles/ui.css', 'utf8') : ''
@@ -108,7 +111,7 @@ test('shared actions retain touch defaults and fine-pointer desktop density, hov
 })
 
 test('login shows the Padiwan lockup and navy controls while validation remains a red error', () => {
-  render(<MemoryRouter><Login /></MemoryRouter>)
+  render(<QueryClientProvider client={client()}><MemoryRouter><Login /></MemoryRouter></QueryClientProvider>)
   expect(screen.getByRole('img', { name: 'Padiwan' }).getAttribute('src')).toBe('/brand/padiwan-logo.svg')
   const signIn = screen.getByRole('button', { name: 'Masuk' })
   expect(signIn.classList.contains('ui-action--primary')).toBe(true)
@@ -124,7 +127,7 @@ test('login shows the Padiwan lockup and navy controls while validation remains 
 
 test('the module chooser has one Padiwan identity and retains all module links', () => {
   auth.profile = { role: 'executive', full_name: 'Theme Reviewer' }
-  render(<MemoryRouter><Landing /></MemoryRouter>)
+  render(<QueryClientProvider client={client()}><MemoryRouter><Landing /></MemoryRouter></QueryClientProvider>)
   expect(screen.getAllByRole('img', { name: 'Padiwan' }).length).toBeGreaterThan(0)
   for (const name of ['Procurement', 'Sales', 'HR']) expect(screen.getByRole('link', { name: new RegExp('^' + name + ' Manajemen') })).toBeTruthy()
 })
@@ -135,7 +138,7 @@ test.each([
   { Component: IHRNav, route: '/ihr/leave', active: 'Manajemen Cuti', module: 'HR' },
 ])('$module navigation has a readable active cue without changing the link', ({ Component, route, active, module }) => {
   auth.profile = { role: 'executive', full_name: 'Theme Reviewer' }
-  render(<MemoryRouter initialEntries={[route]}><Component /></MemoryRouter>)
+  render(<QueryClientProvider client={client()}><MemoryRouter initialEntries={[route]}><Component /></MemoryRouter></QueryClientProvider>)
   const links = screen.getAllByRole('link', { name: active })
   for (const link of links) {
     expect(link.getAttribute('href')).toBe(route)

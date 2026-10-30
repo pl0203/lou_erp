@@ -3,8 +3,15 @@ import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react
 import { expect, test } from 'vitest';
 import { customer, mountApp, stockFixture, wire, id } from './stock-ui-harness';
 import App from '../../src/App';
+import { LegacyReturnOwner } from './legacy-return-owner';
+const ownerFor = (kind: 'return' | 'settlement', state: { cv: string }) => kind === 'return' ? <LegacyReturnOwner state={state}/> : <App/>;
 const pending = () => Object.keys(localStorage).filter(key => key.startsWith('co-request:'));
+async function showActions() {
+    const toggle = await screen.findByRole('button', { name: /^Actions/ });
+    if (toggle.getAttribute('aria-expanded') !== 'true') fireEvent.click(toggle);
+}
 async function click(name: string) {
+    if (['Tutup CO', 'Selesaikan sisa belum dikirim'].includes(name)) await showActions();
     const node = await screen.findByRole('button', { name });
     await waitFor(() => expect(node.matches(':disabled')).toBe(false)); fireEvent.click(node);
 }
@@ -12,7 +19,7 @@ const change = (label: string, value: string) => fireEvent.change(screen.getByLa
 async function begin(kind: 'return' | 'settlement', lost: boolean, sameTarget: boolean) {
     const s = stockFixture();
     const path = kind === 'return' ? `/athel/co/stock?customer=${customer}` : `/athel/co/${id(11)}`;
-    const owner = mountApp(<App/>, path);
+    const owner = mountApp(ownerFor(kind, s), path);
     await click(kind === 'return' ? 'Retur barang belum terjual' : 'Selesaikan sisa belum dikirim');
     await screen.findByLabelText(kind === 'return' ? 'Jumlah retur SJ-1 Item 1' : 'Jumlah dibatalkan Item 1');
     change(kind === 'return' ? 'Jumlah retur SJ-1 Item 1' : 'Jumlah dibatalkan Item 1', '5');
@@ -39,7 +46,7 @@ async function begin(kind: 'return' | 'settlement', lost: boolean, sameTarget: b
     return { s, path, ...owner };
 }
 for (const kind of ['return', 'settlement'] as const) {
-    test.each([[false, false], [true, false], [false, true], [true, true]])(`${kind}: known/lost=%s and same-target=%s permits Keep/Discard and one next legitimate write`, async (lost, sameTarget) => {
+    test.each([[false, false], [true, false], [false, true], [true, true]])(`${kind === 'return' ? 'legacy return editor' : kind}: known/lost=%s and same-target=%s permits Keep/Discard and one next legitimate write`, async (lost, sameTarget) => {
         const { s } = await begin(kind, lost, sameTarget);
         const key = pending()[0], before = localStorage.getItem(key);
         const original = JSON.parse(before!).committed;
@@ -59,10 +66,10 @@ for (const kind of ['return', 'settlement'] as const) {
         expect(s.commands[1].payload[kind === 'return' ? 'expected_draft_version' : 'expected_co_version']).toBe(kind === 'return' ? sameTarget ? '2' : '1' : sameTarget ? '3' : '2');
         await waitFor(() => expect(pending()).toHaveLength(0));
     });
-    test.each([[false, 'reload'], [true, 'reload'], [false, 'reopen'], [true, 'reopen']] as const)(`${kind}: committed state survives departure (lost=%s, %s)`, async (lost, departure) => {
+    test.each([[false, 'reload'], [true, 'reload'], [false, 'reopen'], [true, 'reopen']] as const)(`${kind === 'return' ? 'legacy return editor' : kind}: committed state survives departure (lost=%s, %s)`, async (lost, departure) => {
         const { s, path, client } = await begin(kind, lost, true);
         const before = localStorage.getItem(pending()[0]);
-        if (departure === 'reload') { cleanup(); mountApp(<App/>, path); }
+        if (departure === 'reload') { cleanup(); mountApp(ownerFor(kind, s), path); }
         else {
             await click(kind === 'return' ? 'Tutup retur' : 'Batal'); await click('Buang perubahan');
             await act(async () => { await client.invalidateQueries({ queryKey: ['co'] }); });
@@ -75,7 +82,7 @@ for (const kind of ['return', 'settlement'] as const) {
         await waitFor(() => expect(pending()).toHaveLength(0));
         expect(s.commands).toHaveLength(1); expect(JSON.parse(before!).committed.version).toBe(kind === 'return' ? '1' : '2');
     });
-    test(`${kind}: failed acknowledgement keeps exact receipt and unsaved input`, async () => {
+    test(`${kind === 'return' ? 'legacy return editor' : kind}: failed acknowledgement keeps exact receipt and unsaved input`, async () => {
         await begin(kind, true, true);
         const key = pending()[0], before = localStorage.getItem(key), base = wire.handler;
         wire.handler = async (name: string, args: any) => name === 'pilot_reconcile_co_v1'
@@ -84,22 +91,22 @@ for (const kind of ['return', 'settlement'] as const) {
         await screen.findByText('Acknowledgement unavailable');
         expect(localStorage.getItem(key)).toBe(before); expect(screen.getByDisplayValue('PRIVATE BEFORE RECOVERY')).toBeTruthy();
     });
-    test(`${kind}: obsolete owner cannot acknowledge or import into a replacement`, async () => {
-        const { path } = await begin(kind, true, true);
+    test(`${kind === 'return' ? 'legacy return editor' : kind}: obsolete owner cannot acknowledge or import into a replacement`, async () => {
+        const { path, s } = await begin(kind, true, true);
         const key = pending()[0], before = localStorage.getItem(key), base = wire.handler;
         let release!: () => Promise<void>;
         wire.handler = async (name: string, args: any) => name === 'pilot_reconcile_co_v1'
             ? new Promise(resolve => { release = async () => resolve(await base(name, args)); }) : base(name, args);
         await click(kind === 'return' ? 'Selesaikan konflik retur' : 'Selesaikan konflik penyelesaian'); await click('Buang perubahan');
         await waitFor(() => expect(release).toBeTypeOf('function'));
-        cleanup(); mountApp(<App/>, path); await screen.findByRole('heading', { name: kind === 'return' ? 'Stok pelanggan' : 'CO-1' });
+        cleanup(); mountApp(ownerFor(kind, s), path); await screen.findByRole('heading', { name: kind === 'return' ? 'Legacy return owner' : 'CO-1' });
         await act(async () => release());
         expect(localStorage.getItem(key)).toBe(before); expect(screen.queryByDisplayValue('PRIVATE BEFORE RECOVERY')).toBeNull();
     });
 }
 
-test.each([false, true])('later return-head revision preserves original consumed-draft linkage (bad linkage=%s)', async badLinkage => {
-    const s = stockFixture(); mountApp(<App/>, `/athel/co/stock?customer=${customer}`);
+test.each([false, true])('legacy return editor: later return-head revision preserves original consumed-draft linkage (bad linkage=%s)', async badLinkage => {
+    const s = stockFixture(); mountApp(<LegacyReturnOwner state={s}/>, `/athel/co/stock?customer=${customer}`);
     await click('Retur barang belum terjual'); await screen.findByLabelText('Jumlah retur SJ-1 Item 1');
     change('Jumlah retur SJ-1 Item 1', '5'); change('Referensi retur', 'POST ORIGINAL');
     await click('Simpan Draft retur'); await click('Tinjau / post retur');

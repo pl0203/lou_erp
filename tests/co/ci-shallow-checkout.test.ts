@@ -11,7 +11,8 @@ test.each(['unchanged', 'original drift', 'append drift', 'received drift', 'cat
   try {
     mkdirSync(join(sandbox, '.github/workflows'), { recursive: true })
     mkdirSync(join(sandbox, 'tests/co'), { recursive: true })
-    for (const path of ['.github/workflows/pilot-safety.yml', '.gitignore', 'tests/co/ci-workflow.test.ts']) {
+    mkdirSync(join(sandbox, 'tests/catalogue-ci'), { recursive: true })
+    for (const path of ['.github/workflows/pilot-safety.yml', '.gitignore', 'tests/co/ci-workflow.test.ts', 'tests/catalogue-ci/release-workflow-contract.mjs']) {
       copyFileSync(path, join(sandbox, path))
     }
     const workflowPath = join(sandbox, '.github/workflows/pilot-safety.yml')
@@ -24,7 +25,7 @@ test.each(['unchanged', 'original drift', 'append drift', 'received drift', 'cat
     writeFileSync(join(sandbox, 'vitest.config.mjs'), 'export default {test:{environment:"node"}}\n')
     symlinkSync(resolve('node_modules'), join(sandbox, 'node_modules'), 'dir')
     git('init', '--quiet')
-    git('add', '.github/workflows/pilot-safety.yml', '.gitignore', 'tests/co/ci-workflow.test.ts', 'vitest.config.mjs')
+    git('add', '.github/workflows/pilot-safety.yml', '.gitignore', 'tests/co/ci-workflow.test.ts', 'tests/catalogue-ci/release-workflow-contract.mjs', 'vitest.config.mjs')
     git('-c', 'user.name=Synthetic fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--quiet', '-m', 'Single candidate fixture')
     expect(git('rev-list', '--count', 'HEAD').trim()).toBe('1')
     const ancestor = spawnSync('git', ['cat-file', '-e', '75d38e55aa886386441597e8c22bb2fd90013565^{commit}'], { cwd: sandbox, env: { ...process.env, GIT_NO_LAZY_FETCH: '1' } })

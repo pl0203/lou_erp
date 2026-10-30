@@ -20,7 +20,7 @@ export default function COLegacyReportEdit({customerId,month,revisionId,customer
  const work=useCOReportWorkspace(customerId,month);
  const [prepared,setPrepared]=useState(false),[review,setReview]=useState<Record<string,unknown>|null>(null);
  const [replacement,setReplacement]=useState<LegacySeedBaseline|null>(null),[reviewDirty,setReviewDirty]=useState(false),[reviewPending,setReviewPending]=useState(false);
- const trigger=useRef<HTMLElement|null>(null), title=useId();
+ const trigger=useRef<HTMLElement|null>(null), reviewTrigger=useRef<HTMLSpanElement|null>(null), title=useId();
  const effective=work.accepted?.effective as COReportHeader|null|undefined;
  const pinned=!!effective&&effective.customer_id===customerId&&effective.report_month===month&&effective.revision_id===revisionId&&work.accepted?.customer_version===customerVersion;
  const canonical=useCORead(work.actor,'legacy-effective-seed',{customerId,month,revisionId,customerVersion},async o=>{
@@ -35,6 +35,17 @@ export default function COLegacyReportEdit({customerId,month,revisionId,customer
  },pinned&&!work.denied);
  const retains=work.pending||work.sender.hasUnresolved()||!!work.confirmed||reviewPending;
  const unsaved=useUnsavedChanges(work.dirty||prepared||reviewDirty||retains);
+ const dismissal=useRef({retains,review}),restoreReviewFocus=useRef(false);
+ dismissal.current={retains,review};
+ useEffect(()=>{if(!review&&restoreReviewFocus.current){restoreReviewFocus.current=false;reviewTrigger.current?.querySelector<HTMLButtonElement>('button')?.focus()}},[review]);
+ async function closeReview(){
+  if(retains||!work.current())return;
+  const closing=review;
+  if(!await unsaved.confirmDiscardDecision()||!work.current()||dismissal.current.retains||dismissal.current.review!==closing)return;
+  restoreReviewFocus.current=true;
+  setReview(null);setReviewDirty(false);
+ }
+
  useBeforeSignOut(signal=>unsaved.confirmDiscardDecision({signal}),`${customerId}:${month}:${revisionId}`);
  const blocked=work.frozen||!pinned||!canonical.data||canonical.isFetching||canonical.isError;
  useEffect(()=>{if(canonical.error)work.setError(canonical.error)},[canonical.error]);
@@ -75,8 +86,8 @@ export default function COLegacyReportEdit({customerId,month,revisionId,customer
   {!review&&<COReportCorrectionConsent work={work} onAccepted={()=>unsaved.runWithoutPrompt(onRecorded)}/>}
   {!pinned&&<COFailure error={new Error('Dasar Edit berubah; muat ulang laporan.')}/>}
   {!canonical.data&&!canonical.isError&&pinned&&<LoadingState title="Memuat semua nilai laporan tercatat…" shape="compact"/>}
-  {review?<COCorrectionDialog resultAcceptance={<COReportCorrectionConsent work={work} onAccepted={()=>unsaved.runWithoutPrompt(onRecorded)}/>} operation="correct_report" finalActionLabel="Simpan perubahan" customerId={customerId} source={review} selectedMonth={month} sender={work.sender} current={work.current} blocked={blocked} onAccepted={r=>accept(r)} onRecovered={r=>accept(r,true)} onClose={()=>{setReview(null);setReviewDirty(false)}} returnFocus={trigger.current} ownUnsaved={false} onDirtyChange={setReviewDirty} onPendingChange={setReviewPending} confirmDiscard={message=>unsaved.confirmDiscardDecision({message})} onAuthorityFailure={work.setError}/>:
-   prepared?<><COReportFields work={work}/><Button disabled={blocked} onClick={e=>{trigger.current=e.currentTarget;void inspect()}}>Tinjau perubahan</Button></>:<Button disabled={blocked} onClick={e=>{trigger.current=e.currentTarget;begin()}}>Mulai Edit dari laporan tercatat</Button>}
+  {review?<COCorrectionDialog resultAcceptance={<COReportCorrectionConsent work={work} onAccepted={()=>unsaved.runWithoutPrompt(onRecorded)}/>} operation="correct_report" finalActionLabel="Simpan perubahan" customerId={customerId} source={review} selectedMonth={month} sender={work.sender} current={work.current} blocked={blocked} onAccepted={r=>accept(r)} onRecovered={r=>accept(r,true)} onClose={()=>void closeReview()} returnFocus={trigger.current} ownUnsaved={false} onDirtyChange={setReviewDirty} onPendingChange={setReviewPending} confirmDiscard={message=>unsaved.confirmDiscardDecision({message})} onAuthorityFailure={work.setError}/>:
+   prepared?<><COReportFields work={work}/><span ref={reviewTrigger}><Button disabled={blocked} onClick={e=>{trigger.current=e.currentTarget;void inspect()}}>Tinjau perubahan</Button></span></>:<Button disabled={blocked} onClick={e=>{trigger.current=e.currentTarget;begin()}}>Mulai Edit dari laporan tercatat</Button>}
   {!prepared&&work.error&&<COFailure error={work.error}/>}
   <Button variant="quiet" disabled={retains} onClick={()=>unsaved.confirmDiscard(onExit)}>Batal Edit</Button>
   {replacement&&<Dialog labelledBy={title} pending={work.pending} onClose={()=>setReplacement(null)} returnFocus={trigger.current} fallbackFocus={()=>trigger.current}><h2 id={title}>Ganti isian laporan tersimpan?</h2><p>Draft {replacement.draftId} · versi {replacement.draftVersion}. Isian dan metadata pending akan diganti dengan laporan tercatat, bukan dipakai sebagai nilai awal. Riwayat sebelum penggantian tetap tersimpan.</p><Button onClick={()=>setReplacement(null)}>Batal penggantian</Button><Button onClick={()=>void seed(replacement)}>Ganti isian tersimpan</Button></Dialog>}

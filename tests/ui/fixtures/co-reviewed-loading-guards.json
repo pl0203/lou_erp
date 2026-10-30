@@ -1,0 +1,179 @@
+{
+  "source": "e95bdaff33b9fcb8cd18114f364e23198c290ba3",
+  "contract": "docs/co-loading-surface-contract.md",
+  "updates": [
+    {
+      "file": "src/components/co/COChangePreview.tsx",
+      "before": [
+        {
+          "file": "src/components/co/COChangePreview.tsx",
+          "title": "Memeriksa periode dipilih di semua halaman dampak…",
+          "guards": [
+            "selectedMonth &&",
+            "selected.isError ? false",
+            "selected.isPending ? true"
+          ]
+        },
+        {
+          "file": "src/components/co/COChangePreview.tsx",
+          "title": "Memuat dampak…",
+          "guards": [
+            "read.isError ? false",
+            "!read.data ? true"
+          ]
+        }
+      ],
+      "after": [
+        {
+          "file": "src/components/co/COChangePreview.tsx",
+          "title": "Memeriksa periode dipilih di semua halaman dampak…",
+          "guards": [
+            "selectedMonth &&",
+            "selected.isError ? false",
+            "selected.isPending ? true"
+          ]
+        },
+        {
+          "file": "src/components/co/COChangePreview.tsx",
+          "title": "Memeriksa identitas pesanan terdampak…",
+          "guards": [
+            "needsReopen &&",
+            "reopen.isError ? false",
+            "!reopen.data ? true"
+          ]
+        },
+        {
+          "file": "src/components/co/COChangePreview.tsx",
+          "title": "Memuat dampak…",
+          "guards": [
+            "read.isError ? false",
+            "!read.data ? true"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "src/components/co/COLegacyReportEdit.tsx",
+      "before": [],
+      "after": [
+        {
+          "file": "src/components/co/COLegacyReportEdit.tsx",
+          "title": "Memuat dasar Edit…",
+          "guards": [
+            "if !work.accepted"
+          ]
+        },
+        {
+          "file": "src/components/co/COLegacyReportEdit.tsx",
+          "title": "Memuat semua nilai laporan tercatat…",
+          "guards": [
+            "!canonical.data&&!canonical.isError&&pinned &&"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "src/components/co/CORecordedReportTable.tsx",
+      "before": [],
+      "after": [
+        {
+          "file": "src/components/co/CORecordedReportTable.tsx",
+          "title": "Memuat laporan tercatat…",
+          "guards": [
+            "failed ? false",
+            "!source.data||!rows.data||!allocations.data ? true"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "src/components/co/COReportRevisionEvidence.tsx",
+      "before": [
+        {
+          "file": "src/components/co/COReportRevisionEvidence.tsx",
+          "title": "Memuat bukti revisi…",
+          "guards": [
+            "read.isError ? false",
+            "!read.data ? true"
+          ]
+        }
+      ],
+      "after": [
+        {
+          "file": "src/components/co/COReportRevisionEvidence.tsx",
+          "title": "Memuat perubahan baris…",
+          "guards": [
+            "delta.isError ? false",
+            "!delta.data ? true"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "src/components/co/COStockHistory.tsx",
+      "before": [
+        {
+          "file": "src/components/co/COStockHistory.tsx",
+          "title": "Memuat riwayat stok…",
+          "guards": [
+            "read.isError ? false",
+            "!read.data ? true"
+          ]
+        }
+      ],
+      "after": [
+        {
+          "file": "src/components/co/COStockHistory.tsx",
+          "title": "Memuat riwayat stok…",
+          "guards": [
+            "blocked ? true"
+          ]
+        },
+        {
+          "file": "src/components/co/COStockHistory.tsx",
+          "title": "Memuat riwayat stok…",
+          "guards": [
+            "blocked ? false",
+            "read.isError ? false",
+            "!read.data || read.isFetching ? true"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "src/components/co/COStockTable.tsx",
+      "before": [],
+      "after": [
+        {
+          "file": "src/components/co/COStockTable.tsx",
+          "title": "Memuat batch CO…",
+          "guards": [
+            "if !read.data || read.isFetching"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "src/pages/athel/co/COCustomerStock.tsx",
+      "before": [
+        {
+          "file": "src/pages/athel/co/COCustomerStock.tsx",
+          "title": "Memuat stok…",
+          "guards": [
+            "!stock.data && !stock.isError &&"
+          ]
+        }
+      ],
+      "after": [
+        {
+          "file": "src/pages/athel/co/COCustomerStock.tsx",
+          "title": "Memuat stok…",
+          "guards": [
+            "stock.isError ? false",
+            "!invalidMonth && (!result || stock.isFetching) ? true"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,13 +1,17 @@
 import React from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { expect, test } from 'vitest';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { customer, id, mount, mountApp, stockFixture, wire } from './stock-ui-harness';
 import App from '../../src/App';
+import {LegacyReturnOwner} from './legacy-return-owner';
+// Historical exported editor-owner contracts; these do not claim current App permits legacy draft creation.
+
 import CODetail from '../../src/pages/athel/co/CODetail';
 
 test('customer-wide return saves a draft without ledger effect then posts through shared review', async () => {
     const s = stockFixture();
-    mountApp(<App />, `/athel/co/stock?customer=${customer}`);
+    mountApp(<LegacyReturnOwner state={s}/>, `/athel/co/stock?customer=${customer}`);
     await click('Retur barang belum terjual');
     fireEvent.change(await screen.findByLabelText('Jumlah retur SJ-1 Item 1'), { target: { value: '5' } });
     fireEvent.change(screen.getByLabelText('Referensi retur'), { target: { value: 'RET-5' } });
@@ -15,7 +19,7 @@ test('customer-wide return saves a draft without ledger effect then posts throug
     await waitFor(() => expect(s.commands).toHaveLength(1));
     expect(s.batches[0].available_quantity).toBe('30');
     fireEvent.click(await screen.findByRole('button', { name: 'Tinjau / post retur' }));
-    fireEvent.change(screen.getByLabelText('Alasan perubahan'), { target: { value: 'Unsold stock returned' } });
+    fireEvent.change(await screen.findByLabelText('Alasan perubahan'), { target: { value: 'Unsold stock returned' } });
     fireEvent.click(screen.getByRole('button', { name: 'Tinjau semua dampak' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Terapkan perubahan' }));
     await screen.findByText('Retur sudah tercatat');
@@ -23,10 +27,10 @@ test('customer-wide return saves a draft without ledger effect then posts throug
     expect(s.batches[0].available_quantity).toBe('25');
     expect(s.co.summary.revenue).toBe('720000');
 });
-test('detail draft discovery restores all customer-wide lines across COs and pages', async () => {
+test('legacy explicit draft selection restores all customer-wide lines across COs and pages', async () => {
     const s = stockFixture(101);
     s.draft = s.makeDraft(s.batches.map((b: any) => ({ batch_id: b.id, quantity: 1 })));
-    mount(<CODetail />, `/athel/co/${s.co.id}`);
+    mount(<LegacyReturnOwner state={s} selection={{view:'draft',id:s.draft.header.id,draftVersion:s.draft.header.draft_version}} openerLabel="Buka draft retur"/>, `/athel/co/${s.co.id}`);
     fireEvent.click(await screen.findByRole('button', { name: 'Buka draft retur' }));
     await screen.findByText(/101 sumber tersimpan/);
     fireEvent.change(screen.getByLabelText('Referensi retur'), { target: { value: 'RESTORED' } });
@@ -42,9 +46,18 @@ async function click(name: string) {
     fireEvent.click(button);
 }
 const change = (name: string, value: string) => fireEvent.change(screen.getByLabelText(name), { target: { value } });
+// Explicit parent-prop and navigation boundary, not a stock-page subscription.
+function LegacyBoundary({state}: {state:{cv:string}}) {
+    const [version,setVersion] = React.useState(state.cv);
+    const location=useLocation();
+    if(location.pathname==='/athel/co') return <h1>Legacy test destination</h1>;
+    return <><Link to="/athel/co">Pesanan CO</Link>
+        <button onClick={()=>setVersion(state.cv)}>Refresh parent receipt</button>
+        <LegacyReturnOwner state={{cv:version}}/></>;
+}
 async function openReturn(count = 2) {
     const state = stockFixture(count);
-    const view = mountApp(<App />, `/athel/co/stock?customer=${customer}`);
+    const view = mountApp(<LegacyBoundary state={state}/>, `/athel/co/stock?customer=${customer}`);
     await click('Retur barang belum terjual');
     await screen.findByLabelText('Jumlah retur SJ-1 Item 1');
     return { state, ...view };
@@ -101,7 +114,7 @@ test('direct shared-preview authority denial clears the entire return and stock 
     await click('Tinjau semua dampak');
     await screen.findByText('Return authority denied');
     expect(screen.queryByDisplayValue('RET-5')).toBeNull();
-    expect(screen.queryByText('SKU-1 · Item 1')).toBeNull();
+    expect(screen.queryByLabelText('Jumlah retur SJ-1 Item 1')).toBeNull();
     expect(screen.queryByText('Return original stock')).toBeNull();
     expect(client.getQueryCache().getAll().filter(q => q.queryKey[0] === 'co' && q.state.data)).toHaveLength(0);
 });
@@ -120,7 +133,7 @@ test('known committed canonical retry does not resend and repeated failures pres
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Buka hasil retur tersimpan' })).toBeNull());
     expect(state.commands).toHaveLength(1);
 });
-test('dirty return blocks tabs, Keep retains fields and Discard leaves without a late save', async () => {
+test('legacy dirty return blocks router navigation, Keep retains fields and Discard leaves without a late save', async () => {
     const { router, state } = await openReturn();
     change('Referensi retur', 'DIRTY');
     fireEvent.click(screen.getByRole('link', { name: 'Pesanan CO' }));
@@ -130,6 +143,9 @@ test('dirty return blocks tabs, Keep retains fields and Discard leaves without a
     fireEvent.click(screen.getByRole('link', { name: 'Pesanan CO' }));
     await click('Buang perubahan');
     await waitFor(() => expect(router.state.location.pathname).toBe('/athel/co'));
+    expect(screen.queryByDisplayValue('DIRTY')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByRole('heading',{name:'Legacy test destination'})).toBeTruthy();
     expect(state.commands).toHaveLength(0);
 });
 test('same editor survives a non-authority background source failure and retry', async () => {
@@ -147,13 +163,13 @@ test('same editor survives a non-authority background source failure and retry',
     expect(screen.getByDisplayValue('BACKGROUND')).toBe(field);
 });
 
-test.each(['replace', 'void'] as const)('effective return %s is reachable and bound to its exact original head and revision', async action => {
+test.each(['replace', 'void'] as const)('legacy effective return %s selection is accepted and bound to its exact original head and revision', async action => {
     const s = stockFixture();
     s.draft = s.makeDraft([{ batch_id: id(2001), quantity: 5 }]);
     await s.handle('pilot_co_transaction_v1', { p_operation: 'post_return', p_payload: {} });
     const original = structuredClone(s.effective);
     s.commands = [];
-    mount(<CODetail />, `/athel/co/${s.co.id}`);
+    mount(<LegacyReturnOwner state={s} selection={{view:'effective',id:original.header.head_id,revisionId:original.header.revision_id,returnVersion:original.header.head_version,action}} openerLabel={action==='replace'?'Siapkan pengganti retur':'Batalkan retur dengan koreksi'}/>, `/athel/co/${s.co.id}`);
     await click(action === 'replace' ? 'Siapkan pengganti retur' : 'Batalkan retur dengan koreksi');
     await screen.findByLabelText('Referensi retur');
     if (action === 'replace') change('Jumlah retur SJ-1 Item 1', '4');
@@ -176,7 +192,7 @@ test.each(['replace', 'void'] as const)('effective return %s is reachable and bo
 test('immutable return revision is read only and restored from revision view', async () => {
     const s = stockFixture(); s.draft = s.makeDraft([{ batch_id: id(2001), quantity: 5 }]);
     await s.handle('pilot_co_transaction_v1', { p_operation: 'post_return', p_payload: {} }); s.commands = [];
-    mount(<CODetail />, `/athel/co/${s.co.id}`);
+    mount(<LegacyReturnOwner state={s} selection={{view:'revision',id:s.effective.header.revision_id,revisionId:s.effective.header.revision_id}} openerLabel="Lihat revisi retur"/>, `/athel/co/${s.co.id}`);
     await click('Lihat revisi retur');
     await screen.findByText(/Riwayat retur tersimpan, hanya baca/);
     expect(screen.getByLabelText('Referensi retur').matches(':disabled')).toBe(true);
@@ -195,15 +211,15 @@ test('nested return completion denial removes both nested and source-private con
     change('Terjual Item 1', '7');
     state.report.fail = (n: string) => n === 'pilot_co_report_v1' && state.report.commands.some((c: any) => c.payload.action === 'upsert_lines')
         ? { data: null, error: { code: '42501', message: 'Nested return authority denied' } } : null;
-    await click('Simpan Draft periode');
+    await click('Lanjutkan peninjauan periode');
     await screen.findByText('Nested return authority denied');
     expect(screen.queryByDisplayValue('NESTED PRIVATE')).toBeNull();
-    expect(screen.queryByText('SKU-1 · Item 1')).toBeNull();
+    expect(screen.queryByLabelText('Jumlah retur SJ-1 Item 1')).toBeNull();
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(client.getQueryCache().getAll().filter(q => q.queryKey[0] === 'co' && q.state.data)).toHaveLength(0);
     state.report.fail = null;
     await click('Coba lagi');
-    await screen.findByText('SKU-1 · Item 1');
+    await screen.findByLabelText('Jumlah retur SJ-1 Item 1');
     expect(screen.queryByDisplayValue('NESTED PRIVATE')).toBeNull();
 });
 test('nested known-committed return completion retries canonical reads without repeating the write', async () => {
@@ -215,7 +231,7 @@ test('nested known-committed return completion retries canonical reads without r
     change('Terjual Item 1', '7'); change('Catatan laporan', 'UNSENT REPORT NOTE');
     state.report.fail = (n: string) => n === 'pilot_co_report_v1' && state.report.commands.some((c: any) => c.payload.action === 'upsert_lines')
         ? { data: null, error: { code: '08006', message: 'Nested canonical offline' } } : null;
-    await click('Simpan Draft periode');
+    await click('Lanjutkan peninjauan periode');
     await screen.findAllByText('Nested canonical offline');
     const count = state.report.commands.length;
     await click('Buka hasil laporan tersimpan');
@@ -251,15 +267,17 @@ test('uncertain return recovery preserves Keep and imports the real draft before
 
 test.each(['42501', '08006'])('paged impact %s clears only confirmed authority denial and preserves ordinary retry', async code => {
     const { state } = await openReturn();
-    await saveReturn(); await click('Tinjau semua dampak');
+    await saveReturn();
+    expect(screen.getByDisplayValue('Return original stock')).toBeTruthy();
+    await click('Tinjau semua dampak');
     await screen.findByRole('button', { name: 'Stok (0)' });
-    state.fail = (n: string, a: any) => n === 'pilot_co_preview_impacts_v1' && a.p_kind === 'stock'
+    state.fail = (n: string, a: any) => n === 'pilot_co_preview_labeled_impacts_v1' && a.p_kind === 'stock'
         ? { data: null, error: { code, message: 'Impact read failed' } } : null;
     await click('Stok (0)');
     await screen.findByText('Impact read failed');
-    if (code === '42501') expect(screen.queryByText('SKU-1 · Item 1')).toBeNull();
+    if (code === '42501') expect(screen.queryByDisplayValue('Return original stock')).toBeNull();
     else {
-        expect(screen.getByText('SKU-1 · Item 1')).toBeTruthy();
+        expect(screen.getByDisplayValue('Return original stock')).toBeTruthy();
         expect(screen.getByDisplayValue('Return original stock')).toBeTruthy();
         state.fail = null; await click('Coba lagi');
         await screen.findByText('Tidak ada stok.');
@@ -287,7 +305,7 @@ test('explicit source refresh keeps inputs frozen through import then requires r
     await click('Saya sudah memeriksa sumber terbaru');
     expect(screen.getByDisplayValue('REFRESH INPUT')).toBeTruthy();
 });
-test('authority denial during return canonical import hides parent stock and retains no private cache', async () => {
+test('legacy return editor canonical-import denial hides editor fields and retains no private cache', async () => {
     const { state, client } = await openReturn();
     change('Referensi retur', 'PRIVATE RETURN'); change('Jumlah retur SJ-1 Item 1', '5');
     state.fail = (n: string) => n === 'pilot_co_return_v1'
@@ -295,7 +313,7 @@ test('authority denial during return canonical import hides parent stock and ret
     await click('Simpan Draft retur');
     await screen.findByText('Canonical return denied');
     expect(screen.queryByDisplayValue('PRIVATE RETURN')).toBeNull();
-    expect(screen.queryByText('SKU-1 · Item 1')).toBeNull();
+    expect(screen.queryByLabelText('Jumlah retur SJ-1 Item 1')).toBeNull();
     expect(client.getQueryCache().getAll().filter(q => q.queryKey[0] === 'co' && q.state.data)).toHaveLength(0);
 });
 test('malformed incomplete saved return pages cannot enable replacement saving', async () => {
@@ -306,13 +324,13 @@ test('malformed incomplete saved return pages cannot enable replacement saving',
         if (n === 'pilot_co_return_v1' && a.p_page === 2) result.data.rows = [];
         return result;
     };
-    mount(<CODetail />, `/athel/co/${s.co.id}`);
+    mount(<LegacyReturnOwner state={s} selection={{view:'draft',id:s.draft.header.id,draftVersion:s.draft.header.draft_version}} openerLabel="Buka draft retur"/>, `/athel/co/${s.co.id}`);
     await click('Buka draft retur');
     await screen.findAllByText(/page completeness/);
     expect(screen.queryByRole('button', { name: 'Simpan Draft retur' })).toBeNull();
     expect(s.commands).toHaveLength(0);
 });
-test('new return can preserve positive selections from multiple source pages in one draft', async () => {
+test('legacy editor can preserve positive selections from multiple source pages in one draft', async () => {
     const { state } = await openReturn(21);
     change('Jumlah retur SJ-1 Item 1', '5'); change('Referensi retur', 'MULTI-CO');
     const dialog = screen.getByRole('dialog');
@@ -392,7 +410,7 @@ test('nested acknowledgement pending locks the return dialog until recovery is a
         if (n === 'pilot_reconcile_co_v1' && ++reconciles === 2) return deferred;
         return null;
     };
-    await click('Simpan Draft periode'); await screen.findAllByText('Nested reply lost');
+    await click('Lanjutkan peninjauan periode'); await screen.findAllByText('Nested reply lost');
     await click('Pulihkan hasil penyimpanan'); await click('Lihat hasil tersimpan'); await click('Buang perubahan');
     await waitFor(() => expect(reconciles).toBe(2));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Tutup retur' }).matches(':disabled')).toBe(true));
@@ -438,12 +456,12 @@ test('refreshing a saved draft requires re-saving fresh source bindings before p
     expect(state.commands[1].payload).toMatchObject({ draft_id: id(20), expected_draft_version: '1', expected_customer_version: '2' });
 });
 
-test('newer authoritative parent version freezes a retained return before stale dispatch', async () => {
+test('legacy editor observed-version prop freezes a retained return before stale dispatch', async () => {
     const { state, client } = await openReturn();
     change('Referensi retur', 'PARENT DRIFT'); change('Jumlah retur SJ-1 Item 1', '5');
     const field = screen.getByDisplayValue('PARENT DRIFT');
     state.cv = '2';
-    await act(async () => { await client.invalidateQueries({ predicate: q => q.queryKey[4] === 'customer-stock' }); });
+    await click('Refresh parent receipt');
     await screen.findByText(/Sumber berubah/);
     expect(screen.getByDisplayValue('PARENT DRIFT')).toBe(field);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Simpan Draft retur' }).matches(':disabled')).toBe(true));
@@ -457,7 +475,7 @@ test('newer authoritative parent version freezes a retained return before stale 
 
 test('return owner readback success clears previous recovery warning and error', async () => {
   const s = stockFixture(2);
-  mountApp(<App/>, `/athel/co/stock?customer=${customer}`);
+  mountApp(<LegacyReturnOwner state={s}/>, `/athel/co/stock?customer=${customer}`);
   await click('Retur barang belum terjual');
   await screen.findByLabelText('Jumlah retur SJ-1 Item 1');
   change('Jumlah retur SJ-1 Item 1','5');

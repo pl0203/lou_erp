@@ -1,3 +1,4 @@
+import {normalizeReleaseWorkflow} from './release-workflow-contract.mjs';
 // Existing CI entrypoint includes the focused CO source checks.
 import './co-orders.node.mjs';
 import './lifetime-admission.node.mjs';
@@ -241,7 +242,7 @@ test('identifier dollar signs and carriage-return comments cannot conceal transa
 
 test('dedicated public CI runs bound foundation after capture and RED with output-gated narrow evidence',()=>{
  need();
- const workflow=readFileSync(resolve(root,'.github/workflows/pilot-safety.yml'),'utf8');
+ const workflow=normalizeReleaseWorkflow(readFileSync(resolve(root,'.github/workflows/pilot-safety.yml'),'utf8'));
  const split=workflow.indexOf('\n  catalogue-baseline:');assert.ok(split>0);
  const sha=value=>createHash('sha256').update(value).digest('hex');
  // Preserve the historical application/CO prefix; separately pin both reviewed additions.

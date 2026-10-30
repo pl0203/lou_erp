@@ -1,0 +1,223 @@
+{
+  "version": 1,
+  "repository": "pl0203/lou_erp",
+  "public_source_head": "60bb38a25d004f6076bea34a0623dcca9a418372",
+  "files": [
+    {
+      "path": "src/pages/athel/CustomerList.tsx",
+      "sha": "25fecf7489b3b5485cbc839931125b8aa587a808",
+      "sha256": "3c2159cfcf55cbe431545921608571c71a8fbb53e995e53942a9bda82d271650",
+      "bytes": 19732
+    },
+    {
+      "path": "src/lib/catalogue/contracts.ts",
+      "sha": "62e3eb51d20d9795dd042bed011d507dce5cc0d4",
+      "sha256": "ec12b0f64eb32a166ebfa022994ef06b1125226c41cd9a92190618e330b71de7",
+      "bytes": 4297
+    },
+    {
+      "path": "src/lib/catalogue/validation.ts",
+      "sha": "c3438c13e49022424718ffdfebe16bf5319e1686",
+      "sha256": "5d4b76d922a0b1c5a3364e56f94167ecff278e44fd3f73950aab16d905bb5cdc",
+      "bytes": 14304
+    },
+    {
+      "path": "src/lib/catalogue/queryKeys.ts",
+      "sha": "b210dfcf8d4c6c343c47f0eccf324eae6447103a",
+      "sha256": "5cc595867e7e03d06055a962e6106621ea64450db391a49b58e9cbfd90de8ad8",
+      "bytes": 2946
+    },
+    {
+      "path": "src/lib/catalogue/reads.ts",
+      "sha": "46876b1daeb78e03e8d9e4e07dcbd5743769dfff",
+      "sha256": "081059bd9d28402e920d3797d4ca6c0aedd643b366362e8736d80412edb8e8bd",
+      "bytes": 4007
+    },
+    {
+      "path": "src/lib/catalogue/backend.ts",
+      "sha": "c794083220f67d033f28071554bca9c0e8770287",
+      "sha256": "3511ba11edeabde01b74fa04201eced5ffb330a1868bb3d5a8f5b45f403a4a7c",
+      "bytes": 3331
+    },
+    {
+      "path": "src/lib/catalogue/transactions.ts",
+      "sha": "911206a63365c7eefd6333c823cc57055dd1a6c2",
+      "sha256": "edd172806219f4c1c22015415b955b1c2f030c83353a49c70bc8985db83c48bb",
+      "bytes": 16197
+    },
+    {
+      "path": "src/lib/catalogue/formCommands.ts",
+      "sha": "1608b42acbe8025cdebc0f5a5f54b49e9e8c6bc9",
+      "sha256": "596f1ea0152dff11c73b3a5bebaa197066b62e7ecc6e9f32a6a226946792d438",
+      "bytes": 913
+    },
+    {
+      "path": "src/lib/catalogue/useCataloguePage.ts",
+      "sha": "f48f76a89ef48555265a1da5be7a00ac28c5b927",
+      "sha256": "a5a73ed087032a6b8de2dffcc916ce06b00f118e06c5b3b24d06ee3d7ad6be49",
+      "bytes": 12161
+    },
+    {
+      "path": "src/lib/catalogue/useCatalogueAccess.ts",
+      "sha": "a400097d7c019944b25a383fedd72669dbe6ab17",
+      "sha256": "a7ee39f2b76a60baee6289c40a8f7d6a54b11d704f36e66c1b36c116ac30f93f",
+      "bytes": 7462
+    },
+    {
+      "path": "src/lib/procurementAccess.ts",
+      "sha": "2729f9a1f18787c6f5089dc0245db0572189f825",
+      "sha256": "806d1a16b04576020629d9946528b8746aa2b89e6eb7e6b1671c2e6239d28156",
+      "bytes": 5045
+    },
+    {
+      "path": "src/lib/customerCategoryRows.ts",
+      "sha": "1b17efbe8814f982f64301210e9753ce512b3cfb",
+      "sha256": "27c51bb17eae0985def40c05a47f912fdec54bba543d2431c937b12941426e4a",
+      "bytes": 406
+    },
+    {
+      "path": "src/lib/customerCategory.ts",
+      "sha": "ed7df40be6ce380b75c69c25bd1f5663b4f1f274",
+      "sha256": "2fbfc80af55748145a020e6d7afd2fb7b09298d3863dceede3246b2fd02128e0",
+      "bytes": 1561
+    },
+    {
+      "path": "src/lib/catalogPricing.ts",
+      "sha": "bc44fbcb37fa35c6cdcd47620dfa13192544fe83",
+      "sha256": "41280c22958c73f504799e5c195e612c9acc2f781dc23c4a285777121cba06cc",
+      "bytes": 1675
+    },
+    {
+      "path": "src/components/catalogue/CatalogueRecovery.tsx",
+      "sha": "0ecf1b79b852b17370e705e3598c34fdbd512777",
+      "sha256": "a9e1d92f3517ddcb6b477120a913c15dfb679dfe4ac4056c7cf9b1c5a9bc67ba",
+      "bytes": 5442
+    },
+    {
+      "path": "src/components/catalogue/CatalogueStatusActions.tsx",
+      "sha": "11184c20207204cec7ce4e65bd41754079c13438",
+      "sha256": "93dd3e2e61eaf01b1d16983a578ee88748b1684104f8ff829e8b3a0cf9fea255",
+      "bytes": 6108
+    },
+    {
+      "path": "src/components/ui/Button.tsx",
+      "sha": "e2428b938e10e384e75b4f0a8fc1c66a102dbaaf",
+      "sha256": "12b01b059ed1ee02b0a0f341b58ca8fbca9fba1766030a6d33c2194c418368ed",
+      "bytes": 2025
+    },
+    {
+      "path": "src/components/ui/Dialog.tsx",
+      "sha": "b4214103ad27de376492dbd922364a359ebe3b7b",
+      "sha256": "a02853c77b2681875a95e23a6f2d89d05118bc989198da5f3506178bc66773a0",
+      "bytes": 4232
+    },
+    {
+      "path": "src/components/ui/Feedback.tsx",
+      "sha": "e5b0d8e362c90aed10339918ae13f801be9d9274",
+      "sha256": "e06414f680ae98ec22317e0698034344914d22681fb9e6d057927990131edc66",
+      "bytes": 1603
+    },
+    {
+      "path": "src/index.css",
+      "sha": "1c8bd59a1f9c8aaeb85b5985fb6a06e66869b417",
+      "sha256": "9412752a7f6aa72a169adfbd08d17977e8b1f8b444e93e0a8f1329408d9165d4",
+      "bytes": 2315
+    },
+    {
+      "path": "src/styles/ui.css",
+      "sha": "370204d9595c0057c51e6b3811bd6e6a91d0becc",
+      "sha256": "daf141feb7a632bf1789b599bdd5c4fe6193f932804b804273077bd88907347c",
+      "bytes": 14873
+    },
+    {
+      "path": "src/components/CustomerCategorySelect.tsx",
+      "sha": "1c8061dc9b08d97050689cbe4804b220734830e3",
+      "sha256": "75acc43bb5aa6a0f696f7146d6f7e9066fe54e0c7bfcb20e54b2c10a264c336e",
+      "bytes": 1151
+    },
+    {
+      "path": "src/components/ReadFailure.tsx",
+      "sha": "0680aba1851da7e69a0b595ae3e5819a3c080430",
+      "sha256": "f76d77a62fc6b9f8bf22bcf3866e2146584571fa3cd7846749d39b36640b8ace",
+      "bytes": 349
+    },
+    {
+      "path": "src/components/PaginationControls.tsx",
+      "sha": "429003d46d0ccaa6071baae067108f4dca0836df",
+      "sha256": "76e02a5e367c472260789f256f6671ad9458a5e44a06c1a355ed22166afafd93",
+      "bytes": 1244
+    },
+    {
+      "path": "src/components/ui/MainContent.tsx",
+      "sha": "491befede787093279bf6a8ee06150fb6090d003",
+      "sha256": "d365d46c7435c26967d89b36f8134c5b1241ac9d5027606986c8fa058035df3c",
+      "bytes": 442
+    },
+    {
+      "path": "src/components/ui/PageHeader.tsx",
+      "sha": "88ce5f54242bdf41f06b7c04c1f31243ed76a9c1",
+      "sha256": "e9782a298224f36bad22a2cc3ef007c594e6385ccf8b5d91093c318d5d9ff44c",
+      "bytes": 675
+    },
+    {
+      "path": "src/components/ui/Field.tsx",
+      "sha": "a45b63f4f87c7967fb3486b24221c05ad24721c2",
+      "sha256": "6c5e28a095a6aedee1f4e84896d4c598bf11cb50c6a1ce2db55b458d77719d0f",
+      "bytes": 1011
+    },
+    {
+      "path": "src/components/ui/FilterBar.tsx",
+      "sha": "65190640359216f80408ac6e4ca0582d009280a4",
+      "sha256": "6b3e184ef1d2842fec41c9d190e95abd7fb2f44d94351097f7c00040b490498c",
+      "bytes": 516
+    },
+    {
+      "path": "src/components/ui/FormActions.tsx",
+      "sha": "9a0fcbebc5aec3f4b590a83f3ba715e6cd97105f",
+      "sha256": "d63b07f174253e64d5ab8b36cee35e35a183f3048db6349a20bdd996ba07d4c2",
+      "bytes": 251
+    },
+    {
+      "path": "src/components/ui/RecordList.tsx",
+      "sha": "a9929ba9195841524c6e0720bc918646286a3999",
+      "sha256": "a22630cfba8a6ccdef2a8788039a0a41a95d0589b6cb7444a3f36210b7208d4a",
+      "bytes": 359
+    },
+    {
+      "path": "src/components/ui/SummaryList.tsx",
+      "sha": "44da1910898260443cdd1b2b1db0363ae96e6546",
+      "sha256": "03866b8ebaaeecbfcd0eb9bfdcfc291dfe868fa8a24bcb6803489eaba3f52db1",
+      "bytes": 477
+    },
+    {
+      "path": "package.json",
+      "sha": "eebda2f358053faeb86c9c30c2f38e0ceff9a028",
+      "sha256": "a00509f8a767578d265c292ccc78ee6d0319da729e673571549bbc9f2860d7f3",
+      "bytes": 1222
+    },
+    {
+      "path": "package-lock.json",
+      "sha": "1d38422028b5432b5b48ecf782d1238fb11c8567",
+      "sha256": "943d730df0724f7e85c7bd4aaff707911bfa92ca4426a264bb91bd4cd972578d",
+      "bytes": 141750
+    },
+    {
+      "path": "public/fonts/plus-jakarta-sans/PlusJakartaSans-Variable.ttf",
+      "sha": "0cb13a998ed525ba226d911b10d6c4c4f923a961",
+      "sha256": "89b3fb38aa0d275d7a731d0d817a4f1622b316b4d7fbdedcf02ee9099ff68bc8",
+      "bytes": 176288
+    },
+    {
+      "path": "public/fonts/plus-jakarta-sans/PlusJakartaSans-Italic-Variable.ttf",
+      "sha": "82b042caaaf271beb9e3cbd95ba4741a3d5b8926",
+      "sha256": "9529eb888668b6a3c6dd75b6341a2fc5263fb6c9e788822e6117c29dd9e8b115",
+      "bytes": 183188
+    },
+    {
+      "path": "src/components/ui/LoadingState.tsx",
+      "sha": "70f6d0db97342f8be1c2cb16ece44aaf8d29bf9e",
+      "sha256": "5d10759f258c69be162a5bafabe940d4893d44db14384c716175255ea56d5d7b",
+      "bytes": 1621
+    }
+  ]
+}

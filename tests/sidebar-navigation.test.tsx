@@ -50,11 +50,18 @@ test.each(['executive', 'po_admin', 'co_admin'].flatMap(role => ['expanded', 'co
   expect(within(nav).getAllByRole('link').map(link => [link.getAttribute('href'), link.getAttribute('aria-label')])).toEqual([
     ...(role === 'executive' ? [['/athel/dashboard', 'Dashboard']] : []),
     ...(role !== 'co_admin' ? [['/athel/po', 'Purchase Order']] : []),
-    ...(role !== 'po_admin' ? [['/athel/co', 'Consignment Order']] : []),
+    
     ['/athel/customers', 'Daftar Pelanggan'],
     ...(role === 'executive' ? [['/athel/promotions', 'Promosi']] : []),
     ['/athel/products', 'Daftar Barang'],
   ])
+  const group=within(nav).queryByRole('button',{name:'Consignment Order'})
+  expect(!!group).toBe(role!=='po_admin')
+  if(group){
+    fireEvent.click(group)
+    const currentNav=screen.getByRole('navigation',{name:'Navigasi Procurement'})
+    for(const [name,path] of [['Pesanan CO','/athel/co'],['Laporan Penjualan Bulanan','/athel/co/reports'],['Stok Pelanggan','/athel/co/stock'],['Stock Return','/athel/co/returns']])expect(within(currentNav).getByRole('link',{name}).getAttribute('href')).toBe(path)
+  }
 })
 
 test.each(['executive', 'po_admin'])('%s navigation no longer fetches or polls the legacy sales badge', async role => {
@@ -92,7 +99,7 @@ test('storage refusal cannot prevent opening or minimizing navigation', () => {
 
 test.each(['sales_person', 'sales_manager', 'sales_head', 'po_admin', 'executive'])('%s keeps the existing module access and renamed labels', role => {
   state.role = role; mount(<IHRNav />, '/ihr/leave')
-  expect(!!screen.queryByRole('link', { name: 'Manajemen Pengguna' })).toBe(role === 'executive')
+  expect(!!screen.queryByRole('link', { name: 'Karyawan' })).toBe(role === 'executive')
   fireEvent.click(screen.getByRole('button', { name: 'HR' }))
   const choices = screen.getByRole('group', { name: 'Pilihan modul' })
   expect(!!within(choices).queryByRole('link', { name: /Procurement/ })).toBe(['po_admin', 'executive'].includes(role))
@@ -224,7 +231,7 @@ test.each(allRoles.flatMap(role => layouts.map(layout => [role, layout])))('%s r
   const leave = within(nav).getByRole('link', { name: personal ? 'Ajukan Cuti' : 'Manajemen Cuti' })
   expect(leave.getAttribute('href')).toBe(personal ? '/ihr/leave?tab=mine' : '/ihr/leave')
   expect(leave.getAttribute('aria-current')).toBe('page')
-  expect(!!within(nav).queryByRole('link', { name: 'Manajemen Pengguna' })).toBe(role === 'executive')
+  expect(!!within(nav).queryByRole('link', { name: 'Karyawan' })).toBe(role === 'executive')
   fireEvent.click(leave)
   expect(screen.getByTestId('location').textContent).toBe(personal ? '/ihr/leave?tab=mine' : '/ihr/leave')
   if (layout === 'mobile') expect(screen.queryByRole('dialog')).toBeNull()

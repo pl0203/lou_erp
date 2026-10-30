@@ -9,26 +9,30 @@ import COStatusActions, { COCancelDialog } from '../../src/components/co/COStatu
 import CODeliveryDialog from '../../src/components/co/CODeliveryDialog';
 import { CO_INPUT, COPagination } from '../../src/components/co/COShared';
 
+const { default: ActualAthelNav } = await vi.importActual<typeof import('../../src/components/AthelNav')>('../../src/components/AthelNav');
+// The shared CO harness suppresses navigation; include its real replacement for layout integration.
+const NavigatedLayout = () => <><ActualAthelNav/><COLayout/></>;
+
 const compact = (node: HTMLElement, variant: string) => {
     expect(node.classList.contains('ui-action--compact')).toBe(true);
     expect(node.classList.contains(`ui-action--${variant}`)).toBe(true);
 };
 
-test('CO pilot keeps balanced filters, eight meanings, and compact horizontal View/Edit in both presentations', async () => {
+test('CO pilot keeps balanced filters, seven columns, and compact detail navigation in both presentations', async () => {
     mount(<COOrders/>, '/athel/co/list');
-    const edits = await screen.findAllByRole('link', { name: 'Ubah' });
-    expect(edits).toHaveLength(2);
-    for (const view of screen.getAllByRole('link', { name: 'Lihat' })) {
+    const views = await screen.findAllByRole('link', { name: 'Lihat CO' });
+    expect(views).toHaveLength(2);
+    expect(screen.queryByRole('link', { name: 'Ubah' })).toBeNull();
+    for (const view of screen.getAllByRole('link', { name: 'Lihat CO' })) {
         compact(view, 'quiet');
         expect(view.getAttribute('href')).toBe(`/athel/co/${ids.co}`);
         expect(view.parentElement?.classList.contains('flex-wrap')).toBe(true);
         expect(view.parentElement?.classList.contains('items-center')).toBe(true);
     }
-    for (const edit of edits) compact(edit, 'secondary');
-    expect(edits[0].closest('td')?.classList.contains('min-w-36')).toBe(true);
-    expect(screen.getByRole('link', { name: '+ CO Baru' }).classList.contains('ui-action--primary')).toBe(true);
-    expect(screen.getAllByRole('columnheader').map(n => n.textContent)).toEqual(['Nomor / tanggal CO', 'Pelanggan', 'Status / pengiriman', 'Nilai rencana', 'Terjual / pendapatan', 'Stok tercatat', 'Laporan pelanggan (semua CO)', 'Aksi']);
-    expect(screen.getByRole('table').classList.contains('min-w-[70rem]')).toBe(true);
+    expect(views[0].closest('td')?.classList.contains('min-w-36')).toBe(true);
+    expect(screen.getByRole('link', { name: 'Buat CO' }).classList.contains('ui-action--primary')).toBe(true);
+    expect(screen.getAllByRole('columnheader').map(n => n.textContent)).toEqual(['Nomor CO', 'Toko', 'Tanggal CO', 'Status', 'Jumlah SKU', 'Nilai CO', 'Aksi']);
+    expect(screen.getByRole('table').classList.contains('min-w-[56rem]')).toBe(true);
     expect(screen.getByRole('region', { name: 'Daftar CO' }).tabIndex).toBe(0);
     for (const [label, basis] of [['Cari CO', 'basis-72'], ['Status CO', 'basis-44'], ['Filter pelanggan', 'basis-60']]) {
         const field = screen.getByLabelText(label).closest('.ui-field')!;
@@ -73,11 +77,22 @@ test('CO fields retain responsive density, saved manual editing and compact cata
 test('CO status commands distinguish one delivery progression from quiet routing and destructive openers', () => {
     const onCancel = vi.fn();
     mount(<COStatusActions co={state.header} id={ids.co} customerId={ids.customer} allowed={['edit_co', 'save_sj_draft', 'cancel_co', 'resolve_undelivered', 'close_co']} blockers={state.header.close_blockers} pending={false} onSJ={vi.fn()} onCancel={onCancel} onResolve={vi.fn()} onClose={vi.fn()}/>);
-    expect(screen.getByRole('button', { name: 'Tambah Surat Jalan' }).classList.contains('ui-action--primary')).toBe(true);
-    for (const name of ['Ubah CO', 'Catat penjualan bulanan', 'Retur barang belum terjual']) compact(screen.getByRole('link', { name }), 'quiet');
+    expect(screen.getByRole('button', { name: 'Buat surat jalan' }).classList.contains('ui-action--primary')).toBe(true);
+    for (const name of ['Edit CO', 'Lihat laporan bulanan', 'Lihat stok toko']) compact(screen.getByRole('link', { name }), 'secondary');
+    const toggle=screen.getByRole('button',{name:'Actions'});
+    expect(screen.queryByRole('button',{name:'Batalkan CO'})).toBeNull();
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.keyDown(toggle,{key:'Escape'});
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(toggle);
+    fireEvent.click(toggle);
+    compact(screen.getByRole('link',{name:'Retur barang belum terjual'}),'secondary');
+    expect(screen.getByRole('button', { name: 'Tutup CO' }).matches(':disabled')).toBe(true);
     const cancel = screen.getByRole('button', { name: 'Batalkan CO' });
     compact(cancel, 'danger-quiet'); fireEvent.click(cancel); expect(onCancel).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole('button', { name: 'Tutup CO' }).matches(':disabled')).toBe(true);
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(toggle);
 });
 
 test('CO cancellation retains deliberate final danger and quiet native dismissal', () => {
@@ -104,12 +119,12 @@ test('CO pagination is compact support and preserves pending and exact page boun
     expect(screen.getByText('Halaman 1 dari 450.359.962.737.050')).toBeTruthy();
 });
 
-test('CO section navigation remains quiet compact native destinations with selected-page semantics', () => {
-    mountRoutes([{ path: '/athel/co', element: <COLayout/>, children: [{ path: 'reports', element: <p>Reports</p> }] }], '/athel/co/reports');
-    const nav = screen.getByRole('navigation', { name: 'Bagian pesanan konsinyasi' });
-    for (const link of within(nav).getAllByRole('link')) compact(link, 'quiet');
-    expect(within(nav).getByRole('link', { name: 'Laporan penjualan bulanan' }).getAttribute('aria-current')).toBe('page');
-    expect(within(nav).getByRole('link', { name: 'Stok pelanggan' }).getAttribute('href')).toBe('/athel/co/stock');
+test('CO sidebar navigation retains native destinations and selected-page semantics', () => {
+    mountRoutes([{ path: '/athel/co', element: <NavigatedLayout/>, children: [{ path: 'reports', element: <p>Reports</p> }] }], '/athel/co/reports');
+    const nav = screen.getByRole('navigation', { name: 'Navigasi Procurement' });
+    for (const link of within(nav).getAllByRole('link')) expect(link.classList.contains('navigation-link')).toBe(true);
+    expect(within(nav).getByRole('link', { name: 'Laporan Penjualan Bulanan' }).getAttribute('aria-current')).toBe('page');
+    expect(within(nav).getByRole('link', { name: 'Stok Pelanggan' }).getAttribute('href')).toBe('/athel/co/stock');
 });
 
 test.each([true, false])('saved SJ emphasizes the existing %s prepared-review stage while direct Post remains available', async prepared => {
@@ -118,7 +133,7 @@ test.each([true, false])('saved SJ emphasizes the existing %s prepared-review st
     mount(<CODeliveryDialog co={state.header} draftId={ids.draft} returnFocus={null} onClose={vi.fn()}/>);
     await screen.findByDisplayValue('SJ-A');
     const save = screen.getByRole('button', { name: 'Simpan Draft SJ' });
-    const post = screen.getByRole('button', { name: 'Post SJ' });
+    const post = screen.getByRole('button', { name: 'Catat pengiriman' });
     const review = screen.getByRole('button', { name: 'Tinjau perubahan SJ' });
     expect(save.classList.contains('ui-action--secondary')).toBe(true);
     expect(post.classList.contains(prepared ? 'ui-action--secondary' : 'ui-action--primary')).toBe(true);
@@ -140,6 +155,6 @@ test('saved SJ keeps Save primary when server authority permits no publication s
     await screen.findByDisplayValue('Save only');
     expect(screen.getByRole('button', { name: 'Simpan Draft SJ' }).classList.contains('ui-action--primary')).toBe(true);
     expect(screen.getByRole('button', { name: 'Tinjau perubahan SJ' }).classList.contains('ui-action--secondary')).toBe(true);
-    expect(screen.getByRole('button', { name: 'Post SJ' }).matches(':disabled')).toBe(true);
+    expect(screen.getByRole('button', { name: 'Catat pengiriman' }).matches(':disabled')).toBe(true);
     expect(state.commands).toHaveLength(0);
 });
