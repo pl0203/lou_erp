@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 export const releaseBranch='release/padiwan-staging-fixes-20261030';
 export const releaseDispatchExpression="github.event_name == 'workflow_dispatch' && github.repository == 'pl0203/lou_erp' && github.ref == 'refs/heads/release/padiwan-staging-fixes-20261030' && inputs.expected_source_sha != '' && inputs.expected_source_sha == github.sha";
 const transitions=[
+  // Outer sequential synthetic job budget only; all child/SQL/lock bounds remain frozen.
+  {before:'    timeout-minutes: 20\n',after:'    timeout-minutes: 30\n',count:1},
   {
     "before": "  workflow_dispatch:\npermissions:",
     "after": "  push:\n    branches:\n      - release/padiwan-staging-fixes-20261030\n  workflow_dispatch:\n    inputs:\n      expected_source_sha:\n        description: Exact reviewed release commit SHA\n        required: true\n        type: string\nenv:\n  npm_config_audit: 'false'\n  PILOT_RELEASE_SOURCE_SHA: ${{ github.event_name == 'push' && github.sha || inputs.expected_source_sha }}\npermissions:",
@@ -40,6 +42,10 @@ const transitions=[
   }
 ];
 export function normalizeReleaseWorkflow(text){
+ const jobs=text.split('\n  catalogue-baseline:');
+ assert.equal(jobs.length,2,'Exact two-job boundary required');
+ assert.equal(jobs[0].split('    timeout-minutes: 30\n').length,2,'Synthetic budget must remain exactly 30 minutes');
+ assert.equal(jobs[1].includes('    timeout-minutes: 30\n'),false,'Catalogue budget must not widen');
  for(const {before,after,count} of [...transitions].reverse()){
   assert.equal(text.split(after).length-1,count,'Missing/extra/changed release CI clause');
   text=text.split(after).join(before);

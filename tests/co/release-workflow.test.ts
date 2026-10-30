@@ -43,9 +43,15 @@ test('audits disabled without changing dependencies, permissions, services or re
  expect(workflow.match(/permissions:\n\s+contents: read/g)).toHaveLength(2);
  expect(workflow).not.toMatch(/secrets\.|pull_request_target|continue-on-error/);
  expect(workflow.match(/image: postgres:17/g)).toHaveLength(2);
- expect(workflow.match(/timeout-minutes: 20/g)).toHaveLength(2);
+ expect(workflow.split('\n  catalogue-baseline:')[0]).toContain('    timeout-minutes: 30\n');
+ expect(workflow.split('\n  catalogue-baseline:')[1]).toContain('    timeout-minutes: 20\n');
+ expect(workflow.match(/timeout-minutes: 30/g)).toHaveLength(1);
+ expect(workflow.match(/timeout-minutes: 20/g)).toHaveLength(1);
  expect(historical).toContain('      - run: npm ci\n');
- for(const [from,to] of [["npm_config_audit: 'false'","npm_config_audit: 'true'"],[releaseBranch,'unapproved-branch'],['inputs.expected_source_sha == github.sha','true'],['node scripts/test-co-ci.mjs','echo skipped'],['contents: read','contents: write']])expect(()=>checkedHistorical(workflow.replace(from,to))).toThrow();
+ expect(()=>checkedHistorical(workflow.replace('    timeout-minutes: 30\n',''))).toThrow();
+ const misplaced=workflow.replace('timeout-minutes: 30','timeout-minutes: TEMP').replace('timeout-minutes: 20','timeout-minutes: 30').replace('timeout-minutes: TEMP','timeout-minutes: 20');
+ expect(()=>checkedHistorical(misplaced)).toThrow();
+ for(const [from,to] of [["npm_config_audit: 'false'","npm_config_audit: 'true'"],[releaseBranch,'unapproved-branch'],['inputs.expected_source_sha == github.sha','true'],['node scripts/test-co-ci.mjs','echo skipped'],['contents: read','contents: write'],['timeout-minutes: 30','timeout-minutes: 60'],['timeout-minutes: 20','timeout-minutes: 30']])expect(()=>checkedHistorical(workflow.replace(from,to))).toThrow();
 });
 
 test('native browser accepts only exact release push with bound event and candidate SHA',()=>{

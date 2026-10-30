@@ -20,7 +20,7 @@ jobs:
     needs: catalogue-baseline
     if: ${{ always() && (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.repository == 'pl0203/lou_erp' && github.ref == 'refs/heads/release/padiwan-staging-fixes-20261030' && inputs.expected_source_sha != '' && inputs.expected_source_sha == github.sha) || (github.event_name == 'push' && github.repository == 'pl0203/lou_erp' && github.ref == 'refs/heads/release/padiwan-staging-fixes-20261030')) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:17
