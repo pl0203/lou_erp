@@ -5,6 +5,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join, posix } from 'node:path'
 import { expect, test } from 'vitest'
+import { normalizeReleaseWorkflow } from './catalogue-ci/release-workflow-contract.mjs'
 
 const workflow = readFileSync('.github/workflows/pilot-safety.yml', 'utf8')
 const immutableRef = '${{ github.event.pull_request.head.sha || github.sha }}'
@@ -241,6 +242,8 @@ test.each(['missing', 'partial', 'suffixed', 'failed-before', 'failed-after'])('
 })
 
 test('the composition preserves every category-staging workflow byte outside the explicit HR and demo envelopes', () => {
+  // Reverse only the reviewed finite release-CI additions; retain both original hashes.
+  const workflow = normalizeReleaseWorkflow(readFileSync('.github/workflows/pilot-safety.yml', 'utf8'))
   // Reviewed category staging: d1593520a4afde7e66b590d814062eba92bee03f.
   // CO is appended after the complete reviewed historical workflow. Pin that
   // prefix before applying the existing HR/demo projection; neither old hash changes.
@@ -423,3 +426,4 @@ test.each([
 ])('unsupported or dynamic include syntax is rejected before SQL: %s', directive => {
   expect(() => checkSyntheticClosure(`${directive}\n`, '-- declared child\n', false)).toThrow(/include/)
 })
+
