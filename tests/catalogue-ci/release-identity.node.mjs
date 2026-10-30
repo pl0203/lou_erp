@@ -35,3 +35,30 @@ test('exact release push has its own truthful event identity, never dispatch or 
 for(const [key,value] of [['GITHUB_REF','refs/heads/main'],['GITHUB_REF','refs/tags/release/padiwan-staging-fixes-20261030'],['GITHUB_REPOSITORY','fork/repo'],['GITHUB_SHA','f'.repeat(40)],['PILOT_RELEASE_SOURCE_SHA','f'.repeat(40)],['CATALOGUE_CI_HEAD_REF','feat/catalogue-mutations-20261014']])test(`release push refuses ${key}=${value}`,()=>{
  const push={...env,GITHUB_EVENT_NAME:'push',[key]:value};assert.throws(()=>catalogueCiConnection(push,source));assert.throws(()=>catalogueReadCiContext(consumer(push),source));
 });
+
+// Regression for the post-capture consumer: capture accepted push, but its
+// downstream failfast/reference binding used to require a PR unconditionally.
+import { connectionFor } from '../database/catalogue-failfast/core.mjs';
+const failfastBinding=e=>({format:'synthetic-failfast-binding-v1',approval:'REVIEWED_FOR_THIS_RUN',scope:'generic-synthetic-only',
+ identity:catalogueCiIdentity(e,source,server,run),files:{'core.mjs':'a'.repeat(64)}});
+for(const event of ['push','workflow_dispatch']) {
+ const e={...env,GITHUB_EVENT_NAME:event};
+ test(`post-capture failfast accepts exact ${event} identity with unchanged isolated connection`,()=>{
+  const b=failfastBinding(e),connection=connectionFor(e,b);
+  assert.equal(connection.PGHOST,'127.0.0.1');assert.equal(connection.PGDATABASE,'pilot_catalogue_test');
+  assert.equal(connection.PGPASSFILE,'/dev/null/failfast-no-password');assert.equal(connection.PGSYSCONFDIR,'/dev/null');
+  assert.equal(b.identity.ci.event,event);assert.equal(Object.hasOwn(b.identity.ci,'headRef'),false);
+ });
+ test(`post-capture ${event} refuses context/source/run drift and ambient hosted settings`,()=>{
+  const b=failfastBinding(e);
+  for(const [key,value] of [['GITHUB_EVENT_NAME','schedule'],['GITHUB_REF','refs/heads/main'],['GITHUB_REPOSITORY','fork/repo'],['GITHUB_JOB','synthetic-safety'],['GITHUB_SHA','d'.repeat(40)],['PILOT_RELEASE_SOURCE_SHA','d'.repeat(40)],['PILOT_RELEASE_SOURCE_SHA',undefined],['CATALOGUE_CI_HEAD_REF','feat/catalogue-mutations-20261014'],['CATALOGUE_CI_SOURCE_SHA','e'.repeat(40)],['CATALOGUE_CI_CANDIDATE_SHA256','f'.repeat(64)],['GITHUB_RUN_ID','124'],['GITHUB_RUN_ATTEMPT','2'],['GITHUB_WORKFLOW_REF','other'],['PGHOST','hosted.example.invalid'],['PGDATABASE','other'],['DATABASE_URL','unsafe'],['NODE_OPTIONS','unsafe'],['PGHOSTADDR','127.0.0.1']]) assert.throws(()=>connectionFor({...e,[key]:value},b),key);
+  for(const change of [c=>c.event='pull_request',c=>c.releaseRef='refs/heads/main',c=>c.expectedSourceSha='e'.repeat(40),c=>c.extra='unbound']) {
+   const changed=structuredClone(b);change(changed.identity.ci);assert.throws(()=>connectionFor(e,changed));
+  }
+ });
+}
+test('post-capture legacy PR still validates exact original context',()=>{
+ const e={...env,GITHUB_EVENT_NAME:'pull_request',GITHUB_REF:'refs/pull/2/merge',GITHUB_SHA:'d'.repeat(40),GITHUB_WORKFLOW_REF:'pl0203/lou_erp/.github/workflows/pilot-safety.yml@refs/pull/2/merge',CATALOGUE_CI_HEAD_REPOSITORY:'pl0203/lou_erp',CATALOGUE_CI_BASE_REPOSITORY:'pl0203/lou_erp',CATALOGUE_CI_HEAD_REF:'feat/catalogue-mutations-20261014',CATALOGUE_CI_BASE_REF:'fix/pilot-database'};
+ const b=failfastBinding(e);assert.equal(connectionFor(e,b).PGDATABASE,'pilot_catalogue_test');
+ for(const key of ['CATALOGUE_CI_HEAD_REPOSITORY','CATALOGUE_CI_BASE_REPOSITORY','CATALOGUE_CI_HEAD_REF','CATALOGUE_CI_BASE_REF'])assert.throws(()=>connectionFor({...e,[key]:'wrong'},b));
+});

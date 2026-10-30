@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { isIP } from 'node:net';
+import { catalogueCiEventIdentity } from '../../../scripts/catalogue-ci-profile.mjs';
 export const literal = x => `'${String(x).replaceAll("'", "''")}'`;
 const privateAddress = s => { if (isIP(s ?? '') !== 4) return false; const [a,b] = s.split('.').map(Number); return a===127 || a===10 || (a===172 && b>=16 && b<=31) || (a===192 && b===168); };
 export function validateBinding(b) {
@@ -17,11 +18,11 @@ export function validateBinding(b) {
 }
 export function connectionFor(e,b) {
  validateBinding(b); const i=b.identity,c=i.ci;
- const fixed={CI:'true',GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:'pl0203/lou_erp',GITHUB_WORKFLOW:'Pilot safety checks',GITHUB_JOB:'catalogue-baseline',GITHUB_EVENT_NAME:'pull_request',CATALOGUE_CI_PROFILE:i.profile,CATALOGUE_CI_HEAD_REPOSITORY:'pl0203/lou_erp',CATALOGUE_CI_BASE_REPOSITORY:'pl0203/lou_erp',CATALOGUE_CI_HEAD_REF:'feat/catalogue-mutations-20261014',CATALOGUE_CI_BASE_REF:'fix/pilot-database',CATALOGUE_CI_SOURCE_SHA:i.source.commit,CATALOGUE_CI_CANDIDATE_SHA256:i.source.candidate,PGHOST:'127.0.0.1',PGPORT:'5432',PGUSER:'postgres',PGDATABASE:'pilot_test',PGPASSWORD:'synthetic-ci-only',GITHUB_REF:c.ref,GITHUB_SHA:c.eventSha,GITHUB_WORKFLOW_REF:c.workflowRef,GITHUB_RUN_ID:c.runId,GITHUB_RUN_ATTEMPT:c.runAttempt};
+ const fixed={CI:'true',GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:'pl0203/lou_erp',GITHUB_WORKFLOW:'Pilot safety checks',GITHUB_JOB:'catalogue-baseline',CATALOGUE_CI_PROFILE:i.profile,CATALOGUE_CI_SOURCE_SHA:i.source.commit,CATALOGUE_CI_CANDIDATE_SHA256:i.source.candidate,PGHOST:'127.0.0.1',PGPORT:'5432',PGUSER:'postgres',PGDATABASE:'pilot_test',PGPASSWORD:'synthetic-ci-only',GITHUB_REF:c.ref,GITHUB_SHA:c.eventSha,GITHUB_WORKFLOW_REF:c.workflowRef,GITHUB_RUN_ID:c.runId,GITHUB_RUN_ATTEMPT:c.runAttempt};
  for(const [k,v] of Object.entries(fixed))assert.equal(e[k],v,`Exact reviewed context required: ${k}`);
- assert.match(c.ref??'',/^refs\/pull\/[1-9][0-9]*\/merge$/); assert.match(c.eventSha??'',/^[a-f0-9]{40}$/);
- for(const k of ['runId','runAttempt'])assert.match(c[k]??'',/^[1-9][0-9]*$/);
- assert.deepEqual({repository:c.repository,workflow:c.workflow,workflowRef:c.workflowRef,job:c.job,event:c.event,headRef:c.headRef,baseRef:c.baseRef},{repository:'pl0203/lou_erp',workflow:'Pilot safety checks',workflowRef:`pl0203/lou_erp/.github/workflows/pilot-safety.yml@${c.ref}`,job:'catalogue-baseline',event:'pull_request',headRef:'feat/catalogue-mutations-20261014',baseRef:'fix/pilot-database'});
+ // The captured identity and current environment must describe the same exact
+ // authorized event; release pushes/dispatches must never masquerade as PRs.
+ assert.deepEqual(c,catalogueCiEventIdentity(e,i.source));
  const accepted=['PGHOST','PGPORT','PGUSER','PGDATABASE','PGPASSWORD','PGCONNECT_TIMEOUT','PGTZ'];
  for(const k of Object.keys(e))assert.ok(!k.startsWith('PG')||accepted.includes(k),`Ambient libpq option refused: ${k}`);
  for(const k of ['DATABASE_URL','SUPABASE_DB_URL','SUPABASE_DB_PASSWORD','LD_PRELOAD','LD_LIBRARY_PATH','NODE_OPTIONS','NODE_PATH','DYLD_LIBRARY_PATH','DYLD_INSERT_LIBRARIES'])assert.equal(e[k],undefined,`Ambient runtime option refused: ${k}`);
@@ -63,3 +64,4 @@ export function verifyGateRefusal(error) {
  assert.match(String(error.stderr??''),/ERROR:\s+22012:\s+division by zero/,'Exact intended SQLSTATE required');
  assert.ok(!String(error.stdout??'').includes('UNSAFE_GATE_CONTINUED'),'Gate sentinel unexpectedly executed');
 }
+
