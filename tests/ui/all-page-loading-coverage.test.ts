@@ -259,7 +259,7 @@ test('reviewed CO surface contract rejects missing, extra and weakened current g
  const weak=structuredClone(expected);weak[0].guards=[];expect(()=>check(weak)).toThrow()
 })
 
-// Current byte bindings are reconciled only for five reviewed historical changes.
+// Current byte bindings retain five historical changes plus a separate two-file status transition.
 // Historical manifest bytes come from e95; filename60bb38a labels its stale metadata, not its containing commit.
 // public_source_head identifies their base provenance, not a future release commit.
 type BrowserManifest={version:number;repository:string;public_source_head:string;files:{path:string;sha:string;sha256:string;bytes:number}[]}
@@ -292,16 +292,36 @@ const manifestFive:Record<string,{sha:string;sha256:string;bytes:number}>={
     "bytes": 234771
   }
 }
+// Reviewed status-success transition (public runtime commit a1308c2): automatically
+// verify canonical status and acknowledge a validated receipt; never derive rows
+// from receipts or resend commands. Failed reads, stale actors/versions and failed
+// lock release retain recovery. page-integration.test.ts covers these boundaries.
+// Preserve the frozen historical manifest and its five earlier transitions.
+const manifestStatus:Record<string,{sha:string;sha256:string;bytes:number}>={
+  'src/lib/catalogue/useCataloguePage.ts': {
+    sha:'cd265c5d865a80ad89b4caff4daca6126e8cc11a',
+    sha256:'fddcf3a00c6959ab543aad4de740fe8366f478465b56175484ef91c27e432f1a',
+    bytes:13125
+  },
+  'src/components/catalogue/CatalogueStatusActions.tsx': {
+    sha:'9f7950e32095372440b959ebe5019caf3ca3f8ef',
+    sha256:'49cf8aca5cf109624b1fcc21020365cd4e601bcbcfead87b02f08ba3d69707ea',
+    bytes:6146
+  }
+}
 function assertReviewedManifest(candidate:BrowserManifest){
  expect(historicalManifest.files).toHaveLength(36)
  expect(new Set(historicalManifest.files.map(f=>f.path)).size).toBe(36)
  expect(Object.keys(manifestFive).sort()).toEqual(['src/components/ui/Dialog.tsx','src/index.css','src/styles/ui.css','package.json','package-lock.json'].sort())
- const expected={...historicalManifest,public_source_head:'e95bdaff33b9fcb8cd18114f364e23198c290ba3',files:historicalManifest.files.map(file=>({...file,...manifestFive[file.path]}))}
+ expect(Object.keys(manifestStatus).sort()).toEqual(['src/lib/catalogue/useCataloguePage.ts','src/components/catalogue/CatalogueStatusActions.tsx'].sort())
+ expect(Object.keys(manifestStatus).some(path=>Object.hasOwn(manifestFive,path))).toBe(false)
+ const reviewed={...manifestFive,...manifestStatus}
+ const expected={...historicalManifest,public_source_head:'e95bdaff33b9fcb8cd18114f364e23198c290ba3',files:historicalManifest.files.map(file=>({...file,...reviewed[file.path]}))}
  expect(candidate).toEqual(expected)
- expect(candidate.files.filter(f=>!manifestFive[f.path])).toEqual(historicalManifest.files.filter(f=>!manifestFive[f.path]))
- expect(candidate.files.filter(f=>!manifestFive[f.path])).toHaveLength(31)
+ expect(candidate.files.filter(f=>!reviewed[f.path])).toEqual(historicalManifest.files.filter(f=>!reviewed[f.path]))
+ expect(candidate.files.filter(f=>!reviewed[f.path])).toHaveLength(29)
 }
-test('browser manifest keeps immutable36entry provenance and exactly five reviewed updates',()=>{
+test('browser manifest keeps immutable36entry provenance and five historical plus two status updates',()=>{
  expect(createHash('sha256').update(historicalManifestBytes).digest('hex')).toBe('5cb3165b593300b6f7cad6c4fd0b3d98219d46e9d03fff5f3232432df5a68007')
  assertReviewedManifest(JSON.parse(readFileSync('tests/catalogue-browser/source-manifest.json','utf8')))
 })
@@ -311,6 +331,19 @@ test('browser manifest rejects missing, duplicate, malicious and extra input pat
  const duplicate=structuredClone(valid);duplicate.files[1]=duplicate.files[0];expect(()=>assertReviewedManifest(duplicate)).toThrow()
  const malicious=structuredClone(valid);malicious.files[0].path='src/../../.env';expect(()=>assertReviewedManifest(malicious)).toThrow()
  const extra=structuredClone(valid);extra.files.push({...extra.files[0],path:'src/unreviewed.tsx'});expect(()=>assertReviewedManifest(extra)).toThrow()
+})
+test('browser status transition rejects stale, partial, or altered bindings',()=>{
+ const valid=JSON.parse(readFileSync('tests/catalogue-browser/source-manifest.json','utf8'))
+ for(const path of Object.keys(manifestStatus)){
+  const stale=structuredClone(valid)
+  stale.files[stale.files.findIndex((f:{path:string})=>f.path===path)]=historicalManifest.files.find(f=>f.path===path)
+  expect(()=>assertReviewedManifest(stale)).toThrow()
+  for(const key of ['sha','sha256','bytes']){
+   const altered=structuredClone(valid),entry=altered.files.find((f:{path:string})=>f.path===path)
+   entry[key]=key==='bytes'?entry.bytes+1:'0'.repeat(key==='sha'?40:64)
+   expect(()=>assertReviewedManifest(altered)).toThrow()
+  }
+ }
 })
 test('browser manifest rejects changed reviewed or unchanged entry hashes and false release provenance',()=>{
  const valid=JSON.parse(readFileSync('tests/catalogue-browser/source-manifest.json','utf8'))

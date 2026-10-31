@@ -1,8 +1,8 @@
-# Catalogue browser input reconciliation — exactly five entries
+# Catalogue browser input reconciliation — five historical and two status entries
 
-The stale36-entry manifest recovered from the exact e95bdaff source checkout is preserved byte-for-byte in `tests/ui/fixtures/catalogue-browser-manifest-60bb38a.json`, SHA256 `5cb3165b593300b6f7cad6c4fd0b3d98219d46e9d03fff5f3232432df5a68007`. Its historical `public_source_head` metadata says60bb38a; the fixture filename labels that metadata, **not** the commit containing these manifest bytes. It is not a copy of the manifest as stored at commit60bb38a. The current manifest keeps the same36paths. Exactly five existing input blob/SHA256/byte-size triples change; the other31entries remain identical. No paths are added, removed or excluded.
+The stale36-entry manifest recovered from the exact e95bdaff source checkout is preserved byte-for-byte in `tests/ui/fixtures/catalogue-browser-manifest-60bb38a.json`, SHA256 `5cb3165b593300b6f7cad6c4fd0b3d98219d46e9d03fff5f3232432df5a68007`. Its historical `public_source_head` metadata says60bb38a; the fixture filename labels that metadata, **not** the commit containing these manifest bytes. It is not a copy of the manifest as stored at commit60bb38a. The earlier reconciliation kept the same36paths and changed exactly five input blob/SHA256/byte-size triples, leaving31entries identical. The separately reviewed status transition below adds two exact updates; the current manifest still has36paths, with29entries identical to the historical fixture. No paths are added, removed or excluded.
 
-## Reviewed behavior, not blanket current-code acceptance
+## Five historical changes: reviewed behavior, not blanket current-code acceptance
 
 - `src/components/ui/Dialog.tsx`: owner-linked return-focus traversal; restore targets must be connected, enabled and visible, including ancestor inert/hidden states. Pending dismissal and topmost modal ownership remain. Approved workspace§8 requires keyboard/focus restoration; nine existing dialog tests exercise pending, Escape, disconnected fallback, nested owner removal and containment. Native browser behavior is not newly claimed verified.
 - `src/index.css`: three narrowly scoped login rules retain visible pending text in the mounted public sign-in form. Explicit Oct26 auth redesign request/verification and auth-transition tests establish this intent. They do not expose private content during authentication.
@@ -20,4 +20,14 @@ This metadata change is tested locally; the required exact checkout/CI/native-br
 
 ## Negative guards
 
-The loading coverage test validates the finite manifest before reading any listed file, requires immutable historical bytes, exact36unique paths and named five updates, and verifies all current content hashes/sizes. Mutation tests reject missing/duplicate/extra paths, a traversal path, changed reviewed/unchanged hashes and incorrect source provenance. Consequently future arbitrary current-file drift cannot automatically repin itself into acceptance.
+The loading coverage test validates the finite manifest before reading any listed file, requires immutable historical bytes, exact36unique paths, five named historical updates and two named status updates, and verifies all current content hashes/sizes. Mutation tests reject missing/duplicate/extra paths, a traversal path, changed reviewed/unchanged hashes and incorrect source provenance. Consequently future arbitrary current-file drift cannot automatically repin itself into acceptance.
+
+
+## Separate automatic status-confirmation transition
+
+Public runtime commit `a1308c2b5cc16edbb5920c32d3e8b93bb22c8781` contains the reviewed status fix. Only these two additional existing inputs are rebound; no runtime changes are included in this manifest correction:
+
+- `src/lib/catalogue/useCataloguePage.ts`: validated successful `set_enabled` receipts automatically use the existing canonical read/version checks and acknowledgment path. No optimistic receipt-to-row write or command resend. Failed/denied reads, stale actor/version results, uncertain replies and acknowledgment lock-release failure retain recovery.
+- `src/components/catalogue/CatalogueStatusActions.tsx`: close the confirmation dialog after current-owner successful completion, including when automatic acknowledgment has cleared durable recovery. Existing pending, authority and current-owner guards remain.
+
+The status transition is a separate finite overlay; the five earlier bindings and frozen historical fixture remain unchanged. Page integration tests cover both catalogues, one-command dispatch, denied canonical refresh, stale/newer versions, actor changes and failed lock release. Manifest mutation tests reject either old status entry, altered Git blob/SHA256/byte size, missing or extra paths, and provenance drift. The browser runner still binds the manifest and every allowlisted input to the actual checked-out commit; no runner changes or skipped checks are needed.
