@@ -1,4 +1,4 @@
-// @vitest-environment node
+// @vitest-environment jsdom
 import {readFileSync} from 'node:fs';
 import {expect,test} from 'vitest';
 const read=(name:string)=>readFileSync(`tests/catalogue-browser/${name}`,'utf8');
@@ -14,4 +14,18 @@ test('finite source guard rejects missing product no-dispatch, geometry or keybo
  const required=["assert.equal((await ledger(a)).attempts.length,5)","assert.equal((await ledger(a)).attempts.length,6)","assert.equal(productFinal.attempts.length,7)","assert.equal(productFinal.products.length,2)","assert.equal(labels.second,'Fictional Long Product Name To Verify Wrapping | 60x120 | Rumput Sintetis')","assert.ok(Number(labels.weight)>=700&&labels.secondSize<labels.firstSize&&labels.twoLines)","await key(a,'ArrowDown','ArrowDown',40);await key(a,'Enter','Enter',13)","[[1280,900],[390,844],[390,480]]","assert.equal(g.overflow,false)"];
  const verify=(source:string)=>{for(const clause of required)expect(source.split(clause)).toHaveLength(2)};
  const source=read('run.mjs');verify(source);for(const clause of required){expect(()=>verify(source.replace(clause,''))).toThrow();expect(()=>verify(source+clause)).toThrow()}
+});
+
+test('native lookup geometry targets label leaves, not shared Button wrappers',async()=>{
+ const {createElement}=await import('react');
+ const {renderToStaticMarkup}=await import('react-dom/server');
+ const {Button}=await import('../../src/components/ui/Button');
+ const source=read('run.mjs');
+ const selector=source.match(/s=o\.querySelectorAll\('([^']+)'\)/)![1];
+ const fixture=document.createElement('div');
+ fixture.innerHTML=renderToStaticMarkup(createElement(Button,{role:'option'},createElement('span',null,'SKU'),createElement('span',null,'Name | Size | Tipe')));
+ const option=fixture.querySelector('[role="option"]')!;
+ const verify=(value:string)=>expect([...option.querySelectorAll(value)].map(node=>node.textContent)).toEqual(['SKU','Name | Size | Tipe']);
+ verify(selector);
+ for(const unsafe of ['span',':scope > span',':scope > .ui-button__content'])expect(()=>verify(unsafe)).toThrow();
 });

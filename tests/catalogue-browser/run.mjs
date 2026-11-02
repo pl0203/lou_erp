@@ -371,7 +371,7 @@ try {
     await click(a,`document.querySelector('section[aria-label="Synthetic shared product lookup"] input')`)
     await cdp('Input.insertText',{text:'LONG-SKU'},a)
     await waitFor(()=>evaluate(a,`!!document.querySelector('[role="option"]')`),'product lookup option')
-    const labels=await evaluate(a,`(()=>{const o=document.querySelector('[role="option"]'),s=o.querySelectorAll('span'),x=s[0].getBoundingClientRect(),y=s[1].getBoundingClientRect();return {first:s[0].textContent,second:s[1].textContent,weight:getComputedStyle(s[0]).fontWeight,firstSize:parseFloat(getComputedStyle(s[0]).fontSize),secondSize:parseFloat(getComputedStyle(s[1]).fontSize),twoLines:y.top>=x.bottom,overflow:document.documentElement.scrollWidth>innerWidth}})()`)
+    const labels=await evaluate(a,`(()=>{const o=document.querySelector('[role="option"]'),s=o.querySelectorAll(':scope > .ui-button__content > span'),x=s[0].getBoundingClientRect(),y=s[1].getBoundingClientRect();return {first:s[0].textContent,second:s[1].textContent,weight:getComputedStyle(s[0]).fontWeight,firstSize:parseFloat(getComputedStyle(s[0]).fontSize),secondSize:parseFloat(getComputedStyle(s[1]).fontSize),twoLines:y.top>=x.bottom,overflow:document.documentElement.scrollWidth>innerWidth}})()`)
     assert.equal(labels.first,'LONG-SKU-123456789012345678901234567890');assert.equal(labels.second,'Fictional Long Product Name To Verify Wrapping | 60x120 | Rumput Sintetis');assert.ok(Number(labels.weight)>=700&&labels.secondSize<labels.firstSize&&labels.twoLines);assert.equal(labels.overflow,false)
     await shot(a,`12-product-lookup-${width}`)
     await key(a,'ArrowDown','ArrowDown',40);await key(a,'Enter','Enter',13)
