@@ -3,7 +3,11 @@ import {readFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {expect,test} from 'vitest';
 import {normalizeReleaseWorkflow,releaseBranch,releaseDispatchExpression,historicalWorkflowHash} from '../catalogue-ci/release-workflow-contract.mjs';
-const checkedHistorical=(text:string)=>{const historical=normalizeReleaseWorkflow(text);expect(createHash('sha256').update(historical).digest('hex')).toBe(historicalWorkflowHash);return historical};
+const tipeHarnessBefore='        run: node --test tests/catalogue-ci/customer-target-runtime.node.mjs tests/catalogue-ci/customer-target-tracking.node.mjs tests/catalogue-ci/customer-target-artifact.node.mjs';
+const tipeHarnessAfter=tipeHarnessBefore+' tests/catalogue-ci/product-type-runtime.node.mjs tests/catalogue-ci/product-type-races.node.mjs';
+// Remove only the exact reviewed additive Tipe harness pair before checking the
+// unchanged historical workflow hash; missing, extra and altered checks fail.
+const checkedHistorical=(text:string)=>{expect(text.split(tipeHarnessAfter+'\n')).toHaveLength(2);const historical=normalizeReleaseWorkflow(text.replace(tipeHarnessAfter+'\n',tipeHarnessBefore+'\n'));expect(createHash('sha256').update(historical).digest('hex')).toBe(historicalWorkflowHash);return historical};
 const workflow=readFileSync('.github/workflows/pilot-safety.yml','utf8');
 const sha='a'.repeat(40), repo='pl0203/lou_erp';
 const dispatch=()=>({github:{event_name:'workflow_dispatch',repository:repo,ref:`refs/heads/${releaseBranch}`,sha,event:{pull_request:undefined}},inputs:{expected_source_sha:sha}});
@@ -63,3 +67,14 @@ test('native browser accepts only exact release push with bound event and candid
  for(const [key,value] of [['GITHUB_REF','refs/heads/main'],['GITHUB_REF',`refs/tags/${releaseBranch}`],['GITHUB_SHA','malformed'],['PILOT_RELEASE_SOURCE_SHA','b'.repeat(40)],['CATALOGUE_BROWSER_SOURCE_SHA','b'.repeat(40)],['GITHUB_EVENT_NAME','schedule']])expect(()=>check({env:{...env,[key]:value}},assertion)).toThrow();
  for(const event of ['pull_request','workflow_dispatch'])check({env:{...env,GITHUB_EVENT_NAME:event}},assertion);
 });
+
+ test('Tipe harness overlay rejects missing, extra and altered checks without repinning history',()=>{
+  checkedHistorical(workflow);
+  for(const changed of [
+   workflow.replace(tipeHarnessAfter,tipeHarnessBefore),
+   workflow.replace(' tests/catalogue-ci/product-type-races.node.mjs',''),
+   workflow.replace('product-type-runtime.node.mjs','unreviewed.node.mjs'),
+   workflow.replace(tipeHarnessAfter,tipeHarnessAfter+' tests/unreviewed.node.mjs'),
+   workflow.replace(tipeHarnessAfter+'\n',tipeHarnessAfter+'\n'+tipeHarnessAfter+'\n'),
+  ])expect(()=>checkedHistorical(changed)).toThrow();
+ });
