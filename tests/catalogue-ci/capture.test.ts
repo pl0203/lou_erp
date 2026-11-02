@@ -230,6 +230,20 @@ test('capture strips original error, stdout, stderr and SQL values from thrown f
 test('public input list is exact and does not enumerate or read unrelated protected source',()=>{
  expect(new Set(runner.cataloguePublicSourcePaths).size).toBe(runner.cataloguePublicSourcePaths.length)
  expect(runner.cataloguePublicSourcePaths).toEqual([
+ 'tests/database/catalogue/product-type-before.sql',
+ 'supabase/catalogue/v2/product-type-storage.sql',
+ 'supabase/catalogue/v2/product-type-audit.sql',
+ 'supabase/catalogue/v2/product-type-grants.sql',
+ 'supabase/catalogue/v2/product-type-reads.sql',
+ 'supabase/catalogue/v2/product-type-writes.sql',
+ 'supabase/catalogue/v2/product-type-legacy-guard.sql',
+ 'supabase/catalogue/v2/product-type-graph.sql',
+ 'tests/database/catalogue/product-type-api.sql',
+ 'scripts/catalogue-product-type-runtime.mjs',
+ 'tests/database/catalogue/product-type-races.mjs',
+ 'tests/catalogue-ci/product-type-runtime.node.mjs',
+ 'tests/catalogue-ci/product-type-races.node.mjs',
+
  '.github/workflows/pilot-safety.yml','vercel.json','tests/vercel-routing.test.ts',
  'scripts/catalogue-checkout.mjs','scripts/catalogue-ci-profile.mjs','scripts/catalogue-capture-source.mjs',
  'scripts/catalogue-capture-baseline.mjs','scripts/catalogue-ci-metadata.sql','supabase/catalogue/ci/composition.json',

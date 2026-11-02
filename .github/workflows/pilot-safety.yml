@@ -489,7 +489,7 @@ jobs:
       - name: Check reference helper harness and frozen source without a database
         run: node --test tests/catalogue-ci/reference-helpers.node.mjs tests/catalogue-ci/promotion-owner-extraction.node.mjs tests/catalogue/retired-co-line-resolution.source.mjs tests/catalogue-ci/po-reference-extraction.node.mjs tests/catalogue-ci/visit-reference-extraction.node.mjs tests/catalogue-ci/co-reference-extraction.node.mjs tests/catalogue-ci/nonco-lineage-resolution.node.mjs tests/catalogue-ci/co-draft-reference-extraction.node.mjs tests/catalogue-ci/release-identity.node.mjs
       - name: Check customer target harness and artifact wrapper without a database
-        run: node --test tests/catalogue-ci/customer-target-runtime.node.mjs tests/catalogue-ci/customer-target-tracking.node.mjs tests/catalogue-ci/customer-target-artifact.node.mjs
+        run: node --test tests/catalogue-ci/customer-target-runtime.node.mjs tests/catalogue-ci/customer-target-tracking.node.mjs tests/catalogue-ci/customer-target-artifact.node.mjs tests/catalogue-ci/product-type-runtime.node.mjs tests/catalogue-ci/product-type-races.node.mjs
       - name: Bind clean candidate bytes before capture
         run: |
           set -euo pipefail

@@ -13,6 +13,8 @@ import {executeLifetimeAdmissionRaces} from '../tests/database/catalogue/lifetim
 import {executeCatalogueCreateEditRaces} from '../tests/database/catalogue/create-edit-races.mjs';
 import {executeCatalogueCompletionRaces} from '../tests/database/catalogue/completion-races.mjs';
 import {executeNativeProductDeleteRaces} from '../tests/database/catalogue/native-product-delete-races.mjs';
+import {productTypeRuntimePaths,executeProductTypeAcceptance} from './catalogue-product-type-runtime.mjs';
+import {executeProductTypeRaces} from '../tests/database/catalogue/product-type-races.mjs';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const sha=x=>createHash('sha256').update(x).digest('hex');
 const quote=x=>`'${x.replaceAll("'","''")}'`;
@@ -253,7 +255,7 @@ const statusSnapshotConflictSql=`DO $status_snapshot$ DECLARE state text;constra
  OR (state='40001' AND message IS DISTINCT FROM 'could not serialize access due to concurrent update') THEN
  RAISE EXCEPTION 'Wrong stale snapshot conflict' USING ERRCODE='PCT06'; END IF; RAISE; END; END $status_snapshot$;`;
 
-export async function executeTargetRaces({identity,connection,checkSource,Session=PsqlSession}){
+export async function executeTargetRaces({identity,connection,checkSource,productTypeParts,Session=PsqlSession}){
  const sessions=[];const expected=async(s,sql,state)=>{
   const r=await s.query(sql);assert.equal(typeof r.sqlstate,'string');assert.match(r.sqlstate,/^[0-9A-Z]{5}$/);
   if(r.sqlstate!==state){const error=new Error('CATALOGUE_TARGET_SQLSTATE_REFUSED');error[targetQueryState]=r.sqlstate;throw error;}return r;
@@ -333,7 +335,8 @@ export async function executeTargetRaces({identity,connection,checkSource,Sessio
   const createEdit=await executeCatalogueCreateEditRaces({a,b:replay,observer,query:ok,expectState:expected,verify});
   const checkedCompletion=await executeCatalogueCompletionRaces({a,b:replay,observer,query:ok,expectState:expected,verify});
   const nativeProductDelete=await executeNativeProductDeleteRaces({a,b:replay,observer,query:ok,expectState:expected,verify});
-  return {status:'BOUNDED_TARGET_RACES_PASSED',backendPids:pids,cases:['reversed_raw_target_statements','evidence_relation_contention'],statusRecovery,lifetimeAdmission,createEdit,checkedCompletion,nativeProductDelete};
+  const productType=await executeProductTypeAcceptance({parts:productTypeParts,a,b:replay,observer,query:ok,expectState:expected,verify,runRaces:executeProductTypeRaces});
+  return {status:'BOUNDED_TARGET_RACES_PASSED',backendPids:pids,cases:['reversed_raw_target_statements','evidence_relation_contention'],statusRecovery,lifetimeAdmission,createEdit,checkedCompletion,nativeProductDelete,productType};
  }finally{await Promise.allSettled(sessions.map(s=>s.close()));}
 }
 export function buildTargetRaceSetup(identity,parts){
@@ -357,7 +360,7 @@ export async function runCatalogueCustomerTargetRuntime({repoRoot=root,env=proce
   phase='binding';binding=bind(repoRoot,env,execute);const identity=binding.identity;
   connection={...catalogueCiConnection(env,identity.source),PGDATABASE:'pilot_catalogue_test',LC_ALL:'C'};
   const checkSource=()=>assert.deepEqual(bind(repoRoot,env,execute),binding);
-  phase='source-preflight';const bytes=Object.fromEntries(Object.entries(targetRuntimePaths).map(([k,p])=>[k,readSource(repoRoot,p)]));const parts=Object.fromEntries(Object.entries(bytes).map(([k,b])=>[k,b.toString('utf8')]));validateParts(parts);
+  phase='source-preflight';const productTypeBytes=Object.fromEntries(Object.entries(productTypeRuntimePaths).map(([k,p])=>[k,readSource(repoRoot,p)]));const productTypeParts=Object.fromEntries(Object.entries(productTypeBytes).map(([k,b])=>[k,b.toString('utf8')]));const bytes=Object.fromEntries(Object.entries(targetRuntimePaths).map(([k,p])=>[k,readSource(repoRoot,p)]));const parts=Object.fromEntries(Object.entries(bytes).map(([k,b])=>[k,b.toString('utf8')]));validateParts(parts);
   const verify=()=>verifyCatalogueCiObservation(JSON.parse(sync(catalogueCiIdentityGateSql(identity)+catalogueObservationSql('pilot_catalogue_test'))),identity,'pilot_catalogue_test');
   checkSource();phase='identity-preflight';verify();
   phase='lifecycle';lifecycleOutput=sync(buildTargetLifecycleSession(identity,parts));phase='lifecycle-parse';const lifecycle=parseTargetOutput(lifecycleOutput);
@@ -367,7 +370,7 @@ export async function runCatalogueCustomerTargetRuntime({repoRoot=root,env=proce
   setupAttempted=true;cleanup='CLEANUP_UNPROVEN';
   phase='race-setup';const setupOutput=sync(buildTargetRaceSetup(identity,parts));phase='race-setup-parse';assert.equal(setupOutput,'','Unexpected setup output');
   phase='source-pre-races';checkSource();phase='identity-pre-races';verify();
-  phase='races';const races=await executeTargetRaces({identity,connection,checkSource,Session});
+  phase='races';const races=await executeTargetRaces({identity,connection,checkSource,productTypeParts,Session});
   phase='source-post-races';checkSource();phase='identity-post-races';verify();
   // A child marker alone cannot authorize disposal: verify the independently
   // bound root too, then use one literal name, no FORCE and no target parameters.
@@ -375,7 +378,7 @@ export async function runCatalogueCustomerTargetRuntime({repoRoot=root,env=proce
   // the child. Only the exclusive per-run CI service makes this bounded design
   // appropriate. Never use it in shared/local/hosted database infrastructure.
   phase='disposal';sync(`${catalogueCiIdentityGateSql(identity,'pilot_test')}DROP DATABASE pilot_catalogue_test;\n${gate("NOT EXISTS(SELECT 1 FROM pg_database WHERE datname='pilot_catalogue_test')",'target_disposal_refused')}`,'pilot_test');cleanup='COMMITTED_SYNTHETIC_CHILD_DISPOSED';phase='source-post-disposal';checkSource();
-  return {format:'catalogue-customer-target-runtime-v1',status:'BOUNDED_TARGET_RUNTIME_PASSED',identity,lifecycle,rawCompatibility:{scope:'LEGACY_RAW_COMPATIBILITY_ONLY',executionGeneration:1,trackingReady:false,roles:['authenticated','service_role'],syntheticVisitRequestGrant:'ROLLBACK_VERIFIED',targetOldNewTracking:'PASSED',rawOrderVisitLifetime:'INCOMPLETE',businessTruncate:'ALLOWED_WITHOUT_ROW_EVIDENCE',masterTruncate:'REFUSED',globalActivation:'BLOCKED',hostedParity:'UNVERIFIED'},checkedCompletionProof:catalogueCheckedCompletionProof,races,cleanup,files:Object.entries(targetRuntimePaths).map(([k,path])=>({path,sha256:sha(bytes[k])})),implementationAccepted:false,hostedVerified:false,trackingReady:false,broaderLockGraph:'UNPROVEN'};
+  return {format:'catalogue-customer-target-runtime-v1',status:'BOUNDED_TARGET_RUNTIME_PASSED',identity,lifecycle,rawCompatibility:{scope:'LEGACY_RAW_COMPATIBILITY_ONLY',executionGeneration:1,trackingReady:false,roles:['authenticated','service_role'],syntheticVisitRequestGrant:'ROLLBACK_VERIFIED',targetOldNewTracking:'PASSED',rawOrderVisitLifetime:'INCOMPLETE',businessTruncate:'ALLOWED_WITHOUT_ROW_EVIDENCE',masterTruncate:'REFUSED',globalActivation:'BLOCKED',hostedParity:'UNVERIFIED'},checkedCompletionProof:catalogueCheckedCompletionProof,races,cleanup,files:[...Object.entries(targetRuntimePaths).map(([k,path])=>({path,sha256:sha(bytes[k])})),...Object.entries(productTypeRuntimePaths).map(([k,path])=>({path,sha256:sha(productTypeBytes[k])}))],implementationAccepted:false,hostedVerified:false,trackingReady:false,broaderLockGraph:'UNPROVEN'};
  }catch(cause){
   // No blind teardown after an uncertain setup/identity result. The per-job
   // disposable CI service must be destroyed by CI; this runner claims no proof.

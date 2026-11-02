@@ -13,7 +13,7 @@ const defaultRoot=resolve(dirname(fileURLToPath(import.meta.url)),'..'),sha=x=>c
 export const targetRuntimeReviewedFiles=Object.freeze([
  {
   "path": "scripts/catalogue-customer-target-runtime.mjs",
-  "sha256": "55fd224618f475128a0cceb7f12d8f43375965c67f30ffe28abd245a17bb974f"
+  "sha256": "5f0f5e391e262826b5ac6b20e4080bff92df594e5e0b7dc5c32e7188b5766d40"
  },
  {
   "path": "supabase/catalogue/v1/02-customer-target-tracking.sql",
@@ -162,9 +162,61 @@ export const targetRuntimeReviewedFiles=Object.freeze([
  {
   "path": "tests/catalogue-ci/native-product-delete-races.node.mjs",
   "sha256": "6841c59fb6ffca2bc1643b7c846d56863768937f1e44cf3c716be906e2b1695c"
+ },
+ {
+  "path": "tests/database/catalogue/product-type-before.sql",
+  "sha256": "e77f3695eb2e548be3eb0ae8b0a4078c501e7e6dcb9cbdf7f4a598528f62325b"
+ },
+ {
+  "path": "supabase/catalogue/v2/product-type-storage.sql",
+  "sha256": "4f69026877595fbf88a8f0a9b1e52b53cfb64c9cee10f16cc2cf8e5f1b085cae"
+ },
+ {
+  "path": "supabase/catalogue/v2/product-type-audit.sql",
+  "sha256": "d047f2de53c7bfb4b848105b43175b13e3dfb0aff0b54cc8e643cc3ca92cb07d"
+ },
+ {
+  "path": "supabase/catalogue/v2/product-type-grants.sql",
+  "sha256": "6c084b25097c0bd456c5b532c2179e37421d1fd81ce50511735c4e786329349b"
+ },
+ {
+  "path": "supabase/catalogue/v2/product-type-reads.sql",
+  "sha256": "466d80b3b2b774f673e362d14c50db9517aa20cec00309b9c5136e16ec48a996"
+ },
+ {
+  "path": "supabase/catalogue/v2/product-type-writes.sql",
+  "sha256": "a6300abd1402883b8a674e3d40086b54fd286e74b5146d52ec2cbdaeadc44794"
+ },
+ {
+  "path": "supabase/catalogue/v2/product-type-legacy-guard.sql",
+  "sha256": "79af3ba5e02604aa5b9abaa623730de2447f7fb905c62bba40d4a5151c3c8f30"
+ },
+ {
+  "path": "supabase/catalogue/v2/product-type-graph.sql",
+  "sha256": "af34e750df6c4883f66cfc1031a9ac74d6779b658128ffd0d9212eeead90cad1"
+ },
+ {
+  "path": "tests/database/catalogue/product-type-api.sql",
+  "sha256": "c871f235ff69c2c77a4e4104c517337e814959a69916fb82e106c4f97b980cea"
+ },
+ {
+  "path": "scripts/catalogue-product-type-runtime.mjs",
+  "sha256": "7ea6a576b8dcc2e16a1b7d8d663f1f9a537e059f5d6ade09715842b5819f39ef"
+ },
+ {
+  "path": "tests/database/catalogue/product-type-races.mjs",
+  "sha256": "4d2310cdc4809383ce87a6d75fe21a183ad7f89decfb827dbd647f0c3fc155f0"
+ },
+ {
+  "path": "tests/catalogue-ci/product-type-runtime.node.mjs",
+  "sha256": "02ae95b30ef8bb7b7cc82ebd9abdb2e2787433af31841ef87e187af8c095a925"
+ },
+ {
+  "path": "tests/catalogue-ci/product-type-races.node.mjs",
+  "sha256": "d7851309f043226efc8f62fa9eb7e844abeb36d68b62bfe987d44359a14d3b63"
  }
 ].map(Object.freeze));
-const reportPaths=Object.freeze(["tests/database/catalogue/before-foundation.sql", "supabase/catalogue/v1/01-foundation.sql", "tests/database/catalogue/legacy-columns.sql", "tests/database/catalogue/roles.sql", "supabase/catalogue/v1/02-customer-target-tracking.sql", "tests/database/catalogue/customer-target-tracking.sql", "tests/database/catalogue/customer-target-runtime-authority.sql", "tests/database/catalogue/customer-target-runtime-variants.sql", "supabase/catalogue/v1/04-order-boundaries.sql", "supabase/catalogue/v1/new06-co-order-boundaries.sql", "supabase/catalogue/v1/02-promotion-owner-extraction.sql", "supabase/catalogue/v1/02-po-reference-extraction.sql", "supabase/catalogue/v1/02-co-reference-extraction.sql", "supabase/catalogue/v1/02-co-draft-reference-extraction.sql", "supabase/catalogue/v1/02-retired-co-line-resolution.sql", "supabase/catalogue/v1/new02-visit-reference-extraction.sql", "supabase/catalogue/v1/new02-nonco-lineage-resolution.sql", "supabase/catalogue/v1/new07-lifetime-admission.sql", "supabase/catalogue/v1/new08-catalogue-create-edit.sql", "supabase/catalogue/v1/new09-checked-boundaries.sql", "supabase/catalogue/v1/new10-guarded-delete.sql", "supabase/catalogue/v1/new11-master-completion-hooks.sql", "tests/database/catalogue/raw-caller-compatibility.sql", "tests/database/catalogue/checked-boundaries.sql", "tests/database/catalogue/guarded-delete.sql", "tests/database/catalogue/guarded-delete-history.sql"]);
+const reportPaths=Object.freeze(["tests/database/catalogue/before-foundation.sql", "supabase/catalogue/v1/01-foundation.sql", "tests/database/catalogue/legacy-columns.sql", "tests/database/catalogue/roles.sql", "supabase/catalogue/v1/02-customer-target-tracking.sql", "tests/database/catalogue/customer-target-tracking.sql", "tests/database/catalogue/customer-target-runtime-authority.sql", "tests/database/catalogue/customer-target-runtime-variants.sql", "supabase/catalogue/v1/04-order-boundaries.sql", "supabase/catalogue/v1/new06-co-order-boundaries.sql", "supabase/catalogue/v1/02-promotion-owner-extraction.sql", "supabase/catalogue/v1/02-po-reference-extraction.sql", "supabase/catalogue/v1/02-co-reference-extraction.sql", "supabase/catalogue/v1/02-co-draft-reference-extraction.sql", "supabase/catalogue/v1/02-retired-co-line-resolution.sql", "supabase/catalogue/v1/new02-visit-reference-extraction.sql", "supabase/catalogue/v1/new02-nonco-lineage-resolution.sql", "supabase/catalogue/v1/new07-lifetime-admission.sql", "supabase/catalogue/v1/new08-catalogue-create-edit.sql", "supabase/catalogue/v1/new09-checked-boundaries.sql", "supabase/catalogue/v1/new10-guarded-delete.sql", "supabase/catalogue/v1/new11-master-completion-hooks.sql", "tests/database/catalogue/raw-caller-compatibility.sql", "tests/database/catalogue/checked-boundaries.sql", "tests/database/catalogue/guarded-delete.sql", "tests/database/catalogue/guarded-delete-history.sql", "tests/database/catalogue/product-type-before.sql", "supabase/catalogue/v2/product-type-storage.sql", "supabase/catalogue/v2/product-type-audit.sql", "supabase/catalogue/v2/product-type-grants.sql", "supabase/catalogue/v2/product-type-reads.sql", "supabase/catalogue/v2/product-type-writes.sql", "supabase/catalogue/v2/product-type-legacy-guard.sql", "supabase/catalogue/v2/product-type-graph.sql", "tests/database/catalogue/product-type-api.sql"]);
 const wrapperPaths=['scripts/catalogue-customer-target-artifact.mjs','tests/catalogue-ci/customer-target-artifact.node.mjs'];
 const directory=path=>{const stat=lstatSync(path);assert.ok(stat.isDirectory()&&!stat.isSymbolicLink());return stat;};
 const sameDirectory=(path,expected)=>{const stat=directory(path);assert.equal(stat.ino,expected.ino);assert.equal(stat.dev,expected.dev);};
@@ -200,12 +252,16 @@ export function validateCatalogueCheckedCompletion(report){
  const expected={status:'BOUNDED_CHECKED_COMPLETION_SUITES_PASSED',scope:'FUTURE_GENERATION_TWO_SYNTHETIC_ONLY',suites:['checked-boundaries','guarded-delete','guarded-delete-history'],historyScanner:'GENERATION_ONE_OWNER_PRIVATE_ONLY',executionGeneration:2,trackingReady:true,fixtureRestoration:'GENERATION_ONE_TRACKING_FALSE_CONSTRAINTS_VERIFIED',productionGeneration:1,productionTrackingReady:false,concurrency:'UNRUN',hostedParity:'UNVERIFIED',implementationAccepted:false};
  assert.deepEqual(report,expected);return expected;
 }
+export function validateProductTypeAcceptance(report,pids,replayPid){
+ const expected={status:'BOUNDED_PRODUCT_TYPE_ACCEPTANCE_PASSED',api:'ROLLBACK_VERIFIED',races:{status:'BOUNDED_PRODUCT_TYPE_RACES_PASSED',backendPids:[pids[0],replayPid,pids[2]],cases:['duplicate_type_create_exact_replay','concurrent_type_edit_version_conflict','actor_cutoff_refuses_write_and_recovery']},hostedParity:'UNVERIFIED'};
+ assert.deepEqual(report,expected);return expected;
+}
 function validateReport(bytes,identity,files){
  assert.equal(typeof bytes,'string');assert.ok(Buffer.byteLength(bytes)<=65536);assert.ok(bytes.endsWith('\n'));
  const report=JSON.parse(bytes);assert.equal(bytes,JSON.stringify(report)+'\n');
  const lifecycle=report.lifecycle;for(const key of ['backendPid','transactionId'])assert.match(lifecycle?.[key]??'',/^[1-9][0-9]{0,19}$/);
  const pids=report.races?.backendPids;assert.ok(Array.isArray(pids));assert.equal(pids.length,3);assert.equal(new Set(pids).size,3);assert.ok(pids.every(pid=>Number.isSafeInteger(pid)&&pid>0&&pid<=2147483647));
- const expected={format:'catalogue-customer-target-runtime-v1',status:'BOUNDED_TARGET_RUNTIME_PASSED',identity,lifecycle:{backendPid:lifecycle.backendPid,transactionId:lifecycle.transactionId},rawCompatibility:{scope:'LEGACY_RAW_COMPATIBILITY_ONLY',executionGeneration:1,trackingReady:false,roles:['authenticated','service_role'],syntheticVisitRequestGrant:'ROLLBACK_VERIFIED',targetOldNewTracking:'PASSED',rawOrderVisitLifetime:'INCOMPLETE',businessTruncate:'ALLOWED_WITHOUT_ROW_EVIDENCE',masterTruncate:'REFUSED',globalActivation:'BLOCKED',hostedParity:'UNVERIFIED'},checkedCompletionProof:validateCatalogueCheckedCompletion(report.checkedCompletionProof),races:{status:'BOUNDED_TARGET_RACES_PASSED',backendPids:pids,cases:['reversed_raw_target_statements','evidence_relation_contention'],statusRecovery:validateTargetStatusRecovery(report.races.statusRecovery,pids),lifetimeAdmission:validateLifetimeAdmission(report.races.lifetimeAdmission),createEdit:validateCatalogueCreateEditRaces(report.races.createEdit,pids,report.races.statusRecovery.replayBackendPid),checkedCompletion:validateCatalogueCompletionRaces(report.races.checkedCompletion,pids,report.races.statusRecovery.replayBackendPid),nativeProductDelete:validateNativeProductDeleteRaces(report.races.nativeProductDelete,pids,report.races.statusRecovery.replayBackendPid)},cleanup:'COMMITTED_SYNTHETIC_CHILD_DISPOSED',files,implementationAccepted:false,hostedVerified:false,trackingReady:false,broaderLockGraph:'UNPROVEN'};
+ const expected={format:'catalogue-customer-target-runtime-v1',status:'BOUNDED_TARGET_RUNTIME_PASSED',identity,lifecycle:{backendPid:lifecycle.backendPid,transactionId:lifecycle.transactionId},rawCompatibility:{scope:'LEGACY_RAW_COMPATIBILITY_ONLY',executionGeneration:1,trackingReady:false,roles:['authenticated','service_role'],syntheticVisitRequestGrant:'ROLLBACK_VERIFIED',targetOldNewTracking:'PASSED',rawOrderVisitLifetime:'INCOMPLETE',businessTruncate:'ALLOWED_WITHOUT_ROW_EVIDENCE',masterTruncate:'REFUSED',globalActivation:'BLOCKED',hostedParity:'UNVERIFIED'},checkedCompletionProof:validateCatalogueCheckedCompletion(report.checkedCompletionProof),races:{status:'BOUNDED_TARGET_RACES_PASSED',backendPids:pids,cases:['reversed_raw_target_statements','evidence_relation_contention'],statusRecovery:validateTargetStatusRecovery(report.races.statusRecovery,pids),lifetimeAdmission:validateLifetimeAdmission(report.races.lifetimeAdmission),createEdit:validateCatalogueCreateEditRaces(report.races.createEdit,pids,report.races.statusRecovery.replayBackendPid),checkedCompletion:validateCatalogueCompletionRaces(report.races.checkedCompletion,pids,report.races.statusRecovery.replayBackendPid),nativeProductDelete:validateNativeProductDeleteRaces(report.races.nativeProductDelete,pids,report.races.statusRecovery.replayBackendPid),productType:validateProductTypeAcceptance(report.races.productType,pids,report.races.statusRecovery.replayBackendPid)},cleanup:'COMMITTED_SYNTHETIC_CHILD_DISPOSED',files,implementationAccepted:false,hostedVerified:false,trackingReady:false,broaderLockGraph:'UNPROVEN'};
  assert.deepEqual(report,expected);assert.equal(bytes,JSON.stringify(expected)+'\n');return expected;
 }
 function exactFile(path,expected){

@@ -8,6 +8,20 @@ import { fileURLToPath } from 'node:url'
 const defaultRoot=fileURLToPath(new URL('../',import.meta.url))
 export const catalogueCompositionSha256='186e22b2490d28c2a4b2256bdc03147698b447eda1e516fdbf3fcdf3c0339f9a'
 export const cataloguePublicSourcePaths=[
+ 'tests/database/catalogue/product-type-before.sql',
+ 'supabase/catalogue/v2/product-type-storage.sql',
+ 'supabase/catalogue/v2/product-type-audit.sql',
+ 'supabase/catalogue/v2/product-type-grants.sql',
+ 'supabase/catalogue/v2/product-type-reads.sql',
+ 'supabase/catalogue/v2/product-type-writes.sql',
+ 'supabase/catalogue/v2/product-type-legacy-guard.sql',
+ 'supabase/catalogue/v2/product-type-graph.sql',
+ 'tests/database/catalogue/product-type-api.sql',
+ 'scripts/catalogue-product-type-runtime.mjs',
+ 'tests/database/catalogue/product-type-races.mjs',
+ 'tests/catalogue-ci/product-type-runtime.node.mjs',
+ 'tests/catalogue-ci/product-type-races.node.mjs',
+
  '.github/workflows/pilot-safety.yml','vercel.json','tests/vercel-routing.test.ts',
  'scripts/catalogue-checkout.mjs','scripts/catalogue-ci-profile.mjs','scripts/catalogue-capture-source.mjs',
  'scripts/catalogue-capture-baseline.mjs','scripts/catalogue-ci-metadata.sql','supabase/catalogue/ci/composition.json',

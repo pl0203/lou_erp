@@ -19,7 +19,9 @@ test('adds CO after all 32 original gates without changing their service, source
   const targetSourceStart=actual.indexOf('      - name: Check customer target harness and artifact wrapper without a database');
   const targetSourceEnd=actual.indexOf('      - name: Bind clean candidate bytes before capture',targetSourceStart);
   const targetSource=actual.slice(targetSourceStart,targetSourceEnd);
-  expect(createHash('sha256').update(targetSource).digest('hex')).toBe('8506100f1339b3734e2cd479b518ccc264fa4d9a90f00e8504fc6e9b562d7782');
+  // Add only the two Tipe harness checks; retain all prior service/envelope pins.
+  expect(targetSource).toContain(' tests/catalogue-ci/product-type-runtime.node.mjs tests/catalogue-ci/product-type-races.node.mjs\n');
+  expect(createHash('sha256').update(targetSource).digest('hex')).toBe('30545a810abcdf7e86adbb6c8eec138df817d95bcb4fe51e568e187a8e00e834');
   const targetTerminalStart=actual.indexOf('      - name: Verify terminal customer target runtime and disposal');
   const targetTerminal=actual.slice(targetTerminalStart,targetTerminalStart+1387);
   expect(createHash('sha256').update(targetTerminal).digest('hex')).toBe('2de4d693426ab98fafe38fc1aba630c7c7aa3294955e997d857a08a9b86e1b41');
