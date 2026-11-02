@@ -27,7 +27,7 @@ export function createCatalogueBackend(client: SupabaseClient): CatalogueBackend
     assertCurrent: current,
     async rpc(name: RpcName, args: Record<string, unknown>, signal?: AbortSignal) {
       current(); signal?.throwIfAborted()
-      catalogueEnum(['pilot_catalog_page_v1', 'pilot_procurement_access_v2', 'pilot_catalog_transaction_v1', 'pilot_reconcile_catalog_v1'] as const, name)
+      catalogueEnum(['pilot_catalog_page_v1', 'pilot_catalog_page_v2', 'pilot_procurement_access_v2', 'pilot_catalog_transaction_v1', 'pilot_catalog_transaction_v2', 'pilot_reconcile_catalog_v1'] as const, name)
       let request = method.call(client, name, args)
       if (signal) request = request.abortSignal(signal)
       const result = await request

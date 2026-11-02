@@ -16,9 +16,9 @@ vi.mock('../../src/lib/supabase',()=>({supabase:{
  rpc:(name:string,args:any)=>{
   if(name==='pilot_order_transaction'){state.writes.push(args);return Promise.resolve({data:null,error:{code:'PT409',message:'PO changed; refresh before saving'}})}
   const q:any={abortSignal:()=>q,then:(resolve:any,reject:any)=>Promise.resolve().then(()=>{
-   if(name!=='pilot_catalog_page_v1')throw new Error(`Unexpected RPC: ${name}`)
+   if(!['pilot_catalog_page_v1','pilot_catalog_page_v2'].includes(name))throw new Error(`Unexpected RPC: ${name}`)
    const rows=args.p_kind==='customer'?[catalogue.customer]:[]
-   return {data:{version:1,actor_id:catalogue.actorId,role:'po_admin',kind:args.p_kind,purpose:args.p_purpose,status:args.p_status,search:args.p_search,page:args.p_page,page_size:args.p_page_size,total_count:String(rows.length),rows:rows.slice((args.p_page-1)*args.p_page_size,args.p_page*args.p_page_size)},error:null}
+   return {data:{version:name === 'pilot_catalog_page_v2' ? 2 : 1,actor_id:catalogue.actorId,role:'po_admin',kind:args.p_kind,purpose:args.p_purpose,status:args.p_status,search:args.p_search,page:args.p_page,page_size:args.p_page_size,total_count:String(rows.length),rows:rows.slice((args.p_page-1)*args.p_page_size,args.p_page*args.p_page_size)},error:null}
   }).then(resolve,reject)};return q
  },
  from:()=>{let id='a';const q:any={select:()=>q,eq:(_key:string,value:string)=>{id=value;return q},single:async()=>{await state.headerGate;if(state.failHeader)return {data:null,error:new Error('header unavailable')};return {data:{id,po_number:`PO-${id}`,status:'in_progress',customer_id:catalogue.customer.id,customers:{name:'Customer'},order_date:'2026-10-01',total_value:100,updated_at:state.version,completed_at:null},error:null}}};return q}

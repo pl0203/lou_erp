@@ -12,9 +12,9 @@ vi.mock('../../src/lib/supabase', () => ({ supabase: {
 import { invalidateCatalogueProjections } from '../../src/lib/catalogue/queryKeys'
 import { useCatalogueOrderOptions } from '../../src/lib/catalogue/useCatalogueOrderOptions'
 const clients: QueryClient[] = []
-const row = (enabled = true) => ({ id: '22222222-2222-4222-8222-222222222222', name: 'Saved label', sku: 'SKU', size: null, unit_price: null, harga_pokok: 0, luar_kota: 12, dalam_kota: null, depo_bangunan: null, is_enabled: enabled, catalog_version: '9007199254740993' })
+const row = (enabled = true) => ({ id: '22222222-2222-4222-8222-222222222222', name: 'Saved label', sku: 'SKU', size: null, product_type: null, unit_price: null, harga_pokok: 0, luar_kota: 12, dalam_kota: null, depo_bangunan: null, is_enabled: enabled, catalog_version: '9007199254740993' })
 function page(args: any, enabled = true, actor = state.actor) {
-  return { data: { version: 1, actor_id: actor, role: 'po_admin', kind: args.p_kind, purpose: args.p_purpose, status: args.p_status, search: args.p_search, page: args.p_page, page_size: args.p_page_size, total_count: '1', rows: [row(enabled)] }, error: null }
+  return { data: { version: 2, actor_id: actor, role: 'po_admin', kind: args.p_kind, purpose: args.p_purpose, status: args.p_status, search: args.p_search, page: args.p_page, page_size: args.p_page_size, total_count: '1', rows: [row(enabled)] }, error: null }
 }
 function mount(purpose: 'enabled-for-order' | 'all-for-history' = 'enabled-for-order') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } }); clients.push(client)
@@ -24,7 +24,7 @@ beforeEach(() => { state.url='https://catalogue.test'; state.actor = '11111111-1
 afterEach(() => { cleanup(); clients.splice(0).forEach(client => client.clear()) })
 test('real options transport requests enabled choices and preserves exact decimal versions and zero price', async () => {
   const { result } = mount(); await waitFor(() => expect(result.current.data).toHaveLength(1))
-  expect(state.rpc).toHaveBeenCalledWith('pilot_catalog_page_v1', expect.objectContaining({ p_kind: 'product', p_purpose: 'enabled-for-order', p_status: 'enabled' }))
+  expect(state.rpc).toHaveBeenCalledWith('pilot_catalog_page_v2', expect.objectContaining({ p_kind: 'product', p_purpose: 'enabled-for-order', p_status: 'enabled' }))
   expect(result.current.data![0]).toMatchObject({ catalog_version: '9007199254740993', harga_pokok: 0 })
 })
 test('disabled rows are rejected from choices rather than silently admitted', async () => {
@@ -35,7 +35,7 @@ test('explicit history hydration retains disabled rows and remains a separate pu
   state.rpc.mockImplementation(async (_name, args) => page(args, false))
   const { result } = mount('all-for-history'); await waitFor(() => expect(result.current.data).toHaveLength(1))
   expect(result.current.data![0].is_enabled).toBe(false)
-  expect(state.rpc).toHaveBeenCalledWith('pilot_catalog_page_v1', expect.objectContaining({ p_purpose: 'all-for-history', p_status: 'all' }))
+  expect(state.rpc).toHaveBeenCalledWith('pilot_catalog_page_v2', expect.objectContaining({ p_purpose: 'all-for-history', p_status: 'all' }))
 })
 test('actor change rejects a late former-owner response instead of exposing its options', async () => {
   let release!: (value: unknown) => void
@@ -163,4 +163,12 @@ test('current accessor refuses a drifted backend or retired owner even when old 
  expect(read()).toBeUndefined()
  expect(result.current.getCurrentData()).toHaveLength(1)
  const next = result.current.getCurrentData; unmount(); expect(next()).toBeUndefined()
+})
+
+test('rapid synchronous A B A cleanup cannot destroy live A request',async()=>{
+ const {result,rerender}=mount();await waitFor(()=>expect(result.current.data).toHaveLength(1));const a=state.actor;
+ state.actor='33333333-3333-4333-8333-333333333333';rerender();
+ state.actor=a;rerender();
+ await act(async()=>{await Promise.resolve()});
+ await waitFor(()=>expect(result.current.getCurrentData()).toHaveLength(1));
 })

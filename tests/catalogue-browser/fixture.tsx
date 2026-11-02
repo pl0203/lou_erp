@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react'
 import { createCatalogueBackend } from './source/src/lib/catalogue/backend'
 import { createCatalogueTransactionSender } from './source/src/lib/catalogue/transactions'
-import { parseCataloguePayload, decodeProcurementAccessV2 } from './source/src/lib/catalogue/validation'
+import { parseCataloguePayload, parseProductPayloadV2, decodeProcurementAccessV2 } from './source/src/lib/catalogue/validation'
 
 // Fictional boundary only. No network client, credentials, hosted data or API calls.
 const actor = '11111111-1111-4111-8111-111111111111', role = 'co_admin' as const
 const backend = 'https://synthetic-catalogue.example.invalid'
 const storeKey = 'synthetic-browser-qa:0150feb9:server', eventName = 'synthetic-browser-qa:changed'
 type Mode = 'normal' | 'held' | 'lost' | 'unknown'
-type Store = { mode: Mode; customers: any[]; receipts: Record<string, { payload: unknown; receipt: any }>; abandoned: string[]; attempts: string[]; rawCalls: string[]; unexpected: string[]; held: string[]; released: string[] }
-const initial = (): Store => ({ mode: 'normal', customers: [{ id: '22222222-2222-4222-8222-222222222222', name: 'Fictional Starter Shop', address: 'Synthetic address', city: 'Synthetic city', phone: null, email: null, pricing_tier: 'others', customer_category: 'perorangan', catalog_version: '9007199254740993', is_enabled: true }], receipts: {}, abandoned: [], attempts: [], rawCalls: [], unexpected: [], held: [], released: [] })
+type Store = { products: any[]; mode: Mode; customers: any[]; receipts: Record<string, { payload: unknown; receipt: any }>; abandoned: string[]; attempts: string[]; rawCalls: string[]; unexpected: string[]; held: string[]; released: string[] }
+const initial = (): Store => ({ products: [{id:'33333333-3333-4333-8333-333333333333',sku:'LEGACY-TYPE-001',name:'Fictional legacy product',size:null,product_type: null,unit_price:null,harga_pokok:null,luar_kota:null,dalam_kota:null,depo_bangunan:null,is_enabled:true,catalog_version:'1'}], mode: 'normal', customers: [{ id: '22222222-2222-4222-8222-222222222222', name: 'Fictional Starter Shop', address: 'Synthetic address', city: 'Synthetic city', phone: null, email: null, pricing_tier: 'others', customer_category: 'perorangan', catalog_version: '9007199254740993', is_enabled: true }], receipts: {}, abandoned: [], attempts: [], rawCalls: [], unexpected: [], held: [], released: [] })
 function read(): Store { const raw = localStorage.getItem(storeKey); return raw ? JSON.parse(raw) : initial() }
 function save(data: Store) { localStorage.setItem(storeKey, JSON.stringify(data)); window.dispatchEvent(new Event(eventName)) }
 async function update<T>(action: (data: Store) => T): Promise<T> {
@@ -30,6 +30,31 @@ async function operation(name: string, args: any) {
   if (name === 'pilot_procurement_access_v1') return { data: { version: 1, as_of: '2026-10-16T00:00:00Z', actor_id: actor, role, customer_create: false, customer_edit: false, customer_delete: false, product_create: false, product_edit: false, product_delete: false }, error: null }
   if (name === 'pilot_procurement_access_v2') return { data: accessV2(), error: null }
   if (name === 'pilot_catalog_delete_access_v1') return { data: { version: 1, actor_id: actor, customer_delete: true, product_delete: true }, error: null }
+  if (name === 'pilot_catalog_page_v2') {
+    if (args.p_kind !== 'product') throw Error('Only fictional v2 products configured')
+    const rows=read().products.filter(row=>(!args.p_search || row.name.includes(args.p_search) || row.sku.includes(args.p_search)) && (args.p_status==='all' || row.is_enabled===(args.p_status==='enabled'))).sort((a,b)=>a.id.localeCompare(b.id))
+    return {data:{version:2,actor_id:actor,role,kind:args.p_kind,purpose:args.p_purpose,status:args.p_status,search:args.p_search,page:args.p_page,page_size:args.p_page_size,total_count:String(rows.length),rows:rows.slice((args.p_page-1)*args.p_page_size,args.p_page*args.p_page_size)},error:null}
+  }
+  if (name === 'pilot_catalog_transaction_v2' || (name === 'pilot_catalog_transaction_v1' && args.p_payload?.kind === 'product')) {
+    if ((name === 'pilot_catalog_transaction_v2' && !['create','edit'].includes(args.p_operation)) || (name === 'pilot_catalog_transaction_v1' && args.p_operation !== 'set_enabled')) throw Error('Unsupported product RPC negotiation')
+    return update(data=>{
+      data.attempts.push(args.p_request_id)
+      const prior=data.receipts[args.p_request_id]
+      if(prior){if(JSON.stringify(prior.payload)!==JSON.stringify([args.p_operation,args.p_payload]))throw Error('Synthetic product request mismatch');return {data:prior.receipt,error:null}}
+      if(data.abandoned.includes(args.p_request_id))throw Error('Synthetic product request abandoned')
+      const payload=name==='pilot_catalog_transaction_v2'?parseProductPayloadV2(args.p_operation,args.p_payload):parseCataloguePayload(args.p_operation,args.p_payload)
+      if(payload.kind!=='product'||!['create','edit','set_enabled'].includes(args.p_operation))throw Error('Unexpected product command')
+      let row=data.products.find(item=>item.id===args.p_payload.id)
+      if(args.p_operation!=='create'&&(!row||row.catalog_version!==args.p_payload.expected_version))throw Error('Synthetic product version mismatch')
+      const before=args.p_operation==='create'?null:{catalog_version:row.catalog_version,is_enabled:row.is_enabled}
+      if(args.p_operation==='create'){row={unit_price:null,...args.p_payload.values,id:crypto.randomUUID(),catalog_version:'1',is_enabled:true};data.products.push(row)}
+      else if(args.p_operation==='edit'){const changed=Object.entries(args.p_payload.values).some(([key,value])=>row[key]!==value);Object.assign(row,args.p_payload.values);if(changed)row.catalog_version=String(BigInt(row.catalog_version)+1n)}
+      else{if(row.is_enabled!==args.p_payload.is_enabled)row.catalog_version=String(BigInt(row.catalog_version)+1n);row.is_enabled=args.p_payload.is_enabled}
+      const receipt={version:1,request_id:args.p_request_id,actor_id:actor,operation:args.p_operation,kind:'product',id:row.id,before,after:{catalog_version:row.catalog_version,is_enabled:row.is_enabled},committed_at:'2026-11-02T00:00:00Z'}
+      data.receipts[args.p_request_id]={payload:[args.p_operation,args.p_payload],receipt}
+      return {data:receipt,error:null}
+    })
+  }
   if (name === 'pilot_catalog_page_v1') {
     if (args.p_kind !== 'customer') throw Error('Only fictional customer reads are configured')
     const rows = read().customers.filter(row => (!args.p_search || row.name.includes(args.p_search)) && (args.p_status === 'all' || row.is_enabled === (args.p_status === 'enabled'))).sort((a, b) => a.id.localeCompare(b.id))

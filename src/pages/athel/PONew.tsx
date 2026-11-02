@@ -343,7 +343,7 @@ export default function PONew() {
               <POLineItemsHeader />
               {lineItems.map((item, i) => (
                 <div key={item._key} className="min-w-0">
-                <POLineRow identityLocked lineKey={item._key!} item={item}
+                <POLineRow identityLocked currentProducts={productOptions} lineKey={item._key!} item={item}
                   onChange={(field, value) => updateLine(i, field, value)}
                   onRemove={() => removeLine(i)}
                   nameRef={node => {

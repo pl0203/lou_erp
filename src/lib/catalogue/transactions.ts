@@ -4,7 +4,7 @@ import type {
 } from './contracts'
 import {
   catalogueEnum, catalogueRecord, decodeProcurementAccessV2, exactCatalogueFields, invalidCatalogue,
-  parseCataloguePayload, parseCatalogueReceipt, parseCatalogueRecovery, parseCatalogueRequestBinding,
+  parseCataloguePayload, parseProductPayloadV2, parseCatalogueReceipt, parseCatalogueRecovery, parseCatalogueRequestBinding,
   parseCatalogueText, parseCatalogueUUID,
 } from './validation'
 
@@ -13,7 +13,7 @@ export interface CatalogueStorage {
   setItem(key: string, value: string): void
   removeItem(key: string): void
 }
-export type CatalogueRpcName = 'pilot_catalog_transaction_v1' | 'pilot_reconcile_catalog_v1'
+export type CatalogueRpcName = 'pilot_catalog_transaction_v1' | 'pilot_catalog_transaction_v2' | 'pilot_reconcile_catalog_v1'
 export interface CatalogueTransport {
   /** The adapter must construct this label and its RPC client from the same backend. */
   readonly backend: string
@@ -58,6 +58,7 @@ interface Pending {
 const unresolved = () => new Error('Hasil penyimpanan sebelumnya belum terkonfirmasi. Pulihkan hasilnya sebelum menyimpan lagi.')
 const busy = () => new Error('Penyimpanan atau pemulihan katalog masih berlangsung.')
 const domainMessages = {
+  CATALOG_TYPE_REQUIRED: 'Tipe wajib dipilih. Muat ulang aplikasi untuk membuat atau mengubah barang.',
   CATALOG_VERSION_CONFLICT: 'Data katalog berubah. Muat ulang dan periksa perubahan sebelum menyimpan kembali.',
   CATALOG_DISABLED: 'Referensi katalog dinonaktifkan. Aktifkan kembali sebelum menambah permintaan baru.',
   CATALOG_IDENTITY_CONFLICT: 'Identitas katalog berubah. Muat ulang dan periksa data sebelum melanjutkan.',
@@ -91,8 +92,8 @@ function canonical(value: unknown): unknown {
   return value
 }
 function same(a: unknown, b: unknown): boolean { return JSON.stringify(canonical(a)) === JSON.stringify(canonical(b)) }
-async function fingerprint(operation: CatalogueOperation, payload: unknown): Promise<string> {
-  const bytes = new TextEncoder().encode(JSON.stringify([operation, canonical(payload)]))
+async function fingerprint(operation: CatalogueOperation, payload: unknown, productV2 = false): Promise<string> {
+  const bytes = new TextEncoder().encode(JSON.stringify(productV2 ? ['catalogue-product-v2', operation, canonical(payload)] : [operation, canonical(payload)]))
   return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), byte => byte.toString(16).padStart(2, '0')).join('')
 }
 function rpcError(error: unknown): Error {
@@ -248,7 +249,8 @@ export function createCatalogueTransactionSender(options: CatalogueSenderOptions
   const send = async <K extends CatalogueOperation>(operation: K, input: CatalogueOperationPayloads[K]): Promise<CatalogueReceipt> => {
     if (inFlight) throw busy()
     // Capture before lock acquisition too: a different tab may hold the lock while this form changes.
-    const payload = parseCataloguePayload(operation, input)
+    const productV2 = (operation === 'create' || operation === 'edit') && input.kind === 'product' && Object.hasOwn(catalogueRecord((input as {values:unknown}).values), 'product_type')
+    const payload = productV2 ? parseProductPayloadV2(operation as 'create' | 'edit', input) as CatalogueOperationPayloads[K] : parseCataloguePayload(operation, input)
     const { kind } = payload
     const rawBinding = operation === 'create' ? { operation, kind }
       : { operation, kind, id: (payload as CatalogueOperationPayloads['edit']).id,
@@ -258,7 +260,7 @@ export function createCatalogueTransactionSender(options: CatalogueSenderOptions
     return exclusively(async () => {
       if (read()) throw unresolved()
       await requireAuthority(binding)
-      const hash = await fingerprint(operation, payload)
+      const hash = await fingerprint(operation, payload, productV2)
       current()
       // Reread under the same cross-context lock immediately before persistence and dispatch.
       if (read()) throw unresolved()
@@ -267,7 +269,7 @@ export function createCatalogueTransactionSender(options: CatalogueSenderOptions
       save(request)
       lastAcknowledged = undefined
       lastVerifiedTerminal = undefined
-      const { data, error } = await transport.rpc('pilot_catalog_transaction_v1', { p_request_id: request.request_id, p_operation: operation, p_payload: payload })
+      const { data, error } = await transport.rpc(productV2 ? 'pilot_catalog_transaction_v2' : 'pilot_catalog_transaction_v1', { p_request_id: request.request_id, p_operation: operation, p_payload: payload })
       current()
       unchanged(request)
       // Even a definitive refusal requires explicit terminal reconciliation before a different request.

@@ -26,8 +26,8 @@ vi.mock('../../src/lib/supabase', () => ({ supabase: {
       if (name === 'pilot_procurement_access_v2') return { data: { version: 2, as_of: '2026-10-15T00:00:00Z', actor_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role: state.role,
         customer_create: true, customer_edit: true, customer_delete: state.role === 'co_admin', product_create: true, product_edit: true, product_delete: true,
         customer_set_enabled: true, product_set_enabled: true, customer_delete_mode: state.role === 'co_admin' ? 'guarded' : 'none', product_delete_mode: state.role === 'co_admin' ? 'guarded' : 'direct' }, error: null }
-      if (name === 'pilot_catalog_delete_access_v1') return { data: { version: 1, actor_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', customer_delete: state.role === 'co_admin', product_delete: state.role === 'co_admin' }, error: null }
-      if (name === 'pilot_catalog_transaction_v1') {
+      if (name === 'pilot_catalog_delete_access_v1') return { data: { version: name === 'pilot_catalog_page_v2' ? 2 : 1, actor_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', customer_delete: state.role === 'co_admin', product_delete: state.role === 'co_admin' }, error: null }
+      if (['pilot_catalog_transaction_v1','pilot_catalog_transaction_v2'].includes(name)) {
         if (state.catalogueAbandoned.has(args.p_request_id)) return { data: null, error: { message: 'Request abandoned' } }
         const prior = state.catalogueReceipts.get(args.p_request_id)
         if (prior) return prior.operation === args.p_operation && JSON.stringify(prior.payload) === JSON.stringify(args.p_payload)
@@ -61,13 +61,13 @@ vi.mock('../../src/lib/supabase', () => ({ supabase: {
         if (args.p_abandon) state.catalogueAbandoned.add(args.p_request_id)
         return { data: { status: state.catalogueAbandoned.has(args.p_request_id) ? 'abandoned' : 'unknown' }, error: null }
       }
-      if (name !== 'pilot_catalog_page_v1') throw new Error(`Unexpected catalogue RPC ${name}`)
+      if (!['pilot_catalog_page_v1','pilot_catalog_page_v2'].includes(name)) throw new Error(`Unexpected catalogue RPC ${name}`)
       if (state.readGate) await state.readGate
       if (state.readError || args.p_kind === 'customer' && state.backend.state.readError) return { data: null, error: new Error('Read denied') }
-      const fields = args.p_kind === 'customer' ? ['id','name','address','city','phone','email','pricing_tier','customer_category','is_enabled','catalog_version'] : ['id','name','sku','size','unit_price','harga_pokok','luar_kota','dalam_kota','depo_bangunan','is_enabled','catalog_version']
-      const rows = (args.p_kind === 'customer' ? state.backend.state.customers : state.products).map((row: any) => Object.fromEntries(fields.map(field => [field, row[field]]))).sort((a: any, b: any) => a.id.localeCompare(b.id))
+      const fields = args.p_kind === 'customer' ? ['id','name','address','city','phone','email','pricing_tier','customer_category','is_enabled','catalog_version'] : ['id','name','sku','size','unit_price','harga_pokok','luar_kota','dalam_kota','depo_bangunan','is_enabled','catalog_version', ...(name === 'pilot_catalog_page_v2' ? ['product_type'] : [])]
+      const rows = (args.p_kind === 'customer' ? state.backend.state.customers : state.products).map((row: any) => Object.fromEntries(fields.map(field => [field, field === 'product_type' ? row[field] ?? null : row[field]]))).sort((a: any, b: any) => a.id.localeCompare(b.id))
         .filter((row: any) => (!args.p_search || row.name.includes(args.p_search)) && (args.p_status === 'all' || row.is_enabled === (args.p_status === 'enabled')))
-      return { data: { version: 1, actor_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role: state.role, kind: args.p_kind, purpose: args.p_purpose, status: args.p_status, search: args.p_search, page: args.p_page, page_size: args.p_page_size, total_count: String(rows.length), rows: rows.slice((args.p_page - 1) * args.p_page_size, args.p_page * args.p_page_size) }, error: null }
+      return { data: { version: name === 'pilot_catalog_page_v2' ? 2 : 1, actor_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role: state.role, kind: args.p_kind, purpose: args.p_purpose, status: args.p_status, search: args.p_search, page: args.p_page, page_size: args.p_page_size, total_count: String(rows.length), rows: rows.slice((args.p_page - 1) * args.p_page_size, args.p_page * args.p_page_size) }, error: null }
     })().then(resolve, reject) }; return q
   }, functions: { invoke: state.invoke }, auth: { getUser: () => state.backend.auth.getUser() }, from: (table: string) => {
   if (table !== 'products') {
@@ -147,6 +147,7 @@ async function openImmediatePath(path: typeof immediatePaths[number]) {
   const opener = screen.getAllByRole('button', { name: path.action === 'save' ? 'Ubah' : path.kind === 'customer' ? 'Hapus bila tidak digunakan' : 'Hapus' })[0]
   await waitFor(() => expect((opener as HTMLButtonElement).disabled).toBe(false))
   fireEvent.click(opener)
+  if (path.kind === 'product' && path.action === 'save') fireEvent.change(screen.getByRole('combobox',{name:/^Tipe/}),{target:{value:'Mosaic'}})
   if (path.kind === 'customer' && path.action === 'save') fireEvent.change(associated('Nama Pelanggan *'), { target: { value: 'Edited shop' } })
   const dialog = screen.getByRole('dialog')
   return { ...view, dialog, target: within(dialog).getByRole('button', { name: path.action === 'save' ? 'Simpan' : path.kind === 'customer' ? 'Konfirmasi Hapus' : 'Hapus' }) }
@@ -270,7 +271,7 @@ test('catalogue metadata remains identifiable without exposing or rewriting lega
   expect(within(table).getAllByRole('row')).toHaveLength(3); expect(within(mobile).getAllByRole('listitem')).toHaveLength(2)
   for (const scope of [table, mobile]) { expect(within(scope).getByText('TEST')).toBeTruthy(); expect(within(scope).getByText('OTHER')).toBeTruthy(); expect(within(scope).queryByText('Rp 0')).toBeNull() }
   fireEvent.click(within(table).getAllByRole('button', { name: 'Ubah' })[0]); expect(screen.queryAllByRole('spinbutton')).toHaveLength(0)
-  fireEvent.click(screen.getByRole('button', { name: 'Simpan' })); await waitFor(() => expect(state.write).toHaveBeenCalledOnce())
+  ;(() => { const tipe=screen.queryByRole('combobox', {name:/^Tipe/}); if(tipe) fireEvent.change(tipe,{target:{value:'Mosaic'}}); fireEvent.click(screen.getByRole('button', { name: 'Simpan' })) })(); await waitFor(() => expect(state.write).toHaveBeenCalledOnce())
   for (const key of ['harga_pokok','luar_kota','dalam_kota','depo_bangunan','unit_price']) expect(state.write.mock.calls[0][1]).not.toHaveProperty(key)
 })
 
@@ -292,7 +293,7 @@ test('a catalog filter retains previous results with an explicit refresh message
 test('product dialog blocks pending dismissal and duplicate submit, then uses stable success focus across delayed refetch', async () => {
   mount(ProductList); await screen.findAllByText('Unset product'); const trigger = screen.getAllByRole('button', { name: 'Ubah' })[0]; trigger.focus(); fireEvent.click(trigger)
   const gate = deferred(); state.writeGate = gate.promise; const refetch = deferred(); state.readGate = refetch.promise
-  const save = screen.getByRole('button', { name: 'Simpan' }); fireEvent.click(save); await waitFor(() => expect(state.write).toHaveBeenCalledOnce())
+  const save = screen.getByRole('button', { name: 'Simpan' }); fireEvent.change(screen.getByRole('combobox',{name:/^Tipe/}),{target:{value:'Mosaic'}}); fireEvent.click(save); await waitFor(() => expect(state.write).toHaveBeenCalledOnce())
   const dialog = screen.getByRole('dialog'), cancel = screen.getByRole('button', { name: 'Batal' })
   expect((cancel as HTMLButtonElement).disabled).toBe(true); expect(associated('SKU *').disabled).toBe(true)
   fireEvent.keyDown(dialog, { key: 'Escape' }); fireEvent.click(cancel); fireEvent.click(save); expect(screen.getByRole('dialog')).toBe(dialog); expect(state.write).toHaveBeenCalledOnce()
@@ -319,7 +320,7 @@ test('an open product dialog keeps a failed background read and its retry reacha
 test('customer pending save locks category and contact fields while preserving the existing three-prop category interface', async () => {
   mount(CustomerList); await screen.findAllByText('Alpha shop'); fireEvent.click(screen.getAllByRole('button', { name: 'Ubah' })[0])
   const gate = deferred(); state.writeGate = gate.promise; state.backend.state.customerResponse = 'denied'
-  fireEvent.change(associated('Nama Pelanggan *'), { target: { value: 'Edited shop' } }); fireEvent.click(screen.getByRole('button', { name: 'Simpan' }))
+  fireEvent.change(associated('Nama Pelanggan *'), { target: { value: 'Edited shop' } }); ;(() => { const tipe=screen.queryByRole('combobox', {name:/^Tipe/}); if(tipe) fireEvent.change(tipe,{target:{value:'Mosaic'}}); fireEvent.click(screen.getByRole('button', { name: 'Simpan' })) })()
   await waitFor(() => expect((screen.getByRole('button', { name: 'Batal' }) as HTMLButtonElement).disabled).toBe(true))
   const category = screen.getByRole('combobox', { name: /Kategori Pelanggan/ }) as HTMLSelectElement
   expect(category.disabled || category.closest('fieldset')?.disabled).toBe(true); expect(associated('Telepon').disabled).toBe(true)
@@ -332,7 +333,7 @@ test('customer pending save locks category and contact fields while preserving t
 test('customer successful edit keeps focus on its stable owner destination when delayed refresh removes the old row', async () => {
   mount(CustomerList); await screen.findAllByText('Alpha shop'); const trigger = screen.getAllByRole('button', { name: 'Ubah' })[0]; trigger.focus(); fireEvent.click(trigger)
   fireEvent.change(associated('Nama Pelanggan *'), { target: { value: 'Edited shop' } }); const gate = deferred(); state.readGate = gate.promise
-  fireEvent.click(screen.getByRole('button', { name: 'Simpan' })); await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  ;(() => { const tipe=screen.queryByRole('combobox', {name:/^Tipe/}); if(tipe) fireEvent.change(tipe,{target:{value:'Mosaic'}}); fireEvent.click(screen.getByRole('button', { name: 'Simpan' })) })(); await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
   const destination = document.activeElement; expect(destination).not.toBe(trigger); expect(destination?.getAttribute('tabindex')).toBe('-1'); expect(destination?.closest('#main-content')).toBeTruthy()
   state.backend.state.customers = []; await act(async () => gate.resolve()); await screen.findByText('0 pelanggan'); expect(document.activeElement).toBe(destination)
 })

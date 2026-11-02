@@ -23,12 +23,12 @@ vi.mock('../src/lib/supabase', () => ({ supabase: {
     return q
   },
   rpc: (name: string, args: any = {}) => {
-    if (!['pilot_procurement_access_v2', 'pilot_catalog_page_v1', 'pilot_catalog_transaction_v1', 'pilot_reconcile_catalog_v1'].includes(name)) return state.backend.rpc(name, args)
+    if (!['pilot_procurement_access_v2', 'pilot_catalog_page_v1', 'pilot_catalog_page_v2', 'pilot_catalog_transaction_v1', 'pilot_catalog_transaction_v2', 'pilot_reconcile_catalog_v1'].includes(name)) return state.backend.rpc(name, args)
     const q: any = { abortSignal: () => q, then: (resolve: any, reject: any) => Promise.resolve().then(() => {
       if (name === 'pilot_procurement_access_v2') return { data: { version: 2, as_of: '2026-10-15T00:00:00Z', actor_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role: 'executive',
         customer_create: true, customer_edit: true, customer_delete: false, product_create: true, product_edit: true, product_delete: true,
         customer_set_enabled: true, product_set_enabled: true, customer_delete_mode: 'none', product_delete_mode: 'direct' }, error: null }
-      if (name === 'pilot_catalog_transaction_v1') {
+      if (['pilot_catalog_transaction_v1','pilot_catalog_transaction_v2'].includes(name)) {
         state.catalogueCalls.push(structuredClone(args))
         if (state.catalogueAbandoned.has(args.p_request_id)) return { data: null, error: { message: 'Request abandoned' } }
         const prior = state.catalogueReceipts.get(args.p_request_id)
@@ -72,13 +72,13 @@ vi.mock('../src/lib/supabase', () => ({ supabase: {
       if (state.backend.state.readError) return { data: null, error: new Error('Read denied') }
       const fields = args.p_kind === 'customer'
         ? ['id','name','address','city','phone','email','pricing_tier','customer_category','is_enabled','catalog_version']
-        : ['id','name','sku','size','unit_price','harga_pokok','luar_kota','dalam_kota','depo_bangunan','is_enabled','catalog_version']
+        : ['id','name','sku','size','unit_price','harga_pokok','luar_kota','dalam_kota','depo_bangunan','is_enabled','catalog_version', ...(name === 'pilot_catalog_page_v2' ? ['product_type'] : [])]
       const source = args.p_kind === 'customer' ? state.backend.state.customers : [{ id:'33333333-3333-4333-8333-333333333333',sku:'SKU',name:'Product p',size:null,unit_price:100,harga_pokok:0,luar_kota:20,dalam_kota:30,depo_bangunan:40 }]
       const rows = source.map((row: any) => Object.fromEntries(fields.map(field => [field,
-        field === 'is_enabled' ? row[field] ?? true : field === 'catalog_version' ? row[field] ?? '1' : row[field]])))
+        field === 'product_type' ? row[field] ?? null : field === 'is_enabled' ? row[field] ?? true : field === 'catalog_version' ? row[field] ?? '1' : row[field]])))
         .sort((a: any, b: any) => a.id.localeCompare(b.id))
         .filter((row: any) => (!args.p_search || row.name.includes(args.p_search)) && (args.p_status === 'all' || row.is_enabled === (args.p_status === 'enabled')))
-      return { data: { version: 1, actor_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role: 'executive', kind: args.p_kind, purpose: args.p_purpose, status: args.p_status, search: args.p_search, page: args.p_page, page_size: args.p_page_size, total_count: String(rows.length), rows: rows.slice((args.p_page - 1) * args.p_page_size, args.p_page * args.p_page_size) }, error: null }
+      return { data: { version: name === 'pilot_catalog_page_v2' ? 2 : 1, actor_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role: 'executive', kind: args.p_kind, purpose: args.p_purpose, status: args.p_status, search: args.p_search, page: args.p_page, page_size: args.p_page_size, total_count: String(rows.length), rows: rows.slice((args.p_page - 1) * args.p_page_size, args.p_page * args.p_page_size) }, error: null }
     }).then(resolve, reject) }; return q
   },
   auth: { getUser: () => state.backend.auth.getUser() },

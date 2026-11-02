@@ -30,21 +30,59 @@ ROLLBACK;
 SELECT to_regprocedure('public.pilot_catalog_transaction_v2(uuid,text,jsonb)') IS NULL AND NOT EXISTS(SELECT 1 FROM pg_attribute WHERE attrelid='public.products'::regclass AND attname='product_type' AND NOT attisdropped);
 `;
 }
-export function buildProductTypeRaceInstall(parts){validate(parts);return `BEGIN;
-SET LOCAL statement_timeout='8s'; SET LOCAL lock_timeout='1500ms';
+/** One PostgreSQL statement; no API transaction splitting can partially commit its body. */
+export function productTypeAtomicStatement(body){
+ assert.equal(typeof body,'string');assert.ok(!body.includes('$tipe_body$')&&!body.includes('$tipe_atomic$'),'Reserved envelope delimiter');
+ foundationTopLevelSql(body);
+ return `DO $tipe_atomic$ BEGIN EXECUTE $tipe_body$${body}$tipe_body$; END $tipe_atomic$;`;
+}
+export function buildProductTypeRaceInstall(parts){validate(parts);return productTypeAtomicStatement(`SET LOCAL statement_timeout='8s'; SET LOCAL lock_timeout='1500ms';
 ${install(parts)}
-COMMIT;
-`;}
+`);}
+// Generic synthetic transaction mechanics, not a forged live OID/profile test.
+export const productTypeEnvelopeProbeSql=Object.freeze({
+ success:productTypeAtomicStatement(`SET LOCAL lock_timeout='1500ms'; SET LOCAL statement_timeout='8s';
+CREATE FUNCTION pg_temp.tipe_envelope_assert(ok boolean) RETURNS void LANGUAGE plpgsql AS $$ BEGIN IF ok IS DISTINCT FROM true THEN RAISE EXCEPTION 'synthetic envelope postflight failed' USING ERRCODE='PT901'; END IF; END $$;
+CREATE TEMP TABLE tipe_envelope_temp(id integer) ON COMMIT DROP;
+CREATE TABLE public.tipe_envelope_probe(id integer PRIMARY KEY);
+INSERT INTO public.tipe_envelope_probe VALUES(1);
+SELECT pg_temp.tipe_envelope_assert((SELECT count(*)=1 FROM public.tipe_envelope_probe) AND current_setting('lock_timeout')='1500ms');
+`),
+ failure:productTypeAtomicStatement(`SET LOCAL lock_timeout='1500ms';
+CREATE FUNCTION pg_temp.tipe_envelope_failed() RETURNS integer LANGUAGE sql AS $$ SELECT 1 $$;
+CREATE TEMP TABLE tipe_envelope_failed_temp(id integer) ON COMMIT DROP;
+CREATE TABLE public.tipe_envelope_failed(id integer);
+INSERT INTO public.tipe_envelope_probe VALUES(2);
+SELECT pg_temp.tipe_envelope_assert(false);
+`),
+ successObservation:`SELECT (SELECT count(*)=1 FROM public.tipe_envelope_probe) AND to_regclass('pg_temp.tipe_envelope_temp') IS NULL AND to_regprocedure('pg_temp.tipe_envelope_assert(boolean)') IS NOT NULL;`,
+ rollbackObservation:`SELECT (SELECT count(*)=1 AND min(id)=1 FROM public.tipe_envelope_probe) AND to_regclass('public.tipe_envelope_failed') IS NULL AND to_regclass('pg_temp.tipe_envelope_failed_temp') IS NULL AND to_regprocedure('pg_temp.tipe_envelope_failed()') IS NULL;`,
+});
+export async function executeProductTypeEnvelopeProbe({a,query,expectState,verify}){
+ await verify();
+ // Statement timeout must already be armed before the outer DO starts. SET LOCAL inside its body cannot arm it retroactively.
+ assert.equal(await query(a,"SELECT current_setting('statement_timeout')='8s' AND current_setting('idle_in_transaction_session_timeout')='30s';"),'t','Existing native session budgets required');
+ assert.equal(await query(a,"SELECT to_regclass('public.tipe_envelope_probe') IS NULL AND to_regclass('public.tipe_envelope_failed') IS NULL AND to_regprocedure('pg_temp.tipe_envelope_assert(boolean)') IS NULL;"),'t','Fresh synthetic envelope scope required');
+ await query(a,productTypeEnvelopeProbeSql.success);
+ assert.equal(await query(a,productTypeEnvelopeProbeSql.successObservation),'t','Single-statement commit and temporary cleanup');
+ await expectState(a,productTypeEnvelopeProbeSql.failure,'PT901');
+ assert.equal(await query(a,productTypeEnvelopeProbeSql.rollbackObservation),'t','Failed single statement must leave no partial table/function/row');
+ await query(a,'DROP TABLE public.tipe_envelope_probe; DROP FUNCTION pg_temp.tipe_envelope_assert(boolean);');
+ assert.equal(await query(a,"SELECT to_regclass('public.tipe_envelope_probe') IS NULL AND to_regprocedure('pg_temp.tipe_envelope_assert(boolean)') IS NULL;"),'t');
+ await verify();return 'ATOMIC_STATEMENT_ROLLBACK_VERIFIED';
+}
 export async function executeProductTypeAcceptance({parts,a,b,observer,query,expectState,verify,runRaces}) {
  await verify();
+ const envelope=await executeProductTypeEnvelopeProbe({a,query,expectState,verify});
  // Suppress fixture SELECT output; expose only a final rollback check.
  const acceptance=buildProductTypeAcceptance(parts);
  const split=acceptance.lastIndexOf('SELECT to_regprocedure');
  assert.equal(await query(a,'\\set ON_ERROR_STOP on\n\\o /dev/null\n'+acceptance.slice(0,split)+'\\o\n'+acceptance.slice(split)+'\\set ON_ERROR_STOP off\n'),'t');
  await verify();
+ assert.equal(await query(a,"SELECT current_setting('statement_timeout')='8s';"),'t','Outer DO timeout must already be armed');
  await query(a,'\\set ON_ERROR_STOP on\n\\o /dev/null\n'+buildProductTypeRaceInstall(parts)+'\\o\n\\set ON_ERROR_STOP off\n');
  await verify();
  const races=await runRaces({a,b,observer,query,expectState,verify});
  await verify();
- return {status:'BOUNDED_PRODUCT_TYPE_ACCEPTANCE_PASSED',api:'ROLLBACK_VERIFIED',races,hostedParity:'UNVERIFIED'};
+ return {status:'BOUNDED_PRODUCT_TYPE_ACCEPTANCE_PASSED',api:'ROLLBACK_VERIFIED',envelope,races,hostedParity:'UNVERIFIED'};
 }

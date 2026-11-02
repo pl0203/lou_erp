@@ -4,6 +4,18 @@ import { afterEach, expect, test, vi } from 'vitest'
 import { POCustomerLookup, POProductLookup } from '../src/components/POLookup'
 afterEach(cleanup)
 const product = (id: string, name = `Product ${id}`) => ({ id, name, sku: id, size: null })
+test('product rows use bold SKU above smaller name size and current Tipe, with explicit missing placeholders',()=>{
+ const view=render(<POProductLookup products={[{...product('SKU-1','Tile'),size:'30x30',product_type:'Mosaic'}]} onSelect={vi.fn()}/>)
+ fireEvent.change(screen.getByRole('combobox'),{target:{value:'SKU'}})
+ const option=screen.getByRole('option')
+ expect(screen.getByText('SKU-1', {exact:true}).textContent).toBe('SKU-1')
+ expect(screen.getByText('SKU-1', {exact:true}).className).toContain('font-bold')
+ expect(screen.getByText('SKU-1', {exact:true}).className).toContain('block')
+ expect(screen.getByText('Tile | 30x30 | Mosaic', {exact:true}).textContent).toBe('Tile | 30x30 | Mosaic')
+ expect(screen.getByText('Tile | 30x30 | Mosaic', {exact:true}).className).toContain('text-[13px]')
+ view.rerender(<POProductLookup products={[product('SKU-1','Tile')]} onSelect={vi.fn()}/>)
+ expect(screen.getByText('Tile | — | —', {exact:true}).textContent).toBe('Tile | — | —')
+})
 
 test('lookup Enter and IME Enter never submit an enclosing form', () => {
  const submit = vi.fn(), select = vi.fn()

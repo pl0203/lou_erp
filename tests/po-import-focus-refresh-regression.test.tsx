@@ -17,12 +17,12 @@ import { useCatalogueOrderOptions } from '../src/lib/catalogue/useCatalogueOrder
 import { usePOImport } from '../src/lib/poImport/usePOImport'
 
 const customer = { id: '22222222-2222-4222-8222-222222222222', name: 'Synthetic buyer', pricing_tier: 'luar_kota', address: null, city: null, phone: null, email: null, customer_category: null, is_enabled: true, catalog_version: '1' }
-const product = { id: '33333333-3333-4333-8333-333333333333', name: 'Synthetic product', sku: 'SYN-1', size: 'pcs', unit_price: null, harga_pokok: 20, luar_kota: 125, dalam_kota: 40, depo_bangunan: null, is_enabled: true, catalog_version: '1' }
+const product = { id: '33333333-3333-4333-8333-333333333333', product_type:null, name: 'Synthetic product', sku: 'SYN-1', size: 'pcs', unit_price: null, harga_pokok: 20, luar_kota: 125, dalam_kota: 40, depo_bangunan: null, is_enabled: true, catalog_version: '1' }
 const field = (value: string | null) => ({ raw: value ?? '', value, page: 1 })
 const parsed: ParsedPO = { version: 1, layout: 'photo-grid', complete: true, buyer: field(customer.name), supplier: field('Synthetic supplier'), poNumber: field('SYN-PO'), orderDate: field('2026-10-05'), expiry: field(null), delivery: field(null), paymentTerms: field(null), currency: field('IDR'), printedTotal: field('250'), priceBasis: 'gross', notes: '', rows: [{ id: 'r1', sku: field(product.sku), barcode: field(null), name: field(product.name), quantity: field('2'), unitPrice: field('125'), uom: field('pcs'), issues: [] }], issues: [] }
 type PageArgs = { p_kind: string; p_purpose: string; p_status: string; p_search: string; p_page: number; p_page_size: number }
 function page(args: PageArgs, rows: unknown[] = [args.p_kind === 'customer' ? customer : product]) {
-  return { data: { version: 1, actor_id: mocks.actor, role: 'po_admin', kind: args.p_kind, purpose: args.p_purpose, status: args.p_status, search: args.p_search, page: args.p_page, page_size: args.p_page_size, total_count: String(rows.length), rows }, error: null }
+  return { data: { version: args.p_kind === 'product' ? 2 : 1, actor_id: mocks.actor, role: 'po_admin', kind: args.p_kind, purpose: args.p_purpose, status: args.p_status, search: args.p_search, page: args.p_page, page_size: args.p_page_size, total_count: String(rows.length), rows }, error: null }
 }
 const clients: QueryClient[] = []
 let localDocument: LocalDocument

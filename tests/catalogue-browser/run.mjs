@@ -11,7 +11,7 @@ const root = process.cwd(), testDir = resolve(root, 'tests/catalogue-browser')
 const output = resolve(root, 'scale-results/catalogue-browser')
 const sha = bytes => createHash('sha256').update(bytes).digest('hex')
 const blob = bytes => createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex')
-const ownedFiles = ['index.html', 'harness.tsx', 'fixture.tsx', 'vite.config.ts', 'source-manifest.json', 'run.mjs'].map(name => `tests/catalogue-browser/${name}`)
+const ownedFiles = ['index.html', 'harness.tsx', 'fixture.tsx', 'vite.config.ts', 'source-manifest.json', 'run.mjs', 'tipe-contract.test.ts'].map(name => `tests/catalogue-browser/${name}`)
 const workflowFiles = ['.github/workflows/pilot-safety.yml', 'tests/co/ci-workflow.test.ts']
 const report = { version: 1, status: 'failed', assertions: [], screenshots: [], networkViolations: [], source: [], harness: [] }
 let temporary, browser, server, socket, cdp, fatal, activeSession, ownsOutput = false, proofComplete = false
@@ -20,6 +20,8 @@ const pending = new Map(), sessions = new Map(), eventTasks = new Set()
 // https://github.com/ChromeDevTools/devtools-protocol/blob/master/pdl/domains/Target.pdl
 // https://chromium.googlesource.com/chromium/src/+/a24f112f7dcefa1402ba08df5f325679679e44fc%5E%21/
 const targetFilter = [{ type: 'browser', exclude: true }, { type: 'tab', exclude: true }, { type: 'browser_ui', exclude: true }, {}]
+let expectedProductAlert = false
+const productAlerts = []
 let sequence = 0
 const safeEnv = home => ({ PATH: process.env.PATH, HOME: home, TMPDIR: home, LANG: 'C.UTF-8', LC_ALL: 'C.UTF-8', NODE_ENV: 'production' })
 const gitEnv = { PATH: process.env.PATH, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_TERMINAL_PROMPT: '0', GIT_NO_LAZY_FETCH: '1' }
@@ -209,6 +211,11 @@ try {
       }
       if (message.method === 'Network.webSocketCreated') report.networkViolations.push({ kind: 'unexpected-websocket', url: message.params.url })
       if (message.method === 'Log.entryAdded' && message.params.entry.source === 'security' && message.params.entry.level === 'error') report.networkViolations.push({ kind: 'blocked-security-request', text: message.params.entry.text })
+      if (message.method === 'Page.javascriptDialogOpening') {
+        assert.ok(expectedProductAlert && message.params.type === 'alert' && message.params.message === 'Tipe wajib dipilih.', 'Unexpected native alert')
+        expectedProductAlert = false; productAlerts.push(message.params.message)
+        await cdp('Page.handleJavaScriptDialog', { accept: true }, message.sessionId)
+      }
       if (message.method === 'Runtime.exceptionThrown') fatal = 'Uncaught exception in browser harness'
     })().catch(error => { fatal ??= error.message })
     eventTasks.add(task); void task.finally(() => eventTasks.delete(task))
@@ -304,6 +311,75 @@ try {
   assert.equal(final.attempts.length, 4); assert.equal(new Set(final.attempts).size, 4); assert.equal(Object.keys(final.receipts).length, 3)
   assert.deepEqual(final.rawCalls, []); assert.deepEqual(final.unexpected, []); assert.equal(await evaluate(a, durableExpression), 0)
   await shot(a, '10-final-canonical-list'); proved('four unique commands, three receipts, zero raw/unexpected calls, zero residual request')
+  // Additive product scenario; every preceding customer assertion remains unchanged.
+  await mode(a, 0, 'normal')
+  await cdp('Page.navigate', {url: origin + '/?scenario=products'}, a)
+  await waitFor(() => evaluate(a, `!!(${button('+ Tambah Barang')}) && !(${button('+ Tambah Barang')}).disabled`), 'real ProductList rendered')
+  assert.equal((await ledger(a)).products[0].product_type, null)
+  assert.equal(await evaluate(a, `Array.from(document.querySelectorAll('tbody tr')).find(r=>r.textContent.includes('LEGACY-TYPE-001')).cells[3].textContent.trim()`), '—')
+  // Existing unclassified products can change status through the unchanged v1 route.
+  await click(a, `Array.from(document.querySelectorAll('tbody tr')).find(r=>r.textContent.includes('LEGACY-TYPE-001')).querySelectorAll('button')[1]`)
+  await waitFor(()=>evaluate(a, `!!document.querySelector('dialog:modal')`), 'product status confirmation')
+  await click(a, `Array.from(document.querySelector('dialog:modal').querySelectorAll('button')).find(b=>b.textContent.trim()==='Konfirmasi Nonaktifkan')`)
+  await waitFor(async()=>!(await ledger(a)).products[0].is_enabled && await evaluate(a, `${durableExpression}===0 && !document.querySelector('dialog')`), 'legacy status canonical auto-confirmed')
+  assert.equal((await ledger(a)).products[0].product_type, null)
+  await click(a, `Array.from(document.querySelectorAll('tbody tr')).find(r=>r.textContent.includes('LEGACY-TYPE-001')).querySelector('button')`)
+  await waitFor(()=>evaluate(a, `!!document.querySelector('#catalog-product-type')`), 'legacy edit open')
+  assert.equal(await evaluate(a, `document.querySelector('#catalog-product-type').value`), '')
+  expectedProductAlert=true; await clickText(a, 'Simpan')
+  await waitFor(()=>productAlerts.length===1,'native required legacy alert')
+  assert.equal((await ledger(a)).attempts.length,5)
+  proved('Tipe legacy edit requires classification')
+  await selectIndex(a, '#catalog-product-type', 8)
+  assert.equal(await evaluate(a, `document.querySelector('#catalog-product-type').value`), 'Mosaic')
+  await clickText(a,'Simpan')
+  await waitFor(()=>evaluate(a, `!document.querySelector('dialog') && !!(${button('Periksa hasil')})`),'legacy edit committed')
+  await clickText(a,'Periksa hasil');await waitFor(()=>evaluate(a,`${durableExpression}===0`),'legacy edit accepted')
+  assert.equal((await ledger(a)).products[0].product_type,'Mosaic')
+  assert.equal((await ledger(a)).products[0].catalog_version,'3')
+  await clickText(a,'+ Tambah Barang')
+  await waitFor(()=>evaluate(a,`!!document.querySelector('#catalog-product-type')`),'product create open')
+  const typeOptions=await evaluate(a, `Array.from(document.querySelector('#catalog-product-type').options).map(o=>o.value)`)
+  assert.deepEqual(typeOptions,['','Bonbon','Bak Cuci Piring','Wastafel','Batu Taman','Granite','Closet','Listello','Mosaic','Meja','Andesit','Pola','House Plint','Rumput Sintetis','Teracotta','Gentong','Air Mancur','Step Nosing'])
+  assert.equal(await evaluate(a,`document.querySelector('#catalog-product-type').required`),true)
+  for(const [selector,text] of [['#catalog-product-sku','TIPE-CREATED-001'],['#catalog-product-name','Fictional typed product']]){await click(a,`document.querySelector(${JSON.stringify(selector)})`);await cdp('Input.insertText',{text},a)}
+  expectedProductAlert=true;await clickText(a,'Simpan');await waitFor(()=>productAlerts.length===2,'native required create alert')
+  assert.equal((await ledger(a)).attempts.length,6);proved('Tipe missing selection dispatches no command')
+  const productGeometry=[]
+  for(const [width,height] of [[1280,900],[390,844],[390,480]]){
+    await cdp('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:false},a)
+    await evaluate(a,`document.querySelector('#catalog-product-type').scrollIntoView({block:'center'})`)
+    const g=await evaluate(a,`(()=>{const d=document.querySelector('dialog:modal'),r=d.getBoundingClientRect(),t=document.querySelector('#catalog-product-type'),b=t.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,inputHeight:b.height,font:parseFloat(getComputedStyle(t).fontSize),overflow:document.documentElement.scrollWidth>innerWidth}})()`)
+    assert.ok(g.x>=0&&g.y>=0&&g.x+g.width<=width+1&&g.y+g.height<=height+1);assert.ok(g.inputHeight>=44&&g.font>=16);assert.equal(g.overflow,false)
+    await evaluate(a,`${button('Simpan')}.scrollIntoView({block:'center'})`)
+    assert.equal(await evaluate(a,`(()=>{const b=(${button('Simpan')}).getBoundingClientRect();return b.top>=0&&b.bottom<=innerHeight})()`),true)
+    await shot(a,`11-product-modal-${width}-${height}`);productGeometry.push({width,height,...g})
+  }
+  proved('Tipe desktop narrow short modal geometry',{viewports:productGeometry})
+  await selectIndex(a,'#catalog-product-type',17)
+  assert.equal(await evaluate(a,`document.querySelector('#catalog-product-type').value`),'Step Nosing')
+  await clickText(a,'Simpan');await waitFor(()=>evaluate(a,`!document.querySelector('dialog') && !!(${button('Periksa hasil')})`),'typed create committed')
+  await clickText(a,'Periksa hasil');await waitFor(()=>evaluate(a,`${durableExpression}===0`),'typed create canonical accepted')
+  const productFinal=await ledger(a)
+  assert.equal(productFinal.attempts.length,7);assert.equal(new Set(productFinal.attempts).size,7);assert.equal(Object.keys(productFinal.receipts).length,6)
+  assert.equal(productFinal.products.length,2);assert.equal(productFinal.products.find(p=>p.sku==='TIPE-CREATED-001').product_type,'Step Nosing')
+  assert.deepEqual(productFinal.rawCalls,[]);assert.deepEqual(productFinal.unexpected,[])
+  proved('Tipe create/edit/status exact receipts')
+  let lookupSelections=0
+  for(const [width,height] of [[1280,900],[390,480]]){
+    await cdp('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:false},a)
+    await click(a,`document.querySelector('section[aria-label="Synthetic shared product lookup"] input')`)
+    await cdp('Input.insertText',{text:'LONG-SKU'},a)
+    await waitFor(()=>evaluate(a,`!!document.querySelector('[role="option"]')`),'product lookup option')
+    const labels=await evaluate(a,`(()=>{const o=document.querySelector('[role="option"]'),s=o.querySelectorAll('span'),x=s[0].getBoundingClientRect(),y=s[1].getBoundingClientRect();return {first:s[0].textContent,second:s[1].textContent,weight:getComputedStyle(s[0]).fontWeight,firstSize:parseFloat(getComputedStyle(s[0]).fontSize),secondSize:parseFloat(getComputedStyle(s[1]).fontSize),twoLines:y.top>=x.bottom,overflow:document.documentElement.scrollWidth>innerWidth}})()`)
+    assert.equal(labels.first,'LONG-SKU-123456789012345678901234567890');assert.equal(labels.second,'Fictional Long Product Name To Verify Wrapping | 60x120 | Rumput Sintetis');assert.ok(Number(labels.weight)>=700&&labels.secondSize<labels.firstSize&&labels.twoLines);assert.equal(labels.overflow,false)
+    await shot(a,`12-product-lookup-${width}`)
+    await key(a,'ArrowDown','ArrowDown',40);await key(a,'Enter','Enter',13)
+    assert.equal(await evaluate(a,`document.querySelector('#product-picked').textContent`),'44444444-4444-4444-8444-444444444444')
+    assert.equal(await evaluate(a,`document.querySelector('#product-picked').dataset.selections`),String(++lookupSelections))
+    assert.equal(await evaluate(a,`document.querySelector('section[aria-label="Synthetic shared product lookup"] input').getAttribute('aria-expanded')`),'false')
+  }
+  proved('Tipe lookup keyboard and two-line geometry')
   for (const [path, bytes] of inputs) assert.equal(sha(await publicBytes(path)), sha(bytes), `Source mutated: ${path}`)
   const emitted = await readdir(output); assert.deepEqual(emitted.sort(), report.screenshots.map(item => item.file).sort(), 'No unlisted artifacts may be published')
   proofComplete = true

@@ -51,6 +51,18 @@ function setup(storage = new MemoryStorage(), overrides: Record<string, any> = {
 beforeEach(() => localStorage.clear())
 
 describe('durable catalogue sender', () => {
+  test('typed edits dispatch v2 once and recover through the existing ledger without private values', async () => {
+    const r = setup()
+    const result = await r.send('edit', {kind:'product',id:target,expected_version:'1',values:{product_type:'Mosaic'}} as any)
+    expect(r.calls.map(call=>call.name)).toEqual(['pilot_catalog_transaction_v2'])
+    expect([...r.storage.values.values()].join('')).not.toContain('Mosaic')
+    const restarted=r.create()
+    r.respond(async()=>({data:{status:'committed',receipt:result},error:null}))
+    expect(await restarted.reconcile()).toEqual({status:'committed',receipt:result})
+    await restarted.acknowledgeRecovered()
+    expect(restarted.hasUnresolved()).toBe(false)
+    expect(r.calls.filter(call=>call.name==='pilot_catalog_transaction_v2')).toHaveLength(1)
+  })
   test('persists minimal binding before dispatch and retains verified receipt until explicit acknowledgement', async () => {
     const r = setup()
     r.respond(async (_name, args) => {

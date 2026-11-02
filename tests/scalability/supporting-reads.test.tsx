@@ -44,6 +44,7 @@ beforeEach(() => {
     }))).sort((a: any, b: any) => a.id.localeCompare(b.id))
     return { version: 1, actor_id: '00000000-0000-4000-8000-000000000002', role: state.role, kind: args.p_kind, purpose: args.p_purpose, status: args.p_status, search: args.p_search, page: args.p_page, page_size: args.p_page_size, total_count: String(rows.length), rows: rows.slice((args.p_page - 1) * args.p_page_size, args.p_page * args.p_page_size) }
   }
+  state.fixture.rpc.pilot_catalog_page_v2 = (args:any) => { const page=state.fixture.rpc.pilot_catalog_page_v1(args); return {...page,version:2,rows:page.rows.map((row:any)=>args.p_kind==='product'?{...row,product_type:null}:row)} }
 })
 afterEach(() => { cleanup(); queryClient.clear(); vi.useRealTimers() })
 const query = (name: string) => {

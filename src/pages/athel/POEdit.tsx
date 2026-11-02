@@ -442,7 +442,7 @@ export default function POEdit() {
                 const historical = !!item.id && historicalLineIds.has(item.id)
                 const minimumQuantity = Math.max(1, deliveredByLine[item.id ?? ''] ?? 0)
                 return (
-                <POLineRow identityLocked key={item._key} lineKey={item._key!} item={item}
+                <POLineRow identityLocked currentProducts={productHistory} key={item._key} lineKey={item._key!} item={item}
                   onChange={(field, value) => updateLine(realIndex, field, value)}
                   onRemove={() => removeLine(realIndex)}
                   historical={historical} maximumQuantity={maximumQuantity(item)} minimumQuantity={minimumQuantity} deliveredQuantity={deliveredByLine[item.id ?? ''] ?? 0}

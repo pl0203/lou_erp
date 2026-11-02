@@ -14,9 +14,9 @@ vi.mock('../../src/lib/supabase', () => ({ supabase: {
   supabaseUrl: 'https://catalogue.test', rest: { url: 'https://catalogue.test/rest/v1', schemaName: 'public' },
   rpc: (_name: string, args: any) => {
     if (_name === 'pilot_order_transaction') { state.writes.push(args); return Promise.resolve({data:{id:'po'},error:null}) }
-    if (_name === 'pilot_catalog_page_v1') {
+    if (['pilot_catalog_page_v1','pilot_catalog_page_v2'].includes(_name)) {
       const rows = args.p_kind === 'customer' ? [catalogue.customer] : []
-      const q: any = { abortSignal: () => q, then: (ok: any, fail: any) => Promise.resolve({ data: { version: 1, actor_id: catalogue.actorId, role: 'po_admin', kind: args.p_kind, purpose: args.p_purpose, status: args.p_status, search: args.p_search, page: args.p_page, page_size: args.p_page_size, total_count: String(rows.length), rows: rows.slice((args.p_page - 1) * args.p_page_size, args.p_page * args.p_page_size) }, error: null }).then(ok, fail) }; return q
+      const q: any = { abortSignal: () => q, then: (ok: any, fail: any) => Promise.resolve({ data: { version: _name === 'pilot_catalog_page_v2' ? 2 : 1, actor_id: catalogue.actorId, role: 'po_admin', kind: args.p_kind, purpose: args.p_purpose, status: args.p_status, search: args.p_search, page: args.p_page, page_size: args.p_page_size, total_count: String(rows.length), rows: rows.slice((args.p_page - 1) * args.p_page_size, args.p_page * args.p_page_size) }, error: null }).then(ok, fail) }; return q
     }
     const q: any = { abortSignal: () => q, then: (ok: any, fail: any) => Promise.resolve(state.failLines ? { data: null, error: new Error('line page unavailable') } : { data: {version:1,as_of:'2026-10-01T00:00:00Z', page:args.p_page,page_size:args.p_page_size,total:state.lines.length,po_updated_at:state.stale && args.p_page > 1 ? '2026-10-02T00:00:00Z' : '2026-10-01T00:00:00Z',po_has_delivery_history:true,items:state.lines.slice((args.p_page-1)*args.p_page_size,args.p_page*args.p_page_size)},error:null }).then(ok,fail) }; return q
   },

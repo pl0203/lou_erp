@@ -24,12 +24,14 @@ export const catalogueKeys = {
 function sameIdentity(key: readonly unknown[], identity: CatalogueIdentity) {
   return key[1] === identity.backend && key[2] === identity.actorId && key[3] === identity.role
 }
-/** Await cancellation before removal so a late completion cannot repopulate obsolete scopes. */
+const identitySynchronizations = new WeakMap<QueryClient, object>()
+/** Await cancellation, but never let a superseded identity sweep remove a current scope. */
 export async function synchronizeCatalogueIdentity(client: QueryClient, value: CatalogueIdentity | null): Promise<void> {
   const identity = value === null ? null : validateCatalogueIdentity(value)
+  const generation = {}; identitySynchronizations.set(client, generation)
   const filters = { queryKey: catalogueKeys.all, predicate: (query: { queryKey: readonly unknown[] }) => !identity || !sameIdentity(query.queryKey, identity) }
   await client.cancelQueries(filters)
-  client.removeQueries(filters)
+  if (identitySynchronizations.get(client) === generation) client.removeQueries(filters)
 }
 /** Refresh only catalogue/lookup projections. Saved orders and unrelated private modules stay separate. */
 export async function invalidateCatalogueProjections(client: QueryClient, value: CatalogueIdentity, kind: CatalogueKind): Promise<void> {

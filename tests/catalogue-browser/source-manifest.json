@@ -1,7 +1,7 @@
 {
   "version": 1,
   "repository": "pl0203/lou_erp",
-  "public_source_head": "e95bdaff33b9fcb8cd18114f364e23198c290ba3",
+  "public_source_head": "9a65660a1418d032e558f9e26104e675b6ffb2e0",
   "files": [
     {
       "path": "src/pages/athel/CustomerList.tsx",
@@ -11,51 +11,51 @@
     },
     {
       "path": "src/lib/catalogue/contracts.ts",
-      "sha": "62e3eb51d20d9795dd042bed011d507dce5cc0d4",
-      "sha256": "ec12b0f64eb32a166ebfa022994ef06b1125226c41cd9a92190618e330b71de7",
-      "bytes": 4297
+      "sha": "35f10556fcfc31153fa3f15311e2005388aff9d7",
+      "sha256": "0e073a6bd1ff08a6e934d1aa7caba14dafbd90867bfe6a2e03fd7467b8592713",
+      "bytes": 4462
     },
     {
       "path": "src/lib/catalogue/validation.ts",
-      "sha": "c3438c13e49022424718ffdfebe16bf5319e1686",
-      "sha256": "5d4b76d922a0b1c5a3364e56f94167ecff278e44fd3f73950aab16d905bb5cdc",
-      "bytes": 14304
+      "sha": "b223719f8466864c1876d742c00927fd45a78ff2",
+      "sha256": "1e91d20f6f49c7cbb5c8f2591c12f9b40a518fa37a973a7d48cb15438c711852",
+      "bytes": 16214
     },
     {
       "path": "src/lib/catalogue/queryKeys.ts",
-      "sha": "b210dfcf8d4c6c343c47f0eccf324eae6447103a",
-      "sha256": "5cc595867e7e03d06055a962e6106621ea64450db391a49b58e9cbfd90de8ad8",
-      "bytes": 2946
+      "sha": "410d06cfda614033ef7a9e6ebece238fbc2869af",
+      "sha256": "4aae446b68e43e739a5df47311b27d4ca9f083e168e4c95bcf8a83bdec512825",
+      "bytes": 3141
     },
     {
       "path": "src/lib/catalogue/reads.ts",
-      "sha": "46876b1daeb78e03e8d9e4e07dcbd5743769dfff",
-      "sha256": "081059bd9d28402e920d3797d4ca6c0aedd643b366362e8736d80412edb8e8bd",
-      "bytes": 4007
+      "sha": "f2daf5241cc065ef986cd7488c5c4c977701341b",
+      "sha256": "24ae9696b0e7a17c9aeed38ab0602015d100e8b16c923d575d6b178b6e07ba30",
+      "bytes": 4246
     },
     {
       "path": "src/lib/catalogue/backend.ts",
-      "sha": "c794083220f67d033f28071554bca9c0e8770287",
-      "sha256": "3511ba11edeabde01b74fa04201eced5ffb330a1868bb3d5a8f5b45f403a4a7c",
-      "bytes": 3331
+      "sha": "96a2a3bc9e98b8e88238f0cd41e7c3d88a9656fd",
+      "sha256": "bfed5497cd4180394000181be14ab85ec89cf99184ead80558eaf44f9a77fb68",
+      "bytes": 3388
     },
     {
       "path": "src/lib/catalogue/transactions.ts",
-      "sha": "911206a63365c7eefd6333c823cc57055dd1a6c2",
-      "sha256": "edd172806219f4c1c22015415b955b1c2f030c83353a49c70bc8985db83c48bb",
-      "bytes": 16197
+      "sha": "2cab8fecb2499580226004792936c625ee31a535",
+      "sha256": "c1b58c1bab37a04c48a0184525611f45f4b763c2935c2d78adda13caec848cd5",
+      "bytes": 16795
     },
     {
       "path": "src/lib/catalogue/formCommands.ts",
-      "sha": "1608b42acbe8025cdebc0f5a5f54b49e9e8c6bc9",
-      "sha256": "596f1ea0152dff11c73b3a5bebaa197066b62e7ecc6e9f32a6a226946792d438",
-      "bytes": 913
+      "sha": "9179e5866d58e2ae23a2f0dba6bedf85cdb9aa6a",
+      "sha256": "6f714219f61de592e75eca81d65558710dea044906a92174e67c0f733230ac5d",
+      "bytes": 1030
     },
     {
       "path": "src/lib/catalogue/useCataloguePage.ts",
-      "sha": "cd265c5d865a80ad89b4caff4daca6126e8cc11a",
-      "sha256": "fddcf3a00c6959ab543aad4de740fe8366f478465b56175484ef91c27e432f1a",
-      "bytes": 13125
+      "sha": "dea33652b099b8a9cf52da3b46df956cfb94e4ad",
+      "sha256": "d884916381ae4639a1dcd2bb021facbe0a4fc32814ed4fb7ffee25057e24c136",
+      "bytes": 13267
     },
     {
       "path": "src/lib/catalogue/useCatalogueAccess.ts",
@@ -218,6 +218,24 @@
       "sha": "70f6d0db97342f8be1c2cb16ece44aaf8d29bf9e",
       "sha256": "5d10759f258c69be162a5bafabe940d4893d44db14384c716175255ea56d5d7b",
       "bytes": 1621
+    },
+    {
+      "path": "src/lib/catalogue/productType.ts",
+      "sha": "0eefacbe56a5c429d8cd972c8c5f8b963634c2ab",
+      "sha256": "3747f46d7b4163ac326cdaf495fc10aaf0ecc7031df7cd10071d8c1ca443531b",
+      "bytes": 391
+    },
+    {
+      "path": "src/pages/athel/ProductList.tsx",
+      "sha": "13a531d9167e03e58e5800cdf1e2d18b06ec3422",
+      "sha256": "9e2e81c30335c92c8110f2b3fed0ce89956ce9b469e76586c006c58cd974057e",
+      "bytes": 18562
+    },
+    {
+      "path": "src/components/POLookup.tsx",
+      "sha": "dd9885a5a8699db20db7a831fd458d7b854b9208",
+      "sha256": "83029c9d92be3b58f724679dec429fb40716150ed7030c81f382262f8830f2f9",
+      "bytes": 8135
     }
   ]
 }

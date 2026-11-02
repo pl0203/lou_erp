@@ -1,6 +1,6 @@
 import type { CatalogueKind, CatalogueReceipt, CatalogueRow } from './contracts'
 import type { CatalogueTransactionSender } from './transactions'
-import { parseCataloguePayload } from './validation'
+import { parseCataloguePayload, parseProductPayloadV2 } from './validation'
 
 /** A form never acknowledges an HTTP success or dispatches through a legacy path.
  * The stable page owner retains the durable request until canonical recovery. */
@@ -12,8 +12,8 @@ export async function sendCatalogueForm<K extends CatalogueKind>(
 ): Promise<CatalogueReceipt | null> {
   if (original && !Object.keys(values).length) return null
   if (original) {
-    const payload = parseCataloguePayload('edit', { kind, id: original.id, expected_version: original.catalog_version, values })
+    const payload = (kind === 'product' ? parseProductPayloadV2 : parseCataloguePayload)('edit', { kind, id: original.id, expected_version: original.catalog_version, values })
     return sender('edit', payload)
   }
-  return sender('create', parseCataloguePayload('create', { kind, values }))
+  return sender('create', (kind === 'product' ? parseProductPayloadV2 : parseCataloguePayload)('create', { kind, values }))
 }

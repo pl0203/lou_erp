@@ -16,8 +16,8 @@ vi.mock('../../src/lib/supabase', () => ({ supabase: {
  rpc:(_name:string,args:any)=>{const request:any={abortSignal:()=>request,then:(resolve:any,reject:any)=>Promise.resolve().then(()=>{
    if (state.error || state.queryErrors.includes(args.p_kind === 'customer' ? 'customers' : 'products')) return {data:null,error:new Error('Options unavailable')}
    const source=args.p_kind==='customer'?state.customers:state.products
-   const rows=source.map((row:any)=>args.p_kind==='customer'?{address:null,city:null,phone:null,email:null,customer_category:null,...row,is_enabled:true,catalog_version:'1'}:{size:null,unit_price:null,harga_pokok:null,luar_kota:null,dalam_kota:null,depo_bangunan:null,...row,is_enabled:true,catalog_version:'1'}).sort((a:any,b:any)=>a.id.localeCompare(b.id))
-   return {data:{version:1,actor_id:state.actor,role:'po_admin',kind:args.p_kind,purpose:args.p_purpose,status:args.p_status,search:args.p_search,page:args.p_page,page_size:args.p_page_size,total_count:String(rows.length),rows},error:null}
+   const rows=source.map((row:any)=>args.p_kind==='customer'?{address:null,city:null,phone:null,email:null,customer_category:null,...row,is_enabled:true,catalog_version:'1'}:{...(_name==='pilot_catalog_page_v2'?{product_type:null}:{}),size:null,unit_price:null,harga_pokok:null,luar_kota:null,dalam_kota:null,depo_bangunan:null,...row,is_enabled:true,catalog_version:'1'}).sort((a:any,b:any)=>a.id.localeCompare(b.id))
+   return {data:{version:_name==='pilot_catalog_page_v2'?2:1,actor_id:state.actor,role:'po_admin',kind:args.p_kind,purpose:args.p_purpose,status:args.p_status,search:args.p_search,page:args.p_page,page_size:args.p_page_size,total_count:String(rows.length),rows},error:null}
  }).then(resolve,reject)};return request},
 } }))
 vi.mock('../../src/lib/AuthContext', () => ({ useAuth: () => ({ user: { id: state.actor }, profile: { id: state.actor, role: 'po_admin', is_active: true }, loading: false, error: null }) }))

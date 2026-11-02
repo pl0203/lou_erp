@@ -446,7 +446,7 @@ function COFormFields({ mode, id, actor, customerOptions, productOptions, custom
         <Button type="button" variant="quiet" size="compact" disabled={pending || unresolved || refreshing} onClick={() => setCollision(null)}>Batal pilihan</Button>
         </div>
         </div>}
-      <div className="space-y-2">{visible.map(l => <COLineRow key={l.key} line={l} disabled={disabled} identityLocked maximum={maximumFor(l)} change={(f, t) => change(l.key, f, t)} remove={() => setLines(prev => prev.filter(row => row.key !== l.key))} error={lineError?.key === l.key ? lineError.message : undefined} refs={{ name: node => { names.current[l.key] = node; if (node && !node.disabled && focus.current?.key === l.key && focus.current.field === 'name') {
+      <div className="space-y-2">{visible.map(l => <COLineRow key={l.key} currentProducts={catalog} line={l} disabled={disabled} identityLocked maximum={maximumFor(l)} change={(f, t) => change(l.key, f, t)} remove={() => setLines(prev => prev.filter(row => row.key !== l.key))} error={lineError?.key === l.key ? lineError.message : undefined} refs={{ name: node => { names.current[l.key] = node; if (node && !node.disabled && focus.current?.key === l.key && focus.current.field === 'name') {
                 node.focus();
                 focus.current = null;
             } }, quantity: node => { quantities.current[l.key] = node; if (node && !node.disabled && focus.current?.key === l.key && focus.current.field === 'quantity') {

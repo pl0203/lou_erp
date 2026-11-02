@@ -1,3 +1,4 @@
+import { currentProductTypeLabel, type CurrentProductTypes } from '../../lib/catalogue/currentProductType';
 import { Field } from '../ui/Field';
 import { Button } from '../ui/Button';
 import type { Ref } from 'react';
@@ -27,7 +28,8 @@ export function lineSubtotal(line: COLineDraft) {
         return 'Isian belum lengkap';
     }
 }
-export function COLineRow({ line, disabled, identityLocked = false, maximum, change, remove, refs, error }: {
+export function COLineRow({ currentProducts, line, disabled, identityLocked = false, maximum, change, remove, refs, error }: {
+    currentProducts?: CurrentProductTypes;
     line: COLineDraft;
     disabled: boolean;
     identityLocked?: boolean;
@@ -49,7 +51,7 @@ export function COLineRow({ line, disabled, identityLocked = false, maximum, cha
     <Field id={`co-line-${line.key}-quantity`} label="Qty">{control => <input {...control} className={CO_INPUT} type="text" inputMode="numeric" aria-label={`Qty ${name}`} ref={refs.quantity} value={line.quantity} disabled={disabled} onChange={e => change('quantity', e.target.value)}/>}</Field>
     <Field id={`co-line-${line.key}-price`} label="Harga satuan CO (Rp)">{control => <input {...control} className={CO_INPUT} type="text" inputMode="decimal" aria-label={`Harga satuan ${name}`} ref={refs.price} value={line.agreed_price} disabled={disabled || line.existing} placeholder="Harga belum diisi" onChange={e => change('agreed_price', e.target.value)}/>}</Field>
     <Button type="button" aria-label={`Hapus ${name}`} disabled={disabled || !line.removable} onClick={remove} variant="danger-quiet" size="compact" className="justify-self-end text-xl">×</Button>
-  </div>{line.existing && <p className="text-[13px] text-brand-secondary">Identitas dan harga asli terkunci. Jumlah minimum {line.minimum}; penghapusan mengikuti riwayat sumber.</p>}{maximum !== undefined && <p className="text-[13px] text-amber-800">Katalog nonaktif atau tidak tersedia: jumlah maksimum {maximum} untuk baris tersimpan ini.</p>}{error && <p role="alert" className="text-[13px] text-red-700">{error}</p>}<p className="text-right text-[13px] text-brand-secondary break-words">Total baris CO: <span className="text-brand-primary">{lineSubtotal(line)}</span>
+  </div><p className="text-[13px] text-brand-secondary">Tipe saat ini: {currentProductTypeLabel(line.product_id, currentProducts)}</p>{line.existing && <p className="text-[13px] text-brand-secondary">Identitas dan harga asli terkunci. Jumlah minimum {line.minimum}; penghapusan mengikuti riwayat sumber.</p>}{maximum !== undefined && <p className="text-[13px] text-amber-800">Katalog nonaktif atau tidak tersedia: jumlah maksimum {maximum} untuk baris tersimpan ini.</p>}{error && <p role="alert" className="text-[13px] text-red-700">{error}</p>}<p className="text-right text-[13px] text-brand-secondary break-words">Total baris CO: <span className="text-brand-primary">{lineSubtotal(line)}</span>
     </p>
     </div>;
 }

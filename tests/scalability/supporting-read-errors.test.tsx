@@ -46,7 +46,7 @@ for (const [name, Page] of [['PO catalogs', PONew], ['own visits', MyVisits], ['
     if (name === 'PO catalogs') {
       await waitFor(() => { expect(state.rpc).toHaveBeenCalledTimes(4); expect(client.isFetching()).toBe(0) })
       expect(state.rpc.mock.calls.map(([, args]) => args.p_kind).sort()).toEqual(['customer', 'customer', 'product', 'product'])
-      expect(state.rpc.mock.calls.every(([rpc, args]) => rpc === 'pilot_catalog_page_v1' && args.p_purpose === 'enabled-for-order' && args.p_status === 'enabled')).toBe(true)
+      expect(state.rpc.mock.calls.every(([rpc, args]) => rpc === (args.p_kind==='product'?'pilot_catalog_page_v2':'pilot_catalog_page_v1') && args.p_purpose === 'enabled-for-order' && args.p_status === 'enabled')).toBe(true)
       const queries = client.getQueryCache().findAll({ queryKey: ['catalogue'] })
       expect(queries).toHaveLength(2)
       expect(queries.every(query => query.state.status === 'error' && query.state.error?.message === 'catalogue unavailable' && query.state.data === undefined)).toBe(true)

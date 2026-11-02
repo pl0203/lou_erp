@@ -109,13 +109,13 @@ export function useCataloguePage<K extends CatalogueKind>(options: { kind: K; se
   }, [operation])
   const args = { kind: options.kind, purpose: 'catalogue' as const, status: options.status, search: options.search.trim(), page: options.page, page_size: options.pageSize }
   const query = useQuery({
-    queryKey: identity ? catalogueKeys.read(identity, args) : ['catalogue', 'unavailable', 'page', options.kind],
+    queryKey: identity ? [...catalogueKeys.read(identity, args), ...(options.kind === 'product' ? ['v2'] : [])] : ['catalogue', 'unavailable', 'page', options.kind],
     enabled: identity !== null,
     queryFn: async ({ signal }) => {
       if (!identity || !backend) invalidCatalogue('current page identity')
       const epoch = scope.epoch
       const isCurrent = () => identityCurrent() && scope.epoch === epoch
-      const page = await fetchCataloguePage(args, { identity, transport: backend, signal, isCurrent })
+      const page = await fetchCataloguePage(args, { version: options.kind === 'product' ? 2 : 1, identity, transport: backend, signal, isCurrent })
       // PaginationControls accepts a number. Never silently round a decimal count.
       if (BigInt(page.total_count) > BigInt(Number.MAX_SAFE_INTEGER)) invalidCatalogue('pagination count exceeds safe range')
       return { page, scope, epoch, total: Number(page.total_count) }
@@ -141,7 +141,7 @@ export function useCataloguePage<K extends CatalogueKind>(options: { kind: K; se
     if (deleted ? !receipt.before || receipt.after !== null : !['create', 'edit', 'set_enabled'].includes(receipt.operation) || !receipt.after) return false
     const current = operation.owner.isCurrent
     // The receipt may belong to the other page or a row outside this filter/page.
-    const rows = await fetchCatalogueOptions(receipt.kind, 'all-for-history', { identity, transport: backend, isCurrent: current })
+    const rows = await fetchCatalogueOptions(receipt.kind, 'all-for-history', { version: receipt.kind === 'product' ? 2 : 1, identity, transport: backend, isCurrent: current })
     const row = rows.find(item => item.id === receipt.id)
     // A validated terminal receipt proves the write even if this identity was
     // subsequently deleted. The complete authorized history read establishes

@@ -12,7 +12,7 @@ test('real catalogue hook/backend/decoder supplies enabled complete new-order ch
     expect(screen.getByLabelText('SKU Product 1').matches(':disabled')).toBe(true);
     expect(screen.getByLabelText('Nama produk Product 1').matches(':disabled')).toBe(true);
     await addProduct('SKU-2'); expect(screen.queryByRole('option', { name: /Product 2/ })).toBeNull();
-    expect(state.catalogueRPC).toHaveBeenCalledWith('pilot_catalog_page_v1', expect.objectContaining({ p_kind: 'product', p_purpose: 'enabled-for-order', p_status: 'enabled' }));
+    expect(state.catalogueRPC).toHaveBeenCalledWith('pilot_catalog_page_v2', expect.objectContaining({ p_kind: 'product', p_purpose: 'enabled-for-order', p_status: 'enabled' }));
 });
 test.each([null, '10000000-0000-0000-0000-000000099999'])('new use rejects stock key belonging to %s without changing product identity', async oldProduct => {
     state.keys = [{ id: uuid(10001), normalized_sku: 'sku-1', display_sku: 'SKU-1', product_name: 'Old label', product_id: oldProduct }];

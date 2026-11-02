@@ -19,7 +19,8 @@ export function useCatalogueOrderOptions<K extends CatalogueKind>(kind: K, purpo
   const scope = useMemo(() => ({ active: false, epoch: 0, request: 0 }), [identity, backend, kind, purpose])
   const live = useRef(scope); live.current = scope
   const args = { kind, purpose, status: purpose === 'enabled-for-order' ? 'enabled' as const : 'all' as const, search: '', page: 1, page_size: 250 }
-  const queryKey = identity ? [...catalogueKeys.read(identity, args), 'complete-options', observer] : ['catalogue', 'unavailable', 'order-options', kind, purpose]
+  const queryKey = identity ? [...catalogueKeys.read(identity, args), 'complete-options', ...(kind === 'product' ? ['v2'] : []), observer] : ['catalogue', 'unavailable', 'order-options', kind, purpose]
+  const liveKey = useRef(queryKey); liveKey.current = queryKey
   useLayoutEffect(() => {
     scope.active = true; scope.epoch++
     // Fetch starts before queryFn when offline. Cancellation must not revive the
@@ -29,7 +30,16 @@ export function useCatalogueOrderOptions<K extends CatalogueKind>(kind: K, purpo
         event.query === client.getQueryCache().find({ queryKey, exact: true })) scope.request++
     })
     void synchronizeCatalogueIdentity(client, identity)
-    return () => { scope.active = false; scope.epoch++; unsubscribe() }
+    return () => {
+      scope.active = false; scope.epoch++; unsubscribe()
+      // Each key is observer-specific. Dispose retired metadata even when a parent
+      // authority boundary unmounts this child before it can observe the new actor.
+      // Defer one microtask so StrictMode's immediate effect replay can reactivate it.
+      queueMicrotask(() => {
+        const replacementOwnsKey = live.current.active && JSON.stringify(liveKey.current) === JSON.stringify(queryKey)
+        if (!scope.active && !replacementOwnsKey) client.removeQueries({ queryKey, exact: true })
+      })
+    }
   }, [client, identity, scope])
   const query = useQuery({
     queryKey,
@@ -38,7 +48,7 @@ export function useCatalogueOrderOptions<K extends CatalogueKind>(kind: K, purpo
       if (!identity || !backend) throw new Error('Identitas katalog belum tersedia.')
       const epoch = scope.epoch, request = ++scope.request
       const isCurrent = () => live.current === scope && scope.active && scope.epoch === epoch && scope.request === request
-      const rows = await fetchCatalogueOptions(kind, purpose, { identity, transport: backend, signal, isCurrent })
+      const rows = await fetchCatalogueOptions(kind, purpose, { version: kind === 'product' ? 2 : 1, identity, transport: backend, signal, isCurrent })
       return { rows: [...rows].sort((a, b) => a.name.localeCompare(b.name)), scope, epoch, request }
     },
     retry: false, structuralSharing: false,

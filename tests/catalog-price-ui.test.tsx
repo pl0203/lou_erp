@@ -13,14 +13,14 @@ vi.mock('../src/lib/supabase', () => ({ supabase: {
    if (name === 'pilot_procurement_access_v2') return { data: { version: 2, as_of: '2026-10-15T00:00:00Z', actor_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role: 'executive',
     customer_create: true, customer_edit: true, customer_delete: false, product_create: true, product_edit: true, product_delete: true,
     customer_set_enabled: true, product_set_enabled: true, customer_delete_mode: 'none', product_delete_mode: 'direct' }, error: null }
-   if (name === 'pilot_catalog_transaction_v1') {
+   if (name === 'pilot_catalog_transaction_v2') {
     state.calls.push(structuredClone(args))
     if (args.p_operation !== 'edit' || args.p_payload.kind !== 'product' || args.p_payload.id !== state.product.id) throw new Error('Unexpected product command')
     const prior = state.receipts.get(args.p_request_id)
     if (prior) return JSON.stringify(prior.payload) === JSON.stringify(args.p_payload) ? { data: prior.receipt, error: null } : { data: null, error: { message: 'Request differs' } }
     if (args.p_payload.expected_version !== state.product.catalog_version) return { data: null, error: { details: 'CATALOG_VERSION_CONFLICT' } }
     const values = args.p_payload.values
-    if (Object.keys(values).some(key => !['name','sku','size','harga_pokok','luar_kota','dalam_kota','depo_bangunan'].includes(key))) throw new Error('Unexpected product field')
+    if (Object.keys(values).some(key => !['name','sku','size','harga_pokok','luar_kota','dalam_kota','depo_bangunan','product_type'].includes(key))) throw new Error('Unexpected product field')
     state.write(values)
     const before = { catalog_version: state.product.catalog_version, is_enabled: state.product.is_enabled }
     const changed = Object.entries(values).some(([key, value]) => (state.product as any)[key] !== value)
@@ -34,8 +34,8 @@ vi.mock('../src/lib/supabase', () => ({ supabase: {
     const prior = state.receipts.get(args.p_request_id)
     return { data: prior ? { status: 'committed', receipt: prior.receipt } : { status: 'unknown' }, error: null }
    }
-   if (name !== 'pilot_catalog_page_v1' || args.p_kind !== 'product') throw new Error(`Unexpected catalogue RPC ${name}`)
-   return { data: { version: 1, actor_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role: 'executive', kind: args.p_kind, purpose: args.p_purpose, status: args.p_status, search: args.p_search, page: args.p_page, page_size: args.p_page_size, total_count: '1', rows: [{ ...state.product }] }, error: null }
+   if (name !== 'pilot_catalog_page_v2' || args.p_kind !== 'product') throw new Error(`Unexpected catalogue RPC ${name}`)
+   return { data: { version: 2, actor_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', role: 'executive', kind: args.p_kind, purpose: args.p_purpose, status: args.p_status, search: args.p_search, page: args.p_page, page_size: args.p_page_size, total_count: '1', rows: [{ ...state.product, product_type: (state.product as any).product_type ?? null }] }, error: null }
   }).then(resolve, reject) }; return q
  }, from: () => {
  const q: any = { then: (resolve: any) => Promise.resolve({ data: [state.product], count: 1, error: null }).then(resolve) }
@@ -73,9 +73,9 @@ test('product editor hides tiers and preserves every stored price on ordinary ed
  await screen.findAllByText('Unset product'); expect(screen.queryByText('Belum diisi')).toBeNull()
  await openEditor(); expect(screen.queryAllByRole('spinbutton')).toHaveLength(0)
  fireEvent.change(screen.getByLabelText('Nama Barang *'), { target: { value: 'Renamed product' } })
- fireEvent.click(screen.getByRole('button', { name: 'Simpan' }))
+ fireEvent.change(screen.getByRole('combobox',{name:/^Tipe/}),{target:{value:'Mosaic'}}); fireEvent.click(screen.getByRole('button', { name: 'Simpan' }))
  await waitFor(() => expect(state.write).toHaveBeenCalled())
- expect(state.write.mock.calls[0][0]).toEqual({ name: 'Renamed product', sku: state.product.sku, size: state.product.size })
+ expect(state.write.mock.calls[0][0]).toEqual({ product_type:'Mosaic', name: 'Renamed product', sku: state.product.sku, size: state.product.size })
  expect(state.product).toMatchObject({ harga_pokok: null, luar_kota: null, dalam_kota: null, depo_bangunan: 0, unit_price: 17 })
  await assertRecoveredEdit(); client.clear()
 })
@@ -86,7 +86,7 @@ test('metadata editing neither exposes nor rewrites legacy numeric catalogue pri
  render(<QueryClientProvider client={client}><ProductList /></QueryClientProvider>)
  await screen.findAllByText('Unset product'); await openEditor()
  expect(screen.queryByLabelText('Luar Kota (Rp)')).toBeNull()
- fireEvent.change(screen.getByLabelText('Ukuran'), { target: { value: '20x30' } }); fireEvent.click(screen.getByRole('button', { name: 'Simpan' }))
+ fireEvent.change(screen.getByLabelText('Ukuran'), { target: { value: '20x30' } }); fireEvent.change(screen.getByRole('combobox',{name:/^Tipe/}),{target:{value:'Mosaic'}}); fireEvent.click(screen.getByRole('button', { name: 'Simpan' }))
  await waitFor(() => expect(state.write).toHaveBeenCalled())
  for (const key of ['harga_pokok','luar_kota','dalam_kota','depo_bangunan','unit_price']) expect(state.write.mock.calls[0][0]).not.toHaveProperty(key)
  expect(state.product.luar_kota).toBe(12.34); await assertRecoveredEdit(); client.clear()

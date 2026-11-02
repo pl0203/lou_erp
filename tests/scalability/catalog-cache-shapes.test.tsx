@@ -19,9 +19,9 @@ vi.mock('../../src/lib/supabase', () => ({ supabase: {
   rpc(name: string, args: any) {
     const q: any = { abortSignal: () => q, then: (resolve: any, reject: any) => Promise.resolve().then(() => {
       if (name === 'pilot_promotions_v1') return { data: { version: 1, as_of: '2026-10-01T00:00:00Z', items: [] }, error: null }
-      if (name !== 'pilot_catalog_page_v1') throw new Error(`Unexpected RPC: ${name}`)
-      const rows = args.p_kind === 'customer' ? [catalogue.customer] : [catalogue.product]
-      return { data: { version: 1, actor_id: catalogue.actorId, role: 'executive', kind: args.p_kind, purpose: args.p_purpose, status: args.p_status, search: args.p_search, page: args.p_page, page_size: args.p_page_size, total_count: String(rows.length), rows: rows.slice((args.p_page - 1) * args.p_page_size, args.p_page * args.p_page_size) }, error: null }
+      if (!['pilot_catalog_page_v1','pilot_catalog_page_v2'].includes(name)) throw new Error(`Unexpected RPC: ${name}`)
+      const rows = args.p_kind === 'customer' ? [catalogue.customer] : [{...catalogue.product,...(name==='pilot_catalog_page_v2'?{product_type:null}:{})}]
+      return { data: { version: name==='pilot_catalog_page_v2'?2:1, actor_id: catalogue.actorId, role: 'executive', kind: args.p_kind, purpose: args.p_purpose, status: args.p_status, search: args.p_search, page: args.p_page, page_size: args.p_page_size, total_count: String(rows.length), rows: rows.slice((args.p_page - 1) * args.p_page_size, args.p_page * args.p_page_size) }, error: null }
     }).then(resolve, reject) }
     return q
   },
@@ -61,7 +61,7 @@ test('navigating from promotion products to a PO never reuses an incompatible ca
     fireEvent.change(price, { target: { value: '17.50' } }); expect(price.value).toBe('17.50')
     const canonical = client.getQueriesData({ queryKey: ['catalogue', 'https://catalogue.test', catalogue.actorId, 'executive', 1, 'read', 'product', 'enabled-for-order'] })
     expect(canonical).toHaveLength(1)
-    expect((canonical[0][1] as { rows: unknown[] }).rows).toEqual([catalogue.product])
+    expect((canonical[0][1] as { rows: unknown[] }).rows).toEqual([{...catalogue.product,product_type:null}])
     expect(client.getQueriesData({ queryKey: ['products'] }).find(([, data]) => Array.isArray(data))![1]).toEqual(cached)
   } finally { client.clear() }
 })

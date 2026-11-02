@@ -1,3 +1,5 @@
+import { useCatalogueOrderOptions } from '../../lib/catalogue/useCatalogueOrderOptions'
+import { currentProductTypeLabel } from '../../lib/catalogue/currentProductType'
 import { savedPOSalesName } from '../../lib/poSales'
 import { LoadingState } from '../../components/ui/LoadingState'
 import { Notice } from '../../components/ui/Feedback'
@@ -149,6 +151,7 @@ export function computeOutstanding(
 }
 
 export default function PODetail() {
+  const currentProducts = useCatalogueOrderOptions('product', 'all-for-history')
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -606,7 +609,7 @@ export default function PODetail() {
             <tbody>
               {lineItems?.map(item => (
                 <tr key={item.id} className="border-b border-gray-50">
-                  <td className="px-6 py-3 text-gray-900">{item.product_name}</td>
+                  <td className="px-6 py-3 text-gray-900">{item.product_name}<small className="block text-brand-secondary">Tipe saat ini: {currentProductTypeLabel(item.product_id, currentProducts)}</small></td>
                   <td className="px-6 py-3 text-brand-secondary font-mono uppercase">
                     {item.sku ?? '—'}
                   </td>

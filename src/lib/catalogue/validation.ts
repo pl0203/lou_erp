@@ -1,3 +1,5 @@
+import { PRODUCT_TYPES, type ProductType } from './productType'
+export { PRODUCT_TYPES } from './productType'
 import { isValidPrice, PRICE_TIERS } from '../catalogPricing'
 import { parseCustomerCategory } from '../customerCategory'
 import type {
@@ -148,6 +150,14 @@ export function parseCatalogueRow<K extends CatalogueKind>(kind: K, value: unkno
   return { ...values, id: parseCatalogueUUID(row.id), is_enabled: parseCatalogueBoolean(row.is_enabled), catalog_version: parseCatalogueVersion(row.catalog_version) } as CatalogueRow<K>
 }
 export function parseCataloguePayload<K extends CatalogueOperation>(operation: K, value: unknown): CatalogueOperationPayloads[K] {
+  return parsePayload(operation, value, false)
+}
+export function parseProductType(value: unknown): ProductType { return catalogueEnum(PRODUCT_TYPES, value) }
+export function parseProductPayloadV2<K extends 'create' | 'edit'>(operation: K, value: unknown): CatalogueOperationPayloads[K] {
+  if (catalogueRecord(value).kind !== 'product') invalidCatalogue('v2 product kind')
+  return parsePayload(operation, value, true)
+}
+function parsePayload<K extends CatalogueOperation>(operation: K, value: unknown, productV2: boolean): CatalogueOperationPayloads[K] {
   catalogueEnum(operations, operation)
   const row = catalogueRecord(value), kind = catalogueEnum(kinds, row.kind)
   const common = operation === 'create' ? ['kind'] : ['kind', 'id', 'expected_version']
@@ -155,11 +165,12 @@ export function parseCataloguePayload<K extends CatalogueOperation>(operation: K
   exactCatalogueFields(row, [...common, ...(valuesOperation ? ['values'] : operation === 'set_enabled' ? ['is_enabled'] : [])])
   const target = operation === 'create' ? { kind } : { kind, id: parseCatalogueUUID(row.id), expected_version: parseCatalogueVersion(row.expected_version) }
   if (!valuesOperation) return { ...target, ...(operation === 'set_enabled' ? { is_enabled: parseCatalogueBoolean(row.is_enabled) } : {}) } as CatalogueOperationPayloads[K]
-  const input = catalogueRecord(row.values), fields = kind === 'customer' ? customerFields : productFields
+  const input = catalogueRecord(row.values), fields = kind === 'customer' ? customerFields : productV2 ? [...productFields, 'product_type'] : productFields
+  if (productV2) parseProductType(input.product_type)
   if (!Object.keys(input).length || Object.keys(input).some(key => !(fields as readonly string[]).includes(key))) invalidCatalogue('values fields')
   if (operation === 'create') exactCatalogueFields(input, fields)
   const values = Object.fromEntries(Object.entries(input).map(([key, item]) => {
-    const parsed = valueField(kind, key, item, operation === 'edit')
+    const parsed = productV2 && key === 'product_type' ? parseProductType(item) : valueField(kind, key, item, operation === 'edit')
     if ((key === 'name' || key === 'sku') && !(parsed as string).trim()) invalidCatalogue(key)
     return [key, parsed]
   }))
@@ -198,4 +209,21 @@ export function decodeCatalogueDeleteAccess(value: unknown, actorId: string) {
   const row = exactCatalogueFields(value, ['version', 'actor_id', 'customer_delete', 'product_delete'])
   if (row.version !== 1 || parseCatalogueUUID(row.actor_id) !== parseCatalogueUUID(actorId)) invalidCatalogue('guarded delete readiness owner')
   return { version: 1 as const, actor_id: actorId, customer_delete: parseCatalogueBoolean(row.customer_delete), product_delete: parseCatalogueBoolean(row.product_delete) }
+}
+
+/** Versioned projection: use unchanged v1 validation for every common field. */
+export function decodeCataloguePageV2<K extends CatalogueKind>(value: unknown, identity: CatalogueIdentity, expected: CataloguePageArgs<K>): Omit<CataloguePage<K>, 'version'> & { version: 2 } {
+  const row = catalogueRecord(value)
+  if (row.version !== 2 || !Array.isArray(row.rows)) invalidCatalogue('v2 page version')
+  const types: (ProductType | null)[] = []
+  const rows = row.rows.map(item => {
+    if (expected.kind !== 'product') return item
+    const product = catalogueRecord(item)
+    if (!Object.hasOwn(product, 'product_type')) invalidCatalogue('product_type missing')
+    types.push(product.product_type === null ? null : parseProductType(product.product_type))
+    const { product_type: _type, ...legacy } = product
+    return legacy
+  })
+  const parsed = decodeCataloguePage({ ...row, version: 1, rows }, identity, expected)
+  return { ...parsed, version: 2, rows: parsed.rows.map((item, index) => expected.kind === 'product' ? { ...item, product_type: types[index] } : item) }
 }

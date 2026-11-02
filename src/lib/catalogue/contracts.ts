@@ -1,3 +1,4 @@
+import type { ProductType } from './productType'
 import type { CustomerCategory } from '../customerCategory'
 import type { PriceTier } from '../catalogPricing'
 
@@ -25,6 +26,8 @@ export interface CatalogueCustomerValues {
   customer_category: CustomerCategory | null
 }
 export interface CatalogueProductValues {
+  /** Required by v2 writes; absent only in the retained strict v1 contract. */
+  product_type?: ProductType | null
   name: string
   sku: string
   size: string | null

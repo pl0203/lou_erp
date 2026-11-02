@@ -201,7 +201,7 @@ export const targetRuntimeReviewedFiles=Object.freeze([
  },
  {
   "path": "scripts/catalogue-product-type-runtime.mjs",
-  "sha256": "7ea6a576b8dcc2e16a1b7d8d663f1f9a537e059f5d6ade09715842b5819f39ef"
+  "sha256": "bfa5ae97a29ea60a9a3f79795de262cd25219e895919a09ee68ee65bbdf98eef"
  },
  {
   "path": "tests/database/catalogue/product-type-races.mjs",
@@ -209,7 +209,7 @@ export const targetRuntimeReviewedFiles=Object.freeze([
  },
  {
   "path": "tests/catalogue-ci/product-type-runtime.node.mjs",
-  "sha256": "02ae95b30ef8bb7b7cc82ebd9abdb2e2787433af31841ef87e187af8c095a925"
+  "sha256": "c77d8f05f4905aed6c3a0e595e5628aee0a500907691fbb702f2aca7ad7582d8"
  },
  {
   "path": "tests/catalogue-ci/product-type-races.node.mjs",
@@ -253,7 +253,7 @@ export function validateCatalogueCheckedCompletion(report){
  assert.deepEqual(report,expected);return expected;
 }
 export function validateProductTypeAcceptance(report,pids,replayPid){
- const expected={status:'BOUNDED_PRODUCT_TYPE_ACCEPTANCE_PASSED',api:'ROLLBACK_VERIFIED',races:{status:'BOUNDED_PRODUCT_TYPE_RACES_PASSED',backendPids:[pids[0],replayPid,pids[2]],cases:['duplicate_type_create_exact_replay','concurrent_type_edit_version_conflict','actor_cutoff_refuses_write_and_recovery']},hostedParity:'UNVERIFIED'};
+ const expected={status:'BOUNDED_PRODUCT_TYPE_ACCEPTANCE_PASSED',api:'ROLLBACK_VERIFIED',envelope:'ATOMIC_STATEMENT_ROLLBACK_VERIFIED',races:{status:'BOUNDED_PRODUCT_TYPE_RACES_PASSED',backendPids:[pids[0],replayPid,pids[2]],cases:['duplicate_type_create_exact_replay','concurrent_type_edit_version_conflict','actor_cutoff_refuses_write_and_recovery']},hostedParity:'UNVERIFIED'};
  assert.deepEqual(report,expected);return expected;
 }
 function validateReport(bytes,identity,files){

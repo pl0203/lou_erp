@@ -1,3 +1,4 @@
+import { useCatalogueOrderOptions } from '../../../lib/catalogue/useCatalogueOrderOptions';
 import COSourceProposalResume from '../../../components/co/COSourceProposalResume';
 import { coSourceProposalRequest } from '../../../lib/co/workspaceReads';
 import COOrderDetailTable from '../../../components/co/COOrderDetailTable';
@@ -241,9 +242,14 @@ export function COHistorySection({ co, section, title, parent = null, renderRow,
         if (BigInt(page) > last) setPage(Number(last));
     }, [query.isFetching, query.data?.total, page]);
     const body = <>{section === 'audit' && <p className="mb-3 text-sm text-brand-secondary">Perubahan CO ini dan laporan pelanggan yang sama (semua CO); identitas lengkap tersedia pada detail teknis.</p>}{query.isError ? <COFailure error={query.error} retry={() => void query.refetch()}/> : query.isPending ? <LoadingState title="Memuat riwayat…" shape="list" /> : <>
-        {section === 'lines' ? <><p className="co-detail-price-context">Harga kesepakatan CO · IDR</p><COOrderDetailTable lines={(query.data?.rows ?? []) as COOrderLine[]} customerId={co.customer_id}/><div className="co-detail-total"><span>{query.data?.total ?? '0'} barang</span><strong>Nilai CO: Rp {formatMoney(co.summary.planned_value, 'full')}</strong></div></> : section === 'deliveries' ? <div className="overflow-x-auto" role="region" aria-label="Tabel riwayat surat jalan" tabIndex={0}><table aria-label="Riwayat surat jalan" className="w-full min-w-[36rem] text-sm"><thead className="bg-gray-50 text-brand-secondary"><tr>{['Nomor surat jalan', 'Tanggal', 'Status', 'Actions'].map(label => <th key={label} scope="col" className="px-3 py-2 text-left font-medium">{label}</th>)}</tr></thead><tbody>{query.data?.rows.map((r: Record<string, any>) => <Fragment key={r.id}>{renderRow(r)}</Fragment>)}</tbody></table></div> : <div className="divide-y divide-gray-100">{query.data?.rows.map((r: Record<string, any>) => <div className="py-3 text-sm break-words" key={r.id}>{renderRow(r)}</div>)}</div>}
+        {section === 'lines' ? <><p className="co-detail-price-context">Harga kesepakatan CO · IDR</p><CurrentCOOrderLines lines={(query.data?.rows ?? []) as COOrderLine[]} customerId={co.customer_id}/><div className="co-detail-total"><span>{query.data?.total ?? '0'} barang</span><strong>Nilai CO: Rp {formatMoney(co.summary.planned_value, 'full')}</strong></div></> : section === 'deliveries' ? <div className="overflow-x-auto" role="region" aria-label="Tabel riwayat surat jalan" tabIndex={0}><table aria-label="Riwayat surat jalan" className="w-full min-w-[36rem] text-sm"><thead className="bg-gray-50 text-brand-secondary"><tr>{['Nomor surat jalan', 'Tanggal', 'Status', 'Actions'].map(label => <th key={label} scope="col" className="px-3 py-2 text-left font-medium">{label}</th>)}</tr></thead><tbody>{query.data?.rows.map((r: Record<string, any>) => <Fragment key={r.id}>{renderRow(r)}</Fragment>)}</tbody></table></div> : <div className="divide-y divide-gray-100">{query.data?.rows.map((r: Record<string, any>) => <div className="py-3 text-sm break-words" key={r.id}>{renderRow(r)}</div>)}</div>}
         {query.data?.rows.length === 0 && <p className="text-sm text-brand-secondary">Belum ada catatan.</p>}
         {BigInt(query.data?.total ?? '0') > 20n && <COPagination page={page} total={query.data?.total ?? '0'} pending={query.isFetching} onPage={setPage}/>}
     </>}</>;
     return collapsed ? <details data-co-history className="rounded-[14px] border border-brand-divider bg-brand-surface p-4"><summary className="ui-action ui-action--quiet ui-action--compact list-item cursor-pointer font-medium">{title}</summary><div className="mt-3">{body}</div></details> : <COCard title={title}>{body}</COCard>;
+}
+
+function CurrentCOOrderLines({lines,customerId}:{lines:readonly COOrderLine[];customerId:string}) {
+    const currentProducts=useCatalogueOrderOptions('product','all-for-history');
+    return <COOrderDetailTable lines={lines} customerId={customerId} currentProducts={currentProducts}/>;
 }

@@ -1,3 +1,4 @@
+import { currentProductTypeLabel, type CurrentProductTypes } from '../lib/catalogue/currentProductType'
 import type { Ref } from 'react'
 import { formatLineAmount } from '../lib/catalogPricing'
 import { Button } from './ui/Button'
@@ -22,7 +23,8 @@ export function POLineItemsHeader() {
 }
 
 /** One compact editable row. Catalog entry stays in the shared lookup above this list. */
-export function POLineRow({ lineKey, item, onChange, onRemove, historical = false, identityLocked = false, maximumQuantity, minimumQuantity = 1, deliveredQuantity = 0, nameRef, quantityRef, priceRef, error }: {
+export function POLineRow({ currentProducts, lineKey, item, onChange, onRemove, historical = false, identityLocked = false, maximumQuantity, minimumQuantity = 1, deliveredQuantity = 0, nameRef, quantityRef, priceRef, error }: {
+  currentProducts?: CurrentProductTypes;
   lineKey: string; item: Line; onChange: (field: LineField, value: string | number) => void; onRemove: () => void
   historical?: boolean; identityLocked?: boolean; maximumQuantity?: number; minimumQuantity?: number; deliveredQuantity?: number
   nameRef: Ref<HTMLInputElement>; quantityRef: Ref<HTMLInputElement>; priceRef: Ref<HTMLInputElement>; error?: string
@@ -45,6 +47,7 @@ export function POLineRow({ lineKey, item, onChange, onRemove, historical = fals
         title={historical ? 'Barang dengan riwayat pengiriman tidak dapat dihapus.' : 'Hapus barang'}
         className="justify-self-end">×</Button>
     </div>
+    <p className="text-[13px] text-brand-secondary">Tipe saat ini: {currentProductTypeLabel(item.product_id, currentProducts)}</p>
     {item.product_id === null && <p className="text-[13px] text-amber-700">Barang manual historis tetap memakai identitas tersimpan; tidak membuat produk katalog baru.</p>}
     {item.product_id && <p className="text-[13px] text-brand-secondary">Produk katalog terhubung</p>}
     {error && <p id={errorId} role="alert" className="text-[13px] text-red-700">{error}</p>}

@@ -6,15 +6,15 @@ type LookupControl = Pick<InputHTMLAttributes<HTMLInputElement>, 'id' | 'aria-de
 
 type Option = { id: string; name: string }
 export type POCustomerOption = Option & { pricing_tier: string }
-export type POProductOption = Option & { sku: string; size: string | null }
+export type POProductOption = Option & { sku: string; size: string | null; product_type?: string | null }
 const normalize = (value: string) => value.trim().toLocaleLowerCase()
 const VISIBLE_OPTIONS = 6
 
 /** Search the complete, authorized collection; the limit is presentation only. */
-function Picker<T extends Option>({ items, label, placeholder, selectedLabel = '', disabled = false, selectionDisabled = false, emptyMessage, inputRef, match, exact, describe, onSelect, ...control }: LookupControl & {
+function Picker<T extends Option>({ items, label, placeholder, selectedLabel = '', disabled = false, selectionDisabled = false, emptyMessage, inputRef, match, exact, describe, primary, onSelect, ...control }: LookupControl & {
   items: T[]; label: string; placeholder: string; selectedLabel?: string; disabled?: boolean; selectionDisabled?: boolean; emptyMessage?: string; inputRef?: Ref<HTMLInputElement>
   match: (item: T, query: string) => boolean; exact?: (item: T, query: string) => boolean
-  describe: (item: T) => string; onSelect: (item: T) => void
+  primary?: (item: T) => string; describe: (item: T) => string; onSelect: (item: T) => void
 }) {
   const id = useId()
   const [query, setQuery] = useState<string | null>(null)
@@ -81,8 +81,8 @@ function Picker<T extends Option>({ items, label, placeholder, selectedLabel = '
           onPointerDown={event => event.preventDefault()} onMouseDown={event => event.preventDefault()} onClick={() => select(item)}
           className={`w-full flex-col items-start justify-start text-left transition-colors border-b border-gray-50 last:border-0 [overflow-wrap:anywhere] ${activeId === item.id ? 'bg-blue-100' : 'hover:bg-blue-50'}`}
         >
-          <span >{item.name}</span>
-          <span className="mt-0.5">{describe(item)}</span>
+          <span className={primary ? 'block text-sm font-bold' : undefined}>{primary ? primary(item) : item.name}</span>
+          <span className={primary ? 'block mt-0.5 text-[13px] font-normal text-brand-secondary' : 'mt-0.5'}>{describe(item)}</span>
         </Button>)}
       </div>
       {!results.length && <p className="px-4 py-3 text-sm text-brand-secondary">{emptyMessage ?? 'Tidak ditemukan. Coba kata pencarian lain.'}</p>}
@@ -110,5 +110,6 @@ export function POProductLookup<T extends POProductOption>({ products, onSelect,
   return <Picker {...control} items={products} label={label} placeholder="Cari SKU atau nama barang..." disabled={disabled} selectionDisabled={selectionDisabled} emptyMessage={emptyMessage} inputRef={inputRef}
     match={(product, query) => normalize(product.sku).includes(query) || normalize(product.name).includes(query)}
     exact={(product, query) => normalize(product.sku) === query}
-    describe={product => [product.sku, product.size].filter(Boolean).join(' · ')} onSelect={onSelect} />
+    primary={product => product.sku}
+    describe={product => [product.name, product.size || '—', product.product_type || '—'].join(' | ')} onSelect={onSelect} />
 }

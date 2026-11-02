@@ -309,17 +309,84 @@ const manifestStatus:Record<string,{sha:string;sha256:string;bytes:number}>={
     bytes:6146
   }
 }
+// Required Tipe negotiated contract: eight exact existing dependencies plus one finite option source.
+const manifestTipe:Record<string,{sha:string;sha256:string;bytes:number}>={
+  "src/lib/catalogue/contracts.ts": {
+    "sha": "35f10556fcfc31153fa3f15311e2005388aff9d7",
+    "sha256": "0e073a6bd1ff08a6e934d1aa7caba14dafbd90867bfe6a2e03fd7467b8592713",
+    "bytes": 4462
+  },
+  "src/lib/catalogue/validation.ts": {
+    "sha": "b223719f8466864c1876d742c00927fd45a78ff2",
+    "sha256": "1e91d20f6f49c7cbb5c8f2591c12f9b40a518fa37a973a7d48cb15438c711852",
+    "bytes": 16214
+  },
+  "src/lib/catalogue/reads.ts": {
+    "sha": "f2daf5241cc065ef986cd7488c5c4c977701341b",
+    "sha256": "24ae9696b0e7a17c9aeed38ab0602015d100e8b16c923d575d6b178b6e07ba30",
+    "bytes": 4246
+  },
+  "src/lib/catalogue/backend.ts": {
+    "sha": "96a2a3bc9e98b8e88238f0cd41e7c3d88a9656fd",
+    "sha256": "bfed5497cd4180394000181be14ab85ec89cf99184ead80558eaf44f9a77fb68",
+    "bytes": 3388
+  },
+  "src/lib/catalogue/transactions.ts": {
+    "sha": "2cab8fecb2499580226004792936c625ee31a535",
+    "sha256": "c1b58c1bab37a04c48a0184525611f45f4b763c2935c2d78adda13caec848cd5",
+    "bytes": 16795
+  },
+  "src/lib/catalogue/formCommands.ts": {
+    "sha": "9179e5866d58e2ae23a2f0dba6bedf85cdb9aa6a",
+    "sha256": "6f714219f61de592e75eca81d65558710dea044906a92174e67c0f733230ac5d",
+    "bytes": 1030
+  },
+  "src/lib/catalogue/useCataloguePage.ts": {
+    "sha": "dea33652b099b8a9cf52da3b46df956cfb94e4ad",
+    "sha256": "d884916381ae4639a1dcd2bb021facbe0a4fc32814ed4fb7ffee25057e24c136",
+    "bytes": 13267
+  },
+  "src/lib/catalogue/queryKeys.ts": {
+    "sha": "410d06cfda614033ef7a9e6ebece238fbc2869af",
+    "sha256": "4aae446b68e43e739a5df47311b27d4ca9f083e168e4c95bcf8a83bdec512825",
+    "bytes": 3141
+  }
+}
+const manifestTipeAdded={
+  "path": "src/lib/catalogue/productType.ts",
+  "sha": "0eefacbe56a5c429d8cd972c8c5f8b963634c2ab",
+  "sha256": "3747f46d7b4163ac326cdaf495fc10aaf0ecc7031df7cd10071d8c1ca443531b",
+  "bytes": 391
+}
+// Two actual rendered product dependencies, finite reviewed source bindings.
+const manifestTipeRendered=[
+  {
+    "path": "src/pages/athel/ProductList.tsx",
+    "sha": "13a531d9167e03e58e5800cdf1e2d18b06ec3422",
+    "sha256": "9e2e81c30335c92c8110f2b3fed0ce89956ce9b469e76586c006c58cd974057e",
+    "bytes": 18562
+  },
+  {
+    "path": "src/components/POLookup.tsx",
+    "sha": "dd9885a5a8699db20db7a831fd458d7b854b9208",
+    "sha256": "83029c9d92be3b58f724679dec429fb40716150ed7030c81f382262f8830f2f9",
+    "bytes": 8135
+  }
+]
 function assertReviewedManifest(candidate:BrowserManifest){
  expect(historicalManifest.files).toHaveLength(36)
  expect(new Set(historicalManifest.files.map(f=>f.path)).size).toBe(36)
  expect(Object.keys(manifestFive).sort()).toEqual(['src/components/ui/Dialog.tsx','src/index.css','src/styles/ui.css','package.json','package-lock.json'].sort())
  expect(Object.keys(manifestStatus).sort()).toEqual(['src/lib/catalogue/useCataloguePage.ts','src/components/catalogue/CatalogueStatusActions.tsx'].sort())
  expect(Object.keys(manifestStatus).some(path=>Object.hasOwn(manifestFive,path))).toBe(false)
- const reviewed={...manifestFive,...manifestStatus}
- const expected={...historicalManifest,public_source_head:'e95bdaff33b9fcb8cd18114f364e23198c290ba3',files:historicalManifest.files.map(file=>({...file,...reviewed[file.path]}))}
+ expect(Object.keys(manifestTipe).sort()).toEqual(['src/lib/catalogue/queryKeys.ts','src/lib/catalogue/contracts.ts','src/lib/catalogue/validation.ts','src/lib/catalogue/reads.ts','src/lib/catalogue/backend.ts','src/lib/catalogue/transactions.ts','src/lib/catalogue/formCommands.ts','src/lib/catalogue/useCataloguePage.ts'].sort())
+ expect(manifestTipeAdded.path).toBe('src/lib/catalogue/productType.ts')
+ expect(manifestTipeRendered.map(f=>f.path)).toEqual(['src/pages/athel/ProductList.tsx','src/components/POLookup.tsx'])
+ const reviewed={...manifestFive,...manifestStatus,...manifestTipe}
+ const expected={...historicalManifest,public_source_head:'9a65660a1418d032e558f9e26104e675b6ffb2e0',files:[...historicalManifest.files.map(file=>({...file,...reviewed[file.path]})),manifestTipeAdded,...manifestTipeRendered]}
  expect(candidate).toEqual(expected)
- expect(candidate.files.filter(f=>!reviewed[f.path])).toEqual(historicalManifest.files.filter(f=>!reviewed[f.path]))
- expect(candidate.files.filter(f=>!reviewed[f.path])).toHaveLength(29)
+ expect(candidate.files.filter(f=>!reviewed[f.path] && f.path!==manifestTipeAdded.path && !manifestTipeRendered.some(r=>r.path===f.path))).toEqual(historicalManifest.files.filter(f=>!reviewed[f.path]))
+ expect(candidate.files.filter(f=>!reviewed[f.path] && f.path!==manifestTipeAdded.path && !manifestTipeRendered.some(r=>r.path===f.path))).toHaveLength(22)
 }
 test('browser manifest keeps immutable36entry provenance and five historical plus two status updates',()=>{
  expect(createHash('sha256').update(historicalManifestBytes).digest('hex')).toBe('5cb3165b593300b6f7cad6c4fd0b3d98219d46e9d03fff5f3232432df5a68007')
@@ -384,3 +451,5 @@ test('monthly and source proposal surfaces reject missing, extra and weakened lo
  expect(()=>check([...expected,{file:monthlyOwners[0],title:'Unreviewed',guards:[]}])).toThrow();
  for(let i=0;i<expected.length;i++){const unsafe=structuredClone(expected);unsafe[i].guards=[];expect(()=>check(unsafe)).toThrow();}
 });
+
+test('Tipe manifest refuses stale existing contracts and altered new option-source bindings',()=>{const valid=JSON.parse(readFileSync('tests/catalogue-browser/source-manifest.json','utf8'));for(const path of [...Object.keys(manifestTipe),manifestTipeAdded.path,...manifestTipeRendered.map(f=>f.path)]){for(const key of ['sha','sha256','bytes']){const bad=structuredClone(valid),entry=bad.files.find((f:{path:string})=>f.path===path);entry[key]=key==='bytes'?entry.bytes+1:'0'.repeat(key==='sha'?40:64);expect(()=>assertReviewedManifest(bad)).toThrow()}}})

@@ -1,13 +1,14 @@
 import type { CatalogueIdentity, CatalogueKind, CataloguePage, CataloguePageArgs, CatalogueRow, ProcurementAccessV2 } from './contracts'
-import { catalogueEnum, decodeCataloguePage, decodeProcurementAccessV2, invalidCatalogue, parseCataloguePageArgs } from './validation'
+import { catalogueEnum, decodeCataloguePage, decodeCataloguePageV2, decodeProcurementAccessV2, invalidCatalogue, parseCataloguePageArgs } from './validation'
 import { validateCatalogueIdentity } from './queryKeys'
 
-export type CatalogueReadRpcName = 'pilot_catalog_page_v1' | 'pilot_procurement_access_v2'
+export type CatalogueReadRpcName = 'pilot_catalog_page_v1' | 'pilot_catalog_page_v2' | 'pilot_procurement_access_v2'
 export interface CatalogueReadTransport {
   readonly backend: string
   rpc(name: CatalogueReadRpcName, args: Record<string, unknown>, signal?: AbortSignal): PromiseLike<{ data: unknown; error: unknown }>
 }
 export interface CatalogueReadOptions {
+  version?: 1 | 2
   identity: CatalogueIdentity
   transport: CatalogueReadTransport
   signal?: AbortSignal
@@ -22,13 +23,13 @@ function current(options: CatalogueReadOptions, identity: CatalogueIdentity) {
     || typeof options.isCurrent !== 'function' || !options.isCurrent()
     || options.identity.backend !== identity.backend || options.identity.actorId !== identity.actorId || options.identity.role !== identity.role) invalidCatalogue('read scope')
 }
-export async function fetchCataloguePage<K extends CatalogueKind>(input: CataloguePageArgs<K>, options: CatalogueReadOptions): Promise<CataloguePage<K>> {
+export async function fetchCataloguePage<K extends CatalogueKind>(input: CataloguePageArgs<K>, options: CatalogueReadOptions): Promise<CataloguePage<K> | (Omit<CataloguePage<K>, 'version'> & {version:2})> {
   const args = parseCataloguePageArgs(input), identity = validateCatalogueIdentity(options.identity)
   current(options, identity)
-  const { data, error } = await options.transport.rpc('pilot_catalog_page_v1', { p_kind: args.kind, p_purpose: args.purpose, p_status: args.status, p_search: args.search, p_page: args.page, p_page_size: args.page_size }, options.signal)
+  const { data, error } = await options.transport.rpc(options.version === 2 ? 'pilot_catalog_page_v2' : 'pilot_catalog_page_v1', { p_kind: args.kind, p_purpose: args.purpose, p_status: args.status, p_search: args.search, p_page: args.page, p_page_size: args.page_size }, options.signal)
   current(options, identity)
   if (error) throw error
-  return decodeCataloguePage(data, identity, args)
+  return options.version === 2 ? decodeCataloguePageV2(data, identity, args) : decodeCataloguePage(data, identity, args)
 }
 /** A complete validated list, never a partial success or an enabled-by-default fallback. */
 export async function fetchCatalogueOptions<K extends CatalogueKind>(kind: K, purpose: 'enabled-for-order' | 'all-for-history', options: CatalogueReadOptions): Promise<CatalogueRow<K>[]> {

@@ -1,3 +1,4 @@
+import { PRODUCT_TYPES, parseProductType } from '../../lib/catalogue/validation'
 import { LoadingState } from '../../components/ui/LoadingState'
 import { sendCatalogueForm } from '../../lib/catalogue/formCommands'
 import type { CatalogueTransactionSender } from '../../lib/catalogue/transactions'
@@ -25,12 +26,14 @@ import { RecordList } from '../../components/ui/RecordList'
 type Product = CatalogueRow<'product'>
 
 type ProductForm = {
+  product_type: string
   name: string
   sku: string
   size: string
 }
 
 const EMPTY_FORM: ProductForm = {
+  product_type: '',
   name: '',
   sku: '',
   size: '',
@@ -40,6 +43,7 @@ const PAGE_SIZE = 10
 
 async function saveProduct(sender: CatalogueTransactionSender, form: ProductForm, original: Product | null) {
   const payload = {
+    product_type: parseProductType(form.product_type),
     name: form.name.trim(),
     sku: form.sku.trim().toUpperCase(),
     size: form.size.trim() || null,
@@ -158,6 +162,7 @@ export default function ProductList() {
     setOriginalProduct(p)
     setEditingId(p.id)
     setForm({
+      product_type: p.product_type ?? '',
       name: p.name,
       sku: p.sku,
       size: p.size ?? '',
@@ -170,6 +175,7 @@ export default function ProductList() {
     if (!catalogue.commandsAvailable || !catalogue.authority?.[editingId ? 'product_edit' : 'product_create'] || mutationBusy.current || modalPending || isError || catalogue.unresolved) return
     if (!form.sku.trim()) return alert('SKU wajib diisi.')
     if (!form.name.trim()) return alert('Nama barang wajib diisi.')
+    if (!form.product_type) return alert('Tipe wajib dipilih.')
     mutationBusy.current = true
     saveMutation.mutate()
   }
@@ -215,14 +221,14 @@ export default function ProductList() {
             <div role="region" aria-label="Daftar barang" tabIndex={0} className="hidden md:block bg-white rounded-[14px] border border-brand-divider overflow-x-auto">
               <table className="w-full min-w-[32rem] text-sm">
                 <thead><tr className="bg-brand-canvas border-b border-brand-divider">
-                  {['SKU', 'Nama Barang', 'Ukuran', 'Aksi'].map((label, index) => <th key={label} className={`px-5 py-3 font-medium text-brand-secondary ${index > 2 ? 'text-right' : 'text-left'}`}>{label}</th>)}
+                  {['SKU', 'Nama Barang', 'Ukuran', 'Tipe', 'Aksi'].map((label, index) => <th key={label} className={`px-5 py-3 font-medium text-brand-secondary ${index > 3 ? 'text-right' : 'text-left'}`}>{label}</th>)}
                 </tr></thead>
                 <tbody>
-                  {products.length === 0 && <tr><td colSpan={4} className="p-4"><EmptyState title="Tidak ada barang ditemukan." /></td></tr>}
+                  {products.length === 0 && <tr><td colSpan={5} className="p-4"><EmptyState title="Tidak ada barang ditemukan." /></td></tr>}
                   {products.map(p => <tr key={p.id} className="border-b border-brand-divider">
                     <td className="px-5 py-4 font-mono text-sm text-brand-secondary uppercase [overflow-wrap:anywhere]">{p.sku}</td>
                     <td className="px-5 py-4 font-medium text-brand-primary [overflow-wrap:anywhere]">{p.name}</td>
-                    <td className="px-5 py-4 text-brand-secondary">{p.size ?? '—'}</td>
+                    <td className="px-5 py-4 text-brand-secondary">{p.size ?? '—'}</td><td className="px-5 py-4 text-brand-secondary">{p.product_type ?? '—'}</td>
                     <td className="px-5 py-4">{rowActions(p)}</td>
                   </tr>)}
                 </tbody>
@@ -232,7 +238,7 @@ export default function ProductList() {
               {products.length === 0 && <li><EmptyState title="Tidak ada barang ditemukan." /></li>}
               {products.map(p => <li key={p.id} className="bg-white rounded-[14px] border border-brand-divider p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
-                  <div className="min-w-0 flex-1"><p className="font-semibold text-brand-primary [overflow-wrap:anywhere]">{p.name}</p><p className="text-[13px] text-brand-secondary font-mono uppercase mt-1 [overflow-wrap:anywhere]">{p.sku}</p>{p.size && <p className="text-[13px] text-brand-secondary mt-1">{p.size}</p>}</div>
+                  <div className="min-w-0 flex-1"><p className="font-semibold text-brand-primary [overflow-wrap:anywhere]">{p.name}</p><p className="text-[13px] text-brand-secondary font-mono uppercase mt-1 [overflow-wrap:anywhere]">{p.sku}</p><p className="text-[13px] text-brand-secondary">Tipe: {p.product_type ?? '—'}</p>{p.size && <p className="text-[13px] text-brand-secondary mt-1">{p.size}</p>}</div>
                   {rowActions(p)}
                 </div>
               </li>)}
@@ -248,6 +254,7 @@ export default function ProductList() {
             <Field id="catalog-product-sku" label="SKU *">{control => <input {...control} type="text" value={form.sku} disabled={formFrozen} onChange={event => { if (!mutationBusy.current && !formFrozen) setForm(p => ({ ...p, sku: event.target.value })) }} placeholder="mis. MPA035" className="font-mono uppercase" />}</Field>
             <Field id="catalog-product-size" label="Ukuran">{control => <input {...control} type="text" value={form.size} disabled={formFrozen} onChange={event => { if (!mutationBusy.current && !formFrozen) setForm(p => ({ ...p, size: event.target.value })) }} placeholder="mis. 30x60" />}</Field>
           </div>
+          <Field id="catalog-product-type" label="Tipe *">{control => <select {...control} required value={form.product_type} disabled={formFrozen} onChange={event => { if (!mutationBusy.current && !formFrozen) setForm(p => ({ ...p, product_type: event.target.value })) }}><option value="">Pilih tipe</option>{PRODUCT_TYPES.map(type => <option key={type} value={type}>{type}</option>)}</select>}</Field>
           <Field id="catalog-product-name" label="Nama Barang *">{control => <input {...control} type="text" value={form.name} disabled={formFrozen} onChange={event => { if (!mutationBusy.current && !formFrozen) setForm(p => ({ ...p, name: event.target.value })) }} placeholder="mis. Granit Putih Polos 60x60" />}</Field>
           {isError && <Notice tone="error" title="Daftar barang belum dapat dimuat." actions={<Button variant="secondary" onClick={() => { void refetch() }}>Coba lagi</Button>} />}
           {saveMutation.isError && <Notice tone="error" title={(saveMutation.error as Error).message} />}

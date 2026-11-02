@@ -30,9 +30,9 @@ export function store(count = 1, reportMonth = month, reportDraftId = draftId) {
         const root = { version: '1', as_of: '2026-10-09T00:00:00Z' };
         const page = (rows: any[]) => ({ ...root, page: a.p_page, page_size: a.p_page_size, total: String(rows.length), rows: rows.slice((a.p_page - 1) * a.p_page_size, a.p_page * a.p_page_size) });
         if (name === 'pilot_co_evidence_selection_v1') return { data: {version:'1',customer_id:customer,draft_id:a.p_draft_id, draft_version:a.p_expected_draft_version,revision_id:a.p_revision_id,evidence:null},error:null };
-        if (name === 'pilot_catalog_page_v1') {
+        if (['pilot_catalog_page_v1','pilot_catalog_page_v2'].includes(name)) {
             const rows = a.p_kind === 'customer' ? [{ id: customer, name: 'Store A', address: null, city: null, phone: null, email: null, pricing_tier: 'others', customer_category: null, is_enabled: true, catalog_version: '9007199254740993' }] : [];
-            return { data: { version: 1, actor_id: id(1), role: wire.role, kind: a.p_kind, purpose: a.p_purpose, status: a.p_status, search: a.p_search, page: a.p_page, page_size: a.p_page_size, total_count: String(rows.length), rows }, error: null };
+            return { data: { version: name === 'pilot_catalog_page_v2' ? 2 : 1, actor_id: id(1), role: wire.role, kind: a.p_kind, purpose: a.p_purpose, status: a.p_status, search: a.p_search, page: a.p_page, page_size: a.p_page_size, total_count: String(rows.length), rows }, error: null };
         }
         if (name === 'pilot_my_profile')
             return { data: [{ id: id(1), role: wire.role, is_active: true }], error: null };

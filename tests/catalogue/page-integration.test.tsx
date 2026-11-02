@@ -35,17 +35,17 @@ vi.mock('../../src/lib/supabase', () => {
           if (state.readinessGate) await state.readinessGate
           return { data: { version: 1, actor_id: state.actor, customer_delete: granted && co && state.ready, product_delete: granted && co && state.ready }, error: null }
         }
-        if (name === 'pilot_catalog_page_v1') {
+        if (name === 'pilot_catalog_page_v1' || name === 'pilot_catalog_page_v2') {
           state.reads(args)
           if (state.historyDenied && args.p_purpose === 'all-for-history') return { data: null, error: { message: 'denied' } }
           if (state.readGate) await state.readGate
           let rows = [...(args.p_kind === 'customer' ? state.customers : state.products)].sort((a, b) => a.id.localeCompare(b.id))
           rows = rows.filter(row => (!args.p_search || row.name.includes(args.p_search)) && (args.p_status === 'all' || row.is_enabled === (args.p_status === 'enabled')))
-          return { data: { version: 1, actor_id: state.actor, role: state.role, kind: args.p_kind, purpose: args.p_purpose,
+          return { data: { version: name === 'pilot_catalog_page_v2' ? 2 : 1, actor_id: state.actor, role: state.role, kind: args.p_kind, purpose: args.p_purpose,
             status: args.p_status, search: args.p_search, page: args.p_page, page_size: args.p_page_size,
             total_count: state.count ?? String(rows.length), rows: rows.slice((args.p_page - 1) * args.p_page_size, args.p_page * args.p_page_size) }, error: null }
         }
-        if (name === 'pilot_catalog_transaction_v1') {
+        if (name === 'pilot_catalog_transaction_v1' || name === 'pilot_catalog_transaction_v2') {
           state.command(args)
           if (state.missingRpc) return { data: null, error: { code: 'PGRST202', message: 'missing' } }
           if (state.conflict) return { data: null, error: { details: 'CATALOG_VERSION_CONFLICT' } }
@@ -99,7 +99,7 @@ import { supabase } from '../../src/lib/supabase'
 const uuid = (index: number) => `22222222-2222-4222-8222-${String(index).padStart(12, '0')}`
 const version = '9007199254740993'
 const customer = (index: number) => ({ id: uuid(index), name: `Customer ${index}`, address: null, city: 'Jakarta', phone: null, email: null, pricing_tier: 'others', customer_category: null, catalog_version: version, is_enabled: true })
-const product = (index: number) => ({ id: uuid(index), name: `Product ${index}`, sku: `SKU-${index}`, size: null, unit_price: 17, harga_pokok: null, luar_kota: 12.34, dalam_kota: 20, depo_bangunan: 0, catalog_version: version, is_enabled: true })
+const product = (index: number) => ({ product_type: null, id: uuid(index), name: `Product ${index}`, sku: `SKU-${index}`, size: null, unit_price: 17, harga_pokok: null, luar_kota: 12.34, dalam_kota: 20, depo_bangunan: 0, catalog_version: version, is_enabled: true })
 const clients: QueryClient[] = []
 function deferred() { let resolve!: () => void; return { promise: new Promise<void>(done => { resolve = done }), resolve: () => resolve() } }
 function mount(Page: React.ComponentType, client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })) {
@@ -119,6 +119,24 @@ const pages = [
   { Page: CustomerList, kind: 'customer', desktop: 'Daftar pelanggan', mobile: 'Daftar pelanggan seluler', name: 'Customer 1' },
   { Page: ProductList, kind: 'product', desktop: 'Daftar barang', mobile: 'Daftar barang seluler', name: 'Product 1' },
 ] as const
+it('requires a selectable exact Tipe on product forms while legacy status stays independent',async()=>{
+  mount(ProductList)
+  const add=await screen.findByRole('button',{name:'+ Tambah Barang'})
+  await waitFor(()=>expect((add as HTMLButtonElement).disabled).toBe(false))
+  fireEvent.click(add)
+  const type=screen.getByRole('combobox',{name:'Tipe *'}) as HTMLSelectElement
+  expect(type.required).toBe(true)
+  expect(type.value).toBe('')
+  expect(within(type).getAllByRole('option')).toHaveLength(18)
+  const alert=vi.spyOn(window,'alert').mockImplementation(()=>{})
+  fireEvent.change(screen.getByLabelText('Nama Barang *'),{target:{value:'Required test'}})
+  fireEvent.change(screen.getByLabelText('SKU *'),{target:{value:'REQ-TYPE'}})
+  fireEvent.click(screen.getByRole('button',{name:'Simpan'}))
+  expect(alert).toHaveBeenCalledWith('Tipe wajib dipilih.')
+  expect(state.command).not.toHaveBeenCalled(); expect(localStorage.length).toBe(0)
+  fireEvent.change(type,{target:{value:'Mosaic'}})
+  expect(type.value).toBe('Mosaic')
+})
 async function begin(desktop: string) {
   const region = await screen.findByRole('region', { name: desktop })
   const button = within(region).getAllByRole('button', { name: 'Nonaktifkan' })[0]
@@ -328,6 +346,7 @@ it.each(pages)('saves $kind edits through the durable RPC with the captured deci
   await waitFor(() => expect((edit as HTMLButtonElement).disabled).toBe(false))
   fireEvent.click(edit)
   fireEvent.change(screen.getByLabelText(kind === 'customer' ? 'Nama Pelanggan *' : 'Nama Barang *'), { target: { value: 'Renamed by CO' } })
+  if (screen.queryByRole('combobox', {name:'Tipe *'})) fireEvent.change(screen.getByRole('combobox', {name:'Tipe *'}), {target:{value:'Mosaic'}})
   fireEvent.click(screen.getByRole('button', { name: 'Simpan' }))
   await screen.findByText('Hasil belum terkonfirmasi')
   expect(state.command).toHaveBeenCalledOnce()
@@ -345,6 +364,7 @@ it('creates a product through the receipt contract, never a raw insert', async (
   fireEvent.click(add)
   fireEvent.change(screen.getByLabelText('Nama Barang *'), { target: { value: 'New product' } })
   fireEvent.change(screen.getByLabelText('SKU *'), { target: { value: 'new-01' } })
+  if (screen.queryByRole('combobox', {name:'Tipe *'})) fireEvent.change(screen.getByRole('combobox', {name:'Tipe *'}), {target:{value:'Mosaic'}})
   fireEvent.click(screen.getByRole('button', { name: 'Simpan' }))
   await screen.findByText('Hasil belum terkonfirmasi')
   expect(state.command).toHaveBeenCalledOnce()
@@ -364,6 +384,7 @@ it.each([['customer', CustomerList, 'Nama Pelanggan *', 'Daftar pelanggan'], ['p
   const name = screen.getByLabelText(nameLabel) as HTMLInputElement
   fireEvent.change(name, { target: { value: 'Attempt' } })
   const originalVersion = (kind === 'customer' ? state.customers : state.products)[0].catalog_version
+  if (screen.queryByRole('combobox', {name:'Tipe *'})) fireEvent.change(screen.getByRole('combobox', {name:'Tipe *'}), {target:{value:'Mosaic'}})
   fireEvent.click(screen.getByRole('button', { name: 'Simpan' }))
   await screen.findByText('Hasil belum terkonfirmasi')
   expect(await screen.findByText(/Data katalog berubah/)).toBeTruthy()
@@ -390,6 +411,7 @@ it.each([['customer', CustomerList, 'Nama Pelanggan *', 'Daftar pelanggan'], ['p
   expect(state.command).toHaveBeenCalledOnce()
   // Only the user's new Save dispatches again, retaining the captured version.
   state.conflict = false
+  if (within(dialog).queryByRole('combobox', {name:'Tipe *'})) fireEvent.change(within(dialog).getByRole('combobox', {name:'Tipe *'}), {target:{value:'Mosaic'}})
   fireEvent.click(within(dialog).getByRole('button', { name: 'Simpan' }))
   await waitFor(() => expect(state.command).toHaveBeenCalledTimes(2))
   expect(state.command.mock.calls[1][0].p_payload).toMatchObject({ expected_version: originalVersion, values: { name: 'Attempt' } })
@@ -401,6 +423,7 @@ it('acknowledges a committed edit after a later canonical product deletion', asy
   const edit = within(region).getByRole('button', { name: 'Ubah' })
   await waitFor(() => expect((edit as HTMLButtonElement).disabled).toBe(false))
   fireEvent.click(edit); fireEvent.change(screen.getByLabelText('Nama Barang *'), { target: { value: 'Renamed' } })
+  if (screen.queryByRole('combobox', {name:'Tipe *'})) fireEvent.change(screen.getByRole('combobox', {name:'Tipe *'}), {target:{value:'Mosaic'}})
   fireEvent.click(screen.getByRole('button', { name: 'Simpan' }))
   await screen.findByText('Hasil belum terkonfirmasi'); state.products = []
   fireEvent.click(screen.getByRole('button', { name: 'Periksa hasil' }))
@@ -566,3 +589,5 @@ it('keeps automatic recovery reachable if the acknowledgment lock release fails 
   await waitFor(() => expect(screen.queryByText('Hasil belum terkonfirmasi')).toBeNull())
   expect(state.command).toHaveBeenCalledOnce(); expect(state.writes).not.toHaveBeenCalled()
 })
+
+it('product empty state spans all five catalogue columns',async()=>{state.products=[];mount(ProductList);await screen.findByText('0 barang');const table=screen.getByRole('region',{name:'Daftar barang'});expect(within(table).getByText('Tidak ada barang ditemukan.').closest('td')?.colSpan).toBe(5)})

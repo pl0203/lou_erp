@@ -12,6 +12,14 @@ function setup(reply = (a: CataloguePageArgs) => envelope(a, a.page === 1 ? [row
   return { rpc, options: { identity, transport: { backend: identity.backend, rpc }, pageSize: 2, isCurrent: () => true } }
 }
 describe('typed complete catalogue reads', () => {
+  test('negotiated v2 reads retain current types without silently falling back to v1', async () => {
+    const r = setup(a => ({ ...envelope(a, [{...row(2),product_type:'Mosaic'}], '1'), version:2 }))
+    expect((await fetchCataloguePage(args, {...r.options, version:2})).rows[0].product_type).toBe('Mosaic')
+    expect(r.rpc.mock.calls[0][0]).toBe('pilot_catalog_page_v2')
+    const old = setup(a => envelope(a,[row(2)],'1'))
+    await expect(fetchCataloguePage(args,{...old.options,version:2})).rejects.toThrow()
+    expect(old.rpc).toHaveBeenCalledTimes(1)
+  })
   test('binds the exact semantic request and keeps bigint text/disabled history', async () => {
     const r = setup(); const page = await fetchCataloguePage(args, r.options)
     expect(page.rows[0].catalog_version).toBe('9007199254740993'); expect(page.rows[1].is_enabled).toBe(false)

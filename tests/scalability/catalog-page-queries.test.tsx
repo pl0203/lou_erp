@@ -11,7 +11,7 @@ vi.mock('../../src/lib/supabase', async () => {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
     global: { fetch: async (input, init) => {
       const body = JSON.parse(String(init?.body)), url = new URL(String(input)); state.requests.push({ url, body })
-      return new Response(JSON.stringify({ version: 1, actor_id: '11111111-1111-4111-8111-111111111111', role: 'sales_person', kind: body.p_kind,
+      return new Response(JSON.stringify({ version: url.pathname.endsWith('_v2')?2:1, actor_id: '11111111-1111-4111-8111-111111111111', role: 'sales_person', kind: body.p_kind,
         purpose: body.p_purpose, status: body.p_status, search: body.p_search, page: body.p_page, page_size: body.p_page_size, total_count: '0', rows: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } })
     } },
   }) }
@@ -26,7 +26,7 @@ for (const [kind, Page] of [['customer', CustomerList], ['product', ProductList]
   fireEvent.change(screen.getByRole('textbox'), { target: { value: 'a%,x*"' } })
   await waitFor(() => expect(state.requests.some(request => request.body.p_search === 'a%,x*"')).toBe(true))
   const request = state.requests.at(-1)!
-  expect(request.url.pathname).toBe('/rest/v1/rpc/pilot_catalog_page_v1')
+  expect(request.url.pathname).toBe(`/rest/v1/rpc/pilot_catalog_page_v${kind==='product'?2:1}`)
   expect(request.url.searchParams.has('or')).toBe(false)
   expect(request.body).toEqual({ p_kind: kind, p_purpose: 'catalogue', p_status: 'all', p_search: 'a%,x*"', p_page: 1, p_page_size: 10 })
   expect(screen.getByText(kind === 'customer' ? '0 pelanggan' : '0 barang')).toBeTruthy()
